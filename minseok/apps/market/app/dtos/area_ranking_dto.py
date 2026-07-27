@@ -30,6 +30,7 @@ class AreaRankingRow:
     sales_per_store: int | None
     sales_qoq: float | None       # 직전 분기 대비 %, 직전 분기 결측이면 None
     closure_rate: float | None
+    area_size: float | None  # ㎡ — 밀도 정규화용
 
 
 @dataclass(frozen=True)

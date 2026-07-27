@@ -56,6 +56,7 @@ class AreaRankingInteractor(AreaRankingUseCase):
                 sales_per_store=_per_store(sale, st.store_count if st else None),
                 sales_qoq=_qoq(sale, prev_sales.get(a.trdar_code)),
                 closure_rate=st.closure_rate if st else None,
+                area_size=a.area_size,
             ))
         return AreaRankingView(year_quarter=latest, rows=rows, services=services)
 

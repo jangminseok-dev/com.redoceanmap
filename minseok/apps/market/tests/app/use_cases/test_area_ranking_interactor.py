@@ -12,6 +12,7 @@ def _meta(code: int, gu: str = "성동구", division: str = "A") -> AreaMeta:
     return AreaMeta(
         trdar_code=code, trdar_name=f"상권{code}", district_name=gu, dong_name="성수동",
         division_code=division, division_name="골목상권", lat=37.5, lng=127.0,
+        area_size=71928.0,
     )
 
 

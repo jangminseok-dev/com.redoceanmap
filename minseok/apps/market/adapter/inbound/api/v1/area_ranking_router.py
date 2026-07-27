@@ -40,6 +40,7 @@ async def list_area_ranking(
                 salesPerStore=r.sales_per_store,
                 salesQoq=r.sales_qoq,
                 closureRate=r.closure_rate,
+                areaSize=r.area_size,
             )
             for r in view.rows
         ],

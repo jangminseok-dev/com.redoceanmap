@@ -7,14 +7,34 @@ import { ArrowDown, ArrowUp, MapPin, Search } from "lucide-react";
 import { fetchAreaRanking } from "@/lib/api";
 import type { AreaRankingRow } from "@/lib/types";
 
-type SortKey = "salesPerStore" | "monthlySales" | "storeCount" | "salesQoq";
+type SortKey =
+  | "salesPerStore"
+  | "monthlySales"
+  | "storeCount"
+  | "salesQoq"
+  | "storeDensity"
+  | "salesDensity";
+
+type Grouping = "area" | "gu" | "division";
 
 const SORT_COLUMNS: { key: SortKey; label: string; hint: string }[] = [
   { key: "salesPerStore", label: "점포당 매출", hint: "규모가 아니라 '돈이 되는가'" },
   { key: "monthlySales", label: "월 매출", hint: "상권 전체 규모" },
   { key: "storeCount", label: "점포수", hint: "경쟁 밀도" },
   { key: "salesQoq", label: "전분기 대비", hint: "성장 흐름" },
+  { key: "storeDensity", label: "점포 밀도", hint: "면적당 경쟁 강도 — 규모 착시 제거" },
+  { key: "salesDensity", label: "매출 밀도", hint: "면적당 수익력" },
 ];
+
+// 면적 격차가 1,300배라 절대량만 보면 넓은 상권이 늘 이긴다. ha(10,000㎡)당으로 정규화한다.
+const density = (value: number | null, areaSize: number | null) =>
+  value != null && areaSize ? value / (areaSize / 10_000) : null;
+
+const metric = (r: AreaRankingRow, key: SortKey): number | null => {
+  if (key === "storeDensity") return density(r.storeCount, r.areaSize);
+  if (key === "salesDensity") return density(r.monthlySales, r.areaSize);
+  return r[key];
+};
 
 const quarterLabel = (yq: number | null) =>
   yq ? `${String(yq).slice(0, 4)}년 ${String(yq).slice(4)}분기` : "—";
@@ -32,12 +52,16 @@ export default function AreasDirectoryPage() {
     gu: string;
     division: string;
     serviceCode: string;
+    grouping: Grouping;
+    compare: number[];
     sort: { key: SortKey; dir: "asc" | "desc" };
   }>({
     text: "",
     gu: "전체",
     division: "전체",
     serviceCode: "",
+    grouping: "area",
+    compare: [],
     sort: { key: "salesPerStore", dir: "desc" },
   });
 
@@ -68,14 +92,67 @@ export default function AreasDirectoryPage() {
     );
     const { key, dir } = q.sort;
     return [...filtered].sort((a, b) => {
-      const av = a[key];
-      const bv = b[key];
+      const av = metric(a, key);
+      const bv = metric(b, key);
       if (av == null && bv == null) return 0;
       if (av == null) return 1; // 팩트 없는 상권은 항상 뒤로
       if (bv == null) return -1;
       return dir === "asc" ? av - bv : bv - av;
     });
   }, [all, q]);
+
+  // 자치구·상권구분 롤업 — 서버 GROUP BY를 만들지 않는다. 원자재가 이미 페이로드에 있다.
+  // **주의**: 그룹의 점포당 매출은 avg(각 상권의 salesPerStore)가 아니라
+  // sum(매출)/sum(점포)다. 비율의 평균 ≠ 합의 비율.
+  const groups = useMemo(() => {
+    if (q.grouping === "area") return null;
+    const key = q.grouping === "gu" ? "districtName" : "divisionName";
+    const acc = new Map<string, { name: string; n: number; sales: number; stores: number; area: number }>();
+    for (const r of rows) {
+      const k = r[key] || "미분류";
+      const g = acc.get(k) ?? { name: k, n: 0, sales: 0, stores: 0, area: 0 };
+      g.n += 1;
+      g.sales += r.monthlySales ?? 0;
+      g.stores += r.storeCount ?? 0;
+      g.area += r.areaSize ?? 0;
+      acc.set(k, g);
+    }
+    return [...acc.values()]
+      .map((g) => ({
+        ...g,
+        salesPerStore: g.stores ? Math.round(g.sales / g.stores) : null,
+        storeDensity: g.area ? g.stores / (g.area / 10_000) : null,
+      }))
+      .sort((a, b) => (b.salesPerStore ?? -1) - (a.salesPerStore ?? -1));
+  }, [rows, q.grouping]);
+
+  // "상위 몇 %" — 62개 업종·1,650상권 중 이 상권의 상대 위치. 절대값만으론 알 수 없다.
+  const percentile = useMemo(() => {
+    const vals = all
+      .map((r) => metric(r, q.sort.key))
+      .filter((v): v is number => v != null)
+      .sort((a, b) => b - a);
+    return (v: number | null) => {
+      if (v == null || !vals.length) return null;
+      const rank = vals.findIndex((x) => x <= v);
+      return Math.max(1, Math.round(((rank < 0 ? vals.length : rank) / vals.length) * 100));
+    };
+  }, [all, q.sort.key]);
+
+  // 비교는 최대 3곳 — 넘으면 가장 오래된 것을 밀어낸다(전용 라우트를 만들지 않는다,
+  // 필요한 데이터가 이미 이 응답 안에 다 있다)
+  const toggleCompare = (code: number) =>
+    setQ((p) => ({
+      ...p,
+      compare: p.compare.includes(code)
+        ? p.compare.filter((c) => c !== code)
+        : [...p.compare, code].slice(-3),
+    }));
+
+  const compareRows = useMemo(
+    () => q.compare.map((c) => all.find((r) => r.trdarCode === c)).filter(Boolean) as AreaRankingRow[],
+    [q.compare, all],
+  );
 
   const toggleSort = (key: SortKey) =>
     setQ((prev) => ({
@@ -138,6 +215,27 @@ export default function AreasDirectoryPage() {
         </select>
       </div>
 
+      <div className="flex items-center gap-1">
+        <span className="text-[11px] text-foreground-muted mr-1">집계 단위</span>
+        {(
+          [
+            ["area", "상권"],
+            ["gu", "자치구"],
+            ["division", "상권 유형"],
+          ] as [Grouping, string][]
+        ).map(([g, label]) => (
+          <button
+            key={g}
+            onClick={() => setQ((p) => ({ ...p, grouping: g }))}
+            className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+              q.grouping === g ? "bg-brand/10 text-brand" : "text-foreground-muted hover:text-foreground"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       <div className="flex flex-wrap gap-2">
         {SORT_COLUMNS.map(({ key, label, hint }) => (
           <button
@@ -163,11 +261,46 @@ export default function AreasDirectoryPage() {
         <p className="text-sm text-foreground-muted">조건에 맞는 상권이 없어요.</p>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {rows.slice(0, 120).map((r) => (
-          <AreaCard key={r.trdarCode} row={r} />
-        ))}
-      </div>
+      {groups ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {groups.map((g) => (
+            <div key={g.name} className="rounded-2xl bg-surface border border-border p-4">
+              <p className="font-semibold">{g.name}</p>
+              <p className="text-xs text-foreground-muted">{g.n.toLocaleString()}개 상권</p>
+              <dl className="mt-3 space-y-1.5 text-sm">
+                <div className="flex items-center justify-between">
+                  <dt className="text-foreground-muted">점포당 매출</dt>
+                  <dd className="font-medium tabular-nums">{won(g.salesPerStore)}원</dd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <dt className="text-foreground-muted">월 매출 합</dt>
+                  <dd className="font-medium tabular-nums">{won(g.sales)}원</dd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <dt className="text-foreground-muted">점포 밀도</dt>
+                  <dd className="font-medium tabular-nums">
+                    {g.storeDensity ? `${g.storeDensity.toFixed(1)}개/ha` : "—"}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {rows.slice(0, 120).map((r) => (
+            <AreaCard
+              key={r.trdarCode}
+              row={r}
+              pct={percentile(metric(r, q.sort.key))}
+              selected={q.compare.includes(r.trdarCode)}
+              onCompare={() => toggleCompare(r.trdarCode)}
+            />
+          ))}
+        </div>
+      )}
+      {compareRows.length > 0 && <CompareBar rows={compareRows} onClear={() => setQ((p) => ({ ...p, compare: [] }))} />}
+
       {rows.length > 120 && (
         <p className="text-xs text-foreground-muted text-center">
           상위 120곳만 보여주고 있어요. 자치구·업종으로 좁혀보세요. (전체 {rows.length.toLocaleString()}곳)
@@ -177,9 +310,29 @@ export default function AreasDirectoryPage() {
   );
 }
 
-function AreaCard({ row }: { row: AreaRankingRow }) {
+function AreaCard({
+  row,
+  pct,
+  selected,
+  onCompare,
+}: {
+  row: AreaRankingRow;
+  pct: number | null;
+  selected: boolean;
+  onCompare: () => void;
+}) {
   const up = row.salesQoq != null && row.salesQoq > 0;
   return (
+    <div className="relative">
+      <button
+        onClick={onCompare}
+        title="비교에 담기 (최대 3곳)"
+        className={`absolute right-3 top-3 z-10 w-5 h-5 rounded border text-[10px] font-bold transition-colors ${
+          selected ? "bg-brand text-white border-brand" : "bg-surface border-border text-transparent"
+        }`}
+      >
+        ✓
+      </button>
     <Link
       href={`/market?trdar=${row.trdarCode}`}
       className="block rounded-2xl bg-surface border border-border p-4 hover:border-brand/40 transition-colors"
@@ -189,7 +342,14 @@ function AreaCard({ row }: { row: AreaRankingRow }) {
           <MapPin size={16} strokeWidth={1.9} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="font-semibold truncate">{row.trdarName}</p>
+          <p className="font-semibold truncate">
+            {row.trdarName}
+            {pct !== null && (
+              <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-brand/10 text-brand align-middle">
+                상위 {pct}%
+              </span>
+            )}
+          </p>
           <p className="text-xs text-foreground-muted truncate">
             {row.districtName} {row.dongName} · {row.divisionName}
           </p>
@@ -218,5 +378,57 @@ function AreaCard({ row }: { row: AreaRankingRow }) {
         </div>
       </dl>
     </Link>
+    </div>
+  );
+}
+
+// 비교 시트 — 메모리의 행 3개면 충분하다. 새 라우트·새 API를 만들지 않는다.
+function CompareBar({ rows, onClear }: { rows: AreaRankingRow[]; onClear: () => void }) {
+  const METRICS: [string, (r: AreaRankingRow) => string][] = [
+    ["점포당 매출", (r) => `${won(r.salesPerStore)}원`],
+    ["월 매출", (r) => `${won(r.monthlySales)}원`],
+    ["점포수", (r) => (r.storeCount != null ? `${r.storeCount.toLocaleString()}개` : "—")],
+    ["전분기 대비", (r) => (r.salesQoq == null ? "—" : `${r.salesQoq > 0 ? "+" : ""}${r.salesQoq}%`)],
+    ["점포 밀도", (r) => {
+      const d = density(r.storeCount, r.areaSize);
+      return d ? `${d.toFixed(1)}개/ha` : "—";
+    }],
+    ["폐업률", (r) => (r.closureRate != null ? `${r.closureRate}%` : "—")],
+  ];
+  return (
+    <div className="sticky bottom-4 rounded-2xl bg-surface border border-brand/30 shadow-lg p-4">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-sm font-semibold">상권 비교 ({rows.length}/3)</p>
+        <button onClick={onClear} className="text-xs text-foreground-muted hover:text-foreground">
+          비우기
+        </button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-xs text-foreground-muted">
+              <th className="text-left font-normal py-1 pr-3">지표</th>
+              {rows.map((r) => (
+                <th key={r.trdarCode} className="text-right font-semibold text-foreground py-1 px-2 whitespace-nowrap">
+                  {r.trdarName}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {METRICS.map(([label, render]) => (
+              <tr key={label} className="border-t border-border">
+                <td className="text-xs text-foreground-muted py-1.5 pr-3 whitespace-nowrap">{label}</td>
+                {rows.map((r) => (
+                  <td key={r.trdarCode} className="text-right tabular-nums py-1.5 px-2 whitespace-nowrap">
+                    {render(r)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

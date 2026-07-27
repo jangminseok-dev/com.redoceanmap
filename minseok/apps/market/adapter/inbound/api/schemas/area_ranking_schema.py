@@ -15,6 +15,7 @@ class AreaRankingRowSchema(BaseModel):
     salesPerStore: int | None
     salesQoq: float | None
     closureRate: float | None
+    areaSize: float | None
 
 
 class ServiceOptionSchema(BaseModel):

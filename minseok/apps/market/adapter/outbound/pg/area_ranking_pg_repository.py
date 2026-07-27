@@ -61,6 +61,7 @@ class AreaRankingPgRepository(AreaRankingRepositoryPort):
                 district_name=gu_name or "", dong_name=dong_name or "",
                 division_code=div_code, division_name=div_name,
                 lat=lat, lng=lng,
+                area_size=float(ta.area_size) if ta.area_size is not None else None,
             ))
         return out
 

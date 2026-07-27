@@ -432,6 +432,7 @@ export type AreaRankingRow = {
   salesPerStore: number | null;
   salesQoq: number | null;
   closureRate: number | null;
+  areaSize: number | null; // ㎡ — 밀도 정규화용(절대량 비교의 규모 착시 제거)
 };
 
 export type AreaRanking = {

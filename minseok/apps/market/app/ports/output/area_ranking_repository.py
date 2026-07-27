@@ -16,6 +16,8 @@ class AreaMeta:
     division_name: str
     lat: float
     lng: float
+    # 면적 격차가 1,300배(1,854㎡~246만㎡)라 절대량 랭킹은 '넓은 상권이 이기는' 왜곡을 안는다
+    area_size: float | None
 
 
 @dataclass(frozen=True)
