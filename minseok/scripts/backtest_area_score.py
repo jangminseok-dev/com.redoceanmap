@@ -39,9 +39,11 @@ from market.domain.services.area_score_backtester import (  # noqa: E402
 from market.domain.services.area_scorer import AreaScorer, prev_quarter  # noqa: E402
 from market.domain.value_objects.area_score_vo import MetricComparison  # noqa: E402
 
-# market 전용 DB(:5434) 우선 — 미설정 환경은 메인 DB 폴백(런타임 전환과 동일 규칙)
+# market 전용 DB(:5434) 우선 — 미설정 환경은 메인 DB 폴백(런타임 전환과 동일 규칙).
+# 괄호 주의: .replace가 폴백 분기에만 묶이면 MARKET_DATABASE_URL을 쓸 때 드라이버
+# 접두사가 안 붙어 psycopg2를 찾다 죽는다(ingest 스크립트와 동일 수정).
 engine = create_engine(
-    _secrets.get("MARKET_DATABASE_URL") or _secrets.require("DATABASE_URL")
+    (_secrets.get("MARKET_DATABASE_URL") or _secrets.require("DATABASE_URL"))
     .replace("postgresql://", "postgresql+psycopg://")
 )
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from hub.app.dtos.commercial_data_dto import (
+    AreaInsight,
     AreaOverviewRow,
     AreaRawStat,
     AreaScoreInfo,
@@ -39,6 +40,16 @@ class CommercialDataPort(ABC):
     @abstractmethod
     async def get_area_scores(self, trdar_codes: list[int]) -> dict[int, AreaScoreInfo]:
         """지정 상권들의 시도 벤치마크 대비 종합점수 — 산출 근거 팩트가 없는 상권은 제외."""
+        ...
+
+    @abstractmethod
+    async def get_area_insights(
+        self, trdar_codes: list[int], service_code: str | None = None
+    ) -> dict[int, tuple[AreaInsight, ...]]:
+        """지정 상권들의 해석 문장 — 고객 프로필·배후 수요·소비·객단가.
+
+        지도 오버레이만 보던 인사이트를 채팅에도 공급한다. 근거 팩트가 없는 상권은 제외.
+        """
         ...
 
     @abstractmethod

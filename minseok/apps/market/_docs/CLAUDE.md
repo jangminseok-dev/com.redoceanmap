@@ -40,6 +40,13 @@ market의 모든 테이블(3NF 14 + market_news_articles + area_score_backtest_r
 ## 적재 — 독립 스크립트
 
 - `scripts/ingest_seoul_3nf.py` — CSV(`data/raw/seoul/`, cp949)를 차원 먼저 → 팩트(FK 무결성 필터)로 적재.
+  **모든 INSERT가 멱등**(`ON CONFLICT DO NOTHING`)이라 재실행이 안전하다. 서울시가 추정매출·
+  점포를 연도별 파일로 주므로 `서울시 상권분석서비스(<팩트>)_<연도>년.csv`도 함께 읽는다.
+  `--facts`(테이블 선택) · `--years 2021-2024`(연도 필터) · `--dry-run`(적재 없이 분기·FK
+  탈락 건수만 보고) 지원. **백필 전 `--dry-run`으로 상권코드 매칭률을 먼저 확인할 것** —
+  2021년 공간 단위 변경 이력이 있어 코드 체계가 다른 데이터를 섞으면 시계열이 조용히 오염된다.
+  **분기 범위(2026-07-27 기준)**: 매출·점포 20211~20254(20분기, 2021~2024 백필 완료),
+  나머지 6팩트 20191~20254. 2021년 이전 매출·점포는 서울시가 제공을 중단해 확보 불가.
 - CSV→ORM 매핑은 `adapter/outbound/csv/column_maps.py`(스크립트 전용).
 - 개별 `/admin/ingest/*` 라우터는 제거됨(스크립트로 대체).
 
@@ -80,7 +87,15 @@ area_score의 예측력 실측 — 분기 t 데이터만으로 점수·등급을
 - **집계**: `domain/services/area_score_backtester.py`(순수) — 등급별 t+1 결과·컴포넌트별
   Spearman·5분위 스프레드. payload 스키마의 단일 정의처.
 - **조회**: 허브 `AreaBacktestReportPort`를 `area_backtest_report_gateway`가 구현(최신 1건),
-  admin `/admin/market-backtest`가 소비. 매출·개폐업 축은 2025년 4분기뿐이라 저표본 참고치.
+  admin `/admin/market-backtest`가 소비.
+- **2026-07-27 재채점(매출·점포 2021~2024 백필 후)**: 매출·개폐업 축이 처음으로 실표본을
+  갖췄다(`sales_growth` n=28,193 · `store_health` n=31,329 — 이전엔 2025년 4분기뿐이라
+  저표본 참고치였다). 관측 42,879 · 상권 1,650 · 평가분기 26개(20192~20253).
+  결과: 우수 등급 avg **+5.07%p**(n=527, 양(+)비율 56.0%)로 이전 +2.55%p보다 뚜렷해졌으나,
+  컴포넌트 예측력은 여전히 약하다 — `sales_growth` ρ=-0.077(스프레드 -1.21%p, 평균회귀),
+  `floating_growth` ρ=-0.030, `store_health` ρ=+0.010, `persistence` ρ=-0.012.
+  **점수 v1은 여전히 "현황 요약"이지 t+1 예측기가 아니다.** 등급 경계 재설계와 결과 지표
+  재정의(상대 유동인구 QoQ 대신 폐업률 등)가 후속 과제.
 
 ## 좌표
 

@@ -46,6 +46,20 @@ class AreaOverviewRow:
 
 
 @dataclass(frozen=True)
+class AreaInsight:
+    """상권 1건의 규칙 기반 해석 문장.
+
+    문장은 market 도메인 서비스(`area_narrator`)가 만들고 허브는 나르기만 한다 —
+    `AreaScoreInfo.grade`("우수"/"주의" …)가 이미 같은 방식이다. 원시 수치로 내리면
+    임계값 판정이 소비자마다 중복 구현돼, 같은 상권을 지도와 채팅이 다르게 설명하게 된다.
+    """
+
+    key: str
+    tone: str  # positive | neutral | warning
+    text: str
+
+
+@dataclass(frozen=True)
 class AreaScoreComponent:
     """종합점수 컴포넌트 1개 — 50점 = 시도 벤치마크 동률, 0~100."""
 

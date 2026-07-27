@@ -22,10 +22,17 @@ from chat.domain.entities.conversation_entity import ConversationSummary, Messag
 from chat.domain.services.verdict import strength as verdict_strength
 from chat.domain.services.verdict import verdict as verdict_headline
 from core.llm.llm_orchestrator import llm_orchestrator
-from hub.app.dtos.commercial_data_dto import AreaInfo, AreaRawStat, AreaScoreInfo, AreaSummary
+from hub.app.dtos.commercial_data_dto import (
+    AreaInfo,
+    AreaInsight,
+    AreaRawStat,
+    AreaScoreInfo,
+    AreaSummary,
+)
 from hub.app.dtos.market_news_dto import MarketNewsHit
 from hub.app.dtos.news_dto import NewsHit
 from hub.app.dtos.recommendation_record_dto import RecommendedArea
+from hub.app.dtos.stock_forecast_dto import StockForecastSummary
 from hub.app.dtos.stock_analysis_dto import StockAnalysisResult
 from hub.app.ports.output.commercial_data_port import CommercialDataPort
 from hub.app.ports.output.gemini_answer_port import GeminiAnswerError, GeminiAnswerPort
@@ -70,6 +77,19 @@ NON_SEOUL_REGIONS = (
     "목포", "여수", "순천", "포항", "경주", "구미", "창원", "김해", "진주",
     "경기도", "강원도", "충청북도", "충청남도", "전라북도", "전라남도",
     "경상북도", "경상남도",
+)
+
+# 상권 해석 문장(area_narrator)의 주입 우선순위 — 프롬프트 예산상 상권당 상위 4개만 쓴다.
+# 앞쪽일수록 "여기가 어떤 상권인가"를 먼저 규정한다. 성별은 정보량이 가장 낮아 뒤로.
+_INSIGHT_PRIORITY = (
+    "demand_type",          # 오피스형/주거형/혼합 — 상권 성격의 뼈대
+    "avg_ticket",           # 객단가 — 창업 판단에 직결
+    "customer_age",         # 핵심 연령대
+    "sales_rhythm_peak",    # 피크 시간대·요일
+    "spending_power",       # 배후 소득·지출 카테고리
+    "sales_rhythm_weekend",  # 주말/주중 리듬
+    "demand_apartment",     # 아파트 배후 비중
+    "customer_gender",      # 우세 성별
 )
 
 INTENT_PROMPT = """사용자 질문의 의도를 분류하라.
@@ -163,7 +183,8 @@ PHASE2_PROMPT = """당신은 서울 창업 컨설턴트입니다.
   '○○구 관문' 같은 입지 설명은 제공되지 않았으므로 언급 자체를 금지한다
   (실제 오류 사례: 성북구 미아사거리를 '5,8호선 환승, 강동구 관문'이라고 서술)
 - 기사는 지역 트렌드 배경으로만 쓰고, 기사에 나온 다른 지역·상권의 특성을 이 상권의 특성인 것처럼 옮기지 말 것
-- '유동인구 최다 연령대'는 통행량 기준이다. 이를 '주요 고객층'·'구매층'으로 바꿔 부르지 말 것"""
+- '유동인구 최다 연령대'는 통행량 기준이다. 이를 '주요 고객층'·'구매층'으로 바꿔 부르지 말 것
+- '상권 성격'(고객층·배후 수요·객단가·소비력)은 제공된 문장만 인용하고, 제공되지 않은 해석을 새로 만들지 말 것"""
 
 STREAM_SYSTEM_PROMPT = """당신은 서울 상권 분석 상담사입니다.
 사용자와 자연스럽게 대화하며 상권 선택·창업 관련 조언을 제공합니다.
@@ -464,6 +485,9 @@ class ChatInteractor(ChatUseCase):
         real_stats = self._format_stats(raw_stats, quarter)
         # M3 스코어링 근거 주입 — 시도 벤치마크 대비 종합점수(산출 불가 상권은 라인 생략)
         area_scores = await self._market.get_area_scores(valid_codes)
+        # 상권 성격 해석 — 고객 프로필·배후 수요·소비·객단가. 지도 오버레이만 보던 문장을
+        # 채팅에도 공급한다(근거 팩트 없는 상권은 키 자체가 없어 라인 생략).
+        area_insights = await self._market.get_area_insights(valid_codes, service_code)
         # 상권 뉴스 RAG 근거 — 지역 기사 의미 검색(히트 없으면 블록 생략)
         area_articles = await self._market_news.search(prompt, limit=4)
 
@@ -474,6 +498,7 @@ class ChatInteractor(ChatUseCase):
             st = real_stats.get(code, {})
             score = area_scores.get(code)
             score_line = f"- 서울 평균 대비: {self._score_text(score)}\n" if score else ""
+            insight_line = self._insight_text(area_insights.get(code))
             stats_context_lines.append(
                 f"[{area.trdar_name} / {area.district_name}] (trdar_code: {code})\n"
                 f"- 수익: {st.get('revenue_text')} | {st.get('revenue_source')}\n"
@@ -483,7 +508,7 @@ class ChatInteractor(ChatUseCase):
                 f"- 유동인구 최다 연령대: {st.get('top_age')} (통행량 기준 — 매출 기준 고객층이 아님)"
                 f" | 유동인구 피크시간(시간당): {st.get('peak_time')}\n"
                 f"- 상권변화: {st.get('change_text')} | {st.get('op_months_text')}\n"
-                f"{score_line}"
+                f"{score_line}{insight_line}"
             )
         if area_articles:
             stats_context_lines.append(self._format_area_articles(area_articles))
@@ -648,11 +673,7 @@ class ChatInteractor(ChatUseCase):
 
         # RAG 보강: 해당 종목 뉴스를 의미 검색(라벨 동반). 빈 결과면 섹션 생략 — 기존 출력 무손상
         hits = await self._news.search(prompt, ticker=analysis.symbol, limit=5)
-        context = self._format_stock_context(prompt, analysis, hits)
-        # 최종 서술(최종 사용자 답변) → 오케스트레이터 기본 모델(7.8B)
-        text = await llm_orchestrator.orchestrate(f"{STOCK_ANSWER_PROMPT}\n\n{context}")
 
-        # 결론 한 줄 — 페이지 히어로와 같은 verdict 로직으로 서버가 계산해 카드에 싣는다.
         # forecast(확률 요약)는 표본이 있어야 강한 결론이 되고, 조회 실패는 표본 없음으로 열화.
         forecast = None
         if self._forecaster is not None:
@@ -660,9 +681,8 @@ class ChatInteractor(ChatUseCase):
                 forecast = await self._forecaster.forecast(analysis.symbol)
             except Exception:  # 예측 실패가 종목 답변 자체를 깨지 않게 열화
                 logger.warning("[chat] forecast 조회 실패: %s", analysis.symbol, exc_info=True)
-        headline, _detail = verdict_headline(analysis.direction, forecast)
 
-        # 가치·체력 한 줄 — "이 회사 싼가/튼튼한가"(펀더멘털). 미수집·실패면 빈 리스트로 열화.
+        # 가치·체력 — "이 회사 싼가/튼튼한가"(펀더멘털). 미수집·실패면 빈 리스트로 열화.
         value_notes: list[str] = []
         if self._fundamentals is not None:
             try:
@@ -670,6 +690,15 @@ class ChatInteractor(ChatUseCase):
                 value_notes = [i.text for i in insights[:2]]
             except Exception:
                 logger.warning("[chat] 펀더멘털 조회 실패: %s", analysis.symbol, exc_info=True)
+
+        # 둘 다 서술 '앞'에서 조회한다 — 예전엔 답변을 만든 뒤에 조회해 카드에만 실렸고,
+        # 그래서 본문이 밸류에이션·과거 통계를 근거로 말하지 못했다.
+        context = self._format_stock_context(prompt, analysis, hits, forecast, value_notes)
+        # 최종 서술(최종 사용자 답변) → 오케스트레이터 기본 모델(7.8B)
+        text = await llm_orchestrator.orchestrate(f"{STOCK_ANSWER_PROMPT}\n\n{context}")
+
+        # 결론 한 줄 — 페이지 히어로와 같은 verdict 로직으로 서버가 계산해 카드에 싣는다.
+        headline, _detail = verdict_headline(analysis.direction, forecast)
         card = StockCard(
             symbol=analysis.symbol,
             price=analysis.price,
@@ -725,6 +754,19 @@ class ChatInteractor(ChatUseCase):
             else:
                 parts.append(f"{c.name} {c.score}점")
         return f"종합 {score.total}점·{score.grade} (50점=서울 평균 수준) — " + ", ".join(parts)
+
+    @classmethod
+    def _insight_text(cls, insights: tuple[AreaInsight, ...] | None) -> str:
+        """상권 성격 해석 — 우선순위 상위 4개만. 없으면 라인 자체를 생략한다.
+
+        서술자가 최대 9문장까지 만드는데 상권 3곳이면 프롬프트가 1천 자를 넘는다.
+        7.8B에 무제한으로 부으면 답변 품질이 떨어져 소비자(chat)가 잘라 쓴다.
+        """
+        if not insights:
+            return ""
+        order = {k: i for i, k in enumerate(_INSIGHT_PRIORITY)}
+        top = sorted(insights, key=lambda i: order.get(i.key, len(order)))[:4]
+        return "- 상권 성격: " + " / ".join(i.text for i in top) + "\n"
 
     @staticmethod
     def _volatility_text(atr_pct: float) -> str:
@@ -814,9 +856,36 @@ class ChatInteractor(ChatUseCase):
         base = symbol.split(".")[0]
         return "원" if len(base) == 6 and base.isdigit() else "달러"
 
+    @staticmethod
+    def _forecast_text(f: StockForecastSummary | None) -> str:
+        """과거 통계 한 줄 — 표본·기준선·신뢰구간을 반드시 병기한다.
+
+        확률 단정 금지 규칙(백테스트 결론)은 그대로다. 표본이 유의하지 않으면
+        수치를 아예 주지 않는다 — 소형 모델이 '확률'로 단정하는 것을 원천 차단.
+        """
+        if f is None or f.up_rate is None or f.sample_size <= 0:
+            return ""
+        if not f.ready:
+            return (
+                f"- 과거 통계: 같은 신호가 났던 사례가 {f.sample_size}건뿐이라"
+                " 통계적으로 유의하지 않음 — 확률을 말하지 말 것\n"
+            )
+        base = f" (평소 {f.baseline_up_rate:.0%})" if f.baseline_up_rate is not None else ""
+        ci = f", 95% 구간 {f.ci_low:.0%}~{f.ci_high:.0%}" if f.ci_low is not None else ""
+        return (
+            f"- 과거 통계: 같은 신호가 났던 과거 {f.sample_size}건 중"
+            f" {f.up_rate:.0%}가 상승{base}{ci}."
+            " 이는 과거 빈도일 뿐 미래 확률이 아니며, 단정적으로 말하지 말 것\n"
+        )
+
     @classmethod
     def _format_stock_context(
-        cls, prompt: str, r: StockAnalysisResult, hits: list[NewsHit] | None = None,
+        cls,
+        prompt: str,
+        r: StockAnalysisResult,
+        hits: list[NewsHit] | None = None,
+        forecast: StockForecastSummary | None = None,
+        value_notes: list[str] | None = None,
     ) -> str:
         headlines = "\n".join(f"- {h}" for h in r.headlines) if r.headlines else "- (없음)"
         unit = cls._currency_unit(r.symbol)
@@ -841,6 +910,11 @@ class ChatInteractor(ChatUseCase):
                 "- 참고 신호: 백테스트 검증(인샘플·홀드아웃 통과)된 '과매도+볼린저 하단' 조건 충족"
                 " — 통계적 참고일 뿐 상승 확률이나 매수 근거가 아님\n"
             )
+        lines += cls._forecast_text(forecast)
+        if value_notes:
+            # 가치·체력(펀더멘털) — 예전엔 카드에만 실려 본문이 "싼가/튼튼한가"를 말하지 못했다.
+            lines += "- 가치·체력(펀더멘털):\n"
+            lines += "".join(f"  - {n}\n" for n in value_notes)
         lines += f"- 뉴스 감성: {r.sentiment:+.2f} ({r.sentiment_label})\n- 최근 헤드라인:\n{headlines}"
         related = [h for h in (hits or []) if h.title not in r.headlines]  # 헤드라인과 제목 중복 제거
         if related:

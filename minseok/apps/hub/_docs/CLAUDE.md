@@ -24,7 +24,7 @@ ORM/DB는 갖지 않는다 — 저장·분석 등 구체 작업은 아웃바운�
 apps/hub/app/
 ├── ports/output/commercial_data_port.py   # CommercialDataPort (ABC)
 │     get_service_codes / get_area_summary / get_area_raw_stats / get_area_scores
-│     / get_area_overview / get_dataset_stats
+│     / get_area_insights / get_area_overview / get_dataset_stats
 └── dtos/commercial_data_dto.py            # ServiceCode · AreaInfo · AreaSummary · AreaRawStat
 │                                          #   · AreaScoreInfo · AreaScoreComponent · AreaOverviewRow
 └── dtos/dataset_stat_dto.py               # DatasetStat — market·stock 공용이라 별도 모듈
@@ -33,6 +33,13 @@ apps/hub/dependencies/commercial_data_provider.py  # get_commercial_data_port (N
 
 `get_area_scores`는 시도 벤치마크 대비 상권 종합점수(market의 `area_scorer` 도메인 서비스,
 50점=벤치마크 동률)를 반환한다 — chat이 상권 추천 서술의 근거로 주입(①-M5 잔여, 2026-07-15).
+`get_area_insights`는 `area_narrator`가 만든 해석 문장(`AreaInsight`)을 나른다 — 고객층·
+배후 수요·소비력·객단가. 지도 오버레이만 보던 인사이트를 chat phase2에도 공급한다(2026-07-27).
+
+> **문장을 나르는 이유**: 허브 DTO는 원시 수치가 원칙이지만 `AreaScoreInfo.grade`("우수"/
+> "주의" …)가 이미 판정 라벨을 나른다. 실제 규칙은 "허브가 문장을 *만들지* 않는다"이고,
+> 문장의 소유자는 market 도메인이다. 원시로 내리면 임계값 판정이 소비자마다 중복 구현돼
+> 같은 상권을 지도와 채팅이 다르게 설명하게 된다. 주입 개수 절단은 소비자(chat) 몫이다.
 `get_area_overview`(전 상권 최신 분기 점포수·폐업률·월매출)와 `get_dataset_stats`(데이터셋별
 행수·최신 시점)는 admin(어드민 콘솔)이 소비한다.
 

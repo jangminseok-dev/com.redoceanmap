@@ -31,13 +31,19 @@ class ConversationPgRepository(ConversationRepository):
         return MessageMapper.to_entity(result.scalar_one())
 
     async def get_messages(self, conversation_id: int, limit: int = 20) -> list[Message]:
+        """최근 `limit`개를 오래된 순으로 반환한다.
+
+        내림차순으로 잘라낸 뒤 뒤집는 게 핵심이다. 오름차순 + LIMIT이면 긴 대화에서
+        **가장 오래된** N개가 잡혀, 소비자의 `history[-6:]`가 최신이 아니라 과거 턴을
+        주입한다(직전 상권 코드 승계도 옛 카드를 집는다). 대화가 길수록 맥락이 뒤집혔다.
+        """
         result = await self._session.execute(
             select(MessageOrm)
             .where(MessageOrm.conversation_id == conversation_id)
-            .order_by(MessageOrm.id)
+            .order_by(MessageOrm.id.desc())
             .limit(limit)
         )
-        return [MessageMapper.to_entity(o) for o in result.scalars().all()]
+        return [MessageMapper.to_entity(o) for o in reversed(result.scalars().all())]
 
     async def get_conversation(self, conversation_id: int) -> Conversation | None:
         orm = (await self._session.execute(

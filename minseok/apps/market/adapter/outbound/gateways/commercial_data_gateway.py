@@ -6,6 +6,7 @@ from sqlalchemy.orm import aliased
 
 from hub.app.dtos.commercial_data_dto import (
     AreaInfo,
+    AreaInsight,
     AreaOverviewRow,
     AreaRawStat,
     AreaScoreComponent,
@@ -14,8 +15,11 @@ from hub.app.dtos.commercial_data_dto import (
     ServiceCode,
 )
 from hub.app.dtos.dataset_stat_dto import DatasetStat
+from market.adapter.outbound.pg.area_detail_pg_repository import AreaDetailPgRepository
 from market.adapter.outbound.pg.area_score_pg_repository import AreaScorePgRepository
+from market.app.dtos.area_detail_dto import AreaDetailQuery
 from market.app.dtos.area_score_dto import AreaScoreQuery
+from market.app.use_cases.area_detail_interactor import AreaDetailInteractor
 from market.app.use_cases.area_score_interactor import AreaScoreInteractor
 from market.adapter.outbound.orm.change_indicator_orm import ChangeIndicatorOrm
 from market.adapter.outbound.orm.commercial_change_benchmark_orm import (
@@ -106,6 +110,23 @@ class CommercialDataGateway(CommercialDataPort):
                     )
                     for c in view.score.components
                 ),
+            )
+        return result
+
+    async def get_area_insights(
+        self, trdar_codes: list[int], service_code: str | None = None
+    ) -> dict[int, tuple[AreaInsight, ...]]:
+        # area_detail 슬라이스(도메인 서술자 + PG 리포지토리)를 그대로 재사용 — get_area_scores와 같은 형태
+        interactor = AreaDetailInteractor(detail=AreaDetailPgRepository(session=self._session))
+        result: dict[int, tuple[AreaInsight, ...]] = {}
+        for code in trdar_codes:
+            view = await interactor.get_detail(
+                AreaDetailQuery(trdar_code=code, service_code=service_code)
+            )
+            if view is None or not view.insights:
+                continue
+            result[code] = tuple(
+                AreaInsight(key=i.key, tone=i.tone, text=i.text) for i in view.insights
             )
         return result
 

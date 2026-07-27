@@ -14,6 +14,7 @@ from chat.app.use_cases.chat_interactor import ChatInteractor
 from chat.domain.entities.conversation_entity import Conversation, Message
 from hub.app.dtos.commercial_data_dto import (
     AreaInfo,
+    AreaInsight,
     AreaRawStat,
     AreaScoreComponent,
     AreaScoreInfo,
@@ -126,10 +127,13 @@ class _StubFundamentals:
 
 
 class _StubMarket:
-    def __init__(self, scores: dict[int, AreaScoreInfo] | None = None):
+    def __init__(self, scores: dict[int, AreaScoreInfo] | None = None,
+                 insights: dict[int, tuple[AreaInsight, ...]] | None = None):
         self.summary_calls = 0
         self.scores = scores or {}
         self.score_calls: list[list[int]] = []
+        self.insights = insights or {}
+        self.insight_calls: list[tuple[list[int], str | None]] = []
 
     async def get_area_summary(self) -> AreaSummary:
         self.summary_calls += 1
@@ -146,6 +150,10 @@ class _StubMarket:
     async def get_area_scores(self, trdar_codes):
         self.score_calls.append(list(trdar_codes))
         return self.scores
+
+    async def get_area_insights(self, trdar_codes, service_code=None):
+        self.insight_calls.append((list(trdar_codes), service_code))
+        return self.insights
 
 
 class _StubMarketNews:
@@ -312,6 +320,50 @@ async def test_종합점수가_없는_상권은_점수_라인을_생략한다(mo
     assert "- 서울 평균 대비:" not in llm.calls[2][0]  # 규칙 문구가 아닌 컨텍스트 라인 기준
 
 
+async def test_상권_컨텍스트에_상권_성격_해석이_주입된다(monkeypatch):
+    # 지도 오버레이만 보던 area_narrator 인사이트를 채팅도 근거로 쓴다.
+    market = _StubMarket(insights={1000001: (
+        AreaInsight(key="demand_type", tone="positive", text="직장인 중심 오피스 상권입니다"),
+        AreaInsight(key="avg_ticket", tone="neutral", text="건당 평균 결제액 1.2만원"),
+    )})
+    interactor, llm, stubs = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON], market=market,
+    )
+    await interactor.ask("역삼동 카페 어때?")
+
+    context = llm.calls[2][0]
+    assert "- 상권 성격: 직장인 중심 오피스 상권입니다 / 건당 평균 결제액 1.2만원" in context
+    # 업종을 함께 넘겨야 해당 업종 기준 객단가가 나온다
+    assert stubs["market"].insight_calls == [([1000001], "CS100010")]
+
+
+async def test_상권_성격은_우선순위_상위_4개로_자른다(monkeypatch):
+    # 서술자가 최대 9문장까지 만든다 — 상권 3곳이면 프롬프트가 1천 자를 넘어 7.8B가 흔들린다.
+    market = _StubMarket(insights={1000001: (
+        AreaInsight(key="customer_gender", tone="neutral", text="여성 우세"),
+        AreaInsight(key="demand_apartment", tone="positive", text="아파트 배후 60%"),
+        AreaInsight(key="spending_power", tone="neutral", text="배후 소득 상위"),
+        AreaInsight(key="sales_rhythm_peak", tone="neutral", text="점심 피크"),
+        AreaInsight(key="customer_age", tone="neutral", text="30대 핵심"),
+        AreaInsight(key="avg_ticket", tone="neutral", text="객단가 1.2만원"),
+        AreaInsight(key="demand_type", tone="positive", text="오피스형"),
+    )})
+    interactor, llm, _ = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON], market=market,
+    )
+    await interactor.ask("역삼동 카페 어때?")
+
+    line = [ln for ln in llm.calls[2][0].splitlines() if ln.startswith("- 상권 성격:")][0]
+    assert line == "- 상권 성격: 오피스형 / 객단가 1.2만원 / 30대 핵심 / 점심 피크"
+    assert "여성 우세" not in line  # 정보량 낮은 축은 잘려나간다
+
+
+async def test_상권_성격이_없으면_라인을_생략한다(monkeypatch):  # 열화
+    interactor, llm, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON])
+    await interactor.ask("역삼동 카페 어때?")
+    assert "- 상권 성격:" not in llm.calls[2][0]
+
+
 async def test_상권_컨텍스트에_관련_지역_기사가_주입된다(monkeypatch):
     market_news = _StubMarketNews(hits=[MarketNewsHit(
         title="성수 상권 장기 정착형 리테일로 진화", area_tag="성수",
@@ -418,6 +470,52 @@ async def test_펀더멘털_미수집이면_가치줄_없음(monkeypatch):  # �
     )
     result = await interactor.ask("삼성전자 어때?")
     assert result.stock.value == []
+
+
+async def test_서술_컨텍스트에_과거통계와_펀더멘털이_들어간다(monkeypatch):
+    # 예전엔 답변을 만든 뒤에 조회해 카드에만 실렸고, 본문은 밸류에이션·통계를 못 말했다.
+    forecaster = _StubForecast(StockForecastSummary(
+        signal_direction="UP", ready=True, up_rate=0.62, baseline_up_rate=0.55,
+        sample_size=120, hits=74, ci_low=0.53, ci_high=0.70,
+    ))
+    fundamentals = _StubFundamentals([
+        FundamentalInsightItem(key="per", tone="positive", text="PER 6.6배 — 저평가권"),
+    ])
+    interactor, llm, _ = _build(
+        monkeypatch, [INTENT_STOCK, "서술"], forecaster=forecaster, fundamentals=fundamentals,
+    )
+    await interactor.ask("삼성전자 어때?")
+
+    context = llm.calls[1][0]  # 0=의도분류, 1=종목 서술
+    assert "과거 120건 중 62%가 상승" in context
+    assert "평소 55%" in context and "95% 구간 53%~70%" in context  # 표본·기준선·CI 병기 필수
+    assert "미래 확률이 아니며" in context  # 확률 단정 금지 가드
+    assert "PER 6.6배 — 저평가권" in context
+
+
+async def test_표본이_유의하지_않으면_수치를_주지_않는다(monkeypatch):
+    # ready=False면 7.8B가 확률로 단정하지 못하도록 숫자 자체를 뺀다.
+    forecaster = _StubForecast(StockForecastSummary(
+        signal_direction="UP", ready=False, up_rate=0.71, baseline_up_rate=0.55,
+        sample_size=7, hits=5,
+    ))
+    interactor, llm, _ = _build(monkeypatch, [INTENT_STOCK, "서술"], forecaster=forecaster)
+    await interactor.ask("삼성전자 어때?")
+
+    context = llm.calls[1][0]
+    assert "7건뿐이라 통계적으로 유의하지 않음" in context
+    assert "71%" not in context
+
+
+async def test_forecast_펀더멘털_없으면_해당_블록_생략(monkeypatch):  # 열화
+    interactor, llm, _ = _build(
+        monkeypatch, [INTENT_STOCK, "서술"],
+        forecaster=_StubForecast(None), fundamentals=_StubFundamentals([]),
+    )
+    await interactor.ask("삼성전자 어때?")
+
+    context = llm.calls[1][0]
+    assert "과거 통계" not in context and "가치·체력" not in context
 
 
 def test_verdict_파리티_고정():  # www/lib/verdict.ts와 같은 문안이어야 채팅==페이지
