@@ -12,9 +12,13 @@ DATABASE_URL = _secrets.require("DATABASE_URL").replace(
 # market 전용 DB(market-pgvector, :5434) — 앱별 DB 불가침 원칙의 첫 사례.
 # 미설정이면 메인 DB 폴백: 미구축 환경(맥 등)이 그대로 동작하고,
 # 코드 배포와 데이터 컷오버(env 주입 + 재기동)를 분리할 수 있다.
-MARKET_DATABASE_URL = (
-    _secrets.get("MARKET_DATABASE_URL") or _secrets.require("DATABASE_URL")
-).replace("postgresql://", "postgresql+psycopg://")
+# 폴백은 조용하면 안 된다 — 2026-07-24에 실운영 .env에서 이 키가 유실되며 컷오버가
+# 무경고로 되돌아갔고, 사흘간 상권 뉴스가 메인 DB에 쌓였다. 기동 로그로 드러낸다.
+_market_database_url = _secrets.get("MARKET_DATABASE_URL")
+MARKET_DB_IS_FALLBACK = not _market_database_url
+MARKET_DATABASE_URL = (_market_database_url or _secrets.require("DATABASE_URL")).replace(
+    "postgresql://", "postgresql+psycopg://"
+)
 
 # JWT RS256 검증용 공개키 — 전 컨테이너 공용. 없으면 기동 실패가 맞다.
 # (멀티라인 PEM은 env로 다루기 어려워 base64 단일 라인으로 주입한다 — scripts/generate_jwt_keys.sh)

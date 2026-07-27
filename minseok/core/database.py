@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
@@ -10,7 +11,9 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import DeclarativeBase
 
-from core.config import DATABASE_URL, MARKET_DATABASE_URL
+from core.config import DATABASE_URL, MARKET_DB_IS_FALLBACK, MARKET_DATABASE_URL
+
+logger = logging.getLogger("uvicorn.error")
 
 
 class Base(DeclarativeBase):
@@ -38,6 +41,11 @@ def init_market_engine() -> None:
     global market_engine, _market_session_factory
     if market_engine is not None:
         return
+    if MARKET_DB_IS_FALLBACK:
+        logger.warning(
+            "MARKET_DATABASE_URL 미설정 — market 전용 DB(:5434)가 아니라 메인 DB로 폴백합니다. "
+            "실운영이라면 .env에 키가 유실된 것입니다(2026-07-24 사고)."
+        )
     market_engine = create_async_engine(MARKET_DATABASE_URL, pool_pre_ping=True, echo=False)
     _market_session_factory = async_sessionmaker(
         market_engine, expire_on_commit=False, autoflush=False

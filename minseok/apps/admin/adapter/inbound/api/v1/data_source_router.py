@@ -23,7 +23,14 @@ async def list_data_sources(
     return DataSourceListResponseSchema(
         datasets=[
             DatasetStatSchema(
-                key=d.key, name=d.name, row_count=d.row_count, latest_label=d.latest_label
+                key=d.key,
+                name=d.name,
+                row_count=d.row_count,
+                latest_label=d.latest_label,
+                latest_at=d.latest_at,
+                freshness=d.freshness,
+                expected=d.expected,
+                age_seconds=d.age_seconds,
             )
             for d in result.datasets
         ]

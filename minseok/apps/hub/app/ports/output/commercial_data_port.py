@@ -7,9 +7,9 @@ from hub.app.dtos.commercial_data_dto import (
     AreaRawStat,
     AreaScoreInfo,
     AreaSummary,
-    DatasetStat,
     ServiceCode,
 )
+from hub.app.dtos.dataset_stat_dto import DatasetStat
 
 
 class CommercialDataPort(ABC):

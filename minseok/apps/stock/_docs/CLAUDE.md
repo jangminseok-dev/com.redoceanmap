@@ -51,6 +51,10 @@
   `NewsLabelStorageGateway`가 구현, `news_labels` 테이블·(news_id, labeler) 유니크).
   감성(-1~1)·이벤트 유형·확신도. 라벨은 피처, 정답은 실현 수익률 — 라벨 품질은
   price_bars 조인으로 사후 채점한다.
+- **적재 현황 노출**: 허브 `StockDatasetStatsPort`를 `StockDatasetStatsGateway`가 구현 —
+  뉴스·라벨·펀더멘털·예측 스냅샷·주가 봉 5테이블의 행수와 **최신 적재 시각(`created_at`)**을
+  집계해 admin 데이터소스 화면(수집 신선도 배지)에 제공한다. 도메인 시각(`ts`·`as_of`·
+  `published_at`)이 아니라 적재 시각인 것이 핵심 — 수집이 멈춘 것을 감지하는 용도다.
 - **백테스트**: `Backtester`(순수 도메인) + `scripts/backtest_stock.py`. 워크포워드로 t까지의
   데이터만 써서 t+horizon 종가와 비교, 항상-UP 기준선과 대조한다. 과거 뉴스는 수집 불가라
   감성 중립(0.0) 고정 — 지표 신호만 채점.

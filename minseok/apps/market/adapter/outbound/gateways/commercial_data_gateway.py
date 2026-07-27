@@ -11,9 +11,9 @@ from hub.app.dtos.commercial_data_dto import (
     AreaScoreComponent,
     AreaScoreInfo,
     AreaSummary,
-    DatasetStat,
     ServiceCode,
 )
+from hub.app.dtos.dataset_stat_dto import DatasetStat
 from market.adapter.outbound.pg.area_score_pg_repository import AreaScorePgRepository
 from market.app.dtos.area_score_dto import AreaScoreQuery
 from market.app.use_cases.area_score_interactor import AreaScoreInteractor
@@ -183,12 +183,14 @@ class CommercialDataGateway(CommercialDataPort):
                 key=key, name=name, row_count=row[0],
                 latest_label=str(row[1]) if row[1] else None,
             ))
+        # 신선도 기준은 발행일(published_at)이 아니라 적재 시각(created_at)이다 —
+        # 기사가 뜸한 날에도 수집은 돌고, 옛 기사만 들어와도 발행일은 최신이 아니다.
         news = (await self._session.execute(
-            select(func.count(MarketNewsArticleOrm.id), func.max(MarketNewsArticleOrm.published_at))
+            select(func.count(MarketNewsArticleOrm.id), func.max(MarketNewsArticleOrm.created_at))
         )).one()
         stats.append(DatasetStat(
             key="market_news", name="상권 뉴스", row_count=news[0],
-            latest_label=news[1].isoformat() if news[1] else None,
+            latest_label=None, latest_at=news[1],
         ))
         return stats
 

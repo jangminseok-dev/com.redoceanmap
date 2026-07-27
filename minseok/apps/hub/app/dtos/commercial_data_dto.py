@@ -46,16 +46,6 @@ class AreaOverviewRow:
 
 
 @dataclass(frozen=True)
-class DatasetStat:
-    """어드민 데이터소스 카드 1장 — 데이터셋별 적재 현황."""
-
-    key: str
-    name: str
-    row_count: int
-    latest_label: str | None  # 최신 분기(예: "20251") 또는 최신 수집 시각 ISO 문자열
-
-
-@dataclass(frozen=True)
 class AreaScoreComponent:
     """종합점수 컴포넌트 1개 — 50점 = 시도 벤치마크 동률, 0~100."""
 

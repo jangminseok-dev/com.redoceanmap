@@ -41,7 +41,7 @@
 | grade | GET/POST /admin/grades · PATCH/DELETE /admin/grades/{code} — 등급(=역할)별 탭 노출 구성. 권한은 members:read/write 재사용, 탭 키는 허브 tab_ontology 검증, admin은 삭제·개명 차단(탭 변경 허용), 감사 grade.create/update/delete | GradePolicyPort |
 | area | GET /admin/areas | CommercialDataPort (get_area_overview) |
 | recommendation_log | GET /admin/recommendations | RecommendationDirectoryPort |
-| data_source | GET /admin/data-sources | CommercialData (get_dataset_stats) + RecommendationDirectory + PriceBarStorage (coverage) |
+| data_source | GET /admin/data-sources | CommercialData (get_dataset_stats) + RecommendationDirectory + **StockDatasetStats** (get_dataset_stats) — 상권 5 + 추천 + 주식 5 = 11장. 각 카드에 순수 도메인 `dataset_freshness.evaluate`로 신선도(정상/지연/정지/불명/정적) 판정을 붙인다 |
 | audit | GET /admin/audit | 자체 AuditLogPort (member 슬라이스가 write, audit 슬라이스가 열람) |
 | analytics | GET /admin/forecasts · GET /admin/market-backtest — 예측 스냅샷 채점 현황(적중률·신호별 일치율·최근 목록) + 상권 점수 백테스트 최신 리포트. 권한 analytics:read 공용 | ForecastSnapshotPort (accuracy_report) + AreaBacktestReportPort (latest) |
 
@@ -52,6 +52,7 @@
 
 ```
 apps/admin/
+├── domain/services/dataset_freshness.py         # 수집 신선도 판정(순수) — 기대 주기 표 + evaluate
 ├── app/
 │   ├── dtos/{steward,dashboard,member,area,recommendation_log,data_source,audit}_dto.py
 │   ├── ports/input/{...}_use_case.py            # 슬라이스별 UseCase ABC

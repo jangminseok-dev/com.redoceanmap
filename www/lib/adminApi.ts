@@ -75,6 +75,10 @@ export type AdminDatasetStat = {
   name: string;
   row_count: number;
   latest_label: string | null;
+  latest_at: string | null;
+  freshness: "fresh" | "late" | "stale" | "unknown" | "unscheduled";
+  expected: string | null;
+  age_seconds: number | null;
 };
 
 export type AdminAuditEntry = {
@@ -305,6 +309,17 @@ export const formatLatestLabel = (label: string | null): string => {
   if (!label) return "—";
   if (/^\d{5}$/.test(label)) return `${label.slice(0, 4)}년 ${label.slice(4)}분기`;
   return label.slice(0, 10);
+};
+
+// 경과 시간 → "12분 전". 서버가 준 age_seconds만 쓴다(클라이언트 시계·하이드레이션 불일치 회피).
+export const formatAge = (seconds: number | null): string => {
+  if (seconds == null) return "—";
+  if (seconds < 60) return "방금 전";
+  const mins = Math.floor(seconds / 60);
+  if (mins < 60) return `${mins}분 전`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}시간 전`;
+  return `${Math.floor(hours / 24)}일 전`;
 };
 
 export const formatDate = (iso: string | null): string => (iso ? iso.slice(0, 10) : "—");

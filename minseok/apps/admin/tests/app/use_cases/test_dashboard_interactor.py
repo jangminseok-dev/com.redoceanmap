@@ -1,5 +1,5 @@
 from admin.app.use_cases.dashboard_interactor import DashboardInteractor
-from hub.app.dtos.commercial_data_dto import DatasetStat
+from hub.app.dtos.dataset_stat_dto import DatasetStat
 from hub.app.dtos.member_directory_dto import MemberStats
 from hub.app.dtos.recommendation_directory_dto import (
     CategoryCount,

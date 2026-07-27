@@ -26,8 +26,8 @@ apps/hub/app/
 │     get_service_codes / get_area_summary / get_area_raw_stats / get_area_scores
 │     / get_area_overview / get_dataset_stats
 └── dtos/commercial_data_dto.py            # ServiceCode · AreaInfo · AreaSummary · AreaRawStat
-│                                          #   · AreaScoreInfo · AreaScoreComponent
-│                                          #   · AreaOverviewRow · DatasetStat
+│                                          #   · AreaScoreInfo · AreaScoreComponent · AreaOverviewRow
+└── dtos/dataset_stat_dto.py               # DatasetStat — market·stock 공용이라 별도 모듈
 apps/hub/dependencies/commercial_data_provider.py  # get_commercial_data_port (NotImplementedError 스텁)
 ```
 
@@ -272,8 +272,24 @@ apps/hub/dependencies/stock_demand_provider.py  # get_stock_demand_port (NotImpl
 OHLCV 봉 저장 협력. 수집기(`scripts/collect_prices.py`, 뉴스와 워치리스트 공유)와
 stock(구현·영속: `price_bars` 테이블, (ticker, timeframe, ts) 유니크)을 잇는다.
 `coverage()`가 (ticker, timeframe)별 보유 구간을 알려줘 수집기가 백필 깊이를 정한다 —
-뉴스↔주가 반응 라벨링용(5m 단기 반응 · 1d 익일/주간). `admin`의 data_source 인터랙터도
-`coverage()`를 소비해 데이터소스 화면의 주가 봉 적재 현황 카드를 만든다.
+뉴스↔주가 반응 라벨링용(5m 단기 반응 · 1d 익일/주간). 소비자는 수집기 하나다 —
+어드민 데이터소스 화면의 주가 봉 카드는 `StockDatasetStatsPort`가 준다(아래 참고).
+
+## 소유 계약 — StockDatasetStatsPort
+
+stock 소유 데이터셋의 적재 현황 조회 협력(조회 전용 — 저장은 각 StoragePort가 맡는
+Record ↔ Directory 분리 선례). admin(소비)과 stock(구현)을 잇는다.
+`get_dataset_stats()`가 뉴스·라벨·펀더멘털·예측 스냅샷·주가 봉 5종의 행수와
+**최신 적재 시각(`created_at`)**을 준다 — `CommercialDataPort.get_dataset_stats`와
+시그니처·DTO(`DatasetStat`)가 같아 admin은 두 목록을 이어붙이기만 한다.
+
+기준 시각이 `created_at`인 것이 계약의 핵심이다. 봉 시각(`price_bars.ts`)·예측 기준일
+(`forecast_snapshots.as_of`)·기사 발행일(`published_at`)은 도메인 시각이라 **수집이 멈춰도
+최신으로 보인다** — 2026-07-25 수집 2일 정지를 아무도 감지하지 못한 원인이다.
+신선도 판정 자체는 허브가 하지 않는다(운영 정책 = admin 도메인 서비스 `dataset_freshness`).
+
+- **구현**: `stock`의 `StockDatasetStatsGateway`(5테이블 count + max(created_at)).
+- **배선**: `main.py`에서 `app.dependency_overrides[get_stock_dataset_stats_port] = get_stock_dataset_stats_gateway`.
 
 ## 소유 계약 — ForecastSnapshotPort
 
