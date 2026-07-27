@@ -132,6 +132,18 @@ class AreaDetailPgRepository(AreaDetailRepositoryPort):
                 "age30": r.age_30_sales_count, "age40": r.age_40_sales_count,
                 "age50": r.age_50_sales_count, "age60Plus": r.age_60_plus_sales_count,
             },
+            count_by_day={
+                "mon": r.mon_sales_count, "tue": r.tue_sales_count,
+                "wed": r.wed_sales_count, "thu": r.thu_sales_count,
+                "fri": r.fri_sales_count, "sat": r.sat_sales_count,
+                "sun": r.sun_sales_count,
+            },
+            count_by_time={
+                "t00_06": r.time_00_06_sales_count, "t06_11": r.time_06_11_sales_count,
+                "t11_14": r.time_11_14_sales_count, "t14_17": r.time_14_17_sales_count,
+                "t17_21": r.time_17_21_sales_count, "t21_24": r.time_21_24_sales_count,
+            },
+            count_by_gender={"male": r.male_sales_count, "female": r.female_sales_count},
         )
 
     async def find_resident(self, trdar_code: int) -> ResidentProfile | None:
@@ -213,6 +225,8 @@ class AreaDetailPgRepository(AreaDetailRepositoryPort):
             weekday_pop=(r.mon_floating_pop + r.tue_floating_pop + r.wed_floating_pop
                          + r.thu_floating_pop + r.fri_floating_pop),
             weekend_pop=r.sat_floating_pop + r.sun_floating_pop,
+            male_pop=r.male_floating_pop,
+            female_pop=r.female_floating_pop,
         )
 
     async def find_service_ranking(self, trdar_code: int, limit: int = 12) -> list[ServiceRank]:

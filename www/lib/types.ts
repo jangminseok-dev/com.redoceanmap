@@ -318,6 +318,9 @@ export type AreaDetail = {
     weekdayCount: number;
     weekendCount: number;
     countByAge: Record<string, number> | null;
+    countByDay: Record<string, number> | null; // 요일별 객단가의 분모
+    countByTime: Record<string, number> | null;
+    countByGender: Record<string, number> | null;
   } | null;
   demand: {
     resident: { yearQuarter: number; total: number; byAge: AgeBandRow[] } | null;
@@ -340,7 +343,13 @@ export type AreaDetail = {
     byCategory: { key: string; label: string; amount: number }[]; // 금액 내림차순
   } | null;
   // 통행 리듬 — 매출 리듬과 같은 축으로 대조하면 구매 전환이 보인다
-  floating: { yearQuarter: number; weekdayPop: number; weekendPop: number } | null;
+  floating: {
+    yearQuarter: number;
+    weekdayPop: number;
+    weekendPop: number;
+    malePop: number;
+    femalePop: number;
+  } | null;
   // 집객시설 — "여기 사람이 왜 오는가"
   facility: {
     yearQuarter: number;

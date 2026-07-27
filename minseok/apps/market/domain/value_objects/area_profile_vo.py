@@ -20,7 +20,10 @@ class SalesMix:
     # 매출 큰 층이 '많이 오는 층'인지 '비싸게 쓰는 층'인지 구분할 수 없다.
     weekday_count: int = 0
     weekend_count: int = 0
-    count_by_age: dict[str, int] | None = None  # age10..age60Plus
+    count_by_age: dict[str, int] | None = None     # age10..age60Plus
+    count_by_day: dict[str, int] | None = None     # mon..sun
+    count_by_time: dict[str, int] | None = None    # t00_06..t21_24
+    count_by_gender: dict[str, int] | None = None  # male, female
 
 
 @dataclass(frozen=True)
@@ -51,6 +54,9 @@ class FloatingRhythm:
     year_quarter: int
     weekday_pop: int  # 월~금 합
     weekend_pop: int  # 토+일
+    # 성별 통행 — 매출 성별 구성과 맞대면 "지나가는 사람"과 "사는 사람"의 차이가 나온다
+    male_pop: int = 0
+    female_pop: int = 0
 
 
 @dataclass(frozen=True)

@@ -52,6 +52,9 @@ async def get_area_detail(
             weekdayCount=view.sales_mix.weekday_count,
             weekendCount=view.sales_mix.weekend_count,
             countByAge=view.sales_mix.count_by_age,
+            countByDay=view.sales_mix.count_by_day,
+            countByTime=view.sales_mix.count_by_time,
+            countByGender=view.sales_mix.count_by_gender,
         ) if view.sales_mix else None,
         demand=_demand_schema(view),
         spending=SpendingSchema(
@@ -67,6 +70,8 @@ async def get_area_detail(
             yearQuarter=view.floating.year_quarter,
             weekdayPop=view.floating.weekday_pop,
             weekendPop=view.floating.weekend_pop,
+            malePop=view.floating.male_pop,
+            femalePop=view.floating.female_pop,
         ) if view.floating else None,
         facility=FacilitySchema(
             yearQuarter=view.facility.year_quarter,

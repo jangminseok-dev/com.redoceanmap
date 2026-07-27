@@ -15,6 +15,7 @@ def _sales(
     weekday=850, weekend=150,
     by_time=None, by_day=None, by_gender=None, by_age=None, count=1000, monthly=0,
     weekday_count=0, weekend_count=0, count_by_age=None,
+    count_by_day=None, count_by_time=None, count_by_gender=None,
 ):
     flat_day = {d: 100 for d in ("mon", "tue", "wed", "thu", "fri", "sat", "sun")}
     flat_time = {t: 100 for t in ("t00_06", "t06_11", "t11_14", "t14_17", "t17_21", "t21_24")}
@@ -31,6 +32,9 @@ def _sales(
         weekday_count=weekday_count,
         weekend_count=weekend_count,
         count_by_age=count_by_age,
+        count_by_day=count_by_day,
+        count_by_time=count_by_time,
+        count_by_gender=count_by_gender,
     )
 
 
@@ -393,3 +397,98 @@ def test_성격_문장은_최대_한_개다():
 
 def test_시설_데이터가_없으면_성격도_말하지_않는다():  # 열화
     assert "facility_character" not in _keys(narrate(_sales(), None, None, None, None, None))
+
+
+# --- 시간대·성별 객단가, 통행 성별 대조 (건수 축 15 + 통행 성별 2) ---
+
+def test_시간대_객단가가_평균의_2배_이상이면_말한다():
+    # 저녁 매출 500,000 / 건수 50 = 1만원, 전체 1,000,000 / 1000 = 1,000원 → 10배
+    sales = _sales(
+        by_time={"t00_06": 0, "t06_11": 0, "t11_14": 500_000, "t14_17": 0,
+                 "t17_21": 500_000, "t21_24": 0},
+        count_by_time={"t00_06": 0, "t06_11": 0, "t11_14": 900, "t14_17": 0,
+                       "t17_21": 50, "t21_24": 0},
+        count=1000, monthly=1_000_000,
+    )
+    text = _text(narrate(sales, None, None, None), "avg_ticket_time")
+    assert "저녁(17~21시)" in text and "배입니다" in text
+
+
+def test_시간대_객단가가_평균의_2배_미만이면_생략한다():
+    sales = _sales(
+        by_time={"t00_06": 0, "t06_11": 0, "t11_14": 500_000, "t14_17": 0,
+                 "t17_21": 500_000, "t21_24": 0},
+        count_by_time={"t00_06": 0, "t06_11": 0, "t11_14": 400, "t14_17": 0,
+                       "t17_21": 600, "t21_24": 0},
+        count=1000, monthly=1_000_000,
+    )
+    assert "avg_ticket_time" not in _keys(narrate(sales, None, None, None))
+
+
+def test_건수가_극소한_시간대는_최고_객단가로_뽑지_않는다():
+    # 새벽 40건(4%)에 단가 25만원이지만 임계(5%) 미달로 제외 — 연령 객단가와 같은 방어
+    sales = _sales(
+        by_time={"t00_06": 10_000_000, "t06_11": 0, "t11_14": 500_000, "t14_17": 0,
+                 "t17_21": 500_000, "t21_24": 0},
+        count_by_time={"t00_06": 40, "t06_11": 0, "t11_14": 900, "t14_17": 0,
+                       "t17_21": 60, "t21_24": 0},
+        count=1000, monthly=1_000_000,
+    )
+    assert "새벽" not in _text(narrate(sales, None, None, None), "avg_ticket_time")
+
+
+def test_성별_객단가_격차가_뚜렷하면_말한다():
+    # 남 900,000/100 = 9,000원 · 여 100,000/100 = 1,000원 → 9배
+    sales = _sales(
+        by_gender={"male": 900_000, "female": 100_000},
+        count_by_gender={"male": 100, "female": 100},
+    )
+    text = _text(narrate(sales, None, None, None), "avg_ticket_gender")
+    assert text.startswith("남성 객단가가")
+
+
+def test_성별_객단가_격차가_임계_미만이면_생략한다():
+    # 남 1,000원 · 여 1,000원
+    sales = _sales(
+        by_gender={"male": 100_000, "female": 100_000},
+        count_by_gender={"male": 100, "female": 100},
+    )
+    assert "avg_ticket_gender" not in _keys(narrate(sales, None, None, None))
+
+
+def test_성별_건수가_없으면_객단가_격차를_계산하지_않는다():  # 0 나눗셈 방어
+    sales = _sales(count_by_gender={"male": 0, "female": 0})
+    assert "avg_ticket_gender" not in _keys(narrate(sales, None, None, None))
+
+
+def test_여성_통행보다_여성_매출이_높으면_전환을_말한다():
+    # 통행 여성 30%, 매출 여성 70% → +40%p
+    sales = _sales(by_gender={"male": 300, "female": 700})
+    floating = FloatingRhythm(
+        year_quarter=20244, weekday_pop=500, weekend_pop=500, male_pop=700, female_pop=300,
+    )
+    text = _text(narrate(sales, None, None, None, floating), "traffic_vs_sales_gender")
+    assert text.startswith("여성 통행은 30%인데 매출은 70%")
+
+
+def test_남성_쪽으로_기울면_남성_기준으로_말한다():
+    # 통행 여성 70%, 매출 여성 30% → 남성 통행 30% · 남성 매출 70%
+    sales = _sales(by_gender={"male": 700, "female": 300})
+    floating = FloatingRhythm(
+        year_quarter=20244, weekday_pop=500, weekend_pop=500, male_pop=300, female_pop=700,
+    )
+    text = _text(narrate(sales, None, None, None, floating), "traffic_vs_sales_gender")
+    assert text.startswith("남성 통행은 30%인데 매출은 70%")
+
+
+def test_성별_괴리가_임계_미만이면_생략한다():
+    sales = _sales(by_gender={"male": 500, "female": 500})
+    floating = FloatingRhythm(
+        year_quarter=20244, weekday_pop=500, weekend_pop=500, male_pop=550, female_pop=450,
+    )
+    assert "traffic_vs_sales_gender" not in _keys(narrate(sales, None, None, None, floating))
+
+
+def test_통행_성별이_없으면_성별_대조를_하지_않는다():  # 열화
+    floating = FloatingRhythm(year_quarter=20244, weekday_pop=500, weekend_pop=500)
+    assert "traffic_vs_sales_gender" not in _keys(narrate(_sales(), None, None, None, floating))

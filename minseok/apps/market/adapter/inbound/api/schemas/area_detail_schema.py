@@ -17,6 +17,9 @@ class SalesMixSchema(BaseModel):
     weekdayCount: int
     weekendCount: int
     countByAge: dict[str, int] | None
+    countByDay: dict[str, int] | None     # mon..sun — 요일별 객단가의 분모
+    countByTime: dict[str, int] | None    # t00_06..t21_24
+    countByGender: dict[str, int] | None  # male, female
 
 
 class AgeBandSchema(BaseModel):
@@ -72,6 +75,8 @@ class FloatingRhythmSchema(BaseModel):
     yearQuarter: int
     weekdayPop: int
     weekendPop: int
+    malePop: int
+    femalePop: int
 
 
 class FacilitySchema(BaseModel):

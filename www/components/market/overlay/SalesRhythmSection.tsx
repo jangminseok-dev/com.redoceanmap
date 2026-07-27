@@ -11,7 +11,16 @@ const TIME_LABELS: [string, string][] = [
 ];
 
 // 값 비례 배경 농도의 1행 히트스트립 — 요일·시간대는 각각 실측(교차 데이터 없음)
-function HeatStrip({ entries, values }: { entries: [string, string][]; values: Record<string, number> }) {
+// counts를 주면 툴팁에 객단가(금액÷건수)를 함께 낸다 — 칸 자체는 매출 비중 그대로다.
+function HeatStrip({
+  entries,
+  values,
+  counts,
+}: {
+  entries: [string, string][];
+  values: Record<string, number>;
+  counts?: Record<string, number> | null;
+}) {
   const total = entries.reduce((sum, [key]) => sum + (values[key] ?? 0), 0);
   const max = Math.max(...entries.map(([key]) => values[key] ?? 0));
   if (total <= 0 || max <= 0) return null;
@@ -21,12 +30,13 @@ function HeatStrip({ entries, values }: { entries: [string, string][]; values: R
         const v = values[key] ?? 0;
         const share = Math.round((v / total) * 100);
         const intensity = 0.08 + (v / max) * 0.72;
+        const per = counts ? ticket(v, counts[key] ?? 0) : null;
         return (
           <div
             key={key}
             className="rounded-md py-1.5 text-center"
             style={{ backgroundColor: `rgba(153, 27, 27, ${intensity})` }}
-            title={`${label}: ${formatMoney(v)} (${share}%)`}
+            title={`${label}: ${formatMoney(v)} (${share}%)${per ? ` · 객단가 ${per}` : ""}`}
           >
             <p className={`text-[10px] leading-tight ${intensity > 0.45 ? "text-white/80" : "text-foreground-muted"}`}>
               {label}
@@ -67,11 +77,11 @@ export default function SalesRhythmSection({
     <div className="flex flex-col gap-3">
       <div>
         <p className="text-xs text-foreground-muted mb-1.5">요일별 매출 비중</p>
-        <HeatStrip entries={DAY_LABELS} values={salesMix.byDay} />
+        <HeatStrip entries={DAY_LABELS} values={salesMix.byDay} counts={salesMix.countByDay} />
       </div>
       <div>
         <p className="text-xs text-foreground-muted mb-1.5">시간대별 매출 비중</p>
-        <HeatStrip entries={TIME_LABELS} values={salesMix.byTime} />
+        <HeatStrip entries={TIME_LABELS} values={salesMix.byTime} counts={salesMix.countByTime} />
       </div>
       {weekendPct !== null && (
         <div>

@@ -24,6 +24,14 @@ APT_SHARE_MIN = 0.5   # 아파트 가구 비중 언급 기준
 TICKET_GAP_MIN = 0.20         # 주중/주말 객단가 차이 이 이상일 때만 언급
 AGE_TICKET_MIN_SHARE = 0.05   # 건수 비중이 이 미만인 연령대는 객단가 후보에서 제외(허위 최고가 방지)
 TRAFFIC_SALES_GAP_MIN = 0.15  # 통행-매출 주말 비중 괴리 이 이상일 때만 언급
+# 건수 축 임계값 — 최신 분기 1,565상권 실측 분위수
+TIME_TICKET_RATIO_MIN = 2.0    # 최고 시간대 객단가 ÷ 전체 객단가. 중앙 1.45·p75 2.05
+TIME_TICKET_MIN_SHARE = 0.05   # 건수 비중이 이 미만인 시간대는 제외(연령 객단가와 같은 방어)
+GENDER_TICKET_RATIO_MIN = 1.3  # 남녀 객단가 비. 중앙 0.98·p90 1.29라 1.3이면 상위 10%
+# 통행 여성비 − 매출 여성비. **대표 업종 1개 기준**으로 재야 한다 — 전 업종 합산으로 재면
+# 중앙 8.2%p라 0.15가 적당해 보이지만, 실제 코드 경로(매출 최대 업종)는 중앙 14.8%p여서
+# 0.15로 두면 절반이 뜬다(실측 48%). p75(20.1%p)에 맞춰 상위 25%만 말하게 한다.
+TRAFFIC_GENDER_GAP_MIN = 0.20
 BUS_STOP_MIN = 30             # 버스정거장 이 이상이면 대중교통 동선이 뚜렷하다고 본다
 # 아파트 분포 임계값 — 전부 최신 분기 1,463상권 실측 분위수에서 잡았다(지어낸 값이 아니다).
 HIGH_PRICE_SHARE_MIN = 0.30   # 4억 이상 세대 비중. 중앙 0.2%·p75 11.8%·p90 46.7%로 극단 편중
@@ -77,13 +85,17 @@ def narrate(
     if spending is not None:
         insights += _spending_insights(spending)
     if sales is not None:
-        for maker in (_avg_ticket, _avg_ticket_rhythm, _avg_ticket_age):
+        for maker in (
+            _avg_ticket, _avg_ticket_rhythm, _avg_ticket_age,
+            _avg_ticket_time, _avg_ticket_gender,
+        ):
             got = maker(sales)
             if got is not None:
                 insights.append(got)
-        crossed = _traffic_vs_sales(sales, floating)
-        if crossed is not None:
-            insights.append(crossed)
+        for crosser in (_traffic_vs_sales, _traffic_vs_sales_gender):
+            crossed = crosser(sales, floating)
+            if crossed is not None:
+                insights.append(crossed)
     anchor = _facility_insight(facility)
     if anchor is not None:
         insights.append(anchor)
@@ -301,6 +313,81 @@ def _avg_ticket_age(sales: SalesMix) -> Insight | None:
     return Insight(
         key="avg_ticket_age", tone="neutral",
         text=f"{_AGE_LABELS[key]} 객단가가 {_won(per)}으로 가장 높습니다.",
+    )
+
+
+def _overall_ticket(sales: SalesMix) -> float | None:
+    total = sales.monthly_amount if sales.monthly_amount > 0 else sum(sales.by_gender.values())
+    return _ticket(total, sales.monthly_count)
+
+
+def _avg_ticket_time(sales: SalesMix) -> Insight | None:
+    """객단가가 가장 높은 시간대 — 매출이 큰 시간대와 다를 수 있다.
+
+    "점심에 많이 팔리지만 저녁에 비싸게 팔린다"가 영업시간 설계의 실제 근거다.
+    """
+    counts = sales.count_by_time
+    overall = _overall_ticket(sales)
+    if not counts or overall is None or overall <= 0 or sales.monthly_count <= 0:
+        return None
+    best: tuple[str, float] | None = None
+    for key, count in counts.items():
+        # 건수가 극소한 시간대(새벽 등)가 허위 최고가로 뽑히는 것을 막는다
+        if count < sales.monthly_count * TIME_TICKET_MIN_SHARE:
+            continue
+        per = _ticket(sales.by_time.get(key, 0), count)
+        if per is not None and (best is None or per > best[1]):
+            best = (key, per)
+    if best is None or best[1] / overall < TIME_TICKET_RATIO_MIN:
+        return None
+    return Insight(
+        key="avg_ticket_time", tone="neutral",
+        text=f"{_TIME_LABELS[best[0]]} 객단가가 {_won(best[1])}으로 "
+             f"평균({_won(overall)})의 {best[1] / overall:.1f}배입니다.",
+    )
+
+
+def _avg_ticket_gender(sales: SalesMix) -> Insight | None:
+    """성별 객단가 격차 — 매출 비중과 방향이 다를 수 있다(많이 오는 쪽 ≠ 많이 쓰는 쪽)."""
+    counts = sales.count_by_gender
+    if not counts:
+        return None
+    male = _ticket(sales.by_gender.get("male", 0), counts.get("male", 0))
+    female = _ticket(sales.by_gender.get("female", 0), counts.get("female", 0))
+    if male is None or female is None:
+        return None
+    hi_key = "male" if male > female else "female"
+    hi, lo = max(male, female), min(male, female)
+    if lo <= 0 or hi / lo < GENDER_TICKET_RATIO_MIN:
+        return None
+    return Insight(
+        key="avg_ticket_gender", tone="neutral",
+        text=f"{_GENDER_LABELS[hi_key]} 객단가가 {_won(hi)}으로 반대편({_won(lo)})보다 "
+             f"{round((hi - lo) / lo * 100)}% 높습니다.",
+    )
+
+
+def _traffic_vs_sales_gender(sales: SalesMix, floating: FloatingRhythm | None) -> Insight | None:
+    """통행 성별 구성과 매출 성별 구성의 괴리 — '지나가는 사람'과 '사는 사람'의 차이."""
+    if floating is None:
+        return None
+    traffic_total = floating.male_pop + floating.female_pop
+    sales_total = sum(sales.by_gender.values())
+    if traffic_total <= 0 or sales_total <= 0:
+        return None
+    traffic_female = floating.female_pop / traffic_total
+    sales_female = sales.by_gender.get("female", 0) / sales_total
+    gap = sales_female - traffic_female
+    if abs(gap) < TRAFFIC_GENDER_GAP_MIN:
+        return None
+    t_pct, s_pct = round(traffic_female * 100), round(sales_female * 100)
+    side = "여성" if gap > 0 else "남성"
+    if gap <= 0:
+        t_pct, s_pct = 100 - t_pct, 100 - s_pct
+    return Insight(
+        key="traffic_vs_sales_gender", tone="neutral",
+        text=f"{side} 통행은 {t_pct}%인데 매출은 {s_pct}% — "
+             f"{side} 고객의 구매 전환이 더 강한 상권입니다.",
     )
 
 
