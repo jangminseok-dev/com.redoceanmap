@@ -16,6 +16,24 @@ class SalesMix:
     by_age: dict[str, int]     # age10..age60Plus
     monthly_count: int
     monthly_amount: int = 0    # 월 총매출 — 객단가 계산용(0이면 성별 합으로 폴백)
+    # 건수 축 — 금액/건수로 "언제 누가 얼마씩 쓰는가"(객단가)를 낸다. 금액만으론
+    # 매출 큰 층이 '많이 오는 층'인지 '비싸게 쓰는 층'인지 구분할 수 없다.
+    weekday_count: int = 0
+    weekend_count: int = 0
+    count_by_age: dict[str, int] | None = None  # age10..age60Plus
+
+
+@dataclass(frozen=True)
+class FloatingRhythm:
+    """최신 분기 통행 리듬 — 요일 7개를 주중/주말로 접어 매출 리듬과 대조한다.
+
+    요일 7개를 그대로 노출하면 화면·스키마가 하나 더 늘지만, 실제로 값을 하는 건
+    "통행은 주말인데 매출은 평일" 같은 교차 신호 하나다.
+    """
+
+    year_quarter: int
+    weekday_pop: int  # 월~금 합
+    weekend_pop: int  # 토+일
 
 
 @dataclass(frozen=True)

@@ -113,3 +113,12 @@ class AreaRawStat:
     change_indicator_name: str | None
     operating_months_avg: float | None
     region_operating_months_avg: float | None
+    # --- 아래는 기본값 필드(기존 호출부 무손상용) ---
+    # 절대 건수 — 율(%)만으론 소규모 상권에서 노이즈다("3개 중 1개 폐업 = 33%").
+    # similar_industry는 경쟁 강도(창업자 직결).
+    similar_industry_store_count: int | None = None
+    opening_store_count: int | None = None
+    closure_store_count: int | None = None
+    # 폐업 점포가 버틴 개월 — 운영개월(생존 중)과 짝이 돼야 "얼마 만에 닫는가"가 보인다.
+    closure_months_avg: float | None = None
+    region_closure_months_avg: float | None = None

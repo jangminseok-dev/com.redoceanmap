@@ -26,6 +26,7 @@ class AreaDetailInteractor(AreaDetailUseCase):
         working = await self._detail.find_working(query.trdar_code)
         apartment = await self._detail.find_apartment(query.trdar_code)
         spending = await self._detail.find_spending(query.trdar_code)
+        floating = await self._detail.find_floating_rhythm(query.trdar_code)
 
         return AreaDetailView(
             trdar_code=header.trdar_code,
@@ -38,5 +39,5 @@ class AreaDetailInteractor(AreaDetailUseCase):
             working=working,
             apartment=apartment,
             spending=spending,
-            insights=narrate(sales_mix, resident, working, spending),
+            insights=narrate(sales_mix, resident, working, spending, floating),
         )

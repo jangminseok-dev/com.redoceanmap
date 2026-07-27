@@ -83,7 +83,10 @@ NON_SEOUL_REGIONS = (
 # 앞쪽일수록 "여기가 어떤 상권인가"를 먼저 규정한다. 성별은 정보량이 가장 낮아 뒤로.
 _INSIGHT_PRIORITY = (
     "demand_type",          # 오피스형/주거형/혼합 — 상권 성격의 뼈대
+    "traffic_vs_sales",     # 통행↔매출 괴리 — 부정 신호가 추천 신뢰도를 가장 크게 올린다
     "avg_ticket",           # 객단가 — 창업 판단에 직결
+    "avg_ticket_age",       # 가장 비싸게 쓰는 연령대(방문층과 다를 때 특히 값어치)
+    "avg_ticket_rhythm",    # 주중/주말 객단가 차이
     "customer_age",         # 핵심 연령대
     "sales_rhythm_peak",    # 피크 시간대·요일
     "spending_power",       # 배후 소득·지출 카테고리
@@ -347,8 +350,22 @@ class ChatInteractor(ChatUseCase):
                 weekday_text = f"주중 {wd}% / 주말 {100 - wd}%"
 
             store_count_text = f"{raw.store_count}개 점포 영업 중" if raw.has_store else "점포 데이터 없음"
-            closure_text = f"분기 폐업률 {raw.closure_rate}%" if raw.has_store else "데이터 없음"
-            opening_text = f"분기 개업률 {raw.opening_rate}%" if raw.has_store else "데이터 없음"
+            # 율만 주면 소규모 상권에서 오독한다("3개 중 1개 폐업 = 33%") — 절대 건수를 병기한다.
+            closure_text = (
+                f"분기 폐업률 {raw.closure_rate}%({raw.closure_store_count}개)"
+                if raw.has_store and raw.closure_store_count is not None
+                else f"분기 폐업률 {raw.closure_rate}%" if raw.has_store else "데이터 없음"
+            )
+            opening_text = (
+                f"분기 개업률 {raw.opening_rate}%({raw.opening_store_count}개)"
+                if raw.has_store and raw.opening_store_count is not None
+                else f"분기 개업률 {raw.opening_rate}%" if raw.has_store else "데이터 없음"
+            )
+            # 경쟁 강도 — 같은 업종 점포가 몇 개인가. 창업 판단에 직결된다.
+            rival_text = (
+                f"동일 업종 {raw.similar_industry_store_count}개 경쟁"
+                if raw.similar_industry_store_count is not None else "데이터 없음"
+            )
 
             if raw.has_store and raw.store_count and raw.store_count > 0:
                 fr = round(raw.franchise_store_count / raw.store_count * 100)
@@ -374,6 +391,12 @@ class ChatInteractor(ChatUseCase):
                     f"이 상권 평균 {op_months}개월 영업 (지역 평균 {region_op}개월)"
                     if op_months else "데이터 없음"
                 )
+                # 생존 중 점포의 영업개월만으론 "얼마 만에 닫는가"를 알 수 없다.
+                if raw.closure_months_avg:
+                    op_text += (
+                        f", 폐업 점포는 평균 {raw.closure_months_avg}개월 만에 닫음"
+                        f" (지역 평균 {raw.region_closure_months_avg}개월)"
+                    )
             else:
                 change_text = "데이터 없음"
                 op_text = "데이터 없음"
@@ -386,6 +409,7 @@ class ChatInteractor(ChatUseCase):
                 "closure_text": closure_text,
                 "opening_text": opening_text,
                 "franchise_text": franchise_text,
+                "rival_text": rival_text,
                 "foot_text": foot_text,
                 "top_age": top_age,
                 "peak_time": peak_time,
@@ -503,7 +527,7 @@ class ChatInteractor(ChatUseCase):
                 f"[{area.trdar_name} / {area.district_name}] (trdar_code: {code})\n"
                 f"- 수익: {st.get('revenue_text')} | {st.get('revenue_source')}\n"
                 f"- 매출패턴: {st.get('weekday_text')}\n"
-                f"- 점포: {st.get('store_count_text')} | {st.get('closure_text')} | {st.get('opening_text')} | {st.get('franchise_text')}\n"
+                f"- 점포: {st.get('store_count_text')} | {st.get('closure_text')} | {st.get('opening_text')} | {st.get('franchise_text')} | {st.get('rival_text')}\n"
                 f"- 유동인구: {st.get('foot_text')}\n"
                 f"- 유동인구 최다 연령대: {st.get('top_age')} (통행량 기준 — 매출 기준 고객층이 아님)"
                 f" | 유동인구 피크시간(시간당): {st.get('peak_time')}\n"

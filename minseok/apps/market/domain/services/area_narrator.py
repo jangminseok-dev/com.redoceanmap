@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from market.domain.value_objects.area_profile_vo import (
+    FloatingRhythm,
     ResidentProfile,
     SalesMix,
     SpendingProfile,
@@ -18,6 +19,9 @@ AGE_MIN = 0.30        # 핵심 연령대 언급 기준
 OFFICE_RATIO = 2.0    # 직장/상주 비 이 이상이면 오피스형
 RESIDENT_RATIO = 0.5  # 직장/상주 비 이 이하면 주거형
 APT_SHARE_MIN = 0.5   # 아파트 가구 비중 언급 기준
+TICKET_GAP_MIN = 0.20         # 주중/주말 객단가 차이 이 이상일 때만 언급
+AGE_TICKET_MIN_SHARE = 0.05   # 건수 비중이 이 미만인 연령대는 객단가 후보에서 제외(허위 최고가 방지)
+TRAFFIC_SALES_GAP_MIN = 0.15  # 통행-매출 주말 비중 괴리 이 이상일 때만 언급
 
 _TIME_LABELS = {
     "t00_06": "새벽(00~06시)",
@@ -43,6 +47,7 @@ def narrate(
     resident: ResidentProfile | None,
     working: WorkingProfile | None,
     spending: SpendingProfile | None,
+    floating: FloatingRhythm | None = None,
 ) -> list[Insight]:
     """최신 분기 구조 수치 → 초보자용 해석 문장. 결측 축은 해당 문장을 생략한다."""
     insights: list[Insight] = []
@@ -52,9 +57,13 @@ def narrate(
     if spending is not None:
         insights += _spending_insights(spending)
     if sales is not None:
-        ticket = _avg_ticket(sales)
-        if ticket is not None:
-            insights.append(ticket)
+        for maker in (_avg_ticket, _avg_ticket_rhythm, _avg_ticket_age):
+            got = maker(sales)
+            if got is not None:
+                insights.append(got)
+        crossed = _traffic_vs_sales(sales, floating)
+        if crossed is not None:
+            insights.append(crossed)
     return insights
 
 
@@ -178,6 +187,81 @@ def _avg_ticket(sales: SalesMix) -> Insight | None:
         key="avg_ticket", tone="neutral",
         text=f"건당 평균 결제액은 약 {fmt}입니다.",
     )
+
+
+def _ticket(amount: int, count: int) -> float | None:
+    return amount / count if amount > 0 and count > 0 else None
+
+
+def _avg_ticket_rhythm(sales: SalesMix) -> Insight | None:
+    """주중 vs 주말 객단가 — 차이가 뚜렷할 때만. 주말 집중 전략의 직접 근거."""
+    weekday = _ticket(sales.weekday_amount, sales.weekday_count)
+    weekend = _ticket(sales.weekend_amount, sales.weekend_count)
+    if weekday is None or weekend is None:
+        return None
+    hi, lo = max(weekday, weekend), min(weekday, weekend)
+    if lo <= 0 or (hi - lo) / lo < TICKET_GAP_MIN:
+        return None
+    label = "주말" if weekend > weekday else "주중"
+    return Insight(
+        key="avg_ticket_rhythm", tone="neutral",
+        text=f"{label} 객단가가 {_won(hi)}으로 반대편({_won(lo)})보다 "
+             f"{round((hi - lo) / lo * 100)}% 높습니다.",
+    )
+
+
+def _avg_ticket_age(sales: SalesMix) -> Insight | None:
+    """가장 비싸게 쓰는 연령대 — 매출 최다층과 다를 때 특히 값어치가 있다.
+
+    (방문은 20대인데 지갑은 40대, 같은 구조를 드러낸다.)
+    """
+    counts = sales.count_by_age
+    if not counts or sales.monthly_count <= 0:
+        return None
+    best: tuple[str, float] | None = None
+    for key, count in counts.items():
+        # 표본이 극소한 연령대가 허위 최고가로 뽑히는 것을 막는다
+        if count < sales.monthly_count * AGE_TICKET_MIN_SHARE:
+            continue
+        per = _ticket(sales.by_age.get(key, 0), count)
+        if per is not None and (best is None or per > best[1]):
+            best = (key, per)
+    if best is None:
+        return None
+    key, per = best
+    return Insight(
+        key="avg_ticket_age", tone="neutral",
+        text=f"{_AGE_LABELS[key]} 객단가가 {_won(per)}으로 가장 높습니다.",
+    )
+
+
+def _traffic_vs_sales(sales: SalesMix, floating: FloatingRhythm | None) -> Insight | None:
+    """통행 리듬과 매출 리듬의 괴리 — 어느 한쪽만으로는 만들 수 없는 인사이트."""
+    if floating is None:
+        return None
+    traffic_total = floating.weekday_pop + floating.weekend_pop
+    sales_total = sales.weekday_amount + sales.weekend_amount
+    if traffic_total <= 0 or sales_total <= 0:
+        return None
+    traffic_weekend = floating.weekend_pop / traffic_total
+    sales_weekend = sales.weekend_amount / sales_total
+    gap = traffic_weekend - sales_weekend
+    if abs(gap) < TRAFFIC_SALES_GAP_MIN:
+        return None
+    t_pct, s_pct = round(traffic_weekend * 100), round(sales_weekend * 100)
+    if gap > 0:
+        text = (f"주말 통행은 {t_pct}%인데 매출은 {s_pct}% — "
+                "지나가긴 해도 지갑은 평일에 열리는 상권입니다.")
+        tone = "warning"
+    else:
+        text = (f"주말 통행은 {t_pct}%인데 매출은 {s_pct}% — "
+                "주말 방문객이 실제 구매로 잘 이어집니다.")
+        tone = "positive"
+    return Insight(key="traffic_vs_sales", tone=tone, text=text)
+
+
+def _won(v: float) -> str:
+    return f"{v / 10_000:.1f}만원" if v >= 10_000 else f"{v:,.0f}원"
 
 
 def _dominant(values: dict[str, int]) -> tuple[str, float] | None:

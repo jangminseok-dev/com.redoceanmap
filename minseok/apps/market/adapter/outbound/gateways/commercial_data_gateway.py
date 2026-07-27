@@ -292,6 +292,9 @@ class CommercialDataGateway(CommercialDataPort):
                 closure_rate=st.closure_rate if st else None,
                 opening_rate=st.opening_rate if st else None,
                 franchise_store_count=st.franchise_store_count if st else None,
+                similar_industry_store_count=st.similar_industry_store_count if st else None,
+                opening_store_count=st.opening_store_count if st else None,
+                closure_store_count=st.closure_store_count if st else None,
                 has_fp=fp is not None,
                 total_floating_pop=fp.total_floating_pop if fp else None,
                 age_10_floating_pop=fp.age_10_floating_pop if fp else None,
@@ -310,5 +313,7 @@ class CommercialDataGateway(CommercialDataPort):
                 change_indicator_name=cc_pair[1] if cc_pair else None,
                 operating_months_avg=cc.operating_months_avg if cc else None,
                 region_operating_months_avg=bench.operating_months_avg if bench else None,
+                closure_months_avg=cc.closure_months_avg if cc else None,
+                region_closure_months_avg=bench.closure_months_avg if bench else None,
             )
         return result

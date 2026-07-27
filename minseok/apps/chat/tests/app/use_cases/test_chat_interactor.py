@@ -128,12 +128,14 @@ class _StubFundamentals:
 
 class _StubMarket:
     def __init__(self, scores: dict[int, AreaScoreInfo] | None = None,
-                 insights: dict[int, tuple[AreaInsight, ...]] | None = None):
+                 insights: dict[int, tuple[AreaInsight, ...]] | None = None,
+                 raw: AreaRawStat | None = None):
         self.summary_calls = 0
         self.scores = scores or {}
         self.score_calls: list[list[int]] = []
         self.insights = insights or {}
         self.insight_calls: list[tuple[list[int], str | None]] = []
+        self.raw = raw
 
     async def get_area_summary(self) -> AreaSummary:
         self.summary_calls += 1
@@ -145,7 +147,7 @@ class _StubMarket:
         return [ServiceCode(code="CS100010", name="커피-음료")]
 
     async def get_area_raw_stats(self, codes, service_code, quarter):
-        return {c: _raw_stat() for c in codes}
+        return {c: (self.raw or _raw_stat()) for c in codes}
 
     async def get_area_scores(self, trdar_codes):
         self.score_calls.append(list(trdar_codes))
@@ -189,8 +191,8 @@ class _StubRecorder:
         self.recorded.append((conversation_id, areas))
 
 
-def _raw_stat() -> AreaRawStat:
-    return AreaRawStat(
+def _raw_stat(**overrides) -> AreaRawStat:
+    base = dict(
         has_sales=False, monthly_sales_amount=None, weekday_sales_amount=None,
         has_store=False, store_count=None, closure_rate=None, opening_rate=None,
         franchise_store_count=None,
@@ -202,6 +204,7 @@ def _raw_stat() -> AreaRawStat:
         has_cc=False, change_indicator_name=None, operating_months_avg=None,
         region_operating_months_avg=None,
     )
+    return AreaRawStat(**{**base, **overrides})
 
 
 def _analysis(**overrides) -> StockAnalysisResult:
@@ -817,3 +820,50 @@ def test_총합_최대는_넓은_구간에_쏠린다():
 
     naive = _top_field(_FloatingRaw(), [(f, label) for f, label, _ in TIME_FIELDS])
     assert naive == "새벽 0~6시"
+
+
+async def test_점포_컨텍스트에_절대건수와_경쟁강도가_붙는다(monkeypatch):
+    # 율(%)만 주면 소규모 상권에서 오독한다 — "3개 중 1개 폐업 = 33%".
+    market = _StubMarket(raw=_raw_stat(
+        has_store=True, store_count=12, closure_rate=8.3, opening_rate=4.1,
+        franchise_store_count=3, closure_store_count=1, opening_store_count=2,
+        similar_industry_store_count=7,
+    ))
+    interactor, llm, _ = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON], market=market,
+    )
+    await interactor.ask("역삼동 카페 어때?")
+
+    context = llm.calls[2][0]
+    assert "분기 폐업률 8.3%(1개)" in context
+    assert "분기 개업률 4.1%(2개)" in context
+    assert "동일 업종 7개 경쟁" in context
+
+
+async def test_폐업까지_걸린_개월이_영업개월과_함께_나온다(monkeypatch):
+    # 생존 중 점포의 영업개월만으론 "얼마 만에 닫는가"를 알 수 없다.
+    market = _StubMarket(raw=_raw_stat(
+        has_cc=True, change_indicator_name="상권확장", operating_months_avg=48,
+        region_operating_months_avg=40, closure_months_avg=22, region_closure_months_avg=25,
+    ))
+    interactor, llm, _ = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON], market=market,
+    )
+    await interactor.ask("역삼동 카페 어때?")
+
+    context = llm.calls[2][0]
+    assert "폐업 점포는 평균 22개월 만에 닫음 (지역 평균 25개월)" in context
+
+
+async def test_절대건수가_없으면_율만_쓴다(monkeypatch):  # 열화
+    market = _StubMarket(raw=_raw_stat(
+        has_store=True, store_count=12, closure_rate=8.3, opening_rate=4.1,
+        franchise_store_count=3,
+    ))
+    interactor, llm, _ = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON], market=market,
+    )
+    await interactor.ask("역삼동 카페 어때?")
+
+    context = llm.calls[2][0]
+    assert "분기 폐업률 8.3% " in context and "8.3%(" not in context

@@ -7,6 +7,7 @@ from sqlalchemy.orm import aliased
 from market.adapter.outbound.orm.apartment_orm import ApartmentOrm
 from market.adapter.outbound.orm.consumption_orm import ConsumptionOrm
 from market.adapter.outbound.orm.estimated_sales_orm import EstimatedSalesOrm
+from market.adapter.outbound.orm.floating_population_orm import FloatingPopulationOrm
 from market.adapter.outbound.orm.region_orm import RegionOrm
 from market.adapter.outbound.orm.resident_population_orm import ResidentPopulationOrm
 from market.adapter.outbound.orm.service_category_orm import ServiceCategoryOrm
@@ -17,6 +18,7 @@ from market.app.ports.output.area_detail_repository import AreaDetailRepositoryP
 from market.domain.value_objects.area_profile_vo import (
     AgeBand,
     ApartmentProfile,
+    FloatingRhythm,
     ResidentProfile,
     SalesMix,
     SpendingCategory,
@@ -119,6 +121,13 @@ class AreaDetailPgRepository(AreaDetailRepositoryPort):
             },
             monthly_count=r.monthly_sales_count,
             monthly_amount=r.monthly_sales_amount,
+            weekday_count=r.weekday_sales_count,
+            weekend_count=r.weekend_sales_count,
+            count_by_age={
+                "age10": r.age_10_sales_count, "age20": r.age_20_sales_count,
+                "age30": r.age_30_sales_count, "age40": r.age_40_sales_count,
+                "age50": r.age_50_sales_count, "age60Plus": r.age_60_plus_sales_count,
+            },
         )
 
     async def find_resident(self, trdar_code: int) -> ResidentProfile | None:
@@ -167,6 +176,22 @@ class AreaDetailPgRepository(AreaDetailRepositoryPort):
             complex_count=r.complex_count,
             avg_price=r.avg_price,
             avg_area=r.avg_area,
+        )
+
+    async def find_floating_rhythm(self, trdar_code: int) -> FloatingRhythm | None:
+        r = (await self._session.execute(
+            select(FloatingPopulationOrm)
+            .where(FloatingPopulationOrm.trdar_code == trdar_code)
+            .order_by(FloatingPopulationOrm.year_quarter.desc())
+            .limit(1)
+        )).scalar()
+        if r is None:
+            return None
+        return FloatingRhythm(
+            year_quarter=r.year_quarter,
+            weekday_pop=(r.mon_floating_pop + r.tue_floating_pop + r.wed_floating_pop
+                         + r.thu_floating_pop + r.fri_floating_pop),
+            weekend_pop=r.sat_floating_pop + r.sun_floating_pop,
         )
 
     async def find_spending(self, trdar_code: int) -> SpendingProfile | None:

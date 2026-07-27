@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from market.app.dtos.area_stats_dto import AreaHeader, ServiceRef
 from market.domain.value_objects.area_profile_vo import (
     ApartmentProfile,
+    FloatingRhythm,
     ResidentProfile,
     SalesMix,
     SpendingProfile,
@@ -48,4 +49,9 @@ class AreaDetailRepositoryPort(ABC):
     @abstractmethod
     async def find_spending(self, trdar_code: int) -> SpendingProfile | None:
         """최신 분기 소비·소득(카테고리 지출 내림차순)."""
+        ...
+
+    @abstractmethod
+    async def find_floating_rhythm(self, trdar_code: int) -> FloatingRhythm | None:
+        """최신 분기 통행 리듬(주중/주말) — 매출 리듬과 대조해 구매 전환을 본다."""
         ...
