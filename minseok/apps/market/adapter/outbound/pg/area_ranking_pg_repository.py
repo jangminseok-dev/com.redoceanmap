@@ -9,10 +9,12 @@ from market.adapter.outbound.orm.region_orm import RegionOrm
 from market.adapter.outbound.orm.store_orm import StoreOrm
 from market.adapter.outbound.orm.trade_area_division_orm import TradeAreaDivisionOrm
 from market.adapter.outbound.orm.trade_area_orm import TradeAreaOrm
+from market.adapter.outbound.orm.service_category_orm import ServiceCategoryOrm
 from market.app.ports.output.area_ranking_repository import (
     AreaMeta,
     AreaRankingRepositoryPort,
     SalesAgg,
+    ServiceRef,
     StoreAgg,
 )
 from market.utils.coords import tm_to_wgs84
@@ -80,6 +82,16 @@ class AreaRankingPgRepository(AreaRankingRepositoryPort):
             SalesAgg(trdar_code=code, year_quarter=yq, monthly_sales=int(total or 0))
             for code, yq, total in (await self._session.execute(stmt)).all()
         ]
+
+    async def list_service_codes(self, year_quarter: int) -> list[ServiceRef]:
+        rows = (await self._session.execute(
+            select(EstimatedSalesOrm.service_code, ServiceCategoryOrm.name)
+            .join(ServiceCategoryOrm, EstimatedSalesOrm.service_code == ServiceCategoryOrm.code)
+            .where(EstimatedSalesOrm.year_quarter == year_quarter)
+            .group_by(EstimatedSalesOrm.service_code, ServiceCategoryOrm.name)
+            .order_by(ServiceCategoryOrm.name)
+        )).all()
+        return [ServiceRef(code=code, name=name) for code, name in rows]
 
     async def find_stores(
         self, year_quarter: int, service_code: str | None

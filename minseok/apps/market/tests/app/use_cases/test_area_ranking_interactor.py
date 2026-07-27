@@ -1,5 +1,10 @@
 from market.app.dtos.area_ranking_dto import AreaRankingQuery
-from market.app.ports.output.area_ranking_repository import AreaMeta, SalesAgg, StoreAgg
+from market.app.ports.output.area_ranking_repository import (
+    AreaMeta,
+    SalesAgg,
+    ServiceRef,
+    StoreAgg,
+)
 from market.app.use_cases.area_ranking_interactor import AreaRankingInteractor
 
 
@@ -34,6 +39,9 @@ class _StubRepo:
     async def find_stores(self, year_quarter, service_code):
         self.store_args = (year_quarter, service_code)
         return self._stores
+
+    async def list_service_codes(self, year_quarter):
+        return [ServiceRef(code="CS100010", name="커피-음료")]
 
 
 async def test_점포당_매출과_전분기_대비_변화율을_계산한다():
@@ -94,3 +102,14 @@ async def test_데이터가_아예_없으면_빈_목록():  # 404 아님 — 화
         AreaRankingQuery()
     )
     assert view.rows == [] and view.year_quarter is None
+
+
+async def test_업종_어휘를_함께_내려보낸다():
+    """목록 하나 때문에 라우터를 새로 만들지 않는다 — 이 엔드포인트 자신의 필터 어휘다."""
+    view = await AreaRankingInteractor(repo=_StubRepo()).list_ranking(AreaRankingQuery())
+    assert [(s.code, s.name) for s in view.services] == [("CS100010", "커피-음료")]
+
+
+async def test_데이터가_없으면_업종_어휘도_비어있다():
+    view = await AreaRankingInteractor(repo=_StubRepo(latest=None)).list_ranking(AreaRankingQuery())
+    assert view.services == []

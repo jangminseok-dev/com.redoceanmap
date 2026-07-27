@@ -24,6 +24,23 @@ class SalesMix:
 
 
 @dataclass(frozen=True)
+class ServiceRank:
+    """상권 안 업종 1개의 성적 — "이 자리에서 뭐가 되나".
+
+    estimated_sales가 상권 × 업종으로 적재돼 있는데 지금까지 매출 최대 업종 1개만
+    쓰고 나머지(중앙 11개·최대 53개)를 버렸다.
+    """
+
+    code: str
+    name: str
+    monthly_sales: int
+    store_count: int | None
+    sales_per_store: int | None   # "돈이 되는가"의 단일 최고 지표
+    sales_qoq: float | None
+    closure_rate: float | None
+
+
+@dataclass(frozen=True)
 class FloatingRhythm:
     """최신 분기 통행 리듬 — 요일 7개를 주중/주말로 접어 매출 리듬과 대조한다.
 

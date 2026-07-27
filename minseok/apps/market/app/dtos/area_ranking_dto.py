@@ -33,6 +33,14 @@ class AreaRankingRow:
 
 
 @dataclass(frozen=True)
+class ServiceOption:
+    code: str
+    name: str
+
+
+@dataclass(frozen=True)
 class AreaRankingView:
     year_quarter: int | None  # 집계 기준 분기(데이터 없으면 None)
     rows: list[AreaRankingRow]
+    # 이 엔드포인트 자신의 필터 어휘 — 목록 하나 때문에 라우터를 새로 만들지 않는다
+    services: list[ServiceOption]

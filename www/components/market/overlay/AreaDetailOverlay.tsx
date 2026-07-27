@@ -1,12 +1,13 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Building2, CalendarClock, UsersRound, Wallet, X } from "lucide-react";
+import { Building2, CalendarClock, Store, UsersRound, Wallet, X } from "lucide-react";
 import { fetchAreaDetail } from "@/lib/api";
 import InsightList from "@/components/common/InsightList";
 import CustomerProfileSection from "./CustomerProfileSection";
 import DemandSection from "./DemandSection";
 import SalesRhythmSection from "./SalesRhythmSection";
+import ServiceRankingSection from "./ServiceRankingSection";
 import SpendingSection from "./SpendingSection";
 
 function Section({
@@ -86,6 +87,15 @@ export default function AreaDetailOverlay({
               <div className="rounded-xl border border-border bg-background px-3 py-2.5">
                 <InsightList insights={data.insights} />
               </div>
+            )}
+            {/* 업종 랭킹은 매출 분해와 별개다 — 기준 업종이 안 잡혀도 목록은 뜬다 */}
+            {data.serviceRanking.length > 0 && (
+              <Section icon={Store} title="이 자리에서 뭐가 되나 (업종별)">
+                <ServiceRankingSection
+                  ranking={data.serviceRanking}
+                  currentCode={data.serviceCode}
+                />
+              </Section>
             )}
             {data.salesMix && (
               <Section icon={CalendarClock} title="매출 리듬">

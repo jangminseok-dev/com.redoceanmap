@@ -9,6 +9,7 @@ from market.domain.value_objects.area_profile_vo import (
     FloatingRhythm,
     ResidentProfile,
     SalesMix,
+    ServiceRank,
     SpendingProfile,
     WorkingProfile,
 )
@@ -55,6 +56,11 @@ class AreaDetailRepositoryPort(ABC):
     @abstractmethod
     async def find_floating_rhythm(self, trdar_code: int) -> FloatingRhythm | None:
         """최신 분기 통행 리듬(주중/주말) — 매출 리듬과 대조해 구매 전환을 본다."""
+        ...
+
+    @abstractmethod
+    async def find_service_ranking(self, trdar_code: int, limit: int = 12) -> list[ServiceRank]:
+        """상권 안 업종 랭킹(최신 분기, 매출 내림차순) — 자동 선택된 업종의 근거이기도 하다."""
         ...
 
     @abstractmethod

@@ -19,6 +19,14 @@ class AreaMeta:
 
 
 @dataclass(frozen=True)
+class ServiceRef:
+    """필터 어휘 — 최신 분기에 실적이 있는 업종만."""
+
+    code: str
+    name: str
+
+
+@dataclass(frozen=True)
 class SalesAgg:
     """상권별 매출 합 — 최신/직전 분기 각각."""
 
@@ -56,6 +64,11 @@ class AreaRankingRepositoryPort(ABC):
         self, quarters: list[int], service_code: str | None
     ) -> list[SalesAgg]:
         """지정 분기들의 상권별 매출 합(업종 지정 시 해당 업종만)."""
+        ...
+
+    @abstractmethod
+    async def list_service_codes(self, year_quarter: int) -> list[ServiceRef]:
+        """해당 분기에 매출 실적이 있는 업종 — 화면의 업종 셀렉트 어휘."""
         ...
 
     @abstractmethod

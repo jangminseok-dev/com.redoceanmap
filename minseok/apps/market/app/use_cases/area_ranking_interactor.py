@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from market.app.dtos.area_ranking_dto import AreaRankingQuery, AreaRankingRow, AreaRankingView
+from market.app.dtos.area_ranking_dto import (
+    AreaRankingQuery,
+    AreaRankingRow,
+    AreaRankingView,
+    ServiceOption,
+)
 from market.app.ports.input.area_ranking_use_case import AreaRankingUseCase
 from market.app.ports.output.area_ranking_repository import AreaRankingRepositoryPort
 
@@ -19,8 +24,12 @@ class AreaRankingInteractor(AreaRankingUseCase):
         latest = await self._repo.latest_quarter()
         areas = await self._repo.find_areas(query.district_name, query.division_code)
         if latest is None or not areas:
-            return AreaRankingView(year_quarter=latest, rows=[])
+            return AreaRankingView(year_quarter=latest, rows=[], services=[])
 
+        services = [
+            ServiceOption(code=r.code, name=r.name)
+            for r in await self._repo.list_service_codes(latest)
+        ]
         prev = _prev_quarter(latest)
         sales = await self._repo.find_sales([latest, prev], query.service_code)
         stores = await self._repo.find_stores(latest, query.service_code)
@@ -48,7 +57,7 @@ class AreaRankingInteractor(AreaRankingUseCase):
                 sales_qoq=_qoq(sale, prev_sales.get(a.trdar_code)),
                 closure_rate=st.closure_rate if st else None,
             ))
-        return AreaRankingView(year_quarter=latest, rows=rows)
+        return AreaRankingView(year_quarter=latest, rows=rows, services=services)
 
 
 def _prev_quarter(year_quarter: int) -> int:

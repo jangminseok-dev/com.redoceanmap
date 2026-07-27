@@ -31,13 +31,22 @@ export default function AreasDirectoryPage() {
     text: string;
     gu: string;
     division: string;
+    serviceCode: string;
     sort: { key: SortKey; dir: "asc" | "desc" };
-  }>({ text: "", gu: "전체", division: "전체", sort: { key: "salesPerStore", dir: "desc" } });
+  }>({
+    text: "",
+    gu: "전체",
+    division: "전체",
+    serviceCode: "",
+    sort: { key: "salesPerStore", dir: "desc" },
+  });
 
   // 서버 필터는 걸지 않는다 — 1,650행을 한 번 받고 클라이언트에서 좁힌다(왕복 제거).
   const { data, isPending, isError } = useQuery({
-    queryKey: ["area-ranking"],
-    queryFn: () => fetchAreaRanking({}),
+    // 업종만 서버 왕복이다 — 집계 자체가 달라진다. 자치구·상권구분은 행 부분집합일
+    // 뿐이라 클라이언트에서 좁힌다(이 구분을 지우면 조용히 틀린 숫자가 나온다).
+    queryKey: ["area-ranking", q.serviceCode],
+    queryFn: () => fetchAreaRanking({ serviceCode: q.serviceCode || undefined }),
   });
 
   const all = useMemo(() => data?.rows ?? [], [data]);
@@ -104,6 +113,18 @@ export default function AreasDirectoryPage() {
         >
           {guList.map((gu) => (
             <option key={gu}>{gu}</option>
+          ))}
+        </select>
+        <select
+          value={q.serviceCode}
+          onChange={(e) => setQ((p) => ({ ...p, serviceCode: e.target.value }))}
+          className="px-3 py-2 rounded-xl bg-surface border border-border text-sm"
+        >
+          <option value="">전 업종</option>
+          {(data?.services ?? []).map((s) => (
+            <option key={s.code} value={s.code}>
+              {s.name}
+            </option>
           ))}
         </select>
         <select

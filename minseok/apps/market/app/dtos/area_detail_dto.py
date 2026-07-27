@@ -8,6 +8,7 @@ from market.domain.value_objects.area_profile_vo import (
     FloatingRhythm,
     ResidentProfile,
     SalesMix,
+    ServiceRank,
     SpendingProfile,
     WorkingProfile,
 )
@@ -38,4 +39,6 @@ class AreaDetailView:
     # 리포지토리가 조회해 서술자에 넘기던 값 — 뷰에 싣지 않아 화면이 차트로 못 그렸다.
     floating: FloatingRhythm | None
     facility: FacilityProfile | None
+    # 상권 안 업종 랭킹 — 자동 선택된 기준 업종의 근거이기도 하다
+    service_ranking: list[ServiceRank]
     insights: list[Insight]

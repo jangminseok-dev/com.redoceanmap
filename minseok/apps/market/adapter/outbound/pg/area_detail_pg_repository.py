@@ -12,6 +12,7 @@ from market.adapter.outbound.orm.floating_population_orm import FloatingPopulati
 from market.adapter.outbound.orm.region_orm import RegionOrm
 from market.adapter.outbound.orm.resident_population_orm import ResidentPopulationOrm
 from market.adapter.outbound.orm.service_category_orm import ServiceCategoryOrm
+from market.adapter.outbound.orm.store_orm import StoreOrm
 from market.adapter.outbound.orm.trade_area_orm import TradeAreaOrm
 from market.adapter.outbound.orm.working_population_orm import WorkingPopulationOrm
 from market.app.dtos.area_stats_dto import AreaHeader, ServiceRef
@@ -23,6 +24,7 @@ from market.domain.value_objects.area_profile_vo import (
     FloatingRhythm,
     ResidentProfile,
     SalesMix,
+    ServiceRank,
     SpendingCategory,
     SpendingProfile,
     WorkingProfile,
@@ -195,6 +197,59 @@ class AreaDetailPgRepository(AreaDetailRepositoryPort):
                          + r.thu_floating_pop + r.fri_floating_pop),
             weekend_pop=r.sat_floating_pop + r.sun_floating_pop,
         )
+
+    async def find_service_ranking(self, trdar_code: int, limit: int = 12) -> list[ServiceRank]:
+        latest = (await self._session.execute(
+            select(func.max(EstimatedSalesOrm.year_quarter))
+            .where(EstimatedSalesOrm.trdar_code == trdar_code)
+        )).scalar()
+        if latest is None:
+            return []
+        prev = latest - 1 if latest % 10 != 1 else (latest // 10 - 1) * 10 + 4
+
+        sales_rows = (await self._session.execute(
+            select(
+                EstimatedSalesOrm.service_code,
+                EstimatedSalesOrm.year_quarter,
+                func.sum(EstimatedSalesOrm.monthly_sales_amount),
+            )
+            .where(
+                EstimatedSalesOrm.trdar_code == trdar_code,
+                EstimatedSalesOrm.year_quarter.in_([latest, prev]),
+            )
+            .group_by(EstimatedSalesOrm.service_code, EstimatedSalesOrm.year_quarter)
+        )).all()
+        store_rows = (await self._session.execute(
+            select(
+                StoreOrm.service_code,
+                func.sum(StoreOrm.store_count),
+                func.avg(StoreOrm.closure_rate),
+            )
+            .where(StoreOrm.trdar_code == trdar_code, StoreOrm.year_quarter == latest)
+            .group_by(StoreOrm.service_code)
+        )).all()
+        names = dict((await self._session.execute(
+            select(ServiceCategoryOrm.code, ServiceCategoryOrm.name)
+        )).all())
+
+        now = {c: int(v or 0) for c, yq, v in sales_rows if yq == latest}
+        before = {c: int(v or 0) for c, yq, v in sales_rows if yq == prev}
+        stores = {c: (int(n or 0), float(r) if r is not None else None) for c, n, r in store_rows}
+
+        out = []
+        for code, sales in sorted(now.items(), key=lambda kv: -kv[1])[:limit]:
+            count, closure = stores.get(code, (None, None))
+            base = before.get(code)
+            out.append(ServiceRank(
+                code=code,
+                name=names.get(code, code),
+                monthly_sales=sales,
+                store_count=count,
+                sales_per_store=round(sales / count) if count else None,
+                sales_qoq=round((sales - base) / base * 100, 1) if base else None,
+                closure_rate=round(closure, 1) if closure is not None else None,
+            ))
+        return out
 
     async def find_facility(self, trdar_code: int) -> FacilityProfile | None:
         r = (await self._session.execute(

@@ -83,6 +83,16 @@ class FacilitySchema(BaseModel):
     hospitals: int
 
 
+class ServiceRankSchema(BaseModel):
+    code: str
+    name: str
+    monthlySales: int
+    storeCount: int | None
+    salesPerStore: int | None
+    salesQoq: float | None
+    closureRate: float | None
+
+
 class InsightSchema(BaseModel):
     key: str
     tone: str  # positive | neutral | warning
@@ -100,4 +110,5 @@ class AreaDetailResponse(BaseModel):
     spending: SpendingSchema | None
     floating: FloatingRhythmSchema | None
     facility: FacilitySchema | None
+    serviceRanking: list[ServiceRankSchema]
     insights: list[InsightSchema]

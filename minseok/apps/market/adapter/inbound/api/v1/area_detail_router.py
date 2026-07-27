@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from market.adapter.inbound.api.schemas.area_detail_schema import (
     FacilitySchema,
     FloatingRhythmSchema,
+    ServiceRankSchema,
     AgeBandSchema,
     ApartmentSchema,
     AreaDetailResponse,
@@ -76,6 +77,14 @@ async def get_area_detail(
             departmentStores=view.facility.department_stores,
             hospitals=view.facility.hospitals,
         ) if view.facility else None,
+        serviceRanking=[
+            ServiceRankSchema(
+                code=r.code, name=r.name, monthlySales=r.monthly_sales,
+                storeCount=r.store_count, salesPerStore=r.sales_per_store,
+                salesQoq=r.sales_qoq, closureRate=r.closure_rate,
+            )
+            for r in view.service_ranking
+        ],
         insights=[
             InsightSchema(key=i.key, tone=i.tone, text=i.text) for i in view.insights
         ],

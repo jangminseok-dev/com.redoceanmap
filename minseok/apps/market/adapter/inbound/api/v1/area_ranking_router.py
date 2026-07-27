@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, Query
 from market.adapter.inbound.api.schemas.area_ranking_schema import (
     AreaRankingResponse,
     AreaRankingRowSchema,
+    ServiceOptionSchema,
 )
 from market.app.dtos.area_ranking_dto import AreaRankingQuery
 from market.app.ports.input.area_ranking_use_case import AreaRankingUseCase
@@ -42,4 +43,5 @@ async def list_area_ranking(
             )
             for r in view.rows
         ],
+        services=[ServiceOptionSchema(code=s.code, name=s.name) for s in view.services],
     )

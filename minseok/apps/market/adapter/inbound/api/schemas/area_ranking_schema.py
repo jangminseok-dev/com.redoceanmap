@@ -17,6 +17,12 @@ class AreaRankingRowSchema(BaseModel):
     closureRate: float | None
 
 
+class ServiceOptionSchema(BaseModel):
+    code: str
+    name: str
+
+
 class AreaRankingResponse(BaseModel):
     yearQuarter: int | None
     rows: list[AreaRankingRowSchema]
+    services: list[ServiceOptionSchema]

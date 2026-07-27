@@ -348,6 +348,16 @@ export type AreaDetail = {
     departmentStores: number;
     hospitals: number;
   } | null;
+  // 상권 안 업종 랭킹 — "이 자리에서 뭐가 되나"
+  serviceRanking: {
+    code: string;
+    name: string;
+    monthlySales: number;
+    storeCount: number | null;
+    salesPerStore: number | null;
+    salesQoq: number | null;
+    closureRate: number | null;
+  }[];
   insights: Insight[];
 };
 
@@ -427,4 +437,6 @@ export type AreaRankingRow = {
 export type AreaRanking = {
   yearQuarter: number | null;
   rows: AreaRankingRow[];
+  // 이 엔드포인트 자신의 필터 어휘(최신 분기에 실적 있는 업종)
+  services: { code: string; name: string }[];
 };

@@ -23,7 +23,7 @@ def _sales_mix():
 class _StubRepo:
     def __init__(self, header=None, service=None, sales_mix=None,
                  resident=None, working=None, apartment=None, spending=None,
-                 floating=None, facility=None):
+                 floating=None, facility=None, service_ranking=None):
         self.header = header
         self.service = service
         self.sales_mix = sales_mix
@@ -33,6 +33,7 @@ class _StubRepo:
         self.spending = spending
         self.floating = floating
         self.facility = facility
+        self.service_ranking = service_ranking or []
         self.requested_service: tuple | None = None
         self.sales_mix_called_with: tuple | None = None
 
@@ -61,6 +62,9 @@ class _StubRepo:
 
     async def find_facility(self, trdar_code):
         return self.facility
+
+    async def find_service_ranking(self, trdar_code, limit=12):
+        return self.service_ranking
 
     async def find_spending(self, trdar_code):
         return self.spending
@@ -155,3 +159,30 @@ async def test_통행과_집객시설이_없으면_None으로_실린다():  # �
         AreaDetailQuery(trdar_code=1000123)
     )
     assert view.floating is None and view.facility is None
+
+
+async def test_업종_랭킹이_뷰에_실린다():
+    """estimated_sales가 상권×업종인데 최대 매출 1개만 쓰고 나머지를 버렸다."""
+    from market.domain.value_objects.area_profile_vo import ServiceRank
+
+    ranking = [
+        ServiceRank(code="CS100010", name="커피-음료", monthly_sales=2_059_375_263,
+                    store_count=46, sales_per_store=44_769_027, sales_qoq=3.9, closure_rate=2.1),
+        ServiceRank(code="CS100008", name="분식전문점", monthly_sales=213_613_495,
+                    store_count=3, sales_per_store=71_204_498, sales_qoq=21.5, closure_rate=0.0),
+    ]
+    view = await AreaDetailInteractor(
+        detail=_StubRepo(header=_HEADER, service_ranking=ranking)
+    ).get_detail(AreaDetailQuery(trdar_code=1000123))
+
+    assert [r.name for r in view.service_ranking] == ["커피-음료", "분식전문점"]
+    # 매출 1위와 점포당 매출 1위는 다를 수 있다 — 이 차이가 이 축의 존재 이유다
+    assert view.service_ranking[0].monthly_sales > view.service_ranking[1].monthly_sales
+    assert view.service_ranking[0].sales_per_store < view.service_ranking[1].sales_per_store
+
+
+async def test_업종_실적이_없으면_빈_랭킹():  # 열화
+    view = await AreaDetailInteractor(detail=_StubRepo(header=_HEADER)).get_detail(
+        AreaDetailQuery(trdar_code=1000123)
+    )
+    assert view.service_ranking == []
