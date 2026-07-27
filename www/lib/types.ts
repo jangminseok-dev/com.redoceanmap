@@ -379,3 +379,26 @@ export type MarketArea = {
   area_size: number;
   region: string;
 };
+
+// ── GET /market/areas/ranking ──
+
+export type AreaRankingRow = {
+  trdarCode: number;
+  trdarName: string;
+  districtName: string;
+  dongName: string;
+  divisionCode: string;
+  divisionName: string;
+  lat: number;
+  lng: number;
+  monthlySales: number | null;
+  storeCount: number | null;
+  salesPerStore: number | null;
+  salesQoq: number | null;
+  closureRate: number | null;
+};
+
+export type AreaRanking = {
+  yearQuarter: number | null;
+  rows: AreaRankingRow[];
+};

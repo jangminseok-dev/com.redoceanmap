@@ -21,7 +21,13 @@ type NavItem = {
 const navItems: NavItem[] = [
   { icon: Plus, label: "새로 물어보기", href: "/" },
   { icon: MessageSquare, label: "지난 대화", href: "/history", key: "history" },
-  { icon: MapPin, label: "상권 분석", href: "/market", key: "market" },
+  {
+    icon: MapPin,
+    label: "상권 분석",
+    href: "/market",
+    key: "market",
+    children: [{ label: "상권 둘러보기", href: "/areas" }],
+  },
   { icon: CandlestickChart, label: "주식 분석", href: "/stock", key: "stock" },
   {
     icon: ScanEye,

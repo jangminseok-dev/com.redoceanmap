@@ -1,5 +1,6 @@
 import type {
   AreaDetail,
+  AreaRanking,
   AreaScoreDetail,
   AreaStatsDetail,
   ConversationMessage,
@@ -98,3 +99,18 @@ export const fetchConversationMessages = (id: number): Promise<ConversationMessa
 
 export const fetchRecommendations = (limit = 8): Promise<RecommendationItem[]> =>
   getJson(`/recommendations?limit=${limit}`);
+
+// 상권 디렉터리 — 1,650행을 한 번에 받고 정렬·검색은 클라이언트가 한다
+// (admin/areas 선례. 왕복보다 useMemo 필터가 빠르다).
+export const fetchAreaRanking = (params: {
+  gu?: string;
+  division?: string;
+  serviceCode?: string;
+}): Promise<AreaRanking> => {
+  const qs = new URLSearchParams();
+  if (params.gu) qs.set("gu", params.gu);
+  if (params.division) qs.set("division", params.division);
+  if (params.serviceCode) qs.set("service_code", params.serviceCode);
+  const suffix = qs.toString() ? `?${qs}` : "";
+  return getJson<AreaRanking>(`/market/areas/ranking${suffix}`);
+};

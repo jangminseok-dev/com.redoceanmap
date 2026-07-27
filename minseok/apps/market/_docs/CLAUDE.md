@@ -56,6 +56,7 @@ market의 모든 테이블(3NF 14 + market_news_articles + area_score_backtest_r
 |------|------|
 | chat(허브 포트) | `adapter/outbound/gateways/commercial_data_gateway.py` — `CommercialDataPort` 구현. 정규화 조인으로 원시 DTO 반환. → hub CLAUDE |
 | 프론트 `/market/areas` | `area` 조회 슬라이스 — `trade_area` + region 조인으로 `Area` 엔티티 반환 |
+| 프론트 `/market/areas/ranking` | `area_ranking` 조회 슬라이스 — **상권 디렉터리**(전 상권 최신 분기 매출·점포·점포당매출·QoQ·폐업률). 필터는 자치구·상권구분(`trade_area_division`)·업종. 상권당 쿼리가 아니라 GROUP BY 3개로 1,650행을 0.1초에 낸다(상권 1곳씩 `area_score`를 부르면 1만 쿼리). **정렬·검색은 하지 않는다** — 지표를 다 실어 보내고 프론트가 `useMemo`로 좁힌다(`admin/areas` 선례). 조건에 맞는 상권이 없어도 404가 아니라 빈 목록 |
 | 프론트 `/market/trdar/{code}/stats` | `area_stats` 조회 슬라이스 — 상권 1곳의 분기 시계열(매출·점포·유동인구 병합) + 최신 분해축(연령/시간대) + 변화지표·시도 벤치마크. `service_code` 생략 시 최신 분기 매출 최대 업종 자동 선택 |
 | 프론트 `/market/trdar/{code}/score` | `area_score` 조회 슬라이스 — 분기 추이(전 업종 합계 매출·유동인구 QoQ) + 시도 벤치마크 대비 종합점수. 계산은 순수 도메인 서비스 `domain/services/area_scorer.py`(4개 컴포넌트 0~100, 50=벤치마크 동률, 가용 평균) |
 | 프론트 `/market/trdar/{code}/detail` | `area_detail` 조회 슬라이스 — 팩트별 최신 분기 구조 분해(요일·시간대·성별·연령대 매출, 상주·직장인구 피라미드, 가구·아파트, 소비 카테고리) + 규칙 기반 해석 문장. 문장 생성은 순수 도메인 서비스 `domain/services/area_narrator.py`(임계값 기반, LLM 미사용). 지도 오버레이 패널용 + 허브 `get_area_insights`로 chat에도 공급 |
