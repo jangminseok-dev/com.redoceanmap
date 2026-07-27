@@ -227,6 +227,10 @@ export type QuarterStat = {
   closureRate: number | null;
   franchiseCount: number | null;
   totalFloatingPop: number | null;
+  // 율(%)만으론 소규모 상권에서 오독한다("3개 중 1개 폐업 = 33%")
+  similarIndustryCount: number | null;
+  openingCount: number | null;
+  closureCount: number | null;
 };
 
 export type AreaStatsDetail = {
@@ -248,6 +252,8 @@ export type AreaStatsDetail = {
     changeIndicator: string | null;
     operatingMonthsAvg: number | null;
     regionOperatingMonthsAvg: number | null;
+    closureMonthsAvg: number | null;
+    regionClosureMonthsAvg: number | null;
   };
 };
 
@@ -304,6 +310,11 @@ export type AreaDetail = {
     byGender: { male: number; female: number };
     byAge: Record<string, number>; // age10..age60Plus
     monthlyCount: number;
+    monthlyAmount: number;
+    // 건수 축 — 금액÷건수로 "언제 누가 얼마씩 쓰는가"(객단가)를 낸다
+    weekdayCount: number;
+    weekendCount: number;
+    countByAge: Record<string, number> | null;
   } | null;
   demand: {
     resident: { yearQuarter: number; total: number; byAge: AgeBandRow[] } | null;
@@ -321,6 +332,18 @@ export type AreaDetail = {
     monthlyAvgIncome: number | null; // 원
     totalExpenditure: number | null; // 원
     byCategory: { key: string; label: string; amount: number }[]; // 금액 내림차순
+  } | null;
+  // 통행 리듬 — 매출 리듬과 같은 축으로 대조하면 구매 전환이 보인다
+  floating: { yearQuarter: number; weekdayPop: number; weekendPop: number } | null;
+  // 집객시설 — "여기 사람이 왜 오는가"
+  facility: {
+    yearQuarter: number;
+    total: number;
+    subwayStations: number;
+    busStops: number;
+    universities: number;
+    departmentStores: number;
+    hospitals: number;
   } | null;
   insights: Insight[];
 };

@@ -12,6 +12,11 @@ class SalesMixSchema(BaseModel):
     byGender: dict[str, int]  # male, female
     byAge: dict[str, int]     # age10..age60Plus
     monthlyCount: int
+    monthlyAmount: int        # 객단가(금액÷건수)의 분모와 짝
+    # 건수 축 — 금액만으론 '많이 오는 층'과 '비싸게 쓰는 층'이 구분되지 않는다
+    weekdayCount: int
+    weekendCount: int
+    countByAge: dict[str, int] | None
 
 
 class AgeBandSchema(BaseModel):
@@ -58,6 +63,26 @@ class SpendingSchema(BaseModel):
     byCategory: list[SpendingCategorySchema]  # 금액 내림차순
 
 
+class FloatingRhythmSchema(BaseModel):
+    """통행 리듬 — 매출 리듬과 같은 축으로 대조해 구매 전환을 본다."""
+
+    yearQuarter: int
+    weekdayPop: int
+    weekendPop: int
+
+
+class FacilitySchema(BaseModel):
+    """집객시설 — '여기 사람이 왜 오는가'(외부 유입 앵커)."""
+
+    yearQuarter: int
+    total: int
+    subwayStations: int
+    busStops: int
+    universities: int
+    departmentStores: int
+    hospitals: int
+
+
 class InsightSchema(BaseModel):
     key: str
     tone: str  # positive | neutral | warning
@@ -73,4 +98,6 @@ class AreaDetailResponse(BaseModel):
     salesMix: SalesMixSchema | None
     demand: DemandSchema | None
     spending: SpendingSchema | None
+    floating: FloatingRhythmSchema | None
+    facility: FacilitySchema | None
     insights: list[InsightSchema]

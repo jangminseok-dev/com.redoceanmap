@@ -89,7 +89,7 @@ export default function AreaDetailOverlay({
             )}
             {data.salesMix && (
               <Section icon={CalendarClock} title="매출 리듬">
-                <SalesRhythmSection salesMix={data.salesMix} />
+                <SalesRhythmSection salesMix={data.salesMix} floating={data.floating} />
               </Section>
             )}
             {data.salesMix && (
@@ -99,7 +99,7 @@ export default function AreaDetailOverlay({
             )}
             {data.demand && (
               <Section icon={Building2} title="배후 수요">
-                <DemandSection demand={data.demand} />
+                <DemandSection demand={data.demand} facility={data.facility} />
               </Section>
             )}
             {data.spending && (

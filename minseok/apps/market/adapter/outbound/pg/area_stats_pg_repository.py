@@ -106,6 +106,9 @@ class AreaStatsPgRepository(AreaStatsRepositoryPort):
                 opening_rate=r.opening_rate,
                 closure_rate=r.closure_rate,
                 franchise_store_count=r.franchise_store_count,
+                similar_industry_store_count=r.similar_industry_store_count,
+                opening_store_count=r.opening_store_count,
+                closure_store_count=r.closure_store_count,
             )
             for r in reversed(rows)
         ]
@@ -165,14 +168,19 @@ class AreaStatsPgRepository(AreaStatsRepositoryPort):
         region_avg = None
         if sido_code:
             region_avg = (await self._session.execute(
-                select(CommercialChangeBenchmarkOrm.operating_months_avg).where(
+                select(
+                    CommercialChangeBenchmarkOrm.operating_months_avg,
+                    CommercialChangeBenchmarkOrm.closure_months_avg,
+                ).where(
                     CommercialChangeBenchmarkOrm.region_code == sido_code,
                     CommercialChangeBenchmarkOrm.year_quarter == cc.year_quarter,
                 )
-            )).scalar()
+            )).first()
 
         return ChangeSummary(
             change_indicator_name=indicator_name,
             operating_months_avg=cc.operating_months_avg,
-            region_operating_months_avg=region_avg,
+            region_operating_months_avg=region_avg[0] if region_avg else None,
+            closure_months_avg=cc.closure_months_avg,
+            region_closure_months_avg=region_avg[1] if region_avg else None,
         )

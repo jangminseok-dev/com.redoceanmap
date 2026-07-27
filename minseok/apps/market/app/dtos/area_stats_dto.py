@@ -39,6 +39,10 @@ class StoreQuarter:
     opening_rate: float
     closure_rate: float
     franchise_store_count: int
+    # 율(%)만 주면 소규모 상권에서 오독한다("3개 중 1개 폐업 = 33%"). 절대 건수를 병기한다.
+    similar_industry_store_count: int | None = None
+    opening_store_count: int | None = None
+    closure_store_count: int | None = None
 
 
 @dataclass(frozen=True)
@@ -64,6 +68,9 @@ class ChangeSummary:
     change_indicator_name: str | None
     operating_months_avg: float | None
     region_operating_months_avg: float | None
+    # 생존 중 점포의 영업개월만으론 "얼마 만에 닫는가"를 알 수 없다.
+    closure_months_avg: float | None = None
+    region_closure_months_avg: float | None = None
 
 
 @dataclass(frozen=True)
@@ -78,6 +85,9 @@ class QuarterStat:
     closure_rate: float | None = None
     franchise_count: int | None = None
     total_floating_pop: int | None = None
+    similar_industry_count: int | None = None  # 경쟁 강도 — 같은 업종 점포 수
+    opening_count: int | None = None
+    closure_count: int | None = None
 
 
 @dataclass(frozen=True)

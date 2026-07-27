@@ -41,9 +41,27 @@ function HeatStrip({ entries, values }: { entries: [string, string][]; values: R
   );
 }
 
-export default function SalesRhythmSection({ salesMix }: { salesMix: NonNullable<AreaDetail["salesMix"]> }) {
+// 객단가 = 금액 ÷ 건수. 건수가 0이면 만들지 않는다.
+function ticket(amount: number, count: number): string | null {
+  if (!count) return null;
+  const per = amount / count;
+  return per >= 10000 ? `${(per / 10000).toFixed(1)}만원` : `${Math.round(per).toLocaleString()}원`;
+}
+
+export default function SalesRhythmSection({
+  salesMix,
+  floating,
+}: {
+  salesMix: NonNullable<AreaDetail["salesMix"]>;
+  floating: AreaDetail["floating"];
+}) {
   const weekTotal = salesMix.weekdayAmount + salesMix.weekendAmount;
   const weekendPct = weekTotal > 0 ? Math.round((salesMix.weekendAmount / weekTotal) * 100) : null;
+  const trafficTotal = floating ? floating.weekdayPop + floating.weekendPop : 0;
+  const trafficWeekendPct =
+    trafficTotal > 0 ? Math.round((floating!.weekendPop / trafficTotal) * 100) : null;
+  const weekdayTicket = ticket(salesMix.weekdayAmount, salesMix.weekdayCount);
+  const weekendTicket = ticket(salesMix.weekendAmount, salesMix.weekendCount);
 
   return (
     <div className="flex flex-col gap-3">
@@ -64,6 +82,23 @@ export default function SalesRhythmSection({ salesMix }: { salesMix: NonNullable
             <div className="bg-brand/80" style={{ width: `${100 - weekendPct}%` }} />
             <div className="bg-brand/40" style={{ width: `${weekendPct}%` }} />
           </div>
+          {/* 통행을 같은 축으로 겹쳐 보여준다 — 두 바의 차이가 곧 '구매 전환' 이야기다 */}
+          {trafficWeekendPct !== null && (
+            <>
+              <p className="text-xs text-foreground-muted mt-2 mb-1">
+                통행 주중 {100 - trafficWeekendPct}% · 주말 {trafficWeekendPct}%
+              </p>
+              <div className="flex h-2 rounded-full overflow-hidden bg-border">
+                <div className="bg-foreground/40" style={{ width: `${100 - trafficWeekendPct}%` }} />
+                <div className="bg-foreground/20" style={{ width: `${trafficWeekendPct}%` }} />
+              </div>
+            </>
+          )}
+          {(weekdayTicket || weekendTicket) && (
+            <p className="text-xs text-foreground-muted mt-2">
+              객단가 — 주중 {weekdayTicket ?? "—"} · 주말 {weekendTicket ?? "—"}
+            </p>
+          )}
         </div>
       )}
     </div>

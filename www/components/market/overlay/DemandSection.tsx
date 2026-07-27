@@ -23,8 +23,24 @@ function StatCard({ label, value }: { label: string; value: string }) {
 }
 
 // 상주(좌, 음수 변환) vs 직장(우) 인구를 연령대 축으로 맞댄 diverging 차트
-export default function DemandSection({ demand }: { demand: NonNullable<AreaDetail["demand"]> }) {
+export default function DemandSection({
+  demand,
+  facility,
+}: {
+  demand: NonNullable<AreaDetail["demand"]>;
+  facility: AreaDetail["facility"];
+}) {
   const { resident, working, households, apartment } = demand;
+  // "여기 사람이 왜 오는가" — 외부 유입 앵커만 추린다(0인 항목은 칩 자체를 만들지 않는다)
+  const anchors: [string, number][] = facility
+    ? ([
+        ["지하철역", facility.subwayStations],
+        ["버스정거장", facility.busStops],
+        ["대학", facility.universities],
+        ["백화점", facility.departmentStores],
+        ["병원", facility.hospitals],
+      ] as [string, number][]).filter(([, n]) => n > 0)
+    : [];
 
   const bands = resident?.byAge.length ? resident.byAge : working?.byAge ?? [];
   const pyramid = bands.map((row) => {
@@ -107,6 +123,21 @@ export default function DemandSection({ demand }: { demand: NonNullable<AreaDeta
           <StatCard label="평균 매매가" value={formatMoney(apartment.avgPrice)} />
         )}
       </div>
+      {anchors.length > 0 && (
+        <div>
+          <p className="text-xs text-foreground-muted mb-1.5">외부 유입 앵커</p>
+          <div className="flex flex-wrap gap-1.5">
+            {anchors.map(([label, n]) => (
+              <span
+                key={label}
+                className="text-[11px] px-2 py-1 rounded-full bg-brand/10 text-brand font-medium"
+              >
+                {label} {n}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

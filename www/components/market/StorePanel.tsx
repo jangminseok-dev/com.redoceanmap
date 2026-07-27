@@ -3,6 +3,12 @@
 import type { AreaStatsDetail, QuarterStat } from "@/lib/types";
 
 // series 마지막 분기(최신) 점포 팩트 + 변화지표 요약
+// 율(%)과 절대 건수를 함께 — 어느 한쪽만으론 규모를 오독한다.
+function rateWithCount(rate: number | null, count: number | null): string {
+  if (rate === null) return "—";
+  return count !== null ? `${rate}% (${count}개)` : `${rate}%`;
+}
+
 export default function StorePanel({
   series,
   latest,
@@ -15,9 +21,12 @@ export default function StorePanel({
   const stats: [string, string][] = recent
     ? [
         ["영업 점포", `${recent.storeCount}개`],
+        // 같은 업종 경쟁 강도 — 창업 판단에 직결된다
+        ["동일 업종", recent.similarIndustryCount !== null ? `${recent.similarIndustryCount}개` : "—"],
         ["프랜차이즈", recent.franchiseCount !== null ? `${recent.franchiseCount}개` : "—"],
-        ["개업률", recent.openingRate !== null ? `${recent.openingRate}%` : "—"],
-        ["폐업률", recent.closureRate !== null ? `${recent.closureRate}%` : "—"],
+        // 율만 보여주면 소규모 상권에서 오독한다("3개 중 1개 = 33%") — 건수를 병기한다
+        ["개업률", rateWithCount(recent.openingRate, recent.openingCount)],
+        ["폐업률", rateWithCount(recent.closureRate, recent.closureCount)],
       ]
     : [];
 
@@ -54,6 +63,15 @@ export default function StorePanel({
                   {" "}
                   · 시도 평균 {Math.round(latest.regionOperatingMonthsAvg)}개월
                 </span>
+              )}
+            </p>
+          )}
+          {/* 생존 중 점포의 영업개월만으론 "얼마 만에 닫는가"를 알 수 없다 */}
+          {latest.closureMonthsAvg !== null && (
+            <p className="text-xs text-foreground-muted mt-0.5">
+              폐업 점포는 평균 {Math.round(latest.closureMonthsAvg)}개월 만에 닫음
+              {latest.regionClosureMonthsAvg !== null && (
+                <> · 시도 평균 {Math.round(latest.regionClosureMonthsAvg)}개월</>
               )}
             </p>
           )}

@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 from market.domain.value_objects.area_profile_vo import (
     ApartmentProfile,
+    FacilityProfile,
+    FloatingRhythm,
     ResidentProfile,
     SalesMix,
     SpendingProfile,
@@ -33,4 +35,7 @@ class AreaDetailView:
     working: WorkingProfile | None
     apartment: ApartmentProfile | None
     spending: SpendingProfile | None
+    # 리포지토리가 조회해 서술자에 넘기던 값 — 뷰에 싣지 않아 화면이 차트로 못 그렸다.
+    floating: FloatingRhythm | None
+    facility: FacilityProfile | None
     insights: list[Insight]

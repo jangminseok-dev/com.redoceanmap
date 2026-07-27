@@ -52,12 +52,31 @@ export default function AreaScoreCard({ trdarCode }: { trdarCode: string }) {
   );
 }
 
+// 성장 축은 %(증감률), 건강도·지속성은 각각 %p·개월 — 단위가 달라 컴포넌트별로 붙인다.
+const UNIT: Record<ScoreComponent["key"], string> = {
+  sales_growth: "%",
+  floating_growth: "%",
+  store_health: "%p",
+  persistence: "개월",
+};
+
 function ComponentBar({ component: c }: { component: ScoreComponent }) {
+  const unit = UNIT[c.key] ?? "";
+  const signed = (v: number) =>
+    c.key.endsWith("_growth") || c.key === "store_health"
+      ? `${v > 0 ? "+" : ""}${v.toFixed(1)}${unit}`
+      : `${v.toFixed(1)}${unit}`;
   return (
     <div>
       <div className="flex items-center justify-between text-[11px]">
         <span className="text-foreground-muted">{c.name}</span>
-        <span className="font-semibold">{c.score}</span>
+        {/* 점수만 보여주면 근거가 사라진다 — 응답에 실려 오던 실수치를 되돌려 준다 */}
+        <span className="flex items-baseline gap-1.5">
+          <span className="text-foreground-muted tabular-nums">
+            {signed(c.value)} <span className="opacity-60">vs 서울 {signed(c.benchmark)}</span>
+          </span>
+          <span className="font-semibold tabular-nums">{c.score}</span>
+        </span>
       </div>
       <div className="relative mt-1 h-1.5 rounded-full bg-border/60 overflow-hidden">
         <div

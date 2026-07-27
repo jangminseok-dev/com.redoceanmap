@@ -131,3 +131,27 @@ async def test_전_팩트_결측이면_빈_insights로_뷰만_반환한다():
     )
     assert view.insights == []
     assert view.sales_mix is None and view.resident is None
+
+
+async def test_통행과_집객시설이_뷰에_실린다():
+    """조회해 놓고 서술자에만 넘기고 버리면 화면이 차트로 그릴 수 없다(2026-07-27 회귀)."""
+    from market.domain.value_objects.area_profile_vo import FacilityProfile, FloatingRhythm
+
+    floating = FloatingRhythm(year_quarter=20254, weekday_pop=6579356, weekend_pop=1826143)
+    facility = FacilityProfile(
+        year_quarter=20261, total=246, subway_stations=3, bus_stops=28,
+        universities=0, department_stores=0, hospitals=0,
+    )
+    view = await AreaDetailInteractor(
+        detail=_StubRepo(header=_HEADER, floating=floating, facility=facility)
+    ).get_detail(AreaDetailQuery(trdar_code=1000123))
+
+    assert view.floating is floating
+    assert view.facility is facility
+
+
+async def test_통행과_집객시설이_없으면_None으로_실린다():  # 열화
+    view = await AreaDetailInteractor(detail=_StubRepo(header=_HEADER)).get_detail(
+        AreaDetailQuery(trdar_code=1000123)
+    )
+    assert view.floating is None and view.facility is None

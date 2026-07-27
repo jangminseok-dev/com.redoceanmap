@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from market.adapter.inbound.api.schemas.area_detail_schema import (
+    FacilitySchema,
+    FloatingRhythmSchema,
     AgeBandSchema,
     ApartmentSchema,
     AreaDetailResponse,
@@ -45,6 +47,10 @@ async def get_area_detail(
             byGender=view.sales_mix.by_gender,
             byAge=view.sales_mix.by_age,
             monthlyCount=view.sales_mix.monthly_count,
+            monthlyAmount=view.sales_mix.monthly_amount,
+            weekdayCount=view.sales_mix.weekday_count,
+            weekendCount=view.sales_mix.weekend_count,
+            countByAge=view.sales_mix.count_by_age,
         ) if view.sales_mix else None,
         demand=_demand_schema(view),
         spending=SpendingSchema(
@@ -56,6 +62,20 @@ async def get_area_detail(
                 for c in view.spending.by_category
             ],
         ) if view.spending else None,
+        floating=FloatingRhythmSchema(
+            yearQuarter=view.floating.year_quarter,
+            weekdayPop=view.floating.weekday_pop,
+            weekendPop=view.floating.weekend_pop,
+        ) if view.floating else None,
+        facility=FacilitySchema(
+            yearQuarter=view.facility.year_quarter,
+            total=view.facility.total,
+            subwayStations=view.facility.subway_stations,
+            busStops=view.facility.bus_stops,
+            universities=view.facility.universities,
+            departmentStores=view.facility.department_stores,
+            hospitals=view.facility.hospitals,
+        ) if view.facility else None,
         insights=[
             InsightSchema(key=i.key, tone=i.tone, text=i.text) for i in view.insights
         ],

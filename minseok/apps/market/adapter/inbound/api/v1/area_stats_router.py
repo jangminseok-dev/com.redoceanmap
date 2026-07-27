@@ -42,6 +42,9 @@ async def get_area_stats(
                 openingRate=q.opening_rate,
                 closureRate=q.closure_rate,
                 franchiseCount=q.franchise_count,
+                similarIndustryCount=q.similar_industry_count,
+                openingCount=q.opening_count,
+                closureCount=q.closure_count,
                 totalFloatingPop=q.total_floating_pop,
             )
             for q in view.series
@@ -59,6 +62,10 @@ async def get_area_stats(
             operatingMonthsAvg=view.change.operating_months_avg if view.change else None,
             regionOperatingMonthsAvg=(
                 view.change.region_operating_months_avg if view.change else None
+            ),
+            closureMonthsAvg=view.change.closure_months_avg if view.change else None,
+            regionClosureMonthsAvg=(
+                view.change.region_closure_months_avg if view.change else None
             ),
         ),
     )

@@ -11,6 +11,9 @@ class QuarterStatSchema(BaseModel):
     openingRate: float | None
     closureRate: float | None
     franchiseCount: int | None
+    similarIndustryCount: int | None
+    openingCount: int | None
+    closureCount: int | None
     totalFloatingPop: int | None
 
 
@@ -38,6 +41,8 @@ class AreaStatsLatestSchema(BaseModel):
     changeIndicator: str | None
     operatingMonthsAvg: float | None
     regionOperatingMonthsAvg: float | None
+    closureMonthsAvg: float | None
+    regionClosureMonthsAvg: float | None
 
 
 class AreaStatsResponse(BaseModel):

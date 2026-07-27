@@ -48,6 +48,9 @@ class AreaStatsInteractor(AreaStatsUseCase):
                 opening_rate=st.opening_rate if st else None,
                 closure_rate=st.closure_rate if st else None,
                 franchise_count=st.franchise_store_count if st else None,
+                similar_industry_count=st.similar_industry_store_count if st else None,
+                opening_count=st.opening_store_count if st else None,
+                closure_count=st.closure_store_count if st else None,
                 total_floating_pop=fp.total if fp else None,
             ))
 
