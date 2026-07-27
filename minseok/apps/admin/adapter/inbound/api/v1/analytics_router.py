@@ -6,6 +6,8 @@ from admin.adapter.inbound.api.schemas.analytics_schema import (
     ForecastReportSchema,
     MarketBacktestReportSchema,
     MarketBacktestResponseSchema,
+    NewsEventStudyReportSchema,
+    NewsEventStudyResponseSchema,
 )
 from admin.app.ports.input.analytics_use_case import AnalyticsUseCase
 from admin.dependencies.analytics_provider import get_analytics_use_case
@@ -41,5 +43,23 @@ async def market_backtest_report(
     result = await use_case.market_backtest_report()
     return MarketBacktestResponseSchema(
         report=MarketBacktestReportSchema(**asdict(result.report))
+        if result.report is not None else None
+    )
+
+
+@analytics_router.get(
+    "/news-event-study",
+    response_model=NewsEventStudyResponseSchema,
+    dependencies=[Depends(require_permission("analytics:read"))],
+    summary="뉴스 이벤트 사후 수익률 — 최신 연구 리포트(어드민 전용)",
+)
+async def news_event_study_report(
+    use_case: AnalyticsUseCase = Depends(get_analytics_use_case),
+) -> NewsEventStudyResponseSchema:
+    # 사용자 화면에 올리지 않는다 — "이 라벨러가 쓸모 있는가"에 대한 연구 결과이지
+    # 투자 정보가 아니다(/admin/market-backtest와 같은 성격).
+    result = await use_case.news_event_study()
+    return NewsEventStudyResponseSchema(
+        report=NewsEventStudyReportSchema(**asdict(result.report))
         if result.report is not None else None
     )

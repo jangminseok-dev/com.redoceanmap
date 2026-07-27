@@ -267,6 +267,31 @@ export const fetchAdminForecasts = (
   return request(`/admin/forecasts?${params}`);
 };
 
+export type AdminEventBucket = {
+  key: string;
+  n: number;
+  avg_return_pct: number;
+  excess_pct: number; // 기준선 대비 — 절대값이 아니라 이 값으로 읽는다
+  positive_rate: number;
+  reliable: boolean;
+};
+
+export type AdminNewsEventStudyReport = {
+  ran_at: string;
+  params: Record<string, unknown>;
+  horizon_days: number;
+  total: number;
+  baseline_pct: number;
+  top_week_share: number;
+  warnings: string[];
+  by_event: AdminEventBucket[];
+  by_sentiment: AdminEventBucket[];
+};
+
+export const fetchAdminNewsEventStudy = (): Promise<{
+  report: AdminNewsEventStudyReport | null;
+}> => request("/admin/news-event-study");
+
 export const fetchAdminMarketBacktest = (): Promise<{
   report: AdminMarketBacktestReport | null;
 }> => request("/admin/market-backtest");

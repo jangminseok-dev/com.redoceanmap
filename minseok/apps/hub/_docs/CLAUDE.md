@@ -307,6 +307,21 @@ stock(구현·영속: `forecast_snapshots` 테이블, (ticker, horizon_days, as_
 recent_limit)`(적중률 요약+신호별 일치율+최근 목록 — admin analytics가 소비,
 PriceBarStoragePort.coverage()를 admin이 같이 소비하는 선례와 동일).
 
+## 소유 계약 — NewsEventStudyPort
+
+뉴스 이벤트 사후 수익률 연구 리포트 조회 협력(조회 전용 — 쓰기는 `scripts/study_news_events.py`가
+DB 직접, `AreaBacktestReportPort`와 같은 선례). admin(소비)과 stock(구현·영속:
+`news_event_study_reports`, 실행당 1행 payload JSONB)을 잇는다. `latest()`가 최신 1건(없으면 None).
+
+이 문서가 오래 *"라벨은 피처, 정답은 실현 수익률(price_bars 조인)"*이라 선언해두고 구현이
+없었다 — 2026-07-27에 처음 구현됐다. 집계 스키마의 단일 정의처는
+`stock/domain/services/event_study.py`.
+
+**`excess_pct`가 본체다.** 절대 수익률은 표본 기간의 시장 방향을 그대로 반영한다 — 실측에서
+7개 이벤트 유형이 전부 음수로 나오는데 이는 이벤트 효과가 아니다. 기준선(전체 평균)을 뺀
+초과분으로 읽어야 한다. 리포트는 표본 집중도(`top_week_share`)와 경고도 함께 낸다.
+**사용자 화면에 노출하지 않는다** — 어드민 전용(투자 정보가 아니라 라벨러 평가 연구).
+
 ## 소유 계약 — AreaBacktestReportPort
 
 상권 점수 백테스트 리포트 조회 협력(조회 전용 — 쓰기는 `scripts/backtest_area_score.py`가

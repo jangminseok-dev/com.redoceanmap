@@ -13,6 +13,7 @@ import {
   Database,
   Target,
   FlaskConical,
+  Newspaper,
   ScrollText,
   Search,
   Bell,
@@ -28,6 +29,7 @@ const nav = [
   { icon: Database, label: "데이터 소스", href: "/admin/data-sources" },
   { icon: Target, label: "예측 채점", href: "/admin/forecasts" },
   { icon: FlaskConical, label: "상권 검증", href: "/admin/market-backtest" },
+  { icon: Newspaper, label: "뉴스 이벤트 연구", href: "/admin/news-events" },
   { icon: ScrollText, label: "감사 로그", href: "/admin/audit" },
 ];
 

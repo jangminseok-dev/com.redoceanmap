@@ -43,7 +43,7 @@
 | recommendation_log | GET /admin/recommendations | RecommendationDirectoryPort |
 | data_source | GET /admin/data-sources | CommercialData (get_dataset_stats) + RecommendationDirectory + **StockDatasetStats** (get_dataset_stats) — 상권 5 + 추천 + 주식 5 = 11장. 각 카드에 순수 도메인 `dataset_freshness.evaluate`로 신선도(정상/지연/정지/불명/정적) 판정을 붙인다 |
 | audit | GET /admin/audit | 자체 AuditLogPort (member 슬라이스가 write, audit 슬라이스가 열람) |
-| analytics | GET /admin/forecasts · GET /admin/market-backtest — 예측 스냅샷 채점 현황(적중률·신호별 일치율·최근 목록) + 상권 점수 백테스트 최신 리포트. 권한 analytics:read 공용 | ForecastSnapshotPort (accuracy_report) + AreaBacktestReportPort (latest) |
+| analytics | GET /admin/forecasts · GET /admin/market-backtest · GET /admin/news-event-study — 예측 스냅샷 채점 현황(적중률·신호별 일치율·최근 목록) + 상권 점수 백테스트 최신 리포트. 권한 analytics:read 공용 | ForecastSnapshotPort (accuracy_report) + AreaBacktestReportPort (latest) + NewsEventStudyPort (latest) |
 
 인터랙터는 허브 포트를 생성자 주입받고, 프로바이더는 허브 스텁 프로바이더를 `Depends`로 받는다
 (합성 루트 main.py의 `dependency_overrides`가 스포크 게이트웨이로 치환 — 계약 상세는 hub CLAUDE).

@@ -96,3 +96,28 @@ class MarketBacktestReportSchema(BaseModel):
 
 class MarketBacktestResponseSchema(BaseModel):
     report: MarketBacktestReportSchema | None
+
+
+class EventBucketRowSchema(BaseModel):
+    key: str
+    n: int
+    avg_return_pct: float
+    excess_pct: float   # 기준선 대비 — 절대값이 아니라 이 값으로 읽는다
+    positive_rate: float
+    reliable: bool
+
+
+class NewsEventStudyReportSchema(BaseModel):
+    ran_at: datetime
+    params: dict
+    horizon_days: int
+    total: int
+    baseline_pct: float
+    top_week_share: float
+    warnings: list[str]
+    by_event: list[EventBucketRowSchema]
+    by_sentiment: list[EventBucketRowSchema]
+
+
+class NewsEventStudyResponseSchema(BaseModel):
+    report: NewsEventStudyReportSchema | None

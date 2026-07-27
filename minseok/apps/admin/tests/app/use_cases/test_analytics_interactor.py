@@ -28,6 +28,14 @@ class _StubForecastPort:
         return _report()
 
 
+class _StubEventStudyPort:
+    def __init__(self, report=None):
+        self.report = report
+
+    async def latest(self):
+        return self.report
+
+
 class _StubBacktestPort:
     def __init__(self, info=None):
         self.info = info
@@ -38,7 +46,11 @@ class _StubBacktestPort:
 
 async def test_forecast_report_delegates_with_args():
     port = _StubForecastPort()
-    interactor = AnalyticsInteractor(forecasts=port, area_backtests=_StubBacktestPort())
+    interactor = AnalyticsInteractor(
+        forecasts=port,
+        area_backtests=_StubBacktestPort(),
+        news_events=_StubEventStudyPort(),
+    )
     result = await interactor.forecast_report(horizon=5, limit=30)
     assert port.args == (5, 30)
     assert result.report.kpi.total == 10
@@ -46,7 +58,9 @@ async def test_forecast_report_delegates_with_args():
 
 async def test_market_backtest_none_when_no_run():
     interactor = AnalyticsInteractor(
-        forecasts=_StubForecastPort(), area_backtests=_StubBacktestPort(info=None)
+        forecasts=_StubForecastPort(),
+        area_backtests=_StubBacktestPort(info=None),
+        news_events=_StubEventStudyPort(),
     )
     result = await interactor.market_backtest_report()
     assert result.report is None
@@ -59,7 +73,26 @@ async def test_market_backtest_passthrough():
         grade_outcomes=[], component_predictiveness=[],
     )
     interactor = AnalyticsInteractor(
-        forecasts=_StubForecastPort(), area_backtests=_StubBacktestPort(info=info)
+        forecasts=_StubForecastPort(),
+        area_backtests=_StubBacktestPort(info=info),
+        news_events=_StubEventStudyPort(),
     )
     result = await interactor.market_backtest_report()
     assert result.report is info
+
+
+async def test_뉴스_이벤트_연구_실행_이력이_없으면_None():
+    interactor = AnalyticsInteractor(
+        forecasts=_StubForecastPort(), area_backtests=_StubBacktestPort(),
+        news_events=_StubEventStudyPort(report=None),
+    )
+    assert (await interactor.news_event_study()).report is None
+
+
+async def test_뉴스_이벤트_연구_리포트를_그대로_전달한다():
+    sentinel = object()
+    interactor = AnalyticsInteractor(
+        forecasts=_StubForecastPort(), area_backtests=_StubBacktestPort(),
+        news_events=_StubEventStudyPort(report=sentinel),
+    )
+    assert (await interactor.news_event_study()).report is sentinel

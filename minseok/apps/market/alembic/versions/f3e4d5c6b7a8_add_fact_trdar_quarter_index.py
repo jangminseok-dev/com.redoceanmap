@@ -8,7 +8,7 @@
 2021~2024 백필로 팩트당 분기가 1~4개에서 20~28개로 늘면서 이 패턴의 비용이 분기 수에
 비례해 커졌다. 상권당 행수도 함께 늘어(store는 상권당 평균 927행) 지금 갚아둔다.
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: f3e4d5c6b7a8
 Revises: 9a1b2c3d4e5f
 """
 from collections.abc import Sequence
@@ -16,7 +16,7 @@ from typing import Union
 
 from alembic import op
 
-revision: str = "a1b2c3d4e5f6"
+revision: str = "f3e4d5c6b7a8"
 down_revision: Union[str, Sequence[str], None] = "9a1b2c3d4e5f"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

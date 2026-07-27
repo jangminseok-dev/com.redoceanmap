@@ -74,6 +74,7 @@ from hub.dependencies.stock_forecast_provider import get_stock_forecast_port
 from hub.dependencies.fundamental_read_provider import get_fundamental_read_port
 from hub.dependencies.stock_demand_provider import get_stock_demand_port
 from hub.dependencies.stock_dataset_stats_provider import get_stock_dataset_stats_port
+from hub.dependencies.news_event_study_provider import get_news_event_study_port
 from market.dependencies.area_backtest_report_provider import get_area_backtest_report_gateway
 from market.dependencies.commercial_data_provider import get_commercial_data_gateway
 from market.dependencies.market_news_provider import (
@@ -99,6 +100,7 @@ from stock.dependencies.news_provider import get_news_search_gateway, get_news_s
 from stock.dependencies.price_bar_provider import get_price_bar_storage_gateway
 from stock.dependencies.stock_demand_provider import get_stock_demand_gateway
 from stock.dependencies.stock_dataset_stats_provider import get_stock_dataset_stats_gateway
+from stock.dependencies.news_event_study_provider import get_news_event_study_gateway
 from stock.dependencies.stock_forecast_provider import get_stock_forecast_gateway
 from stock.dependencies.stock_history_provider import get_fundamental_read_gateway
 from stock.dependencies.stock_provider import (
@@ -222,6 +224,7 @@ app.dependency_overrides[get_stock_demand_port] = get_stock_demand_gateway
 app.dependency_overrides[get_stock_dataset_stats_port] = get_stock_dataset_stats_gateway
 app.dependency_overrides[get_forecast_snapshot_port] = get_forecast_snapshot_gateway
 app.dependency_overrides[get_area_backtest_report_port] = get_area_backtest_report_gateway
+app.dependency_overrides[get_news_event_study_port] = get_news_event_study_gateway
 
 
 # API 문서 — 루트 접속 시 바로 브라우저 로그인창(HTTP Basic)이 뜨는 /docs로 보낸다.

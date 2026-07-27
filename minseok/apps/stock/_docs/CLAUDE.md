@@ -55,6 +55,12 @@
   뉴스·라벨·펀더멘털·예측 스냅샷·주가 봉 5테이블의 행수와 **최신 적재 시각(`created_at`)**을
   집계해 admin 데이터소스 화면(수집 신선도 배지)에 제공한다. 도메인 시각(`ts`·`as_of`·
   `published_at`)이 아니라 적재 시각인 것이 핵심 — 수집이 멈춘 것을 감지하는 용도다.
+- **뉴스 이벤트 연구(2026-07-27)**: `domain/services/event_study.py`(순수) +
+  `scripts/study_news_events.py`(수동 배치) → `news_event_study_reports`(실행당 1행 payload).
+  허브 `NewsEventStudyPort`를 `NewsEventStudyGateway`가 구현, admin `/admin/news-event-study`가
+  소비. hub 문서가 선언만 하고 비어 있던 `news_labels × price_bars` 조인이다.
+  **기준선 대비로 읽는다** — 절대 수익률은 표본 기간 시장 방향을 반영해 전 유형이 음수로
+  나온다. 표본 집중도 경고를 함께 내고 **사용자 화면에는 올리지 않는다**(뉴스 3개월 축적 후 재평가).
 - **백테스트**: `Backtester`(순수 도메인) + `scripts/backtest_stock.py`. 워크포워드로 t까지의
   데이터만 써서 t+horizon 종가와 비교, 항상-UP 기준선과 대조한다. 과거 뉴스는 수집 불가라
   감성 중립(0.0) 고정 — 지표 신호만 채점.

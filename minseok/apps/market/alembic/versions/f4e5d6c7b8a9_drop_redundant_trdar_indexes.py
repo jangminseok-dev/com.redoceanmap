@@ -7,16 +7,16 @@
 `ix_<fact>_year_quarter`는 유지한다 — `area_ranking`의 `WHERE year_quarter = ?`와
 시도 벤치마크 캐시의 `max(year_quarter)` index-only scan이 이걸 쓴다.
 
-Revision ID: b2c3d4e5f6a7
-Revises: a1b2c3d4e5f6
+Revision ID: f4e5d6c7b8a9
+Revises: f3e4d5c6b7a8
 """
 from collections.abc import Sequence
 from typing import Union
 
 from alembic import op
 
-revision: str = "b2c3d4e5f6a7"
-down_revision: Union[str, Sequence[str], None] = "a1b2c3d4e5f6"
+revision: str = "f4e5d6c7b8a9"
+down_revision: Union[str, Sequence[str], None] = "f3e4d5c6b7a8"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

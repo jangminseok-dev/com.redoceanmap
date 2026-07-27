@@ -11,20 +11,26 @@ hub CLAUDE가 "라벨은 학습 피처, 정답은 실현 수익률(price_bars �
 그대로 반영한다 — 기준선 대비(excess)로 읽어야 하고, 표본이 특정 주에 몰려 있으면
 관측 수가 커도 독립 관측이 아니다. 리포트가 그 경고를 함께 낸다.
 
-    python scripts/study_news_events.py                # 5일 지평
+    python scripts/study_news_events.py                # 5일 지평, 리포트 저장
     python scripts/study_news_events.py --horizon 1
+    python scripts/study_news_events.py --dry-run     # 출력만, 저장 생략
 """
 
 import argparse
 import sys
 from pathlib import Path
 
-from sqlalchemy import create_engine, text
+from dataclasses import asdict
+
+from sqlalchemy import create_engine, insert, text
 
 ROOT = Path(__file__).resolve().parents[1]  # minseok
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "apps"))
 from core.key.secret_manager import get_secret_manager  # noqa: E402
+from stock.adapter.outbound.orm.news_event_study_report_orm import (  # noqa: E402
+    NewsEventStudyReportOrm,
+)
 from stock.domain.services.event_study import EventSample, aggregate  # noqa: E402
 
 _secrets = get_secret_manager()
@@ -50,7 +56,7 @@ SELECT l.event_type, l.sentiment,
 """)
 
 
-def main(horizon: int) -> None:
+def main(horizon: int, dry_run: bool) -> None:
     with engine.connect() as con:
         rows = con.execute(_SQL, {"horizon": horizon}).all()
 
@@ -80,8 +86,19 @@ def main(horizon: int) -> None:
                 f"초과 {b.excess_pct:+6.2f}%p  양(+) {b.positive_rate:.0%}{mark}"
             )
 
+    if dry_run:
+        print("\n--dry-run — INSERT 생략")
+        return
+    with engine.begin() as conn:
+        conn.execute(insert(NewsEventStudyReportOrm).values(
+            params={"horizon_days": horizon}, payload=asdict(report),
+        ))
+    print("\nnews_event_study_reports에 리포트 1행 저장 완료")
+
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="뉴스 이벤트 사후 수익률 연구")
     ap.add_argument("--horizon", type=int, default=5, help="지평(거래일 기준 근사, 기본 5)")
-    main(ap.parse_args().horizon)
+    ap.add_argument("--dry-run", action="store_true", help="저장 없이 출력만")
+    args = ap.parse_args()
+    main(args.horizon, args.dry_run)
