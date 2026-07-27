@@ -73,14 +73,19 @@ export const fetchStockBoard = (horizon = 5, limit = 40): Promise<StockBoard> =>
 const withService = (path: string, serviceCode?: string) =>
   serviceCode ? `${path}${path.includes("?") ? "&" : "?"}service_code=${encodeURIComponent(serviceCode)}` : path;
 
+// quarters 기본 8 — 백엔드와 같은 값. 20분기까지 요청할 수 있다(매출·점포 보유 한도).
 export const fetchAreaStats = (
   trdarCode: string | number,
   serviceCode?: string,
+  quarters = 8,
 ): Promise<AreaStatsDetail> =>
-  getJson(withService(`/market/trdar/${trdarCode}/stats`, serviceCode));
+  getJson(withService(`/market/trdar/${trdarCode}/stats?quarters=${quarters}`, serviceCode));
 
-export const fetchAreaScore = (trdarCode: string | number): Promise<AreaScoreDetail> =>
-  getJson(`/market/trdar/${trdarCode}/score`);
+export const fetchAreaScore = (
+  trdarCode: string | number,
+  quarters = 8,
+): Promise<AreaScoreDetail> =>
+  getJson(`/market/trdar/${trdarCode}/score?quarters=${quarters}`);
 
 export const fetchAreaInfo = (trdarCode: string | number): Promise<MarketArea> =>
   getJson(`/market/trdar/${trdarCode}/area`);

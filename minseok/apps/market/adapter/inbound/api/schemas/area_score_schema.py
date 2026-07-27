@@ -23,6 +23,8 @@ class TrendPointSchema(BaseModel):
     salesQoq: float | None  # 직전 분기 대비 %
     totalFloatingPop: int | None
     floatingQoq: float | None
+    salesYoy: float | None
+    floatingYoy: float | None
 
 
 class AreaScoreResponse(BaseModel):

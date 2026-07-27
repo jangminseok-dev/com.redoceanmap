@@ -282,6 +282,9 @@ export type AreaScoreDetail = {
     salesQoq: number | null; // 직전 분기 대비 %
     totalFloatingPop: number | null;
     floatingQoq: number | null;
+    // 전년 동분기 대비 — 계절성이 큰 분기 데이터에서 QoQ보다 정직하다
+    salesYoy: number | null;
+    floatingYoy: number | null;
   }[];
 };
 

@@ -10,7 +10,7 @@ class AreaScoreQuery:
     """상권 종합점수 조회 입력 — quarters는 추이 구간(QoQ는 구간 첫 분기 제외)."""
 
     trdar_code: int
-    quarters: int = 5
+    quarters: int = 8
 
 
 @dataclass(frozen=True)
@@ -48,6 +48,9 @@ class TrendPoint:
     sales_qoq: float | None = None
     total_floating_pop: int | None = None
     floating_qoq: float | None = None
+    # 전년 동분기 대비 — 계절성이 큰 분기 데이터에서 QoQ보다 정직하다(20분기가 있어야 성립)
+    sales_yoy: float | None = None
+    floating_yoy: float | None = None
 
 
 @dataclass(frozen=True)

@@ -9,7 +9,7 @@ class AreaStatsQuery:
 
     trdar_code: int
     service_code: str | None = None
-    quarters: int = 4
+    quarters: int = 8
 
 
 @dataclass(frozen=True)

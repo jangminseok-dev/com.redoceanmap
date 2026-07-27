@@ -28,6 +28,14 @@ def prev_quarter(year_quarter: int) -> int:
     return year_quarter - 1
 
 
+def prev_year_quarter(year_quarter: int) -> int:
+    """전년 동분기 코드 — 20244 → 20234.
+
+    코드 형식이 `연도 × 10 + 분기`라 1년 전은 **-10**이다(-10000이 아니다).
+    """
+    return year_quarter - 10
+
+
 class AreaScorer:
     """상권 QoQ 추이와 시도 벤치마크 대비 종합점수를 계산하는 순수 도메인 서비스.
 
@@ -46,6 +54,23 @@ class AreaScorer:
             rate = None
             if prev is not None and prev > 0:
                 rate = round((p.value - prev) / prev * 100, 2)
+            points.append(QoqPoint(year_quarter=p.year_quarter, value=p.value, qoq_rate=rate))
+        return points
+
+    def yoy_series(self, series: list[QuarterValue]) -> list[QoqPoint]:
+        """전년 동분기 대비 변화율(%) — `qoq_series`와 같은 구조, 참조 분기만 -1년.
+
+        소매 분기 데이터는 계절성이 지배적이라 QoQ만 보면 **모든 상권의 1분기가
+        폭락으로 보인다**(4분기 대비). 20분기가 있어야 성립하는 축이다.
+        `QoqPoint.qoq_rate` 필드를 그대로 쓰되 의미는 YoY다 — 소비자가 구분해 쓴다.
+        """
+        by_quarter = {p.year_quarter: p.value for p in series}
+        points = []
+        for p in sorted(series, key=lambda x: x.year_quarter):
+            base = by_quarter.get(prev_year_quarter(p.year_quarter))
+            rate = None
+            if base is not None and base > 0:
+                rate = round((p.value - base) / base * 100, 2)
             points.append(QoqPoint(year_quarter=p.year_quarter, value=p.value, qoq_rate=rate))
         return points
 

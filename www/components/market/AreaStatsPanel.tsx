@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BarChart3, Gauge, Store, TrendingUp, Users } from "lucide-react";
 import { fetchAreaStats } from "@/lib/api";
@@ -37,9 +38,11 @@ export default function AreaStatsPanel({
   trdarCode: string;
   serviceCode?: string;
 }) {
+  // REACT_RULES 패턴 B — 조회 축은 단일 객체 하나로 둔다(뒤에 필터가 더 붙는다)
+  const [view, setView] = useState<{ quarters: 4 | 8 | 20 }>({ quarters: 8 });
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["area-stats", trdarCode, serviceCode],
-    queryFn: () => fetchAreaStats(trdarCode, serviceCode),
+    queryKey: ["area-stats", trdarCode, serviceCode, view.quarters],
+    queryFn: () => fetchAreaStats(trdarCode, serviceCode, view.quarters),
     enabled: !!trdarCode,
   });
 
@@ -77,8 +80,26 @@ export default function AreaStatsPanel({
         )}
       </div>
 
+      {/* 20분기를 쌓아두고 4분기만 보던 것을 연다 — 8분기면 YoY 짝이 4쌍 생긴다 */}
+      <div className="flex items-center gap-1 px-1">
+        <span className="text-[11px] text-foreground-muted mr-1">구간</span>
+        {([4, 8, 20] as const).map((q) => (
+          <button
+            key={q}
+            onClick={() => setView({ quarters: q })}
+            className={`px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors ${
+              view.quarters === q
+                ? "bg-brand/10 text-brand"
+                : "text-foreground-muted hover:text-foreground"
+            }`}
+          >
+            {q}분기
+          </button>
+        ))}
+      </div>
+
       <Section icon={Gauge} title="상권 종합점수">
-        <AreaScoreCard trdarCode={trdarCode} />
+        <AreaScoreCard trdarCode={trdarCode} quarters={view.quarters} />
       </Section>
 
       <Section icon={TrendingUp} title="분기 매출 추이">

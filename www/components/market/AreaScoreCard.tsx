@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchAreaScore } from "@/lib/api";
-import type { ScoreComponent } from "@/lib/types";
+import type { AreaScoreDetail, ScoreComponent } from "@/lib/types";
 
 const GRADE_STYLE: Record<string, string> = {
   우수: "text-red-600 bg-red-50 border-red-200",
@@ -13,10 +14,16 @@ const GRADE_STYLE: Record<string, string> = {
 };
 
 // 상권 종합점수 카드 — /market/trdar/{code}/score. 산출 근거 팩트가 없으면 렌더 생략.
-export default function AreaScoreCard({ trdarCode }: { trdarCode: string }) {
+export default function AreaScoreCard({
+  trdarCode,
+  quarters = 8,
+}: {
+  trdarCode: string;
+  quarters?: number;
+}) {
   const { data, isLoading } = useQuery({
-    queryKey: ["area-score", trdarCode],
-    queryFn: () => fetchAreaScore(trdarCode),
+    queryKey: ["area-score", trdarCode, quarters],
+    queryFn: () => fetchAreaScore(trdarCode, quarters),
     enabled: !!trdarCode,
   });
 
@@ -48,6 +55,65 @@ export default function AreaScoreCard({ trdarCode }: { trdarCode: string }) {
           <ComponentBar key={c.key} component={c} />
         ))}
       </div>
+      <TrendStrip trend={data.trend} />
+    </div>
+  );
+}
+
+// 응답에 실려 오면서도 렌더러가 없어 버려지던 추이. 분모가 '전 업종 합계'라
+// 업종 단위인 SalesTrendChart와 섞지 않고 여기서 따로 보여준다.
+function TrendStrip({ trend }: { trend: AreaScoreDetail["trend"] }) {
+  const [basis, setBasis] = useState<"yoy" | "qoq">("yoy");
+  const points = trend.filter((p) => (basis === "yoy" ? p.salesYoy : p.salesQoq) !== null);
+  if (points.length < 2) return null;
+  const rates = points.map((p) => (basis === "yoy" ? p.salesYoy! : p.salesQoq!));
+  const bound = Math.max(...rates.map(Math.abs), 1);
+
+  return (
+    <div className="mt-3 pt-3 border-t border-border">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[11px] text-foreground-muted">
+          상권 전체 매출 추이 <span className="opacity-60">(전 업종 합계)</span>
+        </span>
+        <span className="flex gap-1">
+          {(["yoy", "qoq"] as const).map((b) => (
+            <button
+              key={b}
+              onClick={() => setBasis(b)}
+              className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                basis === b ? "bg-brand/10 text-brand" : "text-foreground-muted"
+              }`}
+            >
+              {b === "yoy" ? "전년비" : "전분기비"}
+            </button>
+          ))}
+        </span>
+      </div>
+      {/* 0을 가운데 둔 발산 막대 — 계절성이 큰 데이터라 전년비를 기본으로 둔다 */}
+      <div className="flex items-end gap-0.5 h-10">
+        {points.map((p, i) => {
+          const rate = rates[i];
+          const h = Math.max(2, (Math.abs(rate) / bound) * 100);
+          return (
+            <div
+              key={p.yearQuarter}
+              title={`${p.yearQuarter} ${rate > 0 ? "+" : ""}${rate}%`}
+              className="flex-1 flex flex-col justify-center items-stretch h-full"
+            >
+              <div className="flex-1 flex items-end">
+                {rate > 0 && <div className="w-full bg-emerald-500/60 rounded-t" style={{ height: `${h}%` }} />}
+              </div>
+              <div className="flex-1 flex items-start">
+                {rate < 0 && <div className="w-full bg-rose-500/60 rounded-b" style={{ height: `${h}%` }} />}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-foreground-muted mt-1 tabular-nums">
+        최근 {points[points.length - 1].yearQuarter} {rates[rates.length - 1] > 0 ? "+" : ""}
+        {rates[rates.length - 1]}%
+      </p>
     </div>
   );
 }

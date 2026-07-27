@@ -8,6 +8,7 @@ from market.adapter.inbound.api.schemas.area_stats_schema import (
     QuarterStatSchema,
 )
 from market.app.dtos.area_stats_dto import AreaStatsQuery
+from market.domain.services.area_scorer import MAX_QUARTERS
 from market.app.ports.input.area_stats_use_case import AreaStatsUseCase
 from market.dependencies.area_stats_provider import get_area_stats_use_case
 
@@ -18,7 +19,9 @@ area_stats_router = APIRouter(prefix="/market", tags=["market"])
 async def get_area_stats(
     trdar_code: int,
     service_code: str | None = None,
-    quarters: int = Query(default=4, ge=1, le=12),
+    # 상한은 MAX_QUARTERS(=20, 매출·점포 보유 분기). 기본 8분기면 YoY 짝이 4쌍 생겨
+    # 계절성이 눈에 보인다 — 4분기는 '작년 이맘때'가 한 점뿐이라 시계열이라 하기 어렵다.
+    quarters: int = Query(default=8, ge=1, le=MAX_QUARTERS),
     use_case: AreaStatsUseCase = Depends(get_area_stats_use_case),
 ) -> AreaStatsResponse:
     view = await use_case.get_stats(
