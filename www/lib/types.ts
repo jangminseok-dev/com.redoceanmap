@@ -328,6 +328,9 @@ export type AreaDetail = {
       complexCount: number;
       avgPrice: number; // 원
       avgArea: number; // ㎡
+      // 분포 — 평균값이 못 보는 '어떤 사람이 사는가'. 빈 구간은 0(결측 아님)
+      priceBands: Record<string, number> | null; // under1b·b1·b2·b3·b4·b5·over6b
+      areaBands: Record<string, number> | null; // under66·a66·a99·a132·a165
     } | null;
   } | null;
   spending: {

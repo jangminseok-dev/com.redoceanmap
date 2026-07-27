@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from market.domain.value_objects.area_profile_vo import (
+    ApartmentProfile,
     FacilityProfile,
     FloatingRhythm,
     ResidentProfile,
@@ -24,6 +25,13 @@ TICKET_GAP_MIN = 0.20         # 주중/주말 객단가 차이 이 이상일 때
 AGE_TICKET_MIN_SHARE = 0.05   # 건수 비중이 이 미만인 연령대는 객단가 후보에서 제외(허위 최고가 방지)
 TRAFFIC_SALES_GAP_MIN = 0.15  # 통행-매출 주말 비중 괴리 이 이상일 때만 언급
 BUS_STOP_MIN = 30             # 버스정거장 이 이상이면 대중교통 동선이 뚜렷하다고 본다
+# 아파트 분포 임계값 — 전부 최신 분기 1,463상권 실측 분위수에서 잡았다(지어낸 값이 아니다).
+HIGH_PRICE_SHARE_MIN = 0.30   # 4억 이상 세대 비중. 중앙 0.2%·p75 11.8%·p90 46.7%로 극단 편중
+SMALL_UNIT_SHARE_MIN = 0.85   # 66㎡ 미만 비중. 중앙 65.9%·p75 89.5% — 서울 기본값이 소형이라 높게 잡는다
+LARGE_UNIT_SHARE_MIN = 0.10   # 132㎡ 이상 비중. p90이 5.7%라 희소하지만 뜨면 성격이 뚜렷하다
+
+_HIGH_PRICE_KEYS = ("b4", "b5", "over6b")
+_LARGE_AREA_KEYS = ("a132", "a165")
 
 _TIME_LABELS = {
     "t00_06": "새벽(00~06시)",
@@ -51,12 +59,14 @@ def narrate(
     spending: SpendingProfile | None,
     floating: FloatingRhythm | None = None,
     facility: FacilityProfile | None = None,
+    apartment: ApartmentProfile | None = None,
 ) -> list[Insight]:
     """최신 분기 구조 수치 → 초보자용 해석 문장. 결측 축은 해당 문장을 생략한다."""
     insights: list[Insight] = []
     if sales is not None:
         insights += _sales_insights(sales)
     insights += _demand_insights(resident, working)
+    insights += _apartment_insights(apartment)
     if spending is not None:
         insights += _spending_insights(spending)
     if sales is not None:
@@ -162,6 +172,49 @@ def _demand_insights(
                 key="demand_apartment", tone="positive",
                 text=f"배후 가구의 {round(share * 100)}%가 아파트 — 고정 주거 수요가 탄탄합니다.",
             ))
+    return out
+
+
+def _share(bands: dict[str, int] | None, keys: tuple[str, ...]) -> float | None:
+    """구간 분포에서 관심 구간의 비중 — 합계 0이거나 분포가 없으면 None."""
+    if not bands:
+        return None
+    total = sum(bands.values())
+    if total <= 0:
+        return None
+    return sum(bands.get(k, 0) for k in keys) / total
+
+
+def _apartment_insights(apartment: ApartmentProfile | None) -> list[Insight]:
+    """배후 아파트의 가격·평형 구성 — 평균값이 못 보는 '어떤 사람이 사는가'.
+
+    avg_price만으로는 고가 단지 하나가 섞인 상권과 고르게 중가인 상권이 같아 보인다.
+    """
+    if apartment is None:
+        return []
+    out: list[Insight] = []
+    high = _share(apartment.price_bands, _HIGH_PRICE_KEYS)
+    if high is not None and high >= HIGH_PRICE_SHARE_MIN:
+        out.append(Insight(
+            key="demand_purchasing_power", tone="positive",
+            text=f"배후 아파트의 {round(high * 100)}%가 4억 이상 구간 — "
+                 "구매력이 높은 배후 수요입니다.",
+        ))
+    large = _share(apartment.area_bands, _LARGE_AREA_KEYS)
+    small = _share(apartment.area_bands, ("under66",))
+    # 서울 상권 대다수가 소형 우위라 중대형이 뜨는 쪽이 더 드물고 정보량이 크다
+    if large is not None and large >= LARGE_UNIT_SHARE_MIN:
+        out.append(Insight(
+            key="demand_unit_size", tone="neutral",
+            text=f"배후 아파트의 {round(large * 100)}%가 132㎡ 이상 중대형 — "
+                 "가족 단위 수요가 두터운 상권입니다.",
+        ))
+    elif small is not None and small >= SMALL_UNIT_SHARE_MIN:
+        out.append(Insight(
+            key="demand_unit_size", tone="neutral",
+            text=f"배후 아파트의 {round(small * 100)}%가 66㎡ 미만 소형 — "
+                 "1~2인 가구 중심 상권입니다.",
+        ))
     return out
 
 

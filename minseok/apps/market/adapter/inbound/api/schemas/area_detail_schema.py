@@ -41,6 +41,9 @@ class ApartmentSchema(BaseModel):
     complexCount: int
     avgPrice: int  # 원
     avgArea: int   # ㎡
+    # 분포 — 평균값이 못 보는 '어떤 사람이 사는가'. 빈 구간은 0(결측 아님)
+    priceBands: dict[str, int] | None  # under1b·b1·b2·b3·b4·b5·over6b
+    areaBands: dict[str, int] | None   # under66·a66·a99·a132·a165
 
 
 class DemandSchema(BaseModel):

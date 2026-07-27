@@ -99,6 +99,10 @@ class ApartmentProfile:
     complex_count: int
     avg_price: int  # 원
     avg_area: int   # ㎡
+    # 분포 — 평균 하나로는 "고가 단지가 섞인 상권"과 "고르게 중저가인 상권"을 구분할 수 없다.
+    # 원천의 빈칸은 결측이 아니라 "그 구간 세대 없음"이다(전 행이 최소 한 구간을 보유) — 0으로 읽는다.
+    price_bands: dict[str, int] | None = None  # under1b·b1·b2·b3·b4·b5·over6b
+    area_bands: dict[str, int] | None = None   # under66·a66·a99·a132·a165
 
 
 @dataclass(frozen=True)

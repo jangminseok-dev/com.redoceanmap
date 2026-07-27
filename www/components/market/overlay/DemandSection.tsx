@@ -22,6 +22,64 @@ function StatCard({ label, value }: { label: string; value: string }) {
   );
 }
 
+// 구간 분포를 한 줄 띠로 — 세그먼트가 곧 비중이라 축·범례 없이도 구성이 읽힌다.
+// 1% 미만 구간은 렌더하지 않는다(1px 조각이 색만 어지럽힌다).
+function BandBar({
+  label,
+  bands,
+  order,
+}: {
+  label: string;
+  bands: Record<string, number>;
+  order: [string, string, string][]; // [키, 표시명, 색]
+}) {
+  const total = order.reduce((s, [k]) => s + (bands[k] ?? 0), 0);
+  if (total <= 0) return null;
+  const segments = order
+    .map(([k, name, color]) => ({ name, color, share: (bands[k] ?? 0) / total }))
+    .filter((s) => s.share >= 0.01);
+  return (
+    <div>
+      <p className="text-xs text-foreground-muted mb-1.5">{label}</p>
+      <div className="flex h-2.5 rounded-full overflow-hidden bg-black/5">
+        {segments.map((s) => (
+          <div
+            key={s.name}
+            style={{ width: `${s.share * 100}%`, backgroundColor: s.color }}
+            title={`${s.name} ${Math.round(s.share * 100)}%`}
+          />
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-x-2.5 gap-y-1 mt-1.5">
+        {segments.map((s) => (
+          <span key={s.name} className="inline-flex items-center gap-1 text-[10px] text-foreground-muted">
+            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: s.color }} />
+            {s.name} {Math.round(s.share * 100)}%
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// 저가→고가, 소형→대형 순서로 색이 짙어진다(순서 자체가 정보라 임의 색을 쓰지 않는다)
+const PRICE_ORDER: [string, string, string][] = [
+  ["under1b", "1억 미만", "#FDE68A"],
+  ["b1", "1억대", "#FCD34D"],
+  ["b2", "2억대", "#FBBF24"],
+  ["b3", "3억대", "#F59E0B"],
+  ["b4", "4억대", "#D97706"],
+  ["b5", "5억대", "#B45309"],
+  ["over6b", "6억 이상", "#78350F"],
+];
+const AREA_ORDER: [string, string, string][] = [
+  ["under66", "66㎡ 미만", "#BFDBFE"],
+  ["a66", "66~99㎡", "#93C5FD"],
+  ["a99", "99~132㎡", "#60A5FA"],
+  ["a132", "132~165㎡", "#3B82F6"],
+  ["a165", "165㎡ 이상", "#1D4ED8"],
+];
+
 // 상주(좌, 음수 변환) vs 직장(우) 인구를 연령대 축으로 맞댄 diverging 차트
 export default function DemandSection({
   demand,
@@ -123,6 +181,12 @@ export default function DemandSection({
           <StatCard label="평균 매매가" value={formatMoney(apartment.avgPrice)} />
         )}
       </div>
+      {apartment?.priceBands && (
+        <BandBar label="배후 아파트 가격대" bands={apartment.priceBands} order={PRICE_ORDER} />
+      )}
+      {apartment?.areaBands && (
+        <BandBar label="평형 구성" bands={apartment.areaBands} order={AREA_ORDER} />
+      )}
       {anchors.length > 0 && (
         <div>
           <p className="text-xs text-foreground-muted mb-1.5">외부 유입 앵커</p>

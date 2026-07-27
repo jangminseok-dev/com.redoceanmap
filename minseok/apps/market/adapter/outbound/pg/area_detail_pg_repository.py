@@ -180,6 +180,23 @@ class AreaDetailPgRepository(AreaDetailRepositoryPort):
             complex_count=r.complex_count,
             avg_price=r.avg_price,
             avg_area=r.avg_area,
+            # 빈칸은 "그 구간 세대 없음" — 전 행이 최소 한 구간을 갖고 있어 결측이 아니다
+            price_bands={
+                "under1b": r.price_under_1b_count or 0,
+                "b1": r.price_1b_count or 0,
+                "b2": r.price_2b_count or 0,
+                "b3": r.price_3b_count or 0,
+                "b4": r.price_4b_count or 0,
+                "b5": r.price_5b_count or 0,
+                "over6b": r.price_over_6b_count or 0,
+            },
+            area_bands={
+                "under66": r.area_under_66_count or 0,
+                "a66": r.area_66_count or 0,
+                "a99": r.area_99_count or 0,
+                "a132": r.area_132_count or 0,
+                "a165": r.area_165_count or 0,
+            },
         )
 
     async def find_floating_rhythm(self, trdar_code: int) -> FloatingRhythm | None:

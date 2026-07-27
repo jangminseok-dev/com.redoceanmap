@@ -44,5 +44,7 @@ class AreaDetailInteractor(AreaDetailUseCase):
             floating=floating,
             facility=facility,
             service_ranking=service_ranking,
-            insights=narrate(sales_mix, resident, working, spending, floating, facility),
+            insights=narrate(
+                sales_mix, resident, working, spending, floating, facility, apartment
+            ),
         )

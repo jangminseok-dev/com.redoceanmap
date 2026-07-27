@@ -1,5 +1,6 @@
 from market.domain.services.area_narrator import narrate
 from market.domain.value_objects.area_profile_vo import (
+    ApartmentProfile,
     FacilityProfile,
     FloatingRhythm,
     ResidentProfile,
@@ -279,3 +280,65 @@ def test_버스정거장은_임계_이상일_때만_센다():
 
 def test_집객시설_데이터가_없으면_문장을_만들지_않는다():  # 열화
     assert "facility_anchor" not in _keys(narrate(_sales(), None, None, None, None, None))
+
+
+def _apartment(price=None, area=None):
+    return ApartmentProfile(
+        year_quarter=20254, complex_count=5, avg_price=500_000_000, avg_area=60,
+        price_bands=price, area_bands=area,
+    )
+
+
+def _apt_narrate(price=None, area=None):
+    return _keys(narrate(None, None, None, None, None, None, _apartment(price, area)))
+
+
+def _price(**over):
+    bands = {k: 0 for k in ("under1b", "b1", "b2", "b3", "b4", "b5", "over6b")}
+    bands.update(over)
+    return bands
+
+
+def _area(**over):
+    bands = {k: 0 for k in ("under66", "a66", "a99", "a132", "a165")}
+    bands.update(over)
+    return bands
+
+
+def test_고가_비중_경계_30퍼센트에서_구매력_문장이_뜬다():
+    # 4억 이상(b4·b5·over6b) 30/100 = 정확히 임계
+    got = narrate(None, None, None, None, None, None,
+                  _apartment(price=_price(under1b=70, b4=30)))
+    insight = next(i for i in got if i.key == "demand_purchasing_power")
+    assert insight.tone == "positive"
+    assert "30%가 4억 이상" in insight.text
+
+
+def test_고가_비중이_임계_미만이면_침묵한다():
+    assert "demand_purchasing_power" not in _apt_narrate(price=_price(under1b=71, b4=29))
+
+
+def test_아파트_분포_합이_0이면_문장을_만들지_않는다():  # 0 나눗셈 방어
+    assert _apt_narrate(price=_price(), area=_area()) == set()
+
+
+def test_중대형_비중이_10퍼센트_이상이면_가족_단위로_읽는다():
+    got = narrate(None, None, None, None, None, None,
+                  _apartment(area=_area(under66=90, a132=10)))
+    insight = next(i for i in got if i.key == "demand_unit_size")
+    assert "132㎡ 이상 중대형" in insight.text
+
+
+def test_중대형이_없고_소형이_우세하면_1_2인_가구로_읽는다():
+    got = narrate(None, None, None, None, None, None, _apartment(area=_area(under66=85, a66=15)))
+    insight = next(i for i in got if i.key == "demand_unit_size")
+    assert "66㎡ 미만 소형" in insight.text
+
+
+def test_소형_비중이_서울_평균_수준이면_침묵한다():
+    # 중앙값(65.9%) 부근은 서울의 기본값이라 "소형 중심"이라고 말할 근거가 없다
+    assert "demand_unit_size" not in _apt_narrate(area=_area(under66=66, a66=34))
+
+
+def test_아파트_분포가_없으면_문장을_만들지_않는다():  # 열화
+    assert _apt_narrate() == set()

@@ -120,5 +120,7 @@ def _demand_schema(view: AreaDetailView) -> DemandSchema | None:
             complexCount=view.apartment.complex_count,
             avgPrice=view.apartment.avg_price,
             avgArea=view.apartment.avg_area,
+            priceBands=view.apartment.price_bands,
+            areaBands=view.apartment.area_bands,
         ) if view.apartment else None,
     )

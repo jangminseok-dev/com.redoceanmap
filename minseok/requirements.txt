@@ -28,6 +28,9 @@ redis==6.4.0
 # ---- LLM (오케스트레이터 → Ollama) ----
 ollama==0.6.2
 
+# ---- 그래프 RAG (Neo4j) ----
+neo4j-graphrag==1.18.0
+
 # ---- 객체 스토리지 (vision — S3 이미지 저장) ----
 boto3==1.43.40
 
