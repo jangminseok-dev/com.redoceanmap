@@ -1,4 +1,4 @@
-from sqlalchemy import Float, Integer, UniqueConstraint
+from sqlalchemy import Float, Index, Integer, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
@@ -9,6 +9,7 @@ class ConsumptionOrm(MarketStatMixin, Base):
     __tablename__ = "consumption"
     __table_args__ = (
         UniqueConstraint("year_quarter", "trdar_code", name="uq_consumption"),
+        Index("ix_consumption_trdar_quarter", "trdar_code", "year_quarter"),
     )
 
     monthly_avg_income: Mapped[float | None] = mapped_column(Float, nullable=True)

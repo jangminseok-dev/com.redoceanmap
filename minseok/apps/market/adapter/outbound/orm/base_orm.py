@@ -10,4 +10,6 @@ class MarketStatMixin:
 
     id: Mapped[int] = mapped_column(primary_key=True)
     year_quarter: Mapped[int] = mapped_column(Integer, index=True)
-    trdar_code: Mapped[int] = mapped_column(ForeignKey("trade_area.code"), index=True)
+    # 단일 인덱스를 두지 않는다 — 각 팩트가 (trdar_code, year_quarter) 복합을 선언하고
+    # 그 접두사가 이 컬럼을 커버한다(리비전 b2c3d4e5f6a7에서 단일 9개 제거).
+    trdar_code: Mapped[int] = mapped_column(ForeignKey("trade_area.code"))

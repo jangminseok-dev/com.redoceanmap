@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Integer, UniqueConstraint
+from sqlalchemy import BigInteger, Index, Integer, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
@@ -9,6 +9,7 @@ class ApartmentOrm(MarketStatMixin, Base):
     __tablename__ = "apartment"
     __table_args__ = (
         UniqueConstraint("year_quarter", "trdar_code", name="uq_apartment"),
+        Index("ix_apartment_trdar_quarter", "trdar_code", "year_quarter"),
     )
 
     complex_count: Mapped[int] = mapped_column(Integer)

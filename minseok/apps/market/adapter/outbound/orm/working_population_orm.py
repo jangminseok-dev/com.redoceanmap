@@ -1,4 +1,4 @@
-from sqlalchemy import Integer, UniqueConstraint
+from sqlalchemy import Index, Integer, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
@@ -9,6 +9,7 @@ class WorkingPopulationOrm(MarketStatMixin, Base):
     __tablename__ = "working_population"
     __table_args__ = (
         UniqueConstraint("year_quarter", "trdar_code", name="uq_working_population"),
+        Index("ix_working_population_trdar_quarter", "trdar_code", "year_quarter"),
     )
 
     total_working_pop: Mapped[int] = mapped_column(Integer)
