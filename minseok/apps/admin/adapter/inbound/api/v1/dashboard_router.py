@@ -5,6 +5,7 @@ from admin.adapter.inbound.api.schemas.dashboard_schema import (
     DashboardResponseSchema,
     MonthCountSchema,
     RecentRecommendationSchema,
+    StockDemandSchema,
 )
 from admin.app.ports.input.dashboard_use_case import DashboardUseCase
 from admin.dependencies.dashboard_provider import get_dashboard_use_case
@@ -43,5 +44,11 @@ async def dashboard_summary(
                 created_at=r.created_at,
             )
             for r in result.recent
+        ],
+        stock_demands=[
+            StockDemandSchema(
+                ticker=d.ticker, ask_count=d.ask_count, last_asked_at=d.last_asked_at
+            )
+            for d in result.stock_demands
         ],
     )

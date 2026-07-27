@@ -1,11 +1,14 @@
 from admin.app.use_cases.dashboard_interactor import DashboardInteractor
 from hub.app.dtos.dataset_stat_dto import DatasetStat
 from hub.app.dtos.member_directory_dto import MemberStats
+from datetime import datetime
+
 from hub.app.dtos.recommendation_directory_dto import (
     CategoryCount,
     MonthCount,
     RecommendationStats,
 )
+from hub.app.dtos.stock_demand_dto import StockDemandRow
 
 
 class _StubMembers:
@@ -27,6 +30,13 @@ class _StubRecommendations:
         return []
 
 
+class _StubDemands:
+    async def top_demands(self, days, limit):
+        assert (days, limit) == (30, 10)  # 워치리스트 편입 스크립트와 같은 창
+        return [StockDemandRow(ticker="NVDA", ask_count=7,
+                               last_asked_at=datetime(2026, 7, 27, 9, 0))]
+
+
 class _StubCommercial:
     async def get_dataset_stats(self):
         return [
@@ -35,11 +45,12 @@ class _StubCommercial:
         ]
 
 
-async def test_대시보드는_허브_포트_3개를_합성한다():
+async def test_대시보드는_허브_포트_4개를_합성한다():
     interactor = DashboardInteractor(
         members=_StubMembers(),
         recommendations=_StubRecommendations(),
         commercial=_StubCommercial(),
+        demands=_StubDemands(),
     )
     result = await interactor.summary()
     assert result.member_total == 42
@@ -50,6 +61,7 @@ async def test_대시보드는_허브_포트_3개를_합성한다():
     assert result.recommendation_today == 5
     assert result.monthly[0].month == "2026-07"
     assert result.top_categories[0].category == "카페"
+    assert result.stock_demands[0].ticker == "NVDA"
 
 
 async def test_데이터셋이_비어도_기본값으로_동작한다():
@@ -58,7 +70,10 @@ async def test_데이터셋이_비어도_기본값으로_동작한다():
             return []
 
     interactor = DashboardInteractor(
-        members=_StubMembers(), recommendations=_StubRecommendations(), commercial=_Empty()
+        members=_StubMembers(),
+        recommendations=_StubRecommendations(),
+        commercial=_Empty(),
+        demands=_StubDemands(),
     )
     result = await interactor.summary()
     assert result.area_count == 0

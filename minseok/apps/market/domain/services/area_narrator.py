@@ -32,6 +32,10 @@ GENDER_TICKET_RATIO_MIN = 1.3  # 남녀 객단가 비. 중앙 0.98·p90 1.29라 
 # 중앙 8.2%p라 0.15가 적당해 보이지만, 실제 코드 경로(매출 최대 업종)는 중앙 14.8%p여서
 # 0.15로 두면 절반이 뜬다(실측 48%). p75(20.1%p)에 맞춰 상위 25%만 말하게 한다.
 TRAFFIC_GENDER_GAP_MIN = 0.20
+# 소득 구간 백분위 — 양 끝만 말한다. 구간 5·6에 1,137/1,622상권이 몰려 있어
+# 중간층에 "중간입니다"라고 말해봐야 판단 재료가 되지 않는다.
+INCOME_TOP_MIN = 0.75
+INCOME_BOTTOM_MAX = 0.25
 BUS_STOP_MIN = 30             # 버스정거장 이 이상이면 대중교통 동선이 뚜렷하다고 본다
 # 아파트 분포 임계값 — 전부 최신 분기 1,463상권 실측 분위수에서 잡았다(지어낸 값이 아니다).
 HIGH_PRICE_SHARE_MIN = 0.30   # 4억 이상 세대 비중. 중앙 0.2%·p75 11.8%·p90 46.7%로 극단 편중
@@ -243,15 +247,37 @@ def _apartment_insights(apartment: ApartmentProfile | None) -> list[Insight]:
 def _spending_insights(spending: SpendingProfile) -> list[Insight]:
     income = spending.monthly_avg_income
     top = spending.by_category[0] if spending.by_category else None
+    # 소득 금액은 서울시가 2020년부터 제공을 끊어 최신 분기엔 없다 — 구간 백분위로 대체한다.
+    # (그래서 이 문장의 소득 부분은 2020년 이후 한 번도 뜨지 않았다.)
+    rank = _income_rank_text(spending)
     if income and top:
         text = f"배후 주민 월평균 소득은 약 {_money(income)}, {top.label} 지출 비중이 가장 큽니다."
     elif income:
         text = f"배후 주민 월평균 소득은 약 {_money(income)}입니다."
+    elif rank and top:
+        text = f"배후 주민 소득이 {rank}, {top.label} 지출 비중이 가장 큽니다."
+    elif rank:
+        text = f"배후 주민 소득이 {rank}."
     elif top:
         text = f"배후 주민 지출은 {top.label} 비중이 가장 큽니다."
     else:
         return []
     return [Insight(key="spending_power", tone="neutral", text=text)]
+
+
+def _income_rank_text(spending: SpendingProfile) -> str | None:
+    """소득 구간의 서울 내 상대 위치 — 중간층은 말하지 않는다.
+
+    "6구간"은 사용자에게 아무 의미가 없고, "상위 20%"는 곧바로 판단 재료가 된다.
+    """
+    pct = spending.income_percentile
+    if pct is None:
+        return None
+    if pct >= INCOME_TOP_MIN:
+        return f"서울 상권 상위 {max(1, round((1 - pct) * 100))}% 수준"
+    if pct <= INCOME_BOTTOM_MAX:
+        return f"서울 상권 하위 {max(1, round(pct * 100))}% 수준"
+    return None
 
 
 def _avg_ticket(sales: SalesMix) -> Insight | None:

@@ -15,6 +15,13 @@ export type AdminRecentRecommendation = {
   created_at: string;
 };
 
+// 분석 질문 수요 — 워치리스트 자동 편입(auto:demand)의 판단 재료
+export type AdminStockDemand = {
+  ticker: string;
+  ask_count: number;
+  last_asked_at: string;
+};
+
 export type AdminDashboard = {
   member_total: number;
   member_new_this_month: number;
@@ -25,6 +32,7 @@ export type AdminDashboard = {
   monthly: AdminMonthCount[];
   top_categories: AdminCategoryCount[];
   recent: AdminRecentRecommendation[];
+  stock_demands: AdminStockDemand[];
 };
 
 export type AdminAreaRow = {

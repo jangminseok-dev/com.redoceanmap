@@ -126,6 +126,10 @@ class SpendingCategory:
 @dataclass(frozen=True)
 class SpendingProfile:
     year_quarter: int
-    monthly_avg_income: float | None  # 원
+    monthly_avg_income: float | None  # 원 — 서울시가 2020년부터 제공 중단(2019년 분기에만 존재)
     total_expenditure: float | None   # 원
     by_category: list[SpendingCategory]  # 금액 내림차순, 결측 제외
+    # 소득 구간(1~10)과 서울 내 상대 위치 — 금액이 끊긴 뒤 남은 유일한 소득 신호다.
+    # 절대 구간 숫자("6구간")는 사용자에게 의미가 없어 백분위와 짝으로만 쓴다.
+    income_band: int | None = None
+    income_percentile: float | None = None  # 0~1, 이 상권보다 낮은 구간 상권의 비율

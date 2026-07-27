@@ -338,9 +338,11 @@ export type AreaDetail = {
   } | null;
   spending: {
     yearQuarter: number;
-    monthlyAvgIncome: number | null; // 원
+    monthlyAvgIncome: number | null; // 원 — 서울시가 2020년부터 제공 중단, 최신 분기엔 항상 null
     totalExpenditure: number | null; // 원
     byCategory: { key: string; label: string; amount: number }[]; // 금액 내림차순
+    incomeBand: number | null; // 1~10
+    incomePercentile: number | null; // 0~1 — 구간 숫자 대신 이걸 보여준다
   } | null;
   // 통행 리듬 — 매출 리듬과 같은 축으로 대조하면 구매 전환이 보인다
   floating: {

@@ -64,9 +64,11 @@ class SpendingCategorySchema(BaseModel):
 
 class SpendingSchema(BaseModel):
     yearQuarter: int
-    monthlyAvgIncome: float | None
+    monthlyAvgIncome: float | None  # 서울시가 2020년부터 제공 중단 — 최신 분기엔 항상 null
     totalExpenditure: float | None
     byCategory: list[SpendingCategorySchema]  # 금액 내림차순
+    incomeBand: int | None        # 1~10
+    incomePercentile: float | None  # 0~1 — 구간 숫자 대신 이걸 보여준다
 
 
 class FloatingRhythmSchema(BaseModel):

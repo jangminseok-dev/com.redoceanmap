@@ -492,3 +492,52 @@ def test_성별_괴리가_임계_미만이면_생략한다():
 def test_통행_성별이_없으면_성별_대조를_하지_않는다():  # 열화
     floating = FloatingRhythm(year_quarter=20244, weekday_pop=500, weekend_pop=500)
     assert "traffic_vs_sales_gender" not in _keys(narrate(_sales(), None, None, None, floating))
+
+
+# --- 소득 구간 백분위 (금액이 2020년부터 끊긴 자리를 대신한다) ---
+
+def _spending(income=None, band=None, pct=None, categories=None):
+    return SpendingProfile(
+        year_quarter=20254,
+        monthly_avg_income=income,
+        total_expenditure=None,
+        by_category=categories if categories is not None else [
+            SpendingCategory(key="food", label="식료품", amount=3_000_000),
+        ],
+        income_band=band,
+        income_percentile=pct,
+    )
+
+
+def test_소득_금액이_없으면_구간_백분위로_말한다():
+    got = _by_key(narrate(None, None, None, _spending(band=8, pct=0.90)))
+    assert "서울 상권 상위 10% 수준" in got["spending_power"].text
+    assert "식료품" in got["spending_power"].text
+
+
+def test_하위권도_말한다():
+    got = _by_key(narrate(None, None, None, _spending(band=3, pct=0.05)))
+    assert "서울 상권 하위 5% 수준" in got["spending_power"].text
+
+
+def test_중간층은_상대_위치를_말하지_않는다():
+    # 구간 5·6에 1,137/1,622상권이 몰려 있어 "중간입니다"는 판단 재료가 못 된다
+    got = _by_key(narrate(None, None, None, _spending(band=6, pct=0.5)))
+    assert "서울 상권" not in got["spending_power"].text
+    assert "식료품" in got["spending_power"].text
+
+
+def test_소득_금액이_있으면_금액을_우선한다():
+    # 2019년 분기를 읽는 경우 — 기존 동작이 바뀌지 않아야 한다
+    got = _by_key(narrate(None, None, None, _spending(income=4_120_000, band=8, pct=0.9)))
+    assert "412만원" in got["spending_power"].text
+
+
+def test_백분위가_없으면_지출만_말한다():  # 열화
+    got = _by_key(narrate(None, None, None, _spending()))
+    assert got["spending_power"].text == "배후 주민 지출은 식료품 비중이 가장 큽니다."
+
+
+def test_지출_카테고리도_없으면_소득_위치만_말한다():
+    got = _by_key(narrate(None, None, None, _spending(band=9, pct=0.98, categories=[])))
+    assert got["spending_power"].text == "배후 주민 소득이 서울 상권 상위 2% 수준."

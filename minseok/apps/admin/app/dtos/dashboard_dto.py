@@ -7,6 +7,7 @@ from hub.app.dtos.recommendation_directory_dto import (
     MonthCount,
     RecommendationInfo,
 )
+from hub.app.dtos.stock_demand_dto import StockDemandRow
 
 
 @dataclass(frozen=True)
@@ -20,3 +21,6 @@ class DashboardResponse:
     monthly: list[MonthCount]  # 최근 12개월 추천 추이
     top_categories: list[CategoryCount]
     recent: list[RecommendationInfo]  # 최근 추천 5건
+    # 분석 질문 수요 — 워치리스트 편입 스크립트만 보던 지표를 운영자도 본다
+    # (어떤 종목을 사람들이 실제로 묻는가 = 수집 대상 선정의 근거)
+    stock_demands: list[StockDemandRow]

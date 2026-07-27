@@ -29,6 +29,7 @@ import auth.adapter.outbound.orm.user_orm  # noqa: F401
 import auth.adapter.outbound.orm.refresh_token_orm  # noqa: F401
 import auth.adapter.outbound.orm.rbac_orm  # noqa: F401
 import admin.adapter.outbound.orm.audit_log_orm  # noqa: F401
+import admin.adapter.outbound.orm.pdf_document_orm  # noqa: F401
 # market ORM은 등록하지 않는다 — market은 전용 DB(:5434, apps/market/alembic 독립 체인)로
 # 이전됨(루트 체인 market 부분 동결). 메인 DB에 남은 market 테이블 사본은 아래
 # include_name 필터로 오토젠에서 제외한다(사본 drop 후 필터도 함께 제거할 것).

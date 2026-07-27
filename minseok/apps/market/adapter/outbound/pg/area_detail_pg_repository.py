@@ -327,7 +327,28 @@ class AreaDetailPgRepository(AreaDetailRepositoryPort):
             monthly_avg_income=r.monthly_avg_income,
             total_expenditure=r.total_expenditure,
             by_category=categories,
+            income_band=r.income_range_code,
+            income_percentile=await self._income_percentile(
+                r.year_quarter, r.income_range_code
+            ),
         )
+
+    async def _income_percentile(self, year_quarter: int, band: int | None) -> float | None:
+        """같은 분기 서울 상권 중 이 상권보다 소득 구간이 낮은 비율.
+
+        구간 숫자(1~10)만으로는 사용자가 높낮이를 가늠할 수 없다 — 상대 위치가 답이다.
+        같은 분기 1,622행 집계라 인덱스(ix_consumption_year_quarter)로 충분해 캐시를 두지 않는다.
+        """
+        if band is None:
+            return None
+        row = (await self._session.execute(
+            select(
+                func.count().filter(ConsumptionOrm.income_range_code < band),
+                func.count(ConsumptionOrm.income_range_code),
+            ).where(ConsumptionOrm.year_quarter == year_quarter)
+        )).one()
+        lower, total = row
+        return lower / total if total else None
 
 
 def _age_bands(row: object, suffix: str) -> list[AgeBand]:

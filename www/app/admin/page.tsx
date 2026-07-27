@@ -169,6 +169,25 @@ export default function AdminDashboard() {
               </li>
             ))}
           </ol>
+
+          {/* 분석 질문 수요 — 워치리스트 편입 스크립트만 보던 지표.
+              "무엇을 수집할지"를 사용자 질문이 정한다는 걸 운영자도 봐야 한다. */}
+          <h2 className="font-semibold mt-6 pt-5 border-t border-border">질문 많은 종목</h2>
+          <p className="text-xs text-foreground-muted mt-0.5">최근 30일 · 워치리스트 자동 편입 후보</p>
+          <ol className="mt-3 space-y-2">
+            {data.stock_demands.length === 0 && (
+              <p className="text-sm text-foreground-muted">최근 30일 분석 질문이 없습니다.</p>
+            )}
+            {data.stock_demands.map((d, i) => (
+              <li key={d.ticker} className="flex items-center gap-2.5 text-sm">
+                <span className="w-4 text-xs text-foreground-muted tabular-nums">{i + 1}</span>
+                <span className="font-medium">{d.ticker}</span>
+                <span className="ml-auto text-xs text-foreground-muted tabular-nums">
+                  {d.ask_count}회 · {d.last_asked_at.slice(5, 10)}
+                </span>
+              </li>
+            ))}
+          </ol>
         </section>
       </div>
     </div>

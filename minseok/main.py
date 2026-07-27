@@ -17,6 +17,9 @@ from admin.adapter.inbound.api.v1.dashboard_router import dashboard_router as ad
 from admin.adapter.inbound.api.v1.data_source_router import data_source_router as admin_data_source_router
 from admin.adapter.inbound.api.v1.grade_router import grade_router as admin_grade_router
 from admin.adapter.inbound.api.v1.member_router import member_router as admin_member_router
+from admin.adapter.inbound.api.v1.pdf_loader_router import (
+    pdf_loader_router as admin_pdf_loader_router,
+)
 from admin.adapter.inbound.api.v1.recommendation_log_router import (
     recommendation_log_router as admin_recommendation_log_router,
 )
@@ -196,6 +199,7 @@ app.include_router(admin_grade_router, dependencies=_authenticated)
 app.include_router(admin_recommendation_log_router, dependencies=_authenticated)
 app.include_router(admin_data_source_router, dependencies=_authenticated)
 app.include_router(admin_analytics_router, dependencies=_authenticated)
+app.include_router(admin_pdf_loader_router, dependencies=_authenticated)
 app.include_router(audit_router, dependencies=_authenticated)
 app.include_router(gemini_router, dependencies=_authenticated)  # 허브 — 외부 Gemini 답변
 app.include_router(semantic_router, dependencies=_authenticated)  # 허브 — 시멘틱 게이트웨이(PoC)

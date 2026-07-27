@@ -65,6 +65,8 @@ async def get_area_detail(
                 SpendingCategorySchema(key=c.key, label=c.label, amount=c.amount)
                 for c in view.spending.by_category
             ],
+            incomeBand=view.spending.income_band,
+            incomePercentile=view.spending.income_percentile,
         ) if view.spending else None,
         floating=FloatingRhythmSchema(
             yearQuarter=view.floating.year_quarter,
