@@ -10,16 +10,16 @@
 
 | 문서 | 내용 |
 |------|------|
-| [[minseok/apps/market/_docs/MARKET_ERD|MARKET_ERD]] | 3NF 스키마 — 차원 5 + 팩트 8, FK, 정규화 이력 |
+| [[minseok/apps/market/_docs/MARKET_ERD|MARKET_ERD]] | 3NF 스키마 — 차원 5 + 팩트 9, FK, 정규화 이력 |
 
 ---
 
 ## 전용 DB (2026-07-22 런타임 전환 완료)
 
-market의 모든 테이블(3NF 14 + market_news_articles + area_score_backtest_reports)은
+market의 모든 테이블(3NF 15 + market_news_articles + area_score_backtest_reports)은
 **전용 DB(market-pgvector, pg17+pgvector, 호스트 :5434)**에 산다. 접근은 market 프로바이더가
 `core.database.get_market_db`(엔진은 `MARKET_DATABASE_URL`, 미설정 시 메인 폴백)로만 한다 —
-앱별 DB 불가침. 스키마 진실은 `apps/market/alembic` 독립 체인(7c5cfbd1c35f → 8d6efce2a41b),
+앱별 DB 불가침. 스키마 진실은 `apps/market/alembic` 독립 체인(7c5cfbd1c35f → 8d6efce2a41b → 9a1b2c3d4e5f),
 루트 체인의 market 리비전들은 이력 동결(루트 env.py에서 ORM 제거 + include_name 필터).
 컨테이너 접속: 실운영 backend는 `host.docker.internal:5434`(네트워크 분리, extra_hosts).
 백업: `scripts/backup_db.sh`의 market 블록(market-*.dump 7세대). 배치(ingest·backtest)도
@@ -32,13 +32,16 @@ market의 모든 테이블(3NF 14 + market_news_articles + area_score_backtest_r
 
 - **차원(5)**: `region`(자치구→행정동 자기참조), `trade_area_division`, `service_category`,
   `change_indicator`, `trade_area`(중심).
-- **팩트(8)**: `estimated_sales`·`store`(+service FK)·`floating/resident/working_population`·
-  `consumption`·`apartment`·`commercial_change`. 공통 `MarketStatMixin` = `id + year_quarter +
+- **팩트(9)**: `estimated_sales`·`store`(+service FK)·`floating/resident/working_population`·
+  `consumption`·`apartment`·`facility`·`commercial_change`. 공통 `MarketStatMixin` = `id + year_quarter +
   trdar_code(FK→trade_area)`. 차원 속성(상권명·구분·지역명)은 차원 테이블로 정규화됨.
 - 분해 컬럼(연령/시간/요일)은 넓게 유지 — 3NF 준수, 과정규화 회피.
 
 ## 적재 — 독립 스크립트
 
+- `scripts/fetch_seoul_facility.py` — **집객시설-상권만 포털에 파일이 없어** OpenAPI
+  (`VwsmTrdarFcltyQq`, `SEOUL_OPENDATA_API_KEY` 필요)로 받아 다른 CSV와 같은 자리·인코딩으로
+  떨군다. 헤더는 API 필드 코드 그대로(포털이 한글 라벨을 공개하지 않아 지어내지 않았다).
 - `scripts/ingest_seoul_3nf.py` — CSV(`data/raw/seoul/`, cp949)를 차원 먼저 → 팩트(FK 무결성 필터)로 적재.
   **모든 INSERT가 멱등**(`ON CONFLICT DO NOTHING`)이라 재실행이 안전하다. 서울시가 추정매출·
   점포를 연도별 파일로 주므로 `서울시 상권분석서비스(<팩트>)_<연도>년.csv`도 함께 읽는다.
@@ -68,8 +71,11 @@ market의 모든 테이블(3NF 14 + market_news_articles + area_score_backtest_r
 - `traffic_vs_sales` 통행 주말비중 − 매출 주말비중이 15%p 이상 벌어질 때 — "지나가긴 해도
   지갑은 평일에 열린다". 요일 7컬럼은 `FloatingRhythm`으로 주중/주말 2개로 접어 쓴다
   (7개를 그대로 노출하면 화면·스키마만 늘고 값하는 건 이 교차 신호 하나다).
+- `facility_anchor` 지하철역·대학·백화점·버스정거장(30개+) — "여기 사람이 왜 오는가".
+  시설 20종 중 외부 유입 동선을 만드는 것만 센다. 하나도 없으면 침묵한다(동네 상권을
+  "유입이 강하다"고 말하면 거짓이다).
 
-팩트 8개의 개별 조회 슬라이스(라우터·인터랙터·리포지토리·매퍼·엔티티)는 제거됨 —
+팩트별 개별 조회 슬라이스(라우터·인터랙터·리포지토리·매퍼·엔티티)는 제거됨 —
 런타임 조회는 위 다섯 경로로 수렴한다. 팩트 ORM은 게이트웨이·적재 스크립트·마이그레이션이 사용하므로 유지.
 
 ## 상권 뉴스 (RAG 코퍼스)

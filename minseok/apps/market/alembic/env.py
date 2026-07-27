@@ -18,7 +18,15 @@ from core.key.secret_manager import get_secret_manager  # noqa: E402
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
-config.set_main_option("sqlalchemy.url", get_secret_manager().require("DATABASE_URL"))
+# market 독립 체인은 **market 전용 DB(:5434)**를 대상으로 한다 — DATABASE_URL(메인 DB)을
+# 쓰면 이 체인이 엉뚱한 DB에 적용된다. 미설정 시 메인 폴백은 런타임·배치와 동일 규칙.
+# 드라이버 접두사는 두 분기 모두에 붙여야 한다(psycopg2를 찾다 죽는 것을 방지).
+_secrets = get_secret_manager()
+config.set_main_option(
+    "sqlalchemy.url",
+    (_secrets.get("MARKET_DATABASE_URL") or _secrets.require("DATABASE_URL"))
+    .replace("postgresql://", "postgresql+psycopg://"),
+)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

@@ -227,3 +227,34 @@ COMMERCIAL_CHANGE_COLUMN_MAP: dict[str, str] = {
     "서울_운영_영업_개월_평균": "seoul_operating_months_avg",
     "서울_폐업_영업_개월_평균": "seoul_closure_months_avg",
 }
+
+# 집객시설-상권은 포털에 파일이 없어 OpenAPI(VwsmTrdarFcltyQq)로 받는다.
+# 다른 맵과 달리 키가 한글이 아니라 **API 필드 코드**인 이유 — 포털이 한글 라벨을
+# 공개하지 않아 지어내지 않았다. 수집은 scripts/fetch_seoul_facility.py.
+FACILITY_COLUMN_MAP: dict[str, str] = {
+    "STDR_YYQU_CD": "year_quarter",
+    "TRDAR_SE_CD": "trdar_div_code",
+    "TRDAR_SE_CD_NM": "trdar_div_name",
+    "TRDAR_CD": "trdar_code",
+    "TRDAR_CD_NM": "trdar_name",
+    "VIATR_FCLTY_CO": "total_facility_count",
+    "PBLOFC_CO": "public_office_count",
+    "BANK_CO": "bank_count",
+    "GEHSPT_CO": "general_hospital_count",
+    "GNRL_HSPTL_CO": "hospital_count",
+    "PARMACY_CO": "pharmacy_count",
+    "KNDRGR_CO": "kindergarten_count",
+    "ELESCH_CO": "elementary_school_count",
+    "MSKUL_CO": "middle_school_count",
+    "HGSCHL_CO": "high_school_count",
+    "UNIV_CO": "university_count",
+    "DRTS_CO": "department_store_count",
+    "SUPMK_CO": "supermarket_count",
+    "THEAT_CO": "theater_count",
+    "STAYNG_FCLTY_CO": "lodging_count",
+    "ARPRT_CO": "airport_count",
+    "RLROAD_STATN_CO": "railway_station_count",
+    "BUS_TRMINL_CO": "bus_terminal_count",
+    "SUBWAY_STATN_CO": "subway_station_count",
+    "BUS_STTN_CO": "bus_stop_count",
+}

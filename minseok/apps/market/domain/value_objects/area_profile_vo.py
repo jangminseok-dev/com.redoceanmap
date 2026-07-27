@@ -37,6 +37,23 @@ class FloatingRhythm:
 
 
 @dataclass(frozen=True)
+class FacilityProfile:
+    """최신 분기 집객시설 — 사람을 끌어오는 앵커만 추린다.
+
+    원천은 20종이지만 창업 판단에 실제로 값하는 건 '외부 유입 동선'을 만드는 몇 개다.
+    20개를 다 노출하면 숫자 나열이 된다.
+    """
+
+    year_quarter: int
+    total: int
+    subway_stations: int
+    bus_stops: int
+    universities: int
+    department_stores: int
+    hospitals: int  # 종합병원 + 일반병원
+
+
+@dataclass(frozen=True)
 class AgeBand:
     band: str  # "10".."60+"
     male: int

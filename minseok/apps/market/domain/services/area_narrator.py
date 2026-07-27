@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from market.domain.value_objects.area_profile_vo import (
+    FacilityProfile,
     FloatingRhythm,
     ResidentProfile,
     SalesMix,
@@ -22,6 +23,7 @@ APT_SHARE_MIN = 0.5   # 아파트 가구 비중 언급 기준
 TICKET_GAP_MIN = 0.20         # 주중/주말 객단가 차이 이 이상일 때만 언급
 AGE_TICKET_MIN_SHARE = 0.05   # 건수 비중이 이 미만인 연령대는 객단가 후보에서 제외(허위 최고가 방지)
 TRAFFIC_SALES_GAP_MIN = 0.15  # 통행-매출 주말 비중 괴리 이 이상일 때만 언급
+BUS_STOP_MIN = 30             # 버스정거장 이 이상이면 대중교통 동선이 뚜렷하다고 본다
 
 _TIME_LABELS = {
     "t00_06": "새벽(00~06시)",
@@ -48,6 +50,7 @@ def narrate(
     working: WorkingProfile | None,
     spending: SpendingProfile | None,
     floating: FloatingRhythm | None = None,
+    facility: FacilityProfile | None = None,
 ) -> list[Insight]:
     """최신 분기 구조 수치 → 초보자용 해석 문장. 결측 축은 해당 문장을 생략한다."""
     insights: list[Insight] = []
@@ -64,6 +67,9 @@ def narrate(
         crossed = _traffic_vs_sales(sales, floating)
         if crossed is not None:
             insights.append(crossed)
+    anchor = _facility_insight(facility)
+    if anchor is not None:
+        insights.append(anchor)
     return insights
 
 
@@ -258,6 +264,30 @@ def _traffic_vs_sales(sales: SalesMix, floating: FloatingRhythm | None) -> Insig
                 "주말 방문객이 실제 구매로 잘 이어집니다.")
         tone = "positive"
     return Insight(key="traffic_vs_sales", tone=tone, text=text)
+
+
+def _facility_insight(facility: FacilityProfile | None) -> Insight | None:
+    """외부 유입 동선의 앵커 — 역·대학·백화점·버스정거장. 하나도 없으면 침묵한다.
+
+    시설 20종을 다 세면 숫자 나열이다. "이 상권에 사람이 왜 오는가"를 만드는 것만 센다.
+    """
+    if facility is None:
+        return None
+    parts = []
+    if facility.subway_stations:
+        parts.append(f"지하철역 {facility.subway_stations}곳")
+    if facility.universities:
+        parts.append(f"대학 {facility.universities}곳")
+    if facility.department_stores:
+        parts.append(f"백화점 {facility.department_stores}곳")
+    if facility.bus_stops >= BUS_STOP_MIN:
+        parts.append(f"버스정거장 {facility.bus_stops}개")
+    if not parts:
+        return None
+    return Insight(
+        key="facility_anchor", tone="positive",
+        text=" · ".join(parts) + " — 외부 유입 동선이 강한 상권입니다.",
+    )
 
 
 def _won(v: float) -> str:

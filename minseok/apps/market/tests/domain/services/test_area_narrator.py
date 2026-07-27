@@ -1,5 +1,6 @@
 from market.domain.services.area_narrator import narrate
 from market.domain.value_objects.area_profile_vo import (
+    FacilityProfile,
     FloatingRhythm,
     ResidentProfile,
     SalesMix,
@@ -247,3 +248,34 @@ def test_통행_매출_괴리가_작으면_생략한다():
 
 def test_통행_데이터가_없으면_교차_문장을_만들지_않는다():  # 열화
     assert "traffic_vs_sales" not in _keys(narrate(_sales(), None, None, None, None))
+
+
+# --- 집객시설 앵커 ---
+
+def _facility(subway=0, bus=0, univ=0, dept=0, hosp=0, total=0):
+    return FacilityProfile(
+        year_quarter=20254, total=total, subway_stations=subway, bus_stops=bus,
+        universities=univ, department_stores=dept, hospitals=hosp,
+    )
+
+
+def test_외부_유입_앵커가_있으면_언급한다():
+    got = narrate(None, None, None, None, None, _facility(subway=2, univ=1, bus=34))
+    insight = next(i for i in got if i.key == "facility_anchor")
+    assert insight.tone == "positive"
+    assert insight.text == "지하철역 2곳 · 대학 1곳 · 버스정거장 34개 — 외부 유입 동선이 강한 상권입니다."
+
+
+def test_앵커가_하나도_없으면_침묵한다():
+    # 병원·소규모 정류장만 있는 동네 상권을 "유입이 강하다"고 말하면 거짓이다.
+    got = narrate(None, None, None, None, None, _facility(bus=12, hosp=3, total=15))
+    assert "facility_anchor" not in _keys(got)
+
+
+def test_버스정거장은_임계_이상일_때만_센다():
+    assert "facility_anchor" not in _keys(narrate(None, None, None, None, None, _facility(bus=29)))
+    assert "facility_anchor" in _keys(narrate(None, None, None, None, None, _facility(bus=30)))
+
+
+def test_집객시설_데이터가_없으면_문장을_만들지_않는다():  # 열화
+    assert "facility_anchor" not in _keys(narrate(_sales(), None, None, None, None, None))

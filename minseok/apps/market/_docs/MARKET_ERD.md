@@ -3,7 +3,7 @@
 market CLAUDE → [[minseok/apps/market/_docs/CLAUDE|market CLAUDE]]
 
 서울시 상권분석서비스 CSV를 발자국 ERD 컨벤션으로 정규화한 스키마.
-차원 5 + 팩트 8(상권 단위) + 지역 벤치마크 1(시도 단위).
+차원 5 + 팩트 9(상권 단위) + 지역 벤치마크 1(시도 단위).
 ORM 소스: `adapter/outbound/orm/` (SQLAlchemy 2.0 `Mapped` 스타일).
 전국 확장을 전제로 서울 하드코딩 없이 지역(`region`) 계층으로 일반화한다.
 
@@ -226,6 +226,7 @@ erDiagram
 | `working_population` | — | (year_quarter, trdar_code) `uq_working_population` |
 | `consumption` | — | (year_quarter, trdar_code) `uq_consumption` |
 | `apartment` | — | (year_quarter, trdar_code) `uq_apartment` |
+| `facility` | — | (year_quarter, trdar_code) `uq_facility` |
 | `commercial_change` | `change_indicator` → change_indicator | (year_quarter, trdar_code) `uq_commercial_change` |
 
 ### 공통 컬럼 — MarketStatMixin
@@ -307,6 +308,23 @@ erDiagram
 | 면적별 세대 수 (5) | `area_under_66_count`, `area_66_count`, `area_99_count`, `area_132_count`, `area_165_count` | int ✓ |
 | 가격별 세대 수 (7) | `price_under_1b_count`, `price_1b_count` ~ `price_5b_count`, `price_over_6b_count` | int ✓ |
 | 평균 | `avg_area` / `avg_price` | int / bigint |
+
+### facility (집객시설, 분기·상권별)
+
+사람을 끌어오는 앵커. 서울 상권분석서비스 표준 세트 중 마지막으로 편입된 팩트다(2026-07-27).
+**이 데이터셋만 포털에 파일 다운로드가 없어** OpenAPI(`VwsmTrdarFcltyQq`)로 받는다 —
+`scripts/fetch_seoul_facility.py`가 CSV로 떨구면 나머지와 동일하게 적재된다.
+연 1회 갱신이라 사실상 상권의 준정적 속성이지만, 특례를 만들지 않고 전 분기를 적재하고
+조회만 최신 1분기로 한다.
+
+| 컬럼 그룹 | 컬럼 | 타입 |
+|-----------|------|------|
+| 합계 | `total_facility_count` | int |
+| 공공·금융 | `public_office_count`, `bank_count` | int |
+| 의료 (3) | `general_hospital_count`, `hospital_count`, `pharmacy_count` | int |
+| 교육 (5) | `kindergarten_count`, `elementary_school_count`, `middle_school_count`, `high_school_count`, `university_count` | int |
+| 상업·여가 (4) | `department_store_count`, `supermarket_count`, `theater_count`, `lodging_count` | int |
+| 교통 (5) | `airport_count`, `railway_station_count`, `bus_terminal_count`, `subway_station_count`, `bus_stop_count` | int |
 
 ### commercial_change (상권변화, 분기·상권별)
 

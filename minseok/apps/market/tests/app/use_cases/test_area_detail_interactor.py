@@ -23,7 +23,7 @@ def _sales_mix():
 class _StubRepo:
     def __init__(self, header=None, service=None, sales_mix=None,
                  resident=None, working=None, apartment=None, spending=None,
-                 floating=None):
+                 floating=None, facility=None):
         self.header = header
         self.service = service
         self.sales_mix = sales_mix
@@ -32,6 +32,7 @@ class _StubRepo:
         self.apartment = apartment
         self.spending = spending
         self.floating = floating
+        self.facility = facility
         self.requested_service: tuple | None = None
         self.sales_mix_called_with: tuple | None = None
 
@@ -57,6 +58,9 @@ class _StubRepo:
 
     async def find_floating_rhythm(self, trdar_code):
         return self.floating
+
+    async def find_facility(self, trdar_code):
+        return self.facility
 
     async def find_spending(self, trdar_code):
         return self.spending

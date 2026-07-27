@@ -7,6 +7,7 @@ from sqlalchemy.orm import aliased
 from market.adapter.outbound.orm.apartment_orm import ApartmentOrm
 from market.adapter.outbound.orm.consumption_orm import ConsumptionOrm
 from market.adapter.outbound.orm.estimated_sales_orm import EstimatedSalesOrm
+from market.adapter.outbound.orm.facility_orm import FacilityOrm
 from market.adapter.outbound.orm.floating_population_orm import FloatingPopulationOrm
 from market.adapter.outbound.orm.region_orm import RegionOrm
 from market.adapter.outbound.orm.resident_population_orm import ResidentPopulationOrm
@@ -18,6 +19,7 @@ from market.app.ports.output.area_detail_repository import AreaDetailRepositoryP
 from market.domain.value_objects.area_profile_vo import (
     AgeBand,
     ApartmentProfile,
+    FacilityProfile,
     FloatingRhythm,
     ResidentProfile,
     SalesMix,
@@ -192,6 +194,25 @@ class AreaDetailPgRepository(AreaDetailRepositoryPort):
             weekday_pop=(r.mon_floating_pop + r.tue_floating_pop + r.wed_floating_pop
                          + r.thu_floating_pop + r.fri_floating_pop),
             weekend_pop=r.sat_floating_pop + r.sun_floating_pop,
+        )
+
+    async def find_facility(self, trdar_code: int) -> FacilityProfile | None:
+        r = (await self._session.execute(
+            select(FacilityOrm)
+            .where(FacilityOrm.trdar_code == trdar_code)
+            .order_by(FacilityOrm.year_quarter.desc())
+            .limit(1)
+        )).scalar()
+        if r is None:
+            return None
+        return FacilityProfile(
+            year_quarter=r.year_quarter,
+            total=r.total_facility_count,
+            subway_stations=r.subway_station_count,
+            bus_stops=r.bus_stop_count,
+            universities=r.university_count,
+            department_stores=r.department_store_count,
+            hospitals=r.general_hospital_count + r.hospital_count,
         )
 
     async def find_spending(self, trdar_code: int) -> SpendingProfile | None:

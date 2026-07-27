@@ -48,6 +48,7 @@ import market.adapter.outbound.orm.resident_population_orm  # noqa: E402,F401
 import market.adapter.outbound.orm.working_population_orm  # noqa: E402,F401
 import market.adapter.outbound.orm.consumption_orm  # noqa: E402,F401
 import market.adapter.outbound.orm.apartment_orm  # noqa: E402,F401
+import market.adapter.outbound.orm.facility_orm  # noqa: E402,F401
 import market.adapter.outbound.orm.commercial_change_orm  # noqa: E402,F401
 import market.adapter.outbound.orm.commercial_change_benchmark_orm  # noqa: E402,F401
 
@@ -56,6 +57,7 @@ from market.adapter.outbound.csv.column_maps import (  # noqa: E402
     COMMERCIAL_CHANGE_COLUMN_MAP,
     CONSUMPTION_COLUMN_MAP,
     ESTIMATED_SALES_COLUMN_MAP,
+    FACILITY_COLUMN_MAP,
     FLOATING_POPULATION_COLUMN_MAP,
     RESIDENT_POPULATION_COLUMN_MAP,
     STORE_COLUMN_MAP,
@@ -241,6 +243,7 @@ def main(
         ("직장인구-상권", "working_population", WORKING_POPULATION_COLUMN_MAP, None),
         ("소비-상권", "consumption", CONSUMPTION_COLUMN_MAP, None),
         ("아파트-상권", "apartment", APARTMENT_COLUMN_MAP, None),
+        ("집객시설-상권", "facility", FACILITY_COLUMN_MAP, None),
         ("상권변화지표-상권", "commercial_change", COMMERCIAL_CHANGE_COLUMN_MAP, "change"),
     ]
     for fname, table, cmap, kind in facts:

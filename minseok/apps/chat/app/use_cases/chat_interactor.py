@@ -83,6 +83,7 @@ NON_SEOUL_REGIONS = (
 # 앞쪽일수록 "여기가 어떤 상권인가"를 먼저 규정한다. 성별은 정보량이 가장 낮아 뒤로.
 _INSIGHT_PRIORITY = (
     "demand_type",          # 오피스형/주거형/혼합 — 상권 성격의 뼈대
+    "facility_anchor",      # 역·대학·백화점 — "여기 사람이 왜 오는가"
     "traffic_vs_sales",     # 통행↔매출 괴리 — 부정 신호가 추천 신뢰도를 가장 크게 올린다
     "avg_ticket",           # 객단가 — 창업 판단에 직결
     "avg_ticket_age",       # 가장 비싸게 쓰는 연령대(방문층과 다를 때 특히 값어치)
