@@ -76,6 +76,10 @@ async def get_area_detail(
             universities=view.facility.universities,
             departmentStores=view.facility.department_stores,
             hospitals=view.facility.hospitals,
+            gateway=view.facility.gateway,
+            schools=view.facility.schools,
+            nightlife=view.facility.nightlife,
+            convenience=view.facility.convenience,
         ) if view.facility else None,
         serviceRanking=[
             ServiceRankSchema(

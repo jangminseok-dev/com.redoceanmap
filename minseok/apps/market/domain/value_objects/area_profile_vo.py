@@ -68,6 +68,11 @@ class FacilityProfile:
     universities: int
     department_stores: int
     hospitals: int  # 종합병원 + 일반병원
+    # 상권 성격 축 — 개별 13종을 그대로 세지 않고 "왜 오는가"가 같은 것끼리 묶는다.
+    gateway: int = 0      # 철도역 + 버스터미널 + 공항 — 서울 밖에서 오는 광역 유입
+    schools: int = 0      # 유치원 + 초 + 중 + 고 — 학생·학부모 동선
+    nightlife: int = 0    # 극장 + 숙박 — 밤·주말 체류
+    convenience: int = 0  # 은행 + 약국 + 슈퍼마켓 + 관공서 — 생활 밀착 동선
 
 
 @dataclass(frozen=True)

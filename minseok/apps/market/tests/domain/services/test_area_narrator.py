@@ -253,10 +253,11 @@ def test_통행_데이터가_없으면_교차_문장을_만들지_않는다():  
 
 # --- 집객시설 앵커 ---
 
-def _facility(subway=0, bus=0, univ=0, dept=0, hosp=0, total=0):
+def _facility(subway=0, bus=0, univ=0, dept=0, hosp=0, total=0, gateway=0, schools=0, nightlife=0, conv=0):
     return FacilityProfile(
         year_quarter=20254, total=total, subway_stations=subway, bus_stops=bus,
         universities=univ, department_stores=dept, hospitals=hosp,
+        gateway=gateway, schools=schools, nightlife=nightlife, convenience=conv,
     )
 
 
@@ -342,3 +343,53 @@ def test_소형_비중이_서울_평균_수준이면_침묵한다():
 
 def test_아파트_분포가_없으면_문장을_만들지_않는다():  # 열화
     assert _apt_narrate() == set()
+
+
+# --- 상권 성격 (시설 13종을 유입의 '종류'로 묶음) ---
+
+def _char(**kw):
+    got = narrate(None, None, None, None, None, _facility(**kw))
+    return next((i for i in got if i.key == "facility_character"), None)
+
+
+def test_광역관문이_있으면_최우선으로_말한다():
+    # 철도역·터미널 보유 상권은 서울 통틀어 3곳 — 있으면 그게 그 상권의 정체다
+    insight = _char(gateway=1, schools=5, nightlife=9, conv=50)
+    assert insight is not None and insight.tone == "positive"
+    assert "광역 유입" in insight.text
+
+
+def test_광역관문이_없으면_학교가_다음_순위():
+    insight = _char(schools=2, nightlife=9, conv=50)
+    assert "학생·학부모 동선" in insight.text
+
+
+def test_학교_1곳은_학원가로_보지_않는다():
+    # 유치원 1곳은 동네 어디에나 있다 — 임계는 2
+    insight = _char(schools=1, conv=50)
+    assert "생활 동선" in insight.text  # 학교가 아니라 생활편의로 떨어진다
+
+
+def test_야간체류는_생활편의보다_우선한다():
+    insight = _char(nightlife=3, conv=50)
+    assert "밤과 주말" in insight.text
+
+
+def test_생활편의는_가장_흔해서_마지막이다():
+    insight = _char(conv=10)
+    assert "동네 생활 동선" in insight.text
+
+
+def test_어느_축도_임계에_못_미치면_침묵한다():
+    assert _char(schools=1, nightlife=2, conv=9) is None
+
+
+def test_성격_문장은_최대_한_개다():
+    # 넷을 다 나열하면 시설 13종을 세는 것과 다를 게 없다
+    got = narrate(None, None, None, None, None,
+                  _facility(gateway=2, schools=4, nightlife=8, conv=40))
+    assert len([i for i in got if i.key == "facility_character"]) == 1
+
+
+def test_시설_데이터가_없으면_성격도_말하지_않는다():  # 열화
+    assert "facility_character" not in _keys(narrate(_sales(), None, None, None, None, None))

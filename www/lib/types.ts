@@ -350,6 +350,11 @@ export type AreaDetail = {
     universities: number;
     departmentStores: number;
     hospitals: number;
+    // 성격 축 — 유입의 세기가 아니라 종류
+    gateway: number; // 철도역·터미널·공항
+    schools: number; // 유치원·초·중·고
+    nightlife: number; // 극장·숙박
+    convenience: number; // 은행·약국·슈퍼마켓·관공서
   } | null;
   // 상권 안 업종 랭킹 — "이 자리에서 뭐가 되나"
   serviceRanking: {

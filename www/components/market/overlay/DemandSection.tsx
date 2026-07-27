@@ -97,6 +97,11 @@ export default function DemandSection({
         ["대학", facility.universities],
         ["백화점", facility.departmentStores],
         ["병원", facility.hospitals],
+        // 성격 축 — 유입의 종류. 시설 13종을 그대로 세지 않고 묶은 값이다
+        ["철도·터미널", facility.gateway],
+        ["학교", facility.schools],
+        ["극장·숙박", facility.nightlife],
+        ["생활시설", facility.convenience],
       ] as [string, number][]).filter(([, n]) => n > 0)
     : [];
 

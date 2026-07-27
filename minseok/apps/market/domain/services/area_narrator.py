@@ -30,6 +30,13 @@ HIGH_PRICE_SHARE_MIN = 0.30   # 4억 이상 세대 비중. 중앙 0.2%·p75 11.8
 SMALL_UNIT_SHARE_MIN = 0.85   # 66㎡ 미만 비중. 중앙 65.9%·p75 89.5% — 서울 기본값이 소형이라 높게 잡는다
 LARGE_UNIT_SHARE_MIN = 0.10   # 132㎡ 이상 비중. p90이 5.7%라 희소하지만 뜨면 성격이 뚜렷하다
 
+# 상권 성격 임계값 — 최신 분기 1,578상권 실측. 서울 시설 데이터는 매우 희소해서
+# (학교·야간체류 중앙 0·p90 1) 상식적인 "5곳 이상" 같은 기준을 쓰면 아무 상권도 뜨지 않는다.
+GATEWAY_MIN = 1      # 철도역·터미널·공항 보유 상권이 서울 통틀어 3곳뿐 — 있으면 그게 그 상권의 정체다
+SCHOOL_MIN = 2       # 22상권(1.4%). 1곳은 동네 어디에나 있어 "학원가"라 부를 근거가 못 된다
+NIGHTLIFE_MIN = 3    # 42상권(2.7%)
+CONVENIENCE_MIN = 10  # 172상권(11%) — 가장 흔해서 마지막 순위
+
 _HIGH_PRICE_KEYS = ("b4", "b5", "over6b")
 _LARGE_AREA_KEYS = ("a132", "a165")
 
@@ -80,6 +87,9 @@ def narrate(
     anchor = _facility_insight(facility)
     if anchor is not None:
         insights.append(anchor)
+    character = _facility_character(facility)
+    if character is not None:
+        insights.append(character)
     return insights
 
 
@@ -341,6 +351,39 @@ def _facility_insight(facility: FacilityProfile | None) -> Insight | None:
         key="facility_anchor", tone="positive",
         text=" · ".join(parts) + " — 외부 유입 동선이 강한 상권입니다.",
     )
+
+
+def _facility_character(facility: FacilityProfile | None) -> Insight | None:
+    """상권의 성격 — "사람이 왜 오는가"가 같은 시설끼리 묶어 하나만 말한다.
+
+    `_facility_insight`(유입 동선의 세기)와 축이 다르다. 이쪽은 유입의 *종류*다.
+    희소한 축이 정보량이 크므로 광역관문 → 학교 → 야간체류 → 생활편의 순으로 보고
+    **처음 걸리는 하나만** 낸다. 넷을 다 나열하면 시설 13종을 세는 것과 다를 게 없다.
+    """
+    if facility is None:
+        return None
+    if facility.gateway >= GATEWAY_MIN:
+        return Insight(
+            key="facility_character", tone="positive",
+            text=f"철도역·터미널 {facility.gateway}곳 — 서울 밖에서 들어오는 광역 유입 상권입니다.",
+        )
+    if facility.schools >= SCHOOL_MIN:
+        return Insight(
+            key="facility_character", tone="neutral",
+            text=f"학교·유치원 {facility.schools}곳 — 학생·학부모 동선이 굵은 상권입니다.",
+        )
+    if facility.nightlife >= NIGHTLIFE_MIN:
+        return Insight(
+            key="facility_character", tone="neutral",
+            text=f"극장·숙박 {facility.nightlife}곳 — 밤과 주말에 머무는 수요가 있는 상권입니다.",
+        )
+    if facility.convenience >= CONVENIENCE_MIN:
+        return Insight(
+            key="facility_character", tone="neutral",
+            text=f"은행·약국·마트 등 생활시설 {facility.convenience}곳 — "
+                 "동네 생활 동선이 지나는 상권입니다.",
+        )
+    return None
 
 
 def _won(v: float) -> str:

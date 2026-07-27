@@ -285,6 +285,12 @@ class AreaDetailPgRepository(AreaDetailRepositoryPort):
             universities=r.university_count,
             department_stores=r.department_store_count,
             hospitals=r.general_hospital_count + r.hospital_count,
+            gateway=r.railway_station_count + r.bus_terminal_count + r.airport_count,
+            schools=(r.kindergarten_count + r.elementary_school_count
+                     + r.middle_school_count + r.high_school_count),
+            nightlife=r.theater_count + r.lodging_count,
+            convenience=(r.bank_count + r.pharmacy_count
+                         + r.supermarket_count + r.public_office_count),
         )
 
     async def find_spending(self, trdar_code: int) -> SpendingProfile | None:

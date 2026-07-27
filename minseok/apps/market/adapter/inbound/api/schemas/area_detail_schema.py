@@ -84,6 +84,11 @@ class FacilitySchema(BaseModel):
     universities: int
     departmentStores: int
     hospitals: int
+    # 성격 축 — 유입의 세기가 아니라 종류. 13종을 그대로 세지 않고 묶는다
+    gateway: int      # 철도역·터미널·공항
+    schools: int      # 유치원·초·중·고
+    nightlife: int    # 극장·숙박
+    convenience: int  # 은행·약국·슈퍼마켓·관공서
 
 
 class ServiceRankSchema(BaseModel):
