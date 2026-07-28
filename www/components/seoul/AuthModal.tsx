@@ -6,6 +6,10 @@ import { useUIStore, type AuthMode } from "@/lib/uiStore";
 import { apiLogin, apiRegister } from "@/lib/authApi";
 import { startSocialLogin, type SocialProvider } from "@/lib/socialAuth";
 
+// 백엔드 auth_schema.py와 같은 값 — 한쪽만 바꾸면 서버 422가 그대로 노출된다.
+const MIN_PASSWORD_LENGTH = 10;
+const MAX_PASSWORD_BYTES = 72; // bcrypt 한계
+
 function PinMark({ size = 32 }: { size?: number }) {
   return (
     <svg
@@ -170,6 +174,15 @@ export default function AuthModal() {
     const passwordConfirm = String(formData.get("passwordConfirm") ?? "");
     if (password !== passwordConfirm) {
       setUI((prev) => ({ ...prev, error: "비밀번호가 일치하지 않습니다." }));
+      return;
+    }
+    // 서버 정책(auth_schema)과 같은 기준 — 여기서 걸러야 원문 422 대신 한국어 안내가 뜬다.
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setUI((prev) => ({ ...prev, error: `비밀번호는 ${MIN_PASSWORD_LENGTH}자 이상이어야 합니다.` }));
+      return;
+    }
+    if (new TextEncoder().encode(password).length > MAX_PASSWORD_BYTES) {
+      setUI((prev) => ({ ...prev, error: "비밀번호가 너무 깁니다. (한글 24자·영문 72자 이내)" }));
       return;
     }
     const unchecked = SIGNUP_TERMS.filter((t) => t.required && formData.get(t.name) !== "on");
@@ -365,7 +378,7 @@ export default function AuthModal() {
                   id="signup-password"
                   name="password"
                   type={ui.showPwd ? "text" : "password"}
-                  placeholder="비밀번호를 입력해주세요"
+                  placeholder={`비밀번호 (${MIN_PASSWORD_LENGTH}자 이상)`}
                   className="w-full bg-transparent border border-border rounded-xl px-4 py-3 pr-10 text-sm outline-none focus:border-brand placeholder:text-foreground-muted"
                 />
                 <button
