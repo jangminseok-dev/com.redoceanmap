@@ -88,6 +88,7 @@ from market.adapter.inbound.api.v1.area_detail_router import area_detail_router
 from market.adapter.inbound.api.v1.area_router import area_router
 from market.adapter.inbound.api.v1.area_ranking_router import area_ranking_router
 from market.adapter.inbound.api.v1.area_score_router import area_score_router
+from market.adapter.inbound.api.v1.area_showcase_router import area_showcase_router
 from market.adapter.inbound.api.v1.area_stats_router import area_stats_router
 from market.adapter.inbound.api.v1.cartographer_router import cartographer_router
 from stock.adapter.inbound.api.v1.analyst_router import analyst_router
@@ -165,6 +166,9 @@ app.include_router(forecast_snapshot_router)
 app.include_router(mail_ingest_router)
 app.include_router(signal_scan_router)
 app.include_router(dispatcher_router)
+# 공개 — 비로그인 첫 화면 쇼케이스(읽기 전용·최소 필드). 데이터 라우터 중 유일하게
+# 인증 없이 열린다. 여기에 라우터를 더 얹기 전에 tests/test_public_routes.py를 볼 것.
+app.include_router(area_showcase_router)
 app.include_router(chat_router, dependencies=_authenticated)
 app.include_router(concierge_router, dependencies=_authenticated)
 app.include_router(area_detail_router, dependencies=_authenticated)

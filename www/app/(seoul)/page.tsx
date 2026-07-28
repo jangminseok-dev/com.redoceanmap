@@ -15,10 +15,11 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchRecommendations } from "@/lib/api";
+import { fetchAreaShowcase, fetchRecommendations } from "@/lib/api";
 import { useChatStore } from "@/lib/store";
 import { useUIStore } from "@/lib/uiStore";
 import ChatInput from "@/components/seoul/ChatInput";
+import { formatMoney } from "@/components/market/overlay/format";
 
 function getGreeting(hour: number) {
   if (hour < 12) return "좋은 아침이에요";
@@ -35,13 +36,8 @@ const quickChips = [
   { icon: TrendingUp, label: "주식 물어보기", prompt: "삼성전자 주가 어때요?" },
 ];
 
-// 비로그인 기본 카드 — 로그인 시 최근 추천 이력(실데이터)으로 대체된다
-const defaultAreas = [
-  { name: "성수동", category: "카페·디저트", note: "젊은 손님이 많은 동네" },
-  { name: "연남동", category: "베이커리", note: "주말 상권이 강한 동네" },
-  { name: "망원동", category: "외식업", note: "동네 단골 장사가 되는 곳" },
-  { name: "익선동", category: "야간 상권", note: "밤에 사람이 모이는 곳" },
-];
+const quarterLabel = (yq: number | null) =>
+  yq ? `${String(yq).slice(0, 4)}년 ${String(yq).slice(4)}분기` : "";
 
 const workspaceCards = [
   {
@@ -100,6 +96,15 @@ export default function HomePage() {
     .slice(0, 4);
   const useRecent = recentAreas.length > 0;
 
+  // 쇼케이스는 공개 엔드포인트라 비로그인도 그대로 실행된다(enabled 조건 없음).
+  // 백엔드가 분기 단위로만 바뀌는 값을 캐시하므로 프론트도 길게 잡는다.
+  const showcaseQ = useQuery({
+    queryKey: ["area-showcase"],
+    queryFn: fetchAreaShowcase,
+    staleTime: 1000 * 60 * 60,
+  });
+  const showcase = showcaseQ.data;
+
   // 시간대별 인사는 마운트 후 계산 — SSR(서버 시각)과 달라 하이드레이션 불일치를 내던 버그 수정
   const [greeting, setGreeting] = useState("안녕하세요");
   useEffect(() => {
@@ -113,11 +118,18 @@ export default function HomePage() {
           {user ? `${greeting}, ${user.name}님` : greeting}
         </p>
 
-        <h1 className="text-4xl md:text-[42px] font-semibold tracking-tight leading-snug mb-8">
+        <h1 className="text-4xl md:text-[42px] font-semibold tracking-tight leading-snug mb-4">
           상권과 주식,
           <br />
           <span className="text-brand">지금 상황</span>을 빠르게 읽어드릴게요
         </h1>
+
+        {/* 보유 데이터를 서버가 센 값 그대로 — 로딩 중엔 자리만 잡아 레이아웃이 튀지 않게 한다 */}
+        <p className="text-sm text-foreground-muted mb-8 min-h-5">
+          {showcase &&
+            `서울 상권 ${showcase.areaCount.toLocaleString()}곳 · ` +
+              `${quarterLabel(showcase.quarterFrom)}부터 ${quarterLabel(showcase.yearQuarter)}까지 매출·점포 데이터`}
+        </p>
 
         <ChatInput onSubmit={handleSend} disabled={isLoading} />
         {isLoading && (
@@ -165,42 +177,90 @@ export default function HomePage() {
         </div>
 
         <section className="mt-12">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold flex items-center gap-2">
-              <TrendingUp size={18} className="text-brand" strokeWidth={2} />
-              {useRecent ? "최근 추천받은 상권" : "이런 동네는 어때요"}
-            </h2>
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <h2 className="text-base font-semibold flex items-center gap-2">
+                <TrendingUp size={18} className="text-brand" strokeWidth={2} />
+                {useRecent ? "최근 추천받은 상권" : "자치구별 점포당 매출 1위 상권"}
+              </h2>
+              {/* 무엇을 센 숫자인지, 무엇이 아닌지를 카드 위에 먼저 적는다 */}
+              {!useRecent && showcase && (
+                <p className="mt-1.5 text-xs text-foreground-muted leading-relaxed">
+                  {quarterLabel(showcase.yearQuarter)} 집계 · 점포 {showcase.minStoreCount}개 이상 ·
+                  자치구당 1곳. 업종 구성이 달라 창업 예상 매출이 아니고, 앞으로의 성과를 예측하지
+                  않습니다.
+                </p>
+              )}
+            </div>
+            <Link
+              href="/areas"
+              className="shrink-0 text-xs text-foreground-muted hover:text-brand transition-colors whitespace-nowrap mt-0.5"
+            >
+              상권 전체 보기 →
+            </Link>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {useRecent
-              ? recentAreas.map((area) => (
-                  <Link
-                    key={area.id}
-                    href={`/market?trdar=${area.trdar_code}&c=${area.conversation_id}`}
-                    className="text-left bg-surface border border-border rounded-xl p-4 hover:border-brand/40 hover:shadow-sm transition-all"
-                  >
-                    <div className="text-base font-semibold mb-1.5 truncate">{area.trdar_name}</div>
-                    <p className="text-xs text-foreground-muted mb-2">
-                      {area.district_name} · {area.category}
-                    </p>
-                    <p className="text-xs text-foreground/80 leading-snug line-clamp-2">
-                      {area.reason}
-                    </p>
-                  </Link>
-                ))
-              : defaultAreas.map((area) => (
+
+          {useRecent ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {recentAreas.map((area) => (
+                <Link
+                  key={area.id}
+                  href={`/market?trdar=${area.trdar_code}&c=${area.conversation_id}`}
+                  className="text-left bg-surface border border-border rounded-xl p-4 hover:border-brand/40 hover:shadow-sm transition-all"
+                >
+                  <div className="text-base font-semibold mb-1.5 truncate">{area.trdar_name}</div>
+                  <p className="text-xs text-foreground-muted mb-2">
+                    {area.district_name} · {area.category}
+                  </p>
+                  <p className="text-xs text-foreground/80 leading-snug line-clamp-2">
+                    {area.reason}
+                  </p>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {(showcase?.rows ?? []).map((area) => (
                   <button
-                    key={area.name}
-                    onClick={() => handleSend(`${area.name} 상권 어때요?`)}
+                    key={area.trdarCode}
+                    // 비로그인이면 채팅이 401을 받아 로그인 창을 띄운다 — 전환 퍼널을 한 갈래로 유지한다
+                    onClick={() => handleSend(`${area.trdarName} 상권 어때요?`)}
                     disabled={isLoading}
                     className="text-left bg-surface border border-border rounded-xl p-4 hover:border-brand/40 hover:shadow-sm transition-all disabled:opacity-50"
                   >
-                    <div className="text-base font-semibold mb-1.5">{area.name}</div>
-                    <p className="text-xs text-foreground-muted mb-2">{area.category}</p>
-                    <p className="text-xs text-foreground/80 leading-snug">{area.note}</p>
+                    <div className="text-base font-semibold mb-1.5 truncate">{area.trdarName}</div>
+                    <p className="text-xs text-foreground-muted mb-2 truncate">
+                      {area.districtName} · {area.divisionName}
+                    </p>
+                    <p className="text-sm font-medium tabular-nums">
+                      점포당 {formatMoney(area.salesPerStore)}
+                    </p>
+                    <p className="text-xs text-foreground-muted tabular-nums">
+                      점포 {area.storeCount.toLocaleString()}개
+                    </p>
                   </button>
                 ))}
-          </div>
+                {showcaseQ.isPending &&
+                  Array.from({ length: 8 }).map((_, i) => (
+                    <div key={i} className="skeleton h-[104px] rounded-xl" />
+                  ))}
+              </div>
+
+              {/* 1위가 점포당 19억대(도매시장)라 맥락 없이 두면 "창업하면 그만큼 번다"로 읽힌다 */}
+              {showcase && showcase.divisionMedians.length > 0 && (
+                <p className="mt-3 text-xs text-foreground-muted leading-relaxed">
+                  상권 유형별 점포당 매출 중앙값 —{" "}
+                  {showcase.divisionMedians
+                    .map(
+                      (m) =>
+                        `${m.divisionName} ${m.areaCount.toLocaleString()}곳 ${formatMoney(m.medianSalesPerStore)}`,
+                    )
+                    .join(" · ")}
+                </p>
+              )}
+            </>
+          )}
         </section>
       </div>
     </div>

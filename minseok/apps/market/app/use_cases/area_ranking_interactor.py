@@ -1,13 +1,32 @@
 from __future__ import annotations
 
+from statistics import median
+
 from market.app.dtos.area_ranking_dto import (
     AreaRankingQuery,
     AreaRankingRow,
     AreaRankingView,
+    AreaShowcaseRow,
+    AreaShowcaseView,
+    DivisionMedian,
     ServiceOption,
 )
 from market.app.ports.input.area_ranking_use_case import AreaRankingUseCase
 from market.app.ports.output.area_ranking_repository import AreaRankingRepositoryPort
+
+# 쇼케이스 카드 수와 점포수 하한. 쿼리 파라미터로 열지 않는다 — 인증도 rate limit도
+# 없는 공개 엔드포인트에서 `?limit=N`은 아래 캐시 키를 N마다 쪼개 무한 증식시킨다.
+SHOWCASE_LIMIT = 8
+MIN_STORE_COUNT = 10
+
+# 쇼케이스 캐시 — TTL도 Redis도 아니다. 최신 분기를 버전 키로 삼아 분기 적재가
+# 들어오면 자연 갱신된다(area_score의 시도 벤치마크 캐시와 같은 방식).
+#
+# 여기서는 성능 최적화 이상의 역할을 한다: 이 엔드포인트는 **인증 없이** 열리는데
+# rate limit이 아직 없다(ROADMAP ③-M1 미착수). 캐시가 없으면 반복 호출이 그대로
+# GROUP BY 3개로 증폭된다. 캐시 히트 시 DB 왕복은 버전 확인 1회(8버퍼·0.1ms)뿐이다.
+# 키가 없는 단일 슬롯이라 무한 증식이 불가능하다.
+_SHOWCASE_CACHE: tuple[tuple[int, int], AreaShowcaseView] | None = None
 
 
 class AreaRankingInteractor(AreaRankingUseCase):
@@ -59,6 +78,86 @@ class AreaRankingInteractor(AreaRankingUseCase):
                 area_size=a.area_size,
             ))
         return AreaRankingView(year_quarter=latest, rows=rows, services=services)
+
+    async def showcase(self) -> AreaShowcaseView:
+        global _SHOWCASE_CACHE
+
+        version = await self._repo.quarter_range()
+        if version is None:
+            # 빈 DB — 캐시하지 않는다(적재가 들어와도 영영 빈 응답이 남는다)
+            return AreaShowcaseView(
+                year_quarter=None, quarter_from=None, area_count=0,
+                min_store_count=MIN_STORE_COUNT, rows=[], division_medians=[],
+            )
+        if _SHOWCASE_CACHE is not None and _SHOWCASE_CACHE[0] == version:
+            return _SHOWCASE_CACHE[1]
+
+        quarter_from, latest = version
+        # 전 상권을 그대로 받아 쓴다 — 쇼케이스 전용 쿼리를 새로 파지 않는다.
+        ranking = await self.list_ranking(AreaRankingQuery())
+
+        # 점포 1~2개짜리 극단값을 걷어낸다. 하한은 응답에 실어 보내 프론트 카피가
+        # 이 숫자를 따로 하드코딩하지 않게 한다.
+        eligible = [
+            r for r in ranking.rows
+            if r.sales_per_store is not None
+            and r.store_count is not None
+            and r.store_count >= MIN_STORE_COUNT
+        ]
+        eligible.sort(key=lambda r: r.sales_per_store, reverse=True)
+
+        # 자치구당 1곳 — 이게 없으면 상위 8장 중 6장이 한 자치구의 도매시장으로 채워진다.
+        # 지리적으로 흩어지고, 상권유형도 자연히 섞인다.
+        seen_districts: set[str] = set()
+        rows: list[AreaShowcaseRow] = []
+        for r in eligible:
+            if r.district_name in seen_districts:
+                continue
+            seen_districts.add(r.district_name)
+            rows.append(AreaShowcaseRow(
+                trdar_code=r.trdar_code,
+                trdar_name=r.trdar_name,
+                district_name=r.district_name,
+                division_name=r.division_name,
+                sales_per_store=r.sales_per_store,
+                store_count=r.store_count,
+            ))
+            if len(rows) == SHOWCASE_LIMIT:
+                break
+
+        view = AreaShowcaseView(
+            year_quarter=latest,
+            quarter_from=quarter_from,
+            area_count=len(ranking.rows),
+            min_store_count=MIN_STORE_COUNT,
+            rows=rows,
+            division_medians=_division_medians(eligible),
+        )
+        _SHOWCASE_CACHE = (version, view)
+        return view
+
+
+def _division_medians(rows: list[AreaRankingRow]) -> list[DivisionMedian]:
+    """상권유형별 점포당 매출 중앙값 — 추가 쿼리 없이 이미 받은 행에서 만든다.
+
+    평균이 아니라 중앙값이다. 이 분포는 롱테일이라(골목상권 최대/중앙값 30배)
+    평균을 쓰면 상위 카드의 극단값을 설명해야 할 지표가 같이 끌려 올라간다.
+    """
+    grouped: dict[str, list[int]] = {}
+    for r in rows:
+        grouped.setdefault(r.division_name, []).append(r.sales_per_store)
+    return sorted(
+        (
+            DivisionMedian(
+                division_name=name,
+                area_count=len(values),
+                median_sales_per_store=round(median(values)),
+            )
+            for name, values in grouped.items()
+        ),
+        key=lambda d: d.area_count,
+        reverse=True,
+    )
 
 
 def _prev_quarter(year_quarter: int) -> int:

@@ -55,6 +55,15 @@ class AreaRankingRepositoryPort(ABC):
         ...
 
     @abstractmethod
+    async def quarter_range(self) -> tuple[int, int] | None:
+        """매출 팩트의 (최소, 최대) 분기. 데이터가 없으면 None.
+
+        "몇 분기가 쌓였는가"를 하드코딩하지 않기 위한 조회이자, 쇼케이스
+        캐시의 버전 키다. MIN/MAX 한 쿼리가 index-only scan 양끝으로 끝난다.
+        """
+        ...
+
+    @abstractmethod
     async def find_areas(
         self, district_name: str | None, division_code: str | None
     ) -> list[AreaMeta]:

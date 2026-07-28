@@ -460,3 +460,29 @@ export type AreaRanking = {
   // 이 엔드포인트 자신의 필터 어휘(최신 분기에 실적 있는 업종)
   services: { code: string; name: string }[];
 };
+
+// 쇼케이스 — 비로그인 첫 화면. 랭킹과 달리 필드가 6개뿐이다(공개 응답이라 의도적으로 줄였다).
+export type AreaShowcaseRow = {
+  trdarCode: number;
+  trdarName: string;
+  districtName: string;
+  divisionName: string;
+  salesPerStore: number;
+  storeCount: number;
+};
+
+// 상위 카드의 극단값(1위가 점포당 19.6억)을 읽는 자 — 유형별 중앙값
+export type DivisionMedian = {
+  divisionName: string;
+  areaCount: number;
+  medianSalesPerStore: number;
+};
+
+export type AreaShowcase = {
+  yearQuarter: number | null;
+  quarterFrom: number | null;
+  areaCount: number;
+  minStoreCount: number; // 컷오프 — 카피가 숫자를 하드코딩하지 않게 서버가 실어 보낸다
+  rows: AreaShowcaseRow[];
+  divisionMedians: DivisionMedian[];
+};

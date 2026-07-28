@@ -35,6 +35,15 @@ class AreaRankingPgRepository(AreaRankingRepositoryPort):
             select(func.max(EstimatedSalesOrm.year_quarter))
         )).scalar()
 
+    async def quarter_range(self) -> tuple[int, int] | None:
+        # MIN/MAX가 InitPlan 둘로 갈라져 ix_estimated_sales_year_quarter 양끝을
+        # index-only scan한다(43.9만 행에 8버퍼·0.1ms). 새 인덱스가 필요 없다.
+        lo, hi = (await self._session.execute(
+            select(func.min(EstimatedSalesOrm.year_quarter),
+                   func.max(EstimatedSalesOrm.year_quarter))
+        )).one()
+        return None if lo is None else (int(lo), int(hi))
+
     async def find_areas(
         self, district_name: str | None, division_code: str | None
     ) -> list[AreaMeta]:

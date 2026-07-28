@@ -45,3 +45,47 @@ class AreaRankingView:
     rows: list[AreaRankingRow]
     # 이 엔드포인트 자신의 필터 어휘 — 목록 하나 때문에 라우터를 새로 만들지 않는다
     services: list[ServiceOption]
+
+
+# ── 쇼케이스 — 비로그인 첫 화면용 공개 뷰 ────────────────────────────────
+# 랭킹과 같은 원자재를 쓰지만 **필드를 의도적으로 줄인다**. 인증 없이 나가는
+# 응답이라 "필요한 것만" 원칙을 계약 수준에서 못박는다.
+#   lat/lng      — 지도 없는 화면에 용도가 없다
+#   monthly_sales — "이 동네가 얼마 번다"로 오독된다
+#   closure_rate  — 업종·표본 맥락 없이 내면 특정 상권에 '위험' 낙인이 찍힌다
+#   sales_qoq     — %가 붙는 순간 "추세 → 미래"로 읽힌다(예측 안 한다는 정책 위반)
+
+
+@dataclass(frozen=True)
+class AreaShowcaseRow:
+    """쇼케이스 카드 1장 — 공개해도 되는 6필드만."""
+
+    trdar_code: int
+    trdar_name: str
+    district_name: str
+    division_name: str  # 상위가 왜 시장인지를 카드 스스로 설명하는 라벨
+    sales_per_store: int
+    store_count: int  # 모수 없는 점포당 매출은 정직하지 않다 — 항상 동행한다
+
+
+@dataclass(frozen=True)
+class DivisionMedian:
+    """상권유형별 점포당 매출 중앙값 — 상위 카드의 극단값을 읽는 자.
+
+    1위가 점포당 월 19.6억(도매시장)인데 맥락이 없으면 "창업하면 19억 번다"로
+    읽힌다. 유형별 중앙값을 같이 내서 그게 얼마나 바깥값인지 보이게 한다.
+    """
+
+    division_name: str
+    area_count: int
+    median_sales_per_store: int
+
+
+@dataclass(frozen=True)
+class AreaShowcaseView:
+    year_quarter: int | None   # 집계 기준 분기(= 매출 팩트의 최신 분기)
+    quarter_from: int | None   # 매출·점포 보유 시작 분기 — "몇 분기 쌓였는가"
+    area_count: int            # 서울 전체 상권 수(팩트 없는 상권 포함)
+    min_store_count: int       # 컷오프 — 프론트가 숫자를 하드코딩하지 않게 실어 보낸다
+    rows: list[AreaShowcaseRow]
+    division_medians: list[DivisionMedian]

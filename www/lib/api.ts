@@ -2,6 +2,7 @@ import type {
   AreaDetail,
   AreaRanking,
   AreaScoreDetail,
+  AreaShowcase,
   AreaStatsDetail,
   ConversationMessage,
   ConversationSummary,
@@ -119,3 +120,7 @@ export const fetchAreaRanking = (params: {
   const suffix = qs.toString() ? `?${qs}` : "";
   return getJson<AreaRanking>(`/market/areas/ranking${suffix}`);
 };
+
+// 첫 화면 쇼케이스 — 이 앱에서 로그인 없이 열리는 유일한 조회다(자치구별 점포당 매출 1위).
+export const fetchAreaShowcase = (): Promise<AreaShowcase> =>
+  getJson(`/market/areas/showcase`);

@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, MapPin, Search } from "lucide-react";
-import { fetchAreaRanking } from "@/lib/api";
+import { ApiError, fetchAreaRanking } from "@/lib/api";
+import { useUIStore } from "@/lib/uiStore";
 import type { AreaRankingRow } from "@/lib/types";
 
 type SortKey =
@@ -66,12 +67,15 @@ export default function AreasDirectoryPage() {
   });
 
   // 서버 필터는 걸지 않는다 — 1,650행을 한 번 받고 클라이언트에서 좁힌다(왕복 제거).
-  const { data, isPending, isError } = useQuery({
+  const { data, isPending, isError, error } = useQuery({
     // 업종만 서버 왕복이다 — 집계 자체가 달라진다. 자치구·상권구분은 행 부분집합일
     // 뿐이라 클라이언트에서 좁힌다(이 구분을 지우면 조용히 틀린 숫자가 나온다).
     queryKey: ["area-ranking", q.serviceCode],
     queryFn: () => fetchAreaRanking({ serviceCode: q.serviceCode || undefined }),
   });
+
+  const openAuth = useUIStore((s) => s.openAuth);
+  const needsLogin = error instanceof ApiError && error.status === 401;
 
   const all = useMemo(() => data?.rows ?? [], [data]);
   const guList = useMemo(
@@ -159,6 +163,33 @@ export default function AreasDirectoryPage() {
       ...prev,
       sort: { key, dir: prev.sort.key === key && prev.sort.dir === "desc" ? "asc" : "desc" },
     }));
+
+  // 비로그인도 이 화면까지는 들어온다 — 탭 게이팅의 basic 등급이 market을 포함하고,
+  // 막히는 건 데이터 조회뿐이다. 필터와 "서울 0개 상권"을 남겨두면 막다른 길이 되므로
+  // 화면 전체를 로그인 안내로 바꾼다.
+  if (needsLogin) {
+    return (
+      <div className="min-h-[60vh] grid place-items-center p-6">
+        <div className="max-w-sm w-full rounded-2xl bg-surface border border-border p-8 text-center">
+          <span className="mx-auto grid place-items-center w-12 h-12 rounded-full bg-brand/10 text-brand">
+            <MapPin size={22} strokeWidth={1.9} />
+          </span>
+          <h1 className="mt-4 text-lg font-bold tracking-tight">
+            로그인하면 서울 상권을 전부 둘러볼 수 있어요
+          </h1>
+          <p className="mt-2 text-sm text-foreground-muted leading-relaxed">
+            자치구·업종으로 좁혀 보고, 최대 3곳까지 나란히 비교할 수 있어요.
+          </p>
+          <button
+            onClick={() => openAuth("login")}
+            className="mt-6 inline-flex items-center px-5 h-10 rounded-full bg-brand text-white text-sm font-medium hover:bg-brand-deep transition-colors"
+          >
+            로그인하기
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-5">
