@@ -1,3 +1,5 @@
+# 이 파일은 aws 브랜치 전용이다. EC2(2 vCPU / 7.6GB / GPU 없음)에는 가벼운 것만 올리고,
+# 무거운 것(Postgres 실데이터, Ollama LLM)은 백엔드 PC에 두고 리버스 SSH 터널로 참조한다.
 services:
   backend:
     build:
@@ -9,54 +11,22 @@ services:
       - ./minseok:/app
     env_file:
       - .env  # JWT_SECRET 등 비밀값 (environment가 같은 키보다 우선)
+    # host.docker.internal → docker0(172.17.0.1). 백엔드 PC가 여기에 -R 터널을 묶는다.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - ENV=development
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-redocean}:${POSTGRES_PASSWORD:-redocean}@pgvector:5432/${POSTGRES_DB:-redoceanmap}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-redocean}:${POSTGRES_PASSWORD:-redocean}@host.docker.internal:5432/${POSTGRES_DB:-redoceanmap}
       - OLLAMA_HOST=http://host.docker.internal:11434
       - REDIS_URL=redis://redis:6379/0
-      - N8N_EMAIL_WEBHOOK_URL=http://n8n:5678/webhook/redocean-email
       - AWS_DEFAULT_REGION=ap-northeast-2
       - VISION_S3_BUCKET=redoceanmap.com-752767405178-ap-northeast-2-an
     depends_on:
-      pgvector:
-        condition: service_healthy
       redis:
         condition: service_started
-    command: sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
-
-  auth:
-    build:
-      context: ./minseok
-      dockerfile: Dockerfile
-    ports:
-      - "127.0.0.1:9000:9000"  # 루프백 잠금 — 외부 유입은 Cloudflare 터널 경유만
-    volumes:
-      - ./minseok:/app
-    env_file:
-      - .env       # 공용 (JWT_PUBLIC_KEY_B64 포함)
-      - .env.auth  # auth 전용 — JWT_PRIVATE_KEY_B64 (개인키는 이 컨테이너에만)
-    environment:
-      - ENV=development
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-redocean}:${POSTGRES_PASSWORD:-redocean}@pgvector:5432/${POSTGRES_DB:-redoceanmap}
-      - REDIS_URL=redis://redis:6379/0
-    depends_on:
-      pgvector:
-        condition: service_healthy
-      redis:
-        condition: service_started
-    # 마이그레이션(alembic)은 backend 소유 — 이중 실행 경합 방지를 위해 여기서는 돌리지 않는다.
-    command: uvicorn auth_main:app --host 0.0.0.0 --port 9000 --reload
-
-  n8n:
-    image: docker.n8n.io/n8nio/n8n
-    ports:
-      - "127.0.0.1:5678:5678"
-    volumes:
-      - n8n_data:/home/node/.n8n
-    environment:
-      - N8N_HOST=localhost
-      - N8N_PORT=5678
-      - WEBHOOK_URL=http://localhost:5678/
+    # alembic은 백엔드 PC가 소유한다. EC2는 같은 실 DB를 원격 참조할 뿐이므로
+    # 여기서 migration을 돌리면 실 데이터에 스키마 변경이 가해진다 — 돌리지 않는다.
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
   redis:
     image: redis:7-alpine
@@ -66,36 +36,5 @@ services:
       - redis_data:/data
     command: ["redis-server", "--appendonly", "yes"]
 
-  pgvector:
-    image: pgvector/pgvector:pg16
-    ports:
-      # redoceanmap이 메인 — 정식 포트 5432 사용 (ragwatson pgvector는 5433으로 이동).
-      - "127.0.0.1:5432:5432"
-    volumes:
-      - pgvector_data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER:-redocean}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-redocean}
-      - POSTGRES_DB=${POSTGRES_DB:-redoceanmap}
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U redocean -d redoceanmap"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  neo4j:
-    image: neo4j:5
-    ports:
-      - "127.0.0.1:7474:7474"
-      - "127.0.0.1:7687:7687"
-    volumes:
-      - neo4j_data:/data
-    environment:
-      - NEO4J_AUTH=${NEO4J_AUTH:-neo4j/please_change}
-
 volumes:
-  n8n_data:
-    name: n8n_data
   redis_data:
-  pgvector_data:
-  neo4j_data:
