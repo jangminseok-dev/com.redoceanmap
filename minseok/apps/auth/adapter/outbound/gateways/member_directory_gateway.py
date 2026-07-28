@@ -45,6 +45,15 @@ class MemberDirectoryGateway(MemberDirectoryPort):
         roles_map = await self._roles_by_user([u.id for u in users])
         return MemberPage(total=total, items=[self._to_info(u, roles_map) for u in users])
 
+    async def find_email(self, user_id: int) -> str | None:
+        return (
+            await self._session.execute(
+                select(UserOrm.email).where(
+                    UserOrm.id == user_id, UserOrm.deleted_at.is_(None)
+                )
+            )
+        ).scalar_one_or_none()
+
     async def member_stats(self) -> MemberStats:
         total = (await self._session.execute(select(func.count(UserOrm.id)))).scalar() or 0
         new_this_month = (

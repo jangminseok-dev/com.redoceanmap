@@ -6,7 +6,9 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class EmailRequestCommand:
-    to_email: str
+    """수신자를 담지 않는다 — 발송 대상은 요청자 본인이며 유스케이스가 id로 조회한다."""
+
+    requester_id: int
     content: str
 
 

@@ -18,6 +18,14 @@ class MemberDirectoryPort(ABC):
         ...
 
     @abstractmethod
+    async def find_email(self, user_id: int) -> str | None:
+        """해당 유저의 이메일 주소를 반환한다(부재·탈퇴 시 None).
+
+        발신 대상을 본인으로 고정하기 위한 조회다 — 수신자는 요청 본문이 아니라 이 값으로 정한다.
+        """
+        ...
+
+    @abstractmethod
     async def member_stats(self) -> MemberStats:
         """전체 회원 수 + 이번 달 신규 가입 수를 반환한다."""
         ...

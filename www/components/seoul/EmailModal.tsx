@@ -33,18 +33,18 @@ export default function EmailModal({ open, onClose }: Props) {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const to = String(formData.get("to") ?? "").trim();
     const content = String(formData.get("content") ?? "").trim();
-    if (!to || !content) {
-      setUI({ status: "error", error: "받는 사람과 내용을 모두 입력해주세요." });
+    if (!content) {
+      setUI({ status: "error", error: "보낼 내용을 입력해주세요." });
       return;
     }
     setUI({ status: "sending", error: "" });
     try {
+      // 수신자는 보내지 않는다 — 서버가 로그인 계정 이메일로 고정한다(오픈 릴레이 차단).
       const res = await fetch(`${API_BASE}/email/request`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to, content }),
+        body: JSON.stringify({ content }),
       });
       if (!res.ok) throw new Error("발송 요청 실패");
       setUI({ status: "sent", error: "" });
@@ -81,7 +81,7 @@ export default function EmailModal({ open, onClose }: Props) {
           <h2 className="text-lg font-semibold tracking-tight">이메일 보내기</h2>
         </div>
         <p className="text-sm text-foreground-muted mb-6">
-          내용을 적으면 AI가 정중한 이메일로 작성해 발송해요.
+          내용을 적으면 AI가 정중한 이메일로 작성해 회원님 가입 메일로 보내드려요.
         </p>
 
         {ui.status === "sent" ? (
@@ -89,7 +89,7 @@ export default function EmailModal({ open, onClose }: Props) {
             <CheckCircle2 size={40} strokeWidth={1.5} className="text-brand" />
             <p className="font-medium">발송 완료!</p>
             <p className="text-sm text-foreground-muted">
-              AI가 작성한 이메일이 전송되었어요.
+              AI가 작성한 이메일을 회원님 가입 메일로 보냈어요.
             </p>
             <button
               type="button"
@@ -101,16 +101,6 @@ export default function EmailModal({ open, onClose }: Props) {
           </div>
         ) : (
           <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
-            <label htmlFor="email-to" className="sr-only">
-              받는 사람
-            </label>
-            <input
-              id="email-to"
-              name="to"
-              type="email"
-              placeholder="받는 사람 이메일"
-              className="w-full bg-transparent border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-brand placeholder:text-foreground-muted"
-            />
             <label htmlFor="email-content" className="sr-only">
               보낼 내용
             </label>
