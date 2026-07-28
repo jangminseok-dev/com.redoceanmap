@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchAreaShowcase, fetchRecommendations } from "@/lib/api";
-import { useChatStore, type Message } from "@/lib/store";
+import { useChatStore } from "@/lib/store";
 import { useUIStore } from "@/lib/uiStore";
 import ChatInput from "@/components/seoul/ChatInput";
 import { formatMoney } from "@/components/market/overlay/format";
@@ -69,7 +69,7 @@ export default function HomePage() {
     const last = messages[messages.length - 1];
     if (!last || last.role !== "assistant" || handledRef.current === last.id) return;
     handledRef.current = last.id;
-    // ROM 2.0은 텍스트 한 덩어리라 열 워크스페이스가 없다 — 이 화면에서 그대로 이어서 대화한다
+    // ROM 2.0 답변은 /rom 챗봇 창이 렌더한다 — 전송 즉시 그리로 옮겨가므로 여기선 아무것도 안 한다
     if (last.engine === "rom2") return;
     const cParam = conversationId ? `&c=${conversationId}` : "";
     if (last.stock) {
@@ -84,6 +84,8 @@ export default function HomePage() {
   }, [messages]);
 
   const handleSend = (text: string) => {
+    // ROM 2.0은 전용 챗봇 창이 있다 — 질문을 태운 뒤 바로 옮겨가 답변을 거기서 받는다
+    if (engine === "rom2") router.push("/rom");
     void sendMessage(text);
   };
 
@@ -135,14 +137,10 @@ export default function HomePage() {
         </p>
 
         <ChatInput onSubmit={handleSend} disabled={isLoading} />
-        {engine === "rom2" ? (
-          messages.length > 0 && <InlineThread messages={messages} isLoading={isLoading} />
-        ) : (
-          isLoading && (
-            <p className="mt-3 text-sm text-foreground-muted animate-pulse" role="status">
-              분석 중이에요… 끝나면 워크스페이스로 이동할게요
-            </p>
-          )
+        {isLoading && engine !== "rom2" && (
+          <p className="mt-3 text-sm text-foreground-muted animate-pulse" role="status">
+            분석 중이에요… 끝나면 워크스페이스로 이동할게요
+          </p>
         )}
 
         <div className="mt-4 flex flex-wrap gap-2">
@@ -270,46 +268,6 @@ export default function HomePage() {
           )}
         </section>
       </div>
-    </div>
-  );
-}
-
-// ROM 2.0 전용 인라인 대화 — 답변이 텍스트뿐이라 워크스페이스로 보내지 않고 여기서 이어간다.
-// 카드(추천 상권·종목)는 ROM 1.0만 만들므로 여기서는 렌더하지 않는다.
-function InlineThread({ messages, isLoading }: { messages: Message[]; isLoading: boolean }) {
-  const bottomRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [messages, isLoading]);
-
-  return (
-    <div className="mt-5 flex flex-col gap-4" aria-live="polite">
-      {messages.map((m) =>
-        m.role === "user" ? (
-          <div key={m.id} className="flex justify-end animate-fade-in-up">
-            <div className="max-w-[85%] bg-surface border border-border rounded-2xl px-3.5 py-2.5 text-sm whitespace-pre-wrap">
-              {m.content}
-            </div>
-          </div>
-        ) : (
-          <p
-            key={m.id}
-            className="text-sm text-foreground leading-relaxed whitespace-pre-wrap animate-fade-in-up"
-          >
-            {m.content}
-          </p>
-        ),
-      )}
-
-      {isLoading && (
-        <div className="flex flex-col gap-2" role="status" aria-label="응답 생성 중">
-          <div className="skeleton h-3.5 rounded-md w-[85%]" />
-          <div className="skeleton h-3.5 rounded-md w-[65%]" />
-          <div className="skeleton h-3.5 rounded-md w-[45%]" />
-        </div>
-      )}
-
-      <div ref={bottomRef} />
     </div>
   );
 }

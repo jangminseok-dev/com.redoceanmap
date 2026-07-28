@@ -54,7 +54,8 @@ export default function TopNav() {
   const [emailOpen, setEmailOpen] = useState(false);
   const tabs = useVisibleTabs(); // null = 로딩 중 — 게이팅 탭 미표시(사라지는 플래시 방지)
 
-  if (pathname?.startsWith("/admin")) return null;
+  // /rom은 자체 헤더를 가진 전체화면 챗봇 창이라 상단 내비를 비운다(어드민과 같은 이유)
+  if (pathname?.startsWith("/admin") || pathname?.startsWith("/rom")) return null;
 
   return (
     <header className="h-14 flex items-center px-6 gap-8">

@@ -18,6 +18,8 @@ export type Message = {
   news?: NewsCardItem[];
   /** 이 답변을 만든 엔진. 화면 이동 여부를 답변 시점 기준으로 판정한다(그 뒤 셀렉터를 바꿔도 안전). */
   engine?: ChatEngine;
+  /** 말풍선에 찍는 시각(epoch ms). 지난 대화 복원분은 없다. */
+  createdAt?: number;
 };
 
 type ChatState = {
@@ -59,6 +61,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       id: crypto.randomUUID(),
       role: "user",
       content: prompt,
+      createdAt: Date.now(),
     };
     set((s) => ({ messages: [...s.messages, userMsg], isLoading: true }));
 
@@ -95,6 +98,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           role: "assistant",
           content: data.answer,
           engine: "rom2",
+          createdAt: Date.now(),
         };
         set((s) => ({
           messages: [...s.messages, aiMsg],
