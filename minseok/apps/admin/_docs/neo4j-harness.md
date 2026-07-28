@@ -5,20 +5,22 @@ admin 앱 → [[minseok/apps/admin/_docs/CLAUDE|admin CLAUDE]] · 구조 하네�
 
 **이 문서는 기능 설계서가 아니다.** 그래프DB를 "언제·누가·어떤 모양으로만" 쓸 수 있는지를 고정해,
 스키마리스라는 이유로 아무 노드나 생기는 것을 막는 배선(harness)이다.
-ROADMAP의 과설계 목록에 **"Neo4j 기능 설계(예약 폴더 채우기 금지)"**가 명시돼 있으므로,
-그래프 코드를 새로 쓰기 전에 §5(도입 조건)를 먼저 통과해야 한다.
+**도입은 예정돼 있고 시점은 미정이다**(결정 2026-07-28). 도입이 정해졌다는 것이 게이트 면제는
+아니다 — 그래프 코드를 처음 쓰는 커밋은 §5-5(도입 조건 4개)를 먼저 채우고 시작한다. 그때까지
+`graph/` 폴더를 미리 채우지 않는 것도 그대로다(ROADMAP 과설계 목록).
 
 ---
 
-## 0. 현재 상태 (2026-07-27 기준 사실)
+## 0. 현재 상태 (2026-07-28 기준 사실)
 
 | 항목 | 상태 |
 |---|---|
+| 도입 여부 | **도입 예정 · 시점 미정.** 랭체인이 `langchain-core` 1개로 먼저 들어간 것과 달리(→ [[minseok/apps/admin/_docs/langchain-harness\|langchain-harness]]), 그래프는 아직 첫 코드 전이다 |
 | 서버 | `docker-compose.yaml`의 `neo4j` 서비스 — 이미지 `neo4j:5`, `127.0.0.1:7474`(HTTP)·`127.0.0.1:7687`(Bolt), 볼륨 `neo4j_data`. **준비만 되어 있고 상시 기동 아님** |
 | 인증 | `NEO4J_AUTH=${NEO4J_AUTH:-neo4j/please_change}` — 기본값이 그대로 쓰이면 안 된다(§5) |
-| 클라이언트 | `minseok/requirements.txt`의 `neo4j-graphrag==1.18.0` (전이 의존 `neo4j` 드라이버 6.2.0) |
+| 클라이언트 | `minseok/requirements.txt`의 `neo4j-graphrag==1.18.0` (전이 의존 `neo4j` 드라이버 6.2.0). 지금은 **PDF 추출기로만** 쓰인다(admin `pdf_loader_extractor_adapter` — 그래프 접속 아님) |
 | 코드 | 그래프 접속 코드 **0건**. 자리만 예약됨 — `hub/adapter/outbound/graph/`(허브 소유 전역 인프라) |
-| prod | ROADMAP ①-M2에서 **prod compose 제외**(미사용). 현재는 개발 스택 전용 |
+| prod | ROADMAP ①-M2에서 **prod compose 제외**(미사용). 도입 시 prod 편입 여부를 §7과 함께 재검토 |
 
 ---
 
@@ -138,9 +140,9 @@ cd minseok && PYTHONPATH=apps lint-imports
 
 | 항목 | 사유 |
 |---|---|
-| 예약 폴더 선(先)채우기 | ROADMAP 과설계 목록 명시. §5 게이트 통과 전 코드 금지 |
+| 예약 폴더 선(先)채우기 | ROADMAP 과설계 목록 명시. **도입 예정이어도** §5-5 게이트 통과 전 코드 금지 |
 | PG 데이터의 그래프 전면 이관 | 정본은 PG. 그래프는 관계 탐색 파생본에 한정 |
-| prod compose에 neo4j 편입 | ①-M2에서 명시적 제외(미사용). 실사용처가 생긴 뒤에 재검토 |
+| prod compose에 neo4j 편입 | ①-M2에서 명시적 제외(미사용). **도입 예정 ≠ 지금 prod에 올림** — 실사용처가 생긴 뒤에 재검토 |
 | GDS(그래프 알고리즘) 플러그인·Enterprise 기능 | Community 전제. 존재 제약·노드 키가 필요해지면 그건 PG로 푼다 |
 | 그래프 전용 어드민 페이지 신설 | admin 6페이지 전면 구현은 과설계 목록. 필요 시 기존 data_source 카드 한 장으로 붙인다 |
 

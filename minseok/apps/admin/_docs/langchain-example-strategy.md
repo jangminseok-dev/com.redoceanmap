@@ -39,29 +39,35 @@ Elastic 사례가 푸는 문제이고, **판정 로직은 이미 있으니 요�
 **도입 의존성 (전량 핀 고정 · 메타패키지 `langchain` 설치 금지)**
 
 ```
-langchain-core==<도입 시점 최신>
-langchain-text-splitters==<도입 시점 최신>
+langchain-core==1.5.1            # ✅ 설치됨 (2026-07-28, 허브 랭체인 게이트웨이 ROM 2.0)
+langchain-text-splitters==<도입 시점 최신>   # 아직 없음 — 트랙 A 착수 시 게이트 재통과 후 추가
 ```
 
 ---
 
-## 2. 0단계 — 공통 기반 (모든 트랙의 선행)
+## 2. 0단계 — 공통 기반 (모든 트랙의 선행) — ✅ 완료 (2026-07-28)
 
 랭체인 체인이 우리 모델을 부르되 오케스트레이터 수렴 규칙을 깨지 않게 하는 **얇은 어댑터** 하나.
+계획은 `ExaoneRunnable`이었으나, 실제로는 프롬프트 템플릿·`StrOutputParser`와 `|`로 이어지도록
+**`BaseChatModel` 구현**으로 만들었다(`Runnable[str, str]`이면 메시지 목록을 받지 못해 체인
+중간에 끼울 수 없다). 위치도 트랙별 어댑터가 공유하도록 슬라이스 어댑터 안에 두었다.
 
 ```
-apps/hub/adapter/outbound/langchain/exaone_runnable.py     # 허브 소유 전역 인프라
-  class ExaoneRunnable(Runnable[str, str]):
-      async def ainvoke(self, prompt, config=None) -> str:
-          return await llm_orchestrator.orchestrate(prompt, system=self._system)
+apps/hub/adapter/outbound/langchain_chat_engine_adapter.py   # 허브 소유
+  class ExaoneChatModel(BaseChatModel):
+      async def _agenerate(self, messages, ...) -> ChatResult:
+          system, history, prompt = _split(messages)      # 랭체인 메시지 → 오케스트레이터 인자
+          text = await llm_orchestrator.orchestrate(prompt, system=system, history=history)
 ```
 
 - 위치가 허브인 이유: LLM은 특정 스포크의 것이 아니다(그래프 어댑터와 같은 원칙 →
   [[minseok/apps/admin/_docs/neo4j-harness|neo4j-harness]] §4).
 - 이 파일과 각 트랙의 어댑터 **밖에는** `langchain*` import가 없어야 하고,
   app·domain 계층에는 **절대** 없어야 한다.
-- 완료 조건: `.importlinter`의 `framework-isolation` 계약 `forbidden_modules`에
-  `langchain`·`langchain_core`·`langchain_text_splitters`를 추가한 뒤 5계약 통과.
+- ✅ 완료 조건 충족: `.importlinter`의 `framework-isolation` 계약 `forbidden_modules`에
+  `langchain_core`·`langchain`·`langgraph` 추가, 5계약 통과.
+  트랙 A 착수로 `langchain-text-splitters`를 넣을 때 `langchain_text_splitters`도 같이 추가한다.
+- **다른 트랙은 이 ChatModel을 재사용한다** — 트랙마다 새 Runnable을 만들지 않는다.
 
 ---
 

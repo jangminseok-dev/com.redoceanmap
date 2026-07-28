@@ -143,6 +143,7 @@ apps/hub/dependencies/stock_analysis_provider.py  # get_stock_analysis_port (Not
 |--------|------------------|
 | /automation/* | `news_ingest` · `market_news_ingest` · `price_bar_ingest` · `news_label_ingest` · `fundamental_ingest` · `forecast_snapshot`(캡처·채점) · `mail_ingest` · `signal_scan` · `stock_demand`(수요 조회) · `dispatcher`(/myself) — 웹훅 토큰 공용 의존성은 `v1/webhook_token.py` |
 | /email/* | `email_request` · `postmaster`(/myself) |
+| /semantic/* · /langchain-semantic/* | `semantic`(ROM 1.0 — 단발 질의) · `langchain_semantic`(ROM 2.0 — 세션 멀티턴, LCEL 체인). 분류기(`SemanticLlmPort`)는 공유하고 답변 생성만 갈린다 — 계약이 달라(세션 id) 라우터를 나눴다 |
 | /vision/* | `vision`(/myself·/images) · `face_recognition`(/faces) · `image_classifier`(/classifications) |
 
 ## 허브 소유 인프라 (adapter/outbound) — 예약
@@ -150,9 +151,49 @@ apps/hub/dependencies/stock_analysis_provider.py  # get_stock_analysis_port (Not
 `adapter/outbound/`는 **허브 자신이 소유하는 전역 인프라** 접속 전용이다(star_craft 파이프라인
 방향). 스포크 도메인 접속은 여기 두지 않는다 — 스포크 게이트웨이가 허브 포트를 구현한다.
 현재: 비전 어댑터(`s3_vision_storage_adapter` · `log_vision_record_adapter` ·
-`resource_adapters/yolo/` · `resource_adapters/convnext/`).
-예정: `graph/`(Neo4j — 온톨로지 엔티티·관계, compose에 서비스 준비됨) ·
+`resource_adapters/yolo/` · `resource_adapters/convnext/`) ·
+랭체인 엔진 어댑터(`langchain_chat_engine_adapter` — LCEL 체인, 아래 참고) ·
+`orm/`·`mappers/`·`pg/`(랭체인 대화 세션 — 아래 ORM 예외).
+도입 예정: `graph/`(Neo4j — 온톨로지 엔티티·관계, compose에 서비스 준비됨.
+도입 조건·모델링 규칙 → [[minseok/apps/admin/_docs/neo4j-harness|neo4j-harness]]) ·
 `vector/`(pgvector 재사용 또는 Qdrant — 전역 임베딩 검색).
+
+### ORM 예외 — 랭체인 대화 세션 (2026-07-28)
+
+허브는 원칙적으로 ORM/DB를 갖지 않지만, **랭체인 게이트웨이(ROM 2.0)의 대화 세션은 예외**다
+(`langchain_sessions` · `langchain_turns`, alembic `d7e8f9a0b1c2`). 이 이력은 앱 간 협력 계약이
+아니라 허브가 직접 소유·구현하는 기능의 상태라 위임할 스포크가 없다 — 비전이 허브 소유 기능인
+것과 같은 성격이다. chat 스포크의 `conversations`와 합치지 않은 이유는 소유 앱이 다르고(허브
+격리), 턴마다 시멘틱 분류 결과(`destination`)를 함께 남기기 때문이다.
+**이 예외를 다른 슬라이스로 넓히지 않는다** — 새 협력은 여전히 포트로 스포크에 위임한다.
+
+## 허브 소유 기능 — 랭체인 시멘틱 게이트웨이 (ROM 2.0)
+
+시멘틱 의도 분류 뒤 **랭체인 LCEL 체인**으로 답하는 멀티턴 대화 창구. ROM 1.0(`semantic`)은
+단발 질의로 그대로 남아 있고, 프론트 입력창의 ROM 1.0/2.0 셀렉터가 둘을 고른다.
+랭체인 도입 경계·게이트 답안 → [[minseok/apps/admin/_docs/langchain-harness|langchain-harness]].
+
+```
+apps/hub/
+├── adapter/inbound/api/{schemas,v1}/langchain_semantic_{schema,router}.py  # /langchain-semantic/myself·/ask
+├── app/dtos/langchain_semantic_dto.py            # Ask·Response + EngineTurn·EngineAnswer
+├── app/ports/input/langchain_semantic_use_case.py
+├── app/ports/output/langchain_chat_engine_port.py    # 체인 실행(랭체인은 계약에 안 새어나온다)
+├── app/ports/output/langchain_session_repository.py  # 세션·턴 영속 (이 슬라이스의 기록 포트 겸함)
+├── app/use_cases/langchain_semantic_interactor.py    # 분류 → 근거 수집 → 체인 → 영속
+├── adapter/outbound/langchain_chat_engine_adapter.py # ExaoneChatModel + rag/chat 체인 2벌
+├── adapter/outbound/{orm,mappers,pg}/langchain_session_*.py
+├── domain/langchain_chat/session_entity.py
+└── dependencies/langchain_semantic_provider.py
+```
+
+- **분류기 공유**: `SemanticLlmPort`(ExaoneSemanticAdapter)를 ROM 1.0과 그대로 공유한다 —
+  두 버전이 같은 의도 판정을 쓰고, 답변 생성 단계만 갈린다.
+- **랭체인의 지분은 한 칸**: 프롬프트 조립(이력 주입)·출력 파싱뿐이다. 분기·가드레일
+  (crud 미실행, rag 근거 없으면 답변 거부)은 인터랙터가 갖고, 모델 호출은
+  `ExaoneChatModel`이 `llm_orchestrator`로 넘긴다(LLM 수렴 규칙 유지 — ChatOllama 미사용).
+- **`langchain*` import는 `langchain_chat_engine_adapter.py` 한 파일뿐**이며,
+  import-linter 프레임워크 격리 계약이 app·domain 유입을 막는다.
 
 ## 허브 소유 기능 — 비전 (YOLO)
 

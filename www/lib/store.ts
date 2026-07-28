@@ -6,6 +6,9 @@ import { useUIStore } from "./uiStore";
 
 export type { StockAnalysis } from "./types"; // 기존 임포트 호환 재수출
 
+/** ROM 1.0 = 기존 chat 파이프라인, ROM 2.0 = 허브 랭체인 게이트웨이(시멘틱 분류 → LCEL 체인). */
+export type ChatEngine = "rom1" | "rom2";
+
 export type Message = {
   id: string;
   role: "user" | "assistant";
@@ -19,17 +22,36 @@ type ChatState = {
   messages: Message[];
   recommendations: Area[];
   conversationId: number | null;
+  engine: ChatEngine;
+  langchainSessionId: number | null;
   isLoading: boolean;
+  setEngine: (engine: ChatEngine) => void;
   sendMessage: (prompt: string) => Promise<void>;
   loadConversation: (id: number) => Promise<ConversationMessage[]>;
   reset: () => void;
 };
 
+/** 액세스 토큰 만료(60분) → 리프레시 회전 후 1회 재시도. 두 엔진이 같은 규칙을 쓴다. */
+async function postWithAuth(url: string, body: unknown): Promise<Response> {
+  const request = () =>
+    fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  const res = await request();
+  if (res.status === 401 && (await tryRefreshSession())) return request();
+  return res;
+}
+
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   recommendations: [],
   conversationId: null,
+  engine: "rom1",
+  langchainSessionId: null,
   isLoading: false,
+  setEngine: (engine) => set({ engine }),
   sendMessage: async (prompt) => {
     const userMsg: Message = {
       id: crypto.randomUUID(),
@@ -39,17 +61,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((s) => ({ messages: [...s.messages, userMsg], isLoading: true }));
 
     try {
-      const request = () =>
-        fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, conversationId: get().conversationId }),
-        });
-      let res = await request();
-      // 액세스 토큰 만료(60분) → 리프레시 회전 후 1회 재시도
-      if (res.status === 401 && (await tryRefreshSession())) {
-        res = await request();
-      }
+      const engine = get().engine;
+      // ROM 2.0은 허브 랭체인 게이트웨이 직결(rewrites 프록시). 세션 id로 대화가 이어진다.
+      const res =
+        engine === "rom2"
+          ? await postWithAuth("/api/backend/langchain-semantic/ask", {
+              prompt,
+              sessionId: get().langchainSessionId,
+            })
+          : await postWithAuth("/api/chat", {
+              prompt,
+              conversationId: get().conversationId,
+            });
       if (res.status === 401) {
         useUIStore.getState().openAuth("login");
         const loginMsg: Message = {
@@ -61,6 +84,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
         return;
       }
       if (!res.ok) throw new Error("AI 응답 오류");
+
+      if (engine === "rom2") {
+        // 랭체인 응답은 텍스트 한 덩어리다 — 카드(추천/종목)는 ROM 1.0만 만든다
+        const data: { sessionId: number; answer: string } = await res.json();
+        const aiMsg: Message = {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: data.answer,
+        };
+        set((s) => ({
+          messages: [...s.messages, aiMsg],
+          langchainSessionId: data.sessionId,
+          isLoading: false,
+        }));
+        return;
+      }
 
       const data: {
         text: string;
@@ -123,5 +162,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
   reset: () =>
-    set({ messages: [], recommendations: [], conversationId: null, isLoading: false }),
+    set({
+      messages: [],
+      recommendations: [],
+      conversationId: null,
+      langchainSessionId: null,
+      isLoading: false,
+    }),
 }));

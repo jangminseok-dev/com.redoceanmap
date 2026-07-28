@@ -82,7 +82,15 @@
 
 ## 명시적 비추천 (과설계 목록)
 
-메시지 브로커·MSA 분리 / Neo4j 기능 설계(예약 폴더 채우기 금지) / K8s·클라우드 /
+메시지 브로커·MSA 분리 / K8s·클라우드 /
 MLflow·Airflow·DVC / 알림 스포크 선제 신설 / paid·결제 / SNS 로그인(껍데기 버튼 제거) /
 admin 6페이지 전면 구현 / 커버리지 수치 목표 / GraphQL·BFF /
 자동 배포 파이프라인(③까지 deploy.sh 수동 1커맨드)
+
+**도입 예정으로 옮긴 항목** (2026-07-28) — 비추천 목록에서 뺐지만 무제한 승인은 아니다.
+각 하네스의 게이트를 통과한 범위에서만 들어온다.
+
+| 항목 | 상태 | 게이트 |
+|---|---|---|
+| 랭체인 | **도입됨** — `langchain-core` 1개, 허브 랭체인 게이트웨이(ROM 2.0) 1파일 | [[minseok/apps/admin/_docs/langchain-harness\|langchain-harness]] §5 (패키지 추가 시마다 재통과) |
+| Neo4j 그래프DB | **도입 예정 · 시점 미정** — 아직 그래프 접속 코드 0건, `graph/` 선채우기 금지 유지 | [[minseok/apps/admin/_docs/neo4j-harness\|neo4j-harness]] §5-5 (그래프로만 답하는 질문·제약 Cypher·투영 경로·장애 격리) |

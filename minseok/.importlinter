@@ -66,11 +66,11 @@ modules =
 # -----------------------------------------------------------------------------
 # 계약 2.5) 프레임워크 격리 — app·domain 계층은 웹/DB/LLM 프레임워크를 모른다
 # -----------------------------------------------------------------------------
-# HTTP(fastapi)·ORM(sqlalchemy)·LLM 클라이언트(ollama)는 adapter 계층(또는 core)의
-# 관심사다. app 계층 예외 → HTTP 변환은 인바운드 어댑터(라우터)가 맡는다.
+# HTTP(fastapi)·ORM(sqlalchemy)·LLM 클라이언트(ollama)·체인 프레임워크(langchain)는
+# adapter 계층(또는 core)의 관심사다. app 계층 예외 → HTTP 변환은 인바운드 어댑터(라우터)가 맡는다.
 # (pydantic 은 app/dtos 에서 실용적으로 허용, domain 에서는 금지.)
 [importlinter:contract:framework-isolation]
-name = 프레임워크 격리 (app·domain → fastapi/sqlalchemy/ollama import 금지)
+name = 프레임워크 격리 (app·domain → fastapi/sqlalchemy/ollama/langchain import 금지)
 type = forbidden
 source_modules =
     hub.app
@@ -92,6 +92,9 @@ forbidden_modules =
     fastapi
     sqlalchemy
     ollama
+    langchain_core
+    langchain
+    langgraph
 
 # -----------------------------------------------------------------------------
 # 계약 2.6) 도메인 순수성 — domain 계층은 pydantic 도 모른다 (순수 파이썬)

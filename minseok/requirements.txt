@@ -28,6 +28,10 @@ redis==6.4.0
 # ---- LLM (오케스트레이터 → Ollama) ----
 ollama==0.6.2
 
+# ---- 체인 조립 (허브 랭체인 게이트웨이 — LCEL 프롬프트·파서만. 모델 호출은 오케스트레이터) ----
+# langchain 메타패키지·langchain-ollama는 넣지 않는다 (하네스 §5-2 · §6 LLM 수렴)
+langchain-core==1.5.1
+
 # ---- 그래프 RAG (Neo4j) ----
 neo4j-graphrag==1.18.0
 

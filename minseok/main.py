@@ -39,6 +39,7 @@ from hub.adapter.inbound.api.v1.forecast_snapshot_router import forecast_snapsho
 from hub.adapter.inbound.api.v1.fundamental_ingest_router import fundamental_ingest_router
 from hub.adapter.inbound.api.v1.gemini_router import gemini_router
 from hub.adapter.inbound.api.v1.image_classifier_router import image_classifier_router
+from hub.adapter.inbound.api.v1.langchain_semantic_router import langchain_semantic_router
 from hub.adapter.inbound.api.v1.semantic_router import semantic_router
 from hub.adapter.inbound.api.v1.mail_ingest_router import mail_ingest_router
 from hub.adapter.inbound.api.v1.market_news_ingest_router import market_news_ingest_router
@@ -207,6 +208,7 @@ app.include_router(admin_pdf_loader_router, dependencies=_authenticated)
 app.include_router(audit_router, dependencies=_authenticated)
 app.include_router(gemini_router, dependencies=_authenticated)  # 허브 — 외부 Gemini 답변
 app.include_router(semantic_router, dependencies=_authenticated)  # 허브 — 시멘틱 게이트웨이(PoC)
+app.include_router(langchain_semantic_router, dependencies=_authenticated)  # 허브 — 랭체인 게이트웨이(ROM 2.0)
 
 # 합성 루트: 허브(hub)의 포트들을 스포크 구현으로 주입한다.
 # (허브는 스포크를 모르고, main.py만 둘을 안다 — 스타 토폴로지 허브 격리 유지)

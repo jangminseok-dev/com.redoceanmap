@@ -9,10 +9,26 @@ admin 앱 → [[minseok/apps/admin/_docs/CLAUDE|admin CLAUDE]] · 구조 하네�
 
 ---
 
-## 0. 현재 상태 — 랭체인 미도입 (2026-07-27 사실)
+## 0. 현재 상태 — `langchain-core` 1개만 도입 (2026-07-28 사실)
 
-`langchain` · `langgraph` · `langsmith` 관련 코드·의존성은 **저장소 전체에 0건**이다.
-같은 역할을 이미 자체 구현이 맡고 있다.
+도입 범위는 **`langchain-core==1.5.1` 하나**다(`langchain` 메타패키지 · `langchain-ollama` ·
+`langgraph`는 없다. `langsmith`는 core의 전이 의존으로 설치되나 추적은 비활성 — §6).
+쓰는 곳도 **한 파일**이다: `hub/adapter/outbound/langchain_chat_engine_adapter.py`
+(랭체인 시멘틱 게이트웨이 ROM 2.0 — `/langchain-semantic/ask`). 그 밖의 자리는 아래 표대로
+자체 구현이 계속 맡는다.
+
+§5 게이트 답안(도입 근거):
+1. **구체 작업** — 이력 포함 멀티턴 프롬프트 조립 + 체인 분기(근거/일반). `MessagesPlaceholder`
+   없이 직접 짜면 이력 직렬화·이스케이프를 매 슬라이스마다 다시 만든다.
+2. **범위** — `langchain-core` 1개. 메타패키지·프로바이더 패키지 없음.
+3. **지연** — 체인 오버헤드는 프롬프트 조립·파싱뿐이고 모델 호출은 기존 경로 그대로다
+   (7.8B 추론 수 초 대비 무시 가능). 실측 대조는 ROM 1.0 `/semantic/ask`가 같은 분류기를
+   써서 그대로 비교군이 된다.
+4. **제거 계획** — `langchain_chat_engine_adapter.py`의 체인을 `llm_orchestrator.orchestrate`
+   직접 호출로 바꾸고 requirements 한 줄을 지우면 끝. 포트(`LangchainChatEnginePort`) 계약은
+   랭체인을 노출하지 않으므로 app·domain·라우터는 손대지 않는다.
+
+같은 역할을 이미 자체 구현이 맡고 있다(랭체인으로 옮기지 않는다 — §8).
 
 | 랭체인이 맡는 자리 | 이 저장소의 대응물 |
 |---|---|
@@ -25,7 +41,9 @@ admin 앱 → [[minseok/apps/admin/_docs/CLAUDE|admin CLAUDE]] · 구조 하네�
 | 에이전트 / 툴 호출 | 허브 시멘틱 게이트웨이의 분류 → 목적지 라우팅 |
 | 관찰성(LangSmith) | 표준 로깅 + `admin_audit_logs` |
 
-즉 **"랭체인이 없다"가 아니라 "랭체인이 하는 일을 얇게 직접 하고 있다"**가 정확한 상태다.
+즉 **랭체인이 실제로 맡는 일은 프롬프트 조립·출력 파싱 한 칸뿐이고, 나머지는 여전히 얇게
+직접 하고 있다**가 정확한 상태다. 특히 ChatModel 자리는 바뀌지 않았다 —
+`ExaoneChatModel`은 `llm_orchestrator`를 감싼 껍데기이며 Ollama를 직접 부르지 않는다(§6).
 
 ---
 
@@ -99,9 +117,12 @@ admin 앱 → [[minseok/apps/admin/_docs/CLAUDE|admin CLAUDE]] · 구조 하네�
 
 ---
 
-## 5. 도입 판단 하네스 — 게이트
+## 5. 도입 판단 하네스 — 게이트 (패키지를 **더** 추가할 때마다 다시 통과)
 
-아래를 **모두** 적을 수 있을 때만 의존성을 추가한다. 하나라도 비면 도입하지 않는다.
+`langchain-core` 1개는 통과했다(답안 → §0). 게이트는 여기서 끝난 것이 아니라 **패키지마다**
+적용된다 — `langchain-community`·`langchain-text-splitters`·`langgraph` 등을 추가하려면
+아래 4개를 그 패키지에 대해 다시 적고 나서 넣는다. "이미 랭체인을 쓰고 있으니까"는 통과 사유가
+아니다(§0의 도입 범위가 한 줄로 유지되는 이유).
 
 1. 랭체인 **없이는 과도하게 비싼** 구체 작업 1개 이상(예: 다포맷 로더 + 스플리터 + 리랭커 조합).
    "체계가 잡힌다" 같은 이유는 게이트 통과가 아니다.
@@ -110,26 +131,31 @@ admin 앱 → [[minseok/apps/admin/_docs/CLAUDE|admin CLAUDE]] · 구조 하네�
 3. 추가 지연·메모리 **실측치**와 허용선(로컬 7.8B 추론 시간 대비 몇 %인지).
 4. 제거 계획 — 맞지 않을 때 어디까지 되돌리면 되는지.
 
-## 6. 도입한다면 — 지켜야 할 경계
+하나라도 비면 그 패키지는 넣지 않는다.
+
+## 6. 지켜야 할 경계 (도입 후 — 현재 적용 중)
 
 | 규칙 | 내용 |
 |---|---|
-| 계층 | `langchain*` import는 **adapter 계층에만**. app·domain은 포트만 본다 |
-| 린트 | `minseok/.importlinter`의 **프레임워크 격리 계약**(`app·domain → fastapi/sqlalchemy/ollama 금지`) `forbidden_modules`에 랭체인 계열을 **추가**한다 — 문서가 아니라 린트로 강제 |
-| LLM 수렴 | 랭체인 ChatModel로 Ollama를 **직접** 부르지 않는다. 추론은 `llm_orchestrator` 경유를 유지하고, 랭체인은 추론 앞뒤(로딩·분할·파싱)에만 쓴다 |
+| 계층 | `langchain*` import는 **adapter 계층에만**. app·domain은 포트만 본다. 현재 유일한 import 지점은 `hub/adapter/outbound/langchain_chat_engine_adapter.py` |
+| 린트 | ✅ 적용됨 — `minseok/.importlinter`의 **프레임워크 격리 계약** `forbidden_modules`에 `langchain_core`·`langchain`·`langgraph`가 들어 있다(app·domain 유입 시 계약 위반). 문서가 아니라 린트로 강제 |
+| LLM 수렴 | 랭체인 ChatModel로 Ollama를 **직접** 부르지 않는다(`langchain-ollama` 미설치). 체인에 꽂히는 `ExaoneChatModel`은 `llm_orchestrator.orchestrate`를 감싼 껍데기이며, 랭체인은 추론 앞뒤(조립·파싱)만 맡는다 |
 | 단일 모델 | 모델 교체가 쉬워졌다는 이유로 두 번째 모델을 들이지 않는다(단일 모델 정책은 별도 결정 사항) |
 | 버전 | requirements 전량 핀 고정 관행대로 `==`로 고정. 랭체인은 마이너 릴리스가 잦아 미고정 시 조용히 깨진다 |
 | 비밀값 | 키는 `core/key/secret_manager.py` 경유. 랭체인이 암묵적으로 읽는 `OPENAI_API_KEY` 류 환경변수에 의존하지 않는다 |
-| 관찰성 | LangSmith 추적은 기본 **비활성**. 프롬프트·문서 본문이 외부 SaaS로 나가므로 켜려면 별도 판단이 필요하다 |
+| 관찰성 | LangSmith 추적은 기본 **비활성**. `langsmith`가 `langchain-core`의 전이 의존으로 설치돼 있지만 `LANGCHAIN_TRACING_V2`를 켜지 않는 한 아무것도 나가지 않는다. 프롬프트·문서 본문이 외부 SaaS로 나가므로 켜려면 별도 판단이 필요하다 |
 
-## 7. 도입 시 검증 명령
+## 7. 검증 명령
 
 ```bash
 # 계층 경계 — app/domain으로 랭체인이 샜는지
 grep -rn --include="*.py" "^from langchain\|^import langchain" minseok/apps \
   | grep -E "/(app|domain)/"        # 0줄이어야 한다
 
-# 구조 계약 (forbidden_modules에 랭체인 추가 후)
+# import 지점이 한 파일인지 (늘어났다면 §6 계층 규칙 재확인)
+grep -rln --include="*.py" "langchain_core" minseok/apps
+
+# 구조 계약 (forbidden_modules에 langchain_core·langchain·langgraph 포함)
 cd minseok && PYTHONPATH=apps lint-imports --config .importlinter
 
 # 회귀 (호스트에 파이썬 개발환경 없음 — 일회성 컨테이너로 실행)
@@ -142,8 +168,9 @@ docker run --rm -v /home/host/projects/com.redoceanmap:/work -w /work \
 
 | 항목 | 사유 |
 |---|---|
-| 기존 인터랙터를 LCEL 체인으로 재작성 | 동작하는 코드를 프레임워크로 옮기는 것은 순수 비용. 헥사고날에서 체인의 자리는 이미 인터랙터다 |
-| 랭체인 메모리로 대화 이력 대체 | 이력은 자체 소유 `conversations` 테이블에 있고 계약이 명확하다 |
+| 기존 인터랙터를 LCEL 체인으로 재작성 | 동작하는 코드를 프레임워크로 옮기는 것은 순수 비용. 헥사고날에서 체인의 자리는 이미 인터랙터다. ROM 2.0도 인터랙터가 흐름을 통제하고 체인은 답변 생성 한 칸만 맡는다 |
+| ROM 1.0(`/semantic/ask`)을 ROM 2.0으로 대체 | 두 버전을 **병행 운영**한다. 같은 분류기를 공유하므로 랭체인 도입의 효과를 같은 조건에서 대조할 수 있는 비교군이다 |
+| 랭체인 메모리(`ConversationBufferMemory` 등)로 대화 이력 대체 | 이력은 자체 소유 테이블(chat `conversations`, 허브 `langchain_turns`)에 있고 계약이 명확하다. 체인에는 조회한 이력을 `MessagesPlaceholder`로 넣기만 한다 |
 | LangGraph 멀티에이전트 | 멀티에이전트는 별도 포트폴리오 저장소(A2A·MCP)의 주제 — 이 저장소 범위 밖 |
 | LangSmith 상시 추적 | 프롬프트·문서 본문의 외부 유출. 필요하면 로컬 로깅으로 먼저 해결 |
 | 랭체인으로 파인튜닝 | 애초에 랭체인의 기능이 아니다(§1-3). 가중치 학습은 PEFT/QLoRA 스택의 몫 |
