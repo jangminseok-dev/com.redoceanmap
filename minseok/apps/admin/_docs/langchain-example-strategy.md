@@ -29,7 +29,7 @@ Elastic 사례가 푸는 문제이고, **판정 로직은 이미 있으니 요�
 | 자리 | 랭체인 | 판정 근거 |
 |---|---|---|
 | 긴 문서 청킹(map-reduce 요약) | **쓴다** — `langchain-text-splitters` | 현재 PDF 요약은 앞 6000자만 본다(`exaone_pdf_summarizer_adapter.py`). 문단·문장 경계를 지키는 재귀 분할기를 직접 짜는 것은 낭비다 |
-| 체인 조립(LCEL) | **부분** — `langchain-core` Runnable·프롬프트 | 단계가 5개 이상으로 늘어나는 A·B에서만. 2~3단계 흐름은 인터랙터가 더 읽기 쉽다 |
+| 체인 조립(LCEL) | **부분** — `langchain-core` Runnable·프롬프트 | 단계가 5개 이상으로 늘어나는 A·B에서만. 2~3단계 흐름은 인터랙터가 더 읽기 쉽다.<br>⚠️ ROM 2.0은 이 판정의 **예외**다 — 1콜 흐름인데도 LCEL을 썼다(0단계 기반을 실제로 태워보는 목적). 실측상 손해는 없지만(+0.65 ms) **이 판정을 뒤집은 것은 아니다**. 짧은 흐름에 체인을 더 얹지 않는다 |
 | 구조화 출력 파싱 | **쓴다** — `JsonOutputParser` + 재시도 | 지금은 어댑터마다 `json.loads` + try/except를 반복한다(`exaone_semantic_adapter.py` 선례) |
 | LLM 호출 | **안 쓴다** — `ChatOllama` 금지 | LLM 추론은 `llm_orchestrator` 수렴 규칙. 대신 오케스트레이터를 감싼 **자체 Runnable**을 만든다(§2) |
 | 벡터 검색 | **안 쓴다** | pgvector + `bge-m3` + 앱별 `*SearchPort`가 이미 동작한다. 리트리버 추상은 순수 중복 |
