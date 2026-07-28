@@ -14,9 +14,16 @@ from auth.adapter.inbound.api.schemas.auth_schema import (
 )
 from auth.app.ports.input.auth_use_case import AuthUseCase
 from auth.dependencies.auth_provider import get_auth_use_case
+from core.rate_limit import rate_limit
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 _optional_bearer = HTTPBearer(auto_error=False)  # 헤더 폴백 — 테스트·도구·비브라우저 클라이언트용
+
+# 무차별 대입·크리덴셜 스터핑 방어 (IP 기준). 정상 사용자는 닿을 수 없는 여유 있는 한도다.
+# 가입만 시간 단위인 이유: 오타 재시도가 없고 자동 가입이 스팸·릴레이의 입구이기 때문.
+_LOGIN_LIMIT = [rate_limit("login", limit=10, window_seconds=60)]
+_REGISTER_LIMIT = [rate_limit("register", limit=5, window_seconds=3600)]
+_REFRESH_LIMIT = [rate_limit("refresh", limit=30, window_seconds=60)]
 
 
 def _token_from(
@@ -26,7 +33,12 @@ def _token_from(
     return cookie_token or (credentials.credentials if credentials else None)
 
 
-@auth_router.post("/register", response_model=SessionResponse, status_code=status.HTTP_201_CREATED)
+@auth_router.post(
+    "/register",
+    response_model=SessionResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=_REGISTER_LIMIT,
+)
 async def register(
     body: RegisterRequest,
     response: Response,
@@ -46,7 +58,7 @@ async def register(
     return result
 
 
-@auth_router.post("/login", response_model=SessionResponse)
+@auth_router.post("/login", response_model=SessionResponse, dependencies=_LOGIN_LIMIT)
 async def login(
     body: LoginRequest,
     response: Response,
@@ -60,7 +72,7 @@ async def login(
     return result
 
 
-@auth_router.post("/refresh", response_model=SessionResponse)
+@auth_router.post("/refresh", response_model=SessionResponse, dependencies=_REFRESH_LIMIT)
 async def refresh(
     response: Response,
     refresh_token: str | None = Cookie(default=None, alias=REFRESH_COOKIE),
