@@ -16,6 +16,8 @@ export type Message = {
   recommendations?: Area[];
   stock?: StockAnalysis;
   news?: NewsCardItem[];
+  /** 이 답변을 만든 엔진. 화면 이동 여부를 답변 시점 기준으로 판정한다(그 뒤 셀렉터를 바꿔도 안전). */
+  engine?: ChatEngine;
 };
 
 type ChatState = {
@@ -92,6 +94,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           id: crypto.randomUUID(),
           role: "assistant",
           content: data.answer,
+          engine: "rom2",
         };
         set((s) => ({
           messages: [...s.messages, aiMsg],
