@@ -3,11 +3,17 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from stock.app.dtos.forecast_snapshot_dto import CaptureCommand
-from stock.app.dtos.stock_forecast_dto import BandInfo, ProbabilityInfo, StockForecastView
+from stock.app.dtos.stock_forecast_dto import (
+    BandInfo,
+    DownsideInfo,
+    ProbabilityInfo,
+    StockForecastView,
+)
 from stock.app.exceptions import MarketDataUnavailableError
 from stock.app.use_cases.forecast_snapshot_interactor import ForecastSnapshotInteractor
 from stock.domain.entities.forecast_snapshot import ForecastSnapshot
 from stock.domain.entities.price_bar import PriceBar
+from stock.domain.value_objects.position_profile import PositionProfile
 from stock.domain.value_objects.signal_breakdown import SignalContribution
 
 AS_OF = datetime(2026, 7, 1, tzinfo=UTC)
@@ -28,7 +34,8 @@ def _bars(n: int, ticker: str = "TEST.KS") -> list[PriceBar]:
 
 
 def _view(symbol: str, horizon: int, direction: str = "UP", with_prob: bool = True,
-          regime: str | None = None, earnings_veto: bool = False) -> StockForecastView:
+          regime: str | None = None, earnings_veto: bool = False,
+          with_position: bool = True) -> StockForecastView:
     return StockForecastView(
         symbol=symbol, resolved_ticker=f"{symbol}.KS", as_of=AS_OF,
         base_price=100.0, horizon_days=horizon, signal_direction=direction,
@@ -38,6 +45,14 @@ def _view(symbol: str, horizon: int, direction: str = "UP", with_prob: bool = Tr
         ) if with_prob else None,
         band=BandInfo(source="quantile", q25_pct=-0.01, median_pct=0.005, q75_pct=0.02),
         insights=[],
+        position=PositionProfile(
+            rsi=28.0, rsi_zone="oversold", drawdown_from_high_pct=-0.12,
+            above_support_pct=0.03, atr_pct=0.02,
+        ) if with_position else None,
+        downside=DownsideInfo(
+            trough_median_pct=-0.03, trough_q25_pct=-0.07, down_close_rate=0.4,
+            dip_samples=90, recovery_rate=0.6, recovery_days_median=3.0,
+        ) if with_position else None,
         regime=regime, regime_conditional=regime is not None, earnings_veto=earnings_veto,
     )
 
@@ -138,6 +153,43 @@ async def test_capture_maps_view_and_breakdown():
         "sentiment", "rsi", "trend", "bollinger", "obv", "momentum",
     ]
     assert snap.score == pytest.approx(sum(c.contribution for c in snap.signals))
+    # 어느 조합으로 낸 판정인지 남는다 — NULL은 2026-07-30 이전 default() 조합이라는 뜻이므로
+    # 신규 캡처가 이 값을 비우면 이력이 조용히 섞인다
+    assert snap.signal_config == "forecast_signal"
+    # 원시 지표는 signals(정규화값)에서 복원할 수 없어 별도로 동결한다
+    assert snap.bb_percent_b is not None and snap.momentum_12_1 is not None
+
+
+async def test_capture_freezes_position_and_downside():
+    """뷰의 국면·하방 통계가 스냅샷에 동결돼야 사후 오답 분석이 가능하다."""
+    bars = _bars(60)
+    view = _view("TEST", 5)
+    forecaster = _StubForecaster({("TEST", 5): view})
+    repo = _StubRepo()
+    await _interactor(forecaster, _StubHistory({"TEST": bars}), repo).capture(
+        CaptureCommand(tickers=["TEST"], horizons=[5])
+    )
+
+    snap = repo.saved[0]
+    assert snap.rsi == pytest.approx(view.position.rsi)
+    assert snap.drawdown_from_high_pct == pytest.approx(view.position.drawdown_from_high_pct)
+    assert snap.above_support_pct == pytest.approx(view.position.above_support_pct)
+    assert snap.trough_median_pct == pytest.approx(view.downside.trough_median_pct)
+    assert snap.recovery_rate == pytest.approx(view.downside.recovery_rate)
+
+
+async def test_capture_tolerates_view_without_position():
+    """구 뷰(국면·하방 없음)로도 캡처가 죽지 않는다 — 필드는 NULL로 남는다."""
+    bars = _bars(60)
+    forecaster = _StubForecaster({("TEST", 5): _view("TEST", 5, with_position=False)})
+    repo = _StubRepo()
+    await _interactor(forecaster, _StubHistory({"TEST": bars}), repo).capture(
+        CaptureCommand(tickers=["TEST"], horizons=[5])
+    )
+
+    snap = repo.saved[0]
+    assert snap.rsi is None and snap.trough_median_pct is None
+    assert snap.signal_config == "forecast_signal"  # 조합 식별자는 뷰와 무관하게 남는다
 
 
 async def test_capture_probability_none_and_breakdown_once_per_ticker():
@@ -199,6 +251,8 @@ async def test_score_up_down_neutral_and_pending():
     assert 4 not in by_id
     assert by_id[1].realized_price == pytest.approx(96.0)
     assert by_id[1].realized_return_pct == pytest.approx(-0.04)
+    # 마감가(-4%)보다 장중 저가(95)가 더 낮았다 — 오답이 얼마나 나쁘게 틀렸는지의 재료
+    assert by_id[1].realized_trough_pct == pytest.approx(-0.05)
 
 
 async def test_summary_aggregates_and_signal_definition():

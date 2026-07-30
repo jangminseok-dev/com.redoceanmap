@@ -34,6 +34,10 @@ logger = logging.getLogger(__name__)
 # 요약 집계에 쓰는 채점분 상한 — 일 ~160건(80종목×2 horizon) 기준 수개월치
 SUMMARY_SCORED_CAP = 2000
 
+# 스냅샷에 남기는 판정 조합 식별자. 조합을 바꾸면 이 값도 바꿔서 이력을 구분한다 —
+# NULL 행은 2026-07-30 이전의 default() 조합(전량 NEUTRAL 구간)이다.
+_SIGNAL_CONFIG_KEY = "forecast_signal"
+
 
 class ForecastSnapshotInteractor(ForecastSnapshotUseCase):
     """예측 스냅샷 대장 — forecast 재사용(재계산 금지) + 신호 분해를 함께 동결하고 사후 채점한다."""
@@ -80,14 +84,16 @@ class ForecastSnapshotInteractor(ForecastSnapshotUseCase):
             [b.close for b in bars], [b.low for b in bars],
             [b.high for b in bars], [float(b.volume) for b in bars],
         )
-        config = AnalysisConfig.default()
+        # 뷰(StockForecastInteractor)와 **같은 조합**이어야 한다 — 갈라지면 저장된 score와
+        # direction이 서로 다른 config로 계산된다(감성 중립 경로 전용 조합).
+        config = AnalysisConfig.forecast_signal()
         contributions = self._predictor.breakdown(indicators, SentimentScore(value=0.0), config)
         score = self._predictor.score(contributions)
 
         out: list[ForecastSnapshot] = []
         for horizon in horizons:
             view = await self._forecaster.forecast(ForecastQuery(symbol=ticker, horizon=horizon))
-            prob, band = view.probability, view.band
+            prob, band, pos, down = view.probability, view.band, view.position, view.downside
             out.append(ForecastSnapshot(
                 ticker=view.resolved_ticker,
                 as_of=view.as_of,
@@ -110,6 +116,18 @@ class ForecastSnapshotInteractor(ForecastSnapshotUseCase):
                 regime=view.regime,
                 regime_conditional=view.regime_conditional,
                 earnings_veto=view.earnings_veto,
+                # 어느 조합으로 낸 판정인지 남긴다 — 조합이 바뀌면 이력을 섞어 읽으면 안 된다
+                signal_config=_SIGNAL_CONFIG_KEY,
+                rsi=pos.rsi if pos else None,
+                bb_percent_b=indicators.bb_percent_b,
+                momentum_12_1=indicators.momentum_12_1,
+                atr_pct=pos.atr_pct if pos else None,
+                drawdown_from_high_pct=pos.drawdown_from_high_pct if pos else None,
+                above_support_pct=pos.above_support_pct if pos else None,
+                trough_median_pct=down.trough_median_pct if down else None,
+                trough_q25_pct=down.trough_q25_pct if down else None,
+                recovery_rate=down.recovery_rate if down else None,
+                recovery_days_median=down.recovery_days_median if down else None,
             ))
         return out
 
@@ -130,6 +148,10 @@ class ForecastSnapshotInteractor(ForecastSnapshotUseCase):
                     continue  # horizon 미도래 — 다음 실행에서 자연 재시도
                 realized = future[snap.horizon_days - 1].close
                 ret = realized / snap.base_price - 1.0
+                # 구간 내 실제 장중 최저 — Backtester의 trough와 같은 정의(저가 기준).
+                # 마감가만 남기면 "얼마나 빠졌다 돌아왔는지"를 사후에 물을 수 없다.
+                window = future[: snap.horizon_days]
+                trough = min(b.low for b in window) / snap.base_price - 1.0
                 if snap.direction == "UP":
                     hit = ret > 0
                 elif snap.direction == "DOWN":
@@ -139,6 +161,7 @@ class ForecastSnapshotInteractor(ForecastSnapshotUseCase):
                 updates.append(SnapshotScoreUpdate(
                     snapshot_id=snap.id, evaluated_at=now,
                     realized_price=realized, realized_return_pct=ret, hit=hit,
+                    realized_trough_pct=trough,
                 ))
         scored = await self._snapshots.apply_scores(updates)
         result = ScoreResult(scored=scored, pending=len(pending) - scored)

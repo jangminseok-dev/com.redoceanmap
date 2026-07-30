@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 from stock.app.dtos.stock_forecast_dto import (
     BandInfo,
+    DownsideInfo,
     ForecastQuery,
     ProbabilityInfo,
     StockForecastView,
@@ -26,6 +27,7 @@ from stock.app.ports.output.market_data_port import MarketDataPort
 from stock.domain.value_objects.backtest_report import MIN_SIGNAL_SAMPLES, wilson_bounds
 from stock.domain.value_objects.forecast_distribution import ForecastDistribution
 from stock.domain.value_objects.market_values import Symbol
+from stock.domain.value_objects.position_profile import PositionProfile
 from stock.domain.value_objects.sentiment_score import SentimentScore
 
 logger = logging.getLogger(__name__)
@@ -106,7 +108,9 @@ class StockForecastInteractor(StockForecastUseCase):
         lows = [b.low for b in bars]
         highs = [b.high for b in bars]
         volumes = [float(b.volume) for b in bars]
-        config = AnalysisConfig.default()
+        # 감성 중립 경로 전용 조합 — default()는 감성 가중치 0.5를 전제해 이 경로에서
+        # 임계값에 산술적으로 도달하지 못한다(config docstring 참고). 스냅샷 캡처도 같은 것을 쓴다.
+        config = AnalysisConfig.forecast_signal()
 
         calendar = await self._regime_calendar()
         veto_dates = await self._earnings_veto_dates(symbol)
@@ -172,6 +176,20 @@ class StockForecastInteractor(StockForecastUseCase):
             move = indicators.atr_pct * (query.horizon ** 0.5)
             band = BandInfo(source="atr", q25_pct=-move, median_pct=0.0, q75_pct=move)
 
+        position = PositionProfile.from_indicators(indicators, closes[-1])
+        downside = (
+            DownsideInfo(
+                trough_median_pct=stats.trough_median_pct,
+                trough_q25_pct=stats.trough_q25_pct,
+                down_close_rate=stats.down_close_rate,
+                dip_samples=stats.dip_samples,
+                recovery_rate=stats.recovery_rate,
+                recovery_days_median=stats.recovery_days_median,
+            )
+            if stats.sample_size > 0
+            else None
+        )
+
         view = StockForecastView(
             symbol=symbol,
             resolved_ticker=bars[0].ticker,
@@ -185,7 +203,10 @@ class StockForecastInteractor(StockForecastUseCase):
                 direction, stats, baseline_up_rate, query.horizon, ready,
                 regime=regime, regime_conditional=regime_conditional,
                 earnings_veto=earnings_veto,
+                position=position,
             ),
+            position=position,
+            downside=downside,
             live=live,
             regime=regime,
             regime_conditional=regime_conditional,

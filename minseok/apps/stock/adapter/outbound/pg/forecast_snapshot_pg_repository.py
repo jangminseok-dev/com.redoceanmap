@@ -46,6 +46,17 @@ class ForecastSnapshotPgRepository(ForecastSnapshotRepositoryPort):
                     "regime": s.regime,
                     "regime_conditional": s.regime_conditional,
                     "earnings_veto": s.earnings_veto,
+                    "signal_config": s.signal_config,
+                    "rsi": s.rsi,
+                    "bb_percent_b": s.bb_percent_b,
+                    "momentum_12_1": s.momentum_12_1,
+                    "atr_pct": s.atr_pct,
+                    "drawdown_from_high_pct": s.drawdown_from_high_pct,
+                    "above_support_pct": s.above_support_pct,
+                    "trough_median_pct": s.trough_median_pct,
+                    "trough_q25_pct": s.trough_q25_pct,
+                    "recovery_rate": s.recovery_rate,
+                    "recovery_days_median": s.recovery_days_median,
                 }
                 for s in snapshots
             ])
@@ -75,6 +86,7 @@ class ForecastSnapshotPgRepository(ForecastSnapshotRepositoryPort):
                     evaluated_at=u.evaluated_at,
                     realized_price=u.realized_price,
                     realized_return_pct=u.realized_return_pct,
+                    realized_trough_pct=u.realized_trough_pct,
                     hit=u.hit,
                 )
             )
@@ -125,7 +137,14 @@ class ForecastSnapshotPgRepository(ForecastSnapshotRepositoryPort):
             ready=r.ready, band_source=r.band_source,
             q25_pct=r.q25_pct, median_pct=r.median_pct, q75_pct=r.q75_pct,
             evaluated_at=r.evaluated_at, realized_price=r.realized_price,
-            realized_return_pct=r.realized_return_pct, hit=r.hit,
+            realized_return_pct=r.realized_return_pct,
+            realized_trough_pct=r.realized_trough_pct, hit=r.hit,
             regime=r.regime, regime_conditional=r.regime_conditional,
             earnings_veto=r.earnings_veto,
+            signal_config=r.signal_config, rsi=r.rsi, bb_percent_b=r.bb_percent_b,
+            momentum_12_1=r.momentum_12_1, atr_pct=r.atr_pct,
+            drawdown_from_high_pct=r.drawdown_from_high_pct,
+            above_support_pct=r.above_support_pct,
+            trough_median_pct=r.trough_median_pct, trough_q25_pct=r.trough_q25_pct,
+            recovery_rate=r.recovery_rate, recovery_days_median=r.recovery_days_median,
         )

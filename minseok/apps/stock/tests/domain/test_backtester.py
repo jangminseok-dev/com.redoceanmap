@@ -147,6 +147,60 @@ def test_distribution_무인자_하위호환():
     assert dist.by_regime == {} and dist.vetoed == 0
 
 
+def _step_down() -> tuple[list[float], list[float], list[float]]:
+    """70봉까지 100, 이후 90으로 계단 하락. 장중 저가=종가로 둬 인위적 낙폭만 남긴다.
+
+    평가 구간(t=51~94, horizon 5)에서:
+      t=65~68 → 구간에 90이 들어와 낙폭 + 아직 100 종가도 있어 회복
+      t=69    → 구간 전체가 90 — 낙폭 후 미회복
+      그 외    → 구간이 한 값으로 평평해 낙폭 없음
+    """
+    closes = [100.0] * 70 + [90.0] * 30
+    return closes, list(closes), list(closes)
+
+
+def test_distribution_낙폭과_회복을_구간_내에서_수집한다():
+    closes, lows, highs = _step_down()
+    dist = Backtester(predictor=_FixedPredictor(Direction.NEUTRAL)).distribution(
+        closes, lows, highs, horizon=5
+    )
+    stats = dist.by_direction["NEUTRAL"]
+    assert stats.sample_size == len(closes) - 5 - 51  # 44 — 기존 회계 불변
+
+    # 낙폭이 있었던 평가일만 회복률 분모에 들어간다(무조정 구간을 섞으면 회복률이 부풀려진다)
+    assert stats.dip_samples == 5           # t=65~69
+    assert stats.recovery_rate == 4 / 5     # t=69만 미회복
+    assert stats.recovery_days_median == 1.0
+
+    # 최대 낙폭은 장중 저가 기준 -10%
+    assert stats.trough_q25_pct is not None
+    assert min(stats.trough_q25_pct, stats.trough_median_pct or 0.0) <= 0.0
+
+
+def test_distribution_무조정_상승은_낙폭_표본이_0():
+    closes = [float(100 + i) for i in range(100)]
+    dist = Backtester(predictor=_FixedPredictor(Direction.UP)).distribution(
+        closes, list(closes), list(closes), horizon=5
+    )
+    stats = dist.by_direction["UP"]
+    assert stats.dip_samples == 0
+    assert stats.recovery_rate is None          # 분모가 없으면 비율을 만들지 않는다
+    assert stats.recovery_days_median is None
+    assert stats.down_close_rate == 0.0
+    assert (stats.trough_median_pct or 0.0) > 0.0  # 한 번도 기준가 밑으로 안 내려감
+
+
+def test_distribution_하락장은_마감_하락률이_1():
+    closes = [float(200 - i) for i in range(100)]
+    dist = Backtester(predictor=_FixedPredictor(Direction.NEUTRAL)).distribution(
+        closes, list(closes), list(closes), horizon=5
+    )
+    stats = dist.by_direction["NEUTRAL"]
+    assert stats.down_close_rate == 1.0
+    assert stats.dip_samples == stats.sample_size   # 매일 기준가 아래로 내려감
+    assert stats.recovery_rate == 0.0               # 한 번도 회복 못 함
+
+
 def test_distribution_길이_불일치는_ValueError():
     closes, lows, highs = _series(RISING)
     with pytest.raises(ValueError):

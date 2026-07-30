@@ -33,6 +33,9 @@ class SnapshotScoreUpdate:
     realized_price: float
     realized_return_pct: float
     hit: bool | None       # NEUTRAL은 None
+    # 구간 내 실제 장중 최저 — 마감가만으로는 "얼마나 빠졌다 돌아왔나"를 알 수 없다.
+    # 오답 분석의 핵심 필드(틀린 예측이 얼마나 나쁘게 틀렸는지). 봉에 저가가 없으면 None.
+    realized_trough_pct: float | None = None
 
 
 @dataclass(frozen=True)

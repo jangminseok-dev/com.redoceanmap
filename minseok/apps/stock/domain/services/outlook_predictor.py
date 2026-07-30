@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from stock.domain.entities.analysis_config import AnalysisConfig
 from stock.domain.entities.outlook import Direction, Outlook
-from stock.domain.value_objects.indicators import Indicators
+from stock.domain.value_objects.indicators import (
+    RSI_OVERBOUGHT,
+    RSI_OVERSOLD,
+    Indicators,
+)
 from stock.domain.value_objects.sentiment_score import SentimentScore
 from stock.domain.value_objects.signal_breakdown import SignalContribution
 
@@ -75,10 +79,10 @@ class OutlookPredictor:
     @staticmethod
     def _rsi_signal(rsi: float) -> float:
         # 과매도(30↓)면 반등 기대 +, 과매수(70↑)면 조정 기대 -.
-        if rsi <= 30.0:
-            return (30.0 - rsi) / 30.0
-        if rsi >= 70.0:
-            return -(rsi - 70.0) / 30.0
+        if rsi <= RSI_OVERSOLD:
+            return (RSI_OVERSOLD - rsi) / RSI_OVERSOLD
+        if rsi >= RSI_OVERBOUGHT:
+            return -(rsi - RSI_OVERBOUGHT) / (100.0 - RSI_OVERBOUGHT)
         return 0.0
 
     @staticmethod

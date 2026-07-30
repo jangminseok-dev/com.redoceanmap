@@ -36,9 +36,23 @@ class ForecastSnapshotOrm(Base):
     q25_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     median_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     q75_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # --- 판정 재현·재적합용 (alembic a1b2c3d4e5f7) ---
+    # NULL = 2026-07-30 이전 default() 조합(전량 NEUTRAL 구간) — 이력 구분용
+    signal_config: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    rsi: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bb_percent_b: Mapped[float | None] = mapped_column(Float, nullable=True)
+    momentum_12_1: Mapped[float | None] = mapped_column(Float, nullable=True)
+    atr_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    drawdown_from_high_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    above_support_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    trough_median_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    trough_q25_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    recovery_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    recovery_days_median: Mapped[float | None] = mapped_column(Float, nullable=True)
     evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     realized_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     realized_return_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    realized_trough_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     hit: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     regime: Mapped[str | None] = mapped_column(String(10), nullable=True)  # BULL | BEAR | HIGH_VOL
     regime_conditional: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))

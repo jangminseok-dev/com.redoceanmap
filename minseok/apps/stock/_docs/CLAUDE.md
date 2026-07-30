@@ -89,6 +89,21 @@
   PER/PBR/ROE, dart 우선 병합, debt_to_equity는 단위 혼재로 해석 제외). 분석(yfinance 라이브)과
   달리 DB 축적분만 읽는다. 거래소 접미 매칭(005930 ↔ 005930.KS)은 PG 리포지토리가 맡고,
   실제 저장 티커는 `resolvedTicker`로 노출한다.
+- **판정 조합(2026-07-30)**: forecast·스냅샷 슬라이스는 `AnalysisConfig.forecast_signal()`
+  (RSI+BB+MOM 0.4/0.4/0.2 ±0.35)을 쓴다. `analyze` 경로의 `default()`는 **불변**이다.
+  이유: `default()`는 감성 가중치 0.5를 전제하는데 이 슬라이스는 감성 중립이라 그 예산이
+  사장되고, RSI 신호가 30~70 구간에서 0이어서(실측 94%) 도달 가능한 |score| 상한이 0.2 —
+  임계 0.3에 **산술적으로 못 미쳐 스냅샷 814건이 전부 NEUTRAL이었다**(2026-07-30 발견).
+  **하락은 방향으로 내지 않는다**(`down_threshold`를 도달 불가값으로 고정) — 재채점 2·3차 모두
+  하락 방향은 두 구간 연속 통과 조합이 없었다. 대신 실측 하방 통계로 답한다(아래).
+  상세 → [[minseok/apps/stock/_docs/BACKTEST_RESCORE_2026-07|BACKTEST_RESCORE_2026-07]] 4차.
+- **국면·하방·회복(2026-07-30)**: forecast 응답에 `position`(RSI 국면·60일 고점 대비 낙폭·
+  지지선 여력, 순수 VO `PositionProfile` — 새 지표 계산 없이 기존 `Indicators`에서 파생)과
+  `downside`(같은 신호 구간의 **장중 최대 낙폭** 중앙값·하위 25%·하락 마감 비율·**기준가 회복률**과
+  회복 소요 일수)를 함께 낸다. `Backtester.distribution()`이 기존 워크포워드 루프 안에서
+  마감 수익률과 함께 수집한다(루프 추가 없음). **회복률의 분모는 낙폭이 있었던 표본(`dip_samples`)뿐**
+  — 무조정 상승일을 섞으면 회복률이 부풀려진다. 서사는 `forecast_narrator`의
+  `position`·`downside`·`recovery` insight.
 - **확률·예측 밴드(`stock_forecast` 슬라이스)**: `GET /stock/{symbol}/forecast?horizon=5` —
   저장 일봉 전체에 `Backtester.distribution()`(워크포워드, 감성 중립)을 돌려 **지금과 같은
   방향 신호가 났던 과거 평가일들의 상승 비율(확률)과 실현 수익률 분위수(25/50/75%)**를 반환.
@@ -117,6 +132,12 @@
   ((ticker, horizon_days, as_of) 유니크 — 재실행 멱등), horizon 도래분을 price_bars(1d)
   실현 수익률로 채점한다(UP→상승, DOWN→비상승 적중, NEUTRAL은 hit NULL — Backtester 의미론).
   캡처는 `StockForecastUseCase` 재사용 + market_data=None(라이브 폴백 차단, 미수집 종목 skip).
+  **어느 조합으로 낸 판정인지 `signal_config`에 남긴다**(alembic `a1b2c3d4e5f7`) —
+  **NULL 행은 2026-07-30 이전 `default()` 조합**(전량 NEUTRAL 구간)이라 이력을 섞어 읽으면 안 된다.
+  같은 리비전이 재적합 피처(원시 `rsi`·`bb_percent_b`·`momentum_12_1`·`atr_pct` + 위치
+  `drawdown_from_high_pct`·`above_support_pct`)와 하방 기대치(`trough_*`·`recovery_*`),
+  채점 시 실측 `realized_trough_pct`(**구간 내 실제 장중 최저** — 마감가만으로는 "얼마나 빠졌다
+  돌아왔나"를 사후에 물을 수 없다)를 함께 추가했다. 전부 nullable·백필 없음.
   요약(`summary`)은 방향·호라이즌·신호별(원신호 부호↔실현 수익률 부호 일치율) 적중률을 집계 —
   허브 `ForecastSnapshotPort`를 `ForecastSnapshotGateway`가 구현, admin `/admin/forecasts`가 소비.
   가중치 재적합·캘리브레이션의 원료 데이터 축(백테스트가 못 주는 진짜 out-of-sample 성적).

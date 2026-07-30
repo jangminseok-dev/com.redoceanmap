@@ -12,8 +12,13 @@ DB에 동결하고, horizon(5·20거래일)이 도래한 과거 스냅샷을 실
     python scripts/snapshot_forecasts.py            # 캡처 + 채점
     python scripts/snapshot_forecasts.py --dry-run  # 대상 티커 출력만 (허브 불요)
 
-백엔드 PC cron 예시(매일 07:30 KST — 미국장 마감 + 07:05 시세 수집 이후):
-    30 7 * * * cd /path/to/minseok && ../venv/bin/python scripts/snapshot_forecasts.py >> ~/snapshot_forecasts.log 2>&1
+백엔드 PC cron(매일 14:00 KST — **일봉 적재 시각에 맞춘 것**, 2026-07-23 변경):
+    0 14 * * * cd /path/to/minseok && ../venv/bin/python scripts/snapshot_forecasts.py >> ~/snapshot_forecasts.log 2>&1
+
+세션 D의 일봉은 D+1 13:05 KST에 들어온다. 이전 07:30은 그보다 6시간 일러 매일 한 세션
+묵은 봉으로 as_of가 잡혔다(보드가 "기준 7/21"인데 가격은 7/22인 화면의 원인).
+장 마감 시각이 아니라 **저장 일봉이 도착한 뒤**가 기준이다 — 캡처는 DB 봉만 읽는다
+(market_data=None으로 라이브 폴백 차단).
 """
 
 import sys

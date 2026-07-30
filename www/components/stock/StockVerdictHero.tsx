@@ -3,7 +3,7 @@
 import { Eye, Minus, TrendingDown, TrendingUp } from "lucide-react";
 import type { Fundamentals, StockAnalyzeResult, StockForecast } from "@/lib/types";
 import { formatPrice } from "@/lib/currency";
-import { strength, verdict } from "@/lib/verdict";
+import { downsideLine, positionLine, strength, verdict } from "@/lib/verdict";
 import Disclaimer from "./Disclaimer";
 
 const DIRECTION_META = {
@@ -56,6 +56,8 @@ export default function StockVerdictHero({
   const Icon = meta.icon;
   const watch = watchPoint(analyze, current, symbol);
   const values = (fundamentals?.insights ?? []).slice(0, 2);
+  const position = positionLine(forecast);
+  const downside = downsideLine(forecast);
 
   return (
     <div className="shrink-0 px-4 pt-3 pb-2.5 border-b border-border">
@@ -81,8 +83,20 @@ export default function StockVerdictHero({
         </button>
       </div>
 
-      {(values.length > 0 || watch) && (
+      {(values.length > 0 || watch || position || downside) && (
         <div className="mt-2 flex flex-col gap-1">
+          {position && (
+            <p className="text-[11px] leading-snug">
+              <span className="text-foreground-muted">현재 국면 </span>
+              {position}
+            </p>
+          )}
+          {downside && (
+            <p className="text-[11px] leading-snug">
+              <span className="text-foreground-muted">하방 </span>
+              {downside}
+            </p>
+          )}
           {values.length > 0 && (
             <p className="text-[11px] leading-snug">
               <span className="text-foreground-muted">가치·체력 </span>

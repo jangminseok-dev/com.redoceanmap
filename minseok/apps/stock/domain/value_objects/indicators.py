@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+# RSI 국면 경계 — 신호 계산(OutlookPredictor._rsi_signal)과 국면 라벨(PositionProfile)이
+# 같은 값을 봐야 한다. 둘이 갈라지면 "과매도인데 신호는 0" 같은 모순이 화면에 뜬다.
+RSI_OVERSOLD = 30.0
+RSI_OVERBOUGHT = 70.0
+
 
 @dataclass(frozen=True, slots=True)
 class Indicators:

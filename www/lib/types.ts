@@ -127,6 +127,23 @@ export type StockForecast = {
     q75_pct: number;
   } | null;
   insights: Insight[];
+  // 현재 국면 — 예측이 아니라 "지금까지 얼마나 떨어져 있나". 신규 필드라 옵셔널
+  position?: {
+    rsi: number;
+    rsi_zone: "oversold" | "neutral" | "overbought";
+    drawdown_from_high_pct: number; // 60일 고점 대비 (-0.124 = -12.4%)
+    above_support_pct: number; // 60일 저점 대비 여력
+    atr_pct: number;
+  } | null;
+  // 하방 리스크 실측 — signal_direction에 DOWN은 오지 않는다(하락 방향 미검증)
+  downside?: {
+    trough_median_pct: number | null; // 구간 내 장중 최대 낙폭 중앙값
+    trough_q25_pct: number | null; // 하위 25% = 더 나쁜 쪽
+    down_close_rate: number | null;
+    dip_samples: number; // 낙폭이 있었던 표본 — 회복률의 분모
+    recovery_rate: number | null;
+    recovery_days_median: number | null;
+  } | null;
   live?: boolean; // true = 미수집 종목 — yfinance 라이브 이력 기반 계산
 };
 

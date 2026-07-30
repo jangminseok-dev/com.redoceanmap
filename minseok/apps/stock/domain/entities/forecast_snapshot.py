@@ -35,9 +35,26 @@ class ForecastSnapshot:
     q25_pct: float | None = None
     median_pct: float | None = None
     q75_pct: float | None = None
+    # --- 판정 재현·재적합용 (2026-07-30) ---
+    # signal_config: 어느 가중치 조합으로 낸 판정인가. NULL = 2026-07-30 이전의 default() 조합
+    # (감성 가중치가 사장돼 전량 NEUTRAL이던 구간) — 이력이 조용히 섞이지 않게 표시한다.
+    signal_config: str | None = None
+    rsi: float | None = None            # 원시값 — signals에는 정규화 신호만 남아 복원 불가
+    bb_percent_b: float | None = None
+    momentum_12_1: float | None = None
+    atr_pct: float | None = None
+    drawdown_from_high_pct: float | None = None  # 캡처 시점 60일 고점 대비
+    above_support_pct: float | None = None
+    # --- 하방·회복 기대치(캡처 시점 백테스트 분포) ---
+    trough_median_pct: float | None = None
+    trough_q25_pct: float | None = None
+    recovery_rate: float | None = None
+    recovery_days_median: float | None = None
     evaluated_at: datetime | None = None
     realized_price: float | None = None
     realized_return_pct: float | None = None
+    # 실제 구간 내 장중 최저 — "틀렸을 때 얼마나 빠졌나"의 답이 되는 채점 필드
+    realized_trough_pct: float | None = None
     hit: bool | None = None
     regime: str | None = None         # 캡처 시점 시장 레짐(BULL/BEAR/HIGH_VOL)
     regime_conditional: bool = False  # 확률·밴드가 레짐 조건부 통계였는지

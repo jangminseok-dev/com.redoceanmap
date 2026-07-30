@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from stock.domain.value_objects.insight_vo import Insight
+from stock.domain.value_objects.position_profile import PositionProfile
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,22 @@ class BandInfo:
 
 
 @dataclass(frozen=True)
+class DownsideInfo:
+    """하방 리스크 — 같은 신호가 났던 과거 구간에서 얼마나 빠졌고 얼마나 회복했나.
+
+    하락 **방향 예측**은 검증되지 않았으므로(재채점 2·3차 모두 두 구간 연속 통과 실패)
+    "떨어진다"고 단정하지 않고 실측 분포만 제시한다. `signal_direction`에 DOWN은 오지 않는다.
+    """
+
+    trough_median_pct: float | None      # 구간 내 장중 최대 낙폭 중앙값
+    trough_q25_pct: float | None         # 하위 25% = 더 나쁜 쪽
+    down_close_rate: float | None        # horizon 마감이 음수였던 비율
+    dip_samples: int                     # 낙폭이 있었던 표본 — 회복률의 분모
+    recovery_rate: float | None          # 그중 기준가를 회복한 비율
+    recovery_days_median: float | None   # 회복까지 걸린 거래일 중앙값
+
+
+@dataclass(frozen=True)
 class StockForecastView:
     symbol: str
     resolved_ticker: str
@@ -48,6 +65,9 @@ class StockForecastView:
     probability: ProbabilityInfo | None  # 표본 0이면 None
     band: BandInfo | None                # 분위수·ATR 모두 불가하면 None
     insights: list[Insight]
+    # 현재 국면(RSI·고점 대비 낙폭) — Insight와 같이 도메인 VO를 그대로 실어보낸다
+    position: PositionProfile | None = None
+    downside: DownsideInfo | None = None  # 하방·회복 실측 통계 — 표본 0이면 None
     live: bool = False       # True = 미수집 종목 — yfinance 라이브 이력 기반 계산
     regime: str | None = None        # 현재 시장 레짐(BULL/BEAR/HIGH_VOL) — 지수 미수집이면 None
     regime_conditional: bool = False  # True = 확률·밴드가 현재 레짐 조건부 통계

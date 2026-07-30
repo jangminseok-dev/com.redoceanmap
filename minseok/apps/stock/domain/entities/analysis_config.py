@@ -28,6 +28,29 @@ class AnalysisConfig:
         return cls(up_threshold=0.3, down_threshold=-0.3)
 
     @classmethod
+    def forecast_signal(cls) -> "AnalysisConfig":
+        """forecast·예측 스냅샷 슬라이스 전용 — 감성 중립 경로에서 검증된 조합.
+
+        3차 재채점(2026-07-14)의 최우수 신호 RSI+BB+MOM(0.4/0.4/0.2) ±0.35 —
+        인샘플 Wilson 하한 +3.5%p·홀드아웃 +0.9%p로 두 독립 구간 모두 통과했고,
+        **검증 조건이 감성 중립**이라 감성을 싣지 않는 이 슬라이스와 정합한다.
+
+        `default()`(감성 0.5+RSI 0.3+추세 0.2, ±0.3)를 쓰면 안 되는 이유: 감성 가중치 0.5가
+        사장돼 남는 예산이 0.5뿐이고, RSI 신호는 30~70 구간에서 0이라(실측 94%) 도달 가능한
+        |score| 상한이 추세의 0.2다 — 임계 0.3에 **산술적으로 못 미쳐 전량 NEUTRAL이 된다**
+        (2026-07-30 실측: 스냅샷 814건 전부 NEUTRAL, 최대 |score| 0.2000).
+
+        `down_threshold`는 도달 불가값이다 — `score`가 [-1, 1]로 클램프되므로 DOWN이 발화하지
+        않는다. 하락은 방향 라벨이 아니라 실측 분포(`DirectionStats`의 낙폭·회복 통계)로 제시한다:
+        재채점 2·3차 모두 **하락 방향은 두 구간 연속 통과 조합이 없었다**(하락 예측 불가).
+        근거 → [[minseok/apps/stock/_docs/BACKTEST_RESCORE_2026-07|BACKTEST_RESCORE_2026-07]] 4차.
+        """
+        return cls(
+            up_threshold=0.35, down_threshold=-1.01,
+            w_sentiment=0.0, w_rsi=0.4, w_trend=0.0, w_bb=0.4, w_momentum=0.2,
+        )
+
+    @classmethod
     def rsi_bb_reference(cls) -> "AnalysisConfig":
         """참고 신호 전용 — 2026-07 재채점에서 인샘플·홀드아웃 양쪽 게이트를 통과한 유일 조합.
 

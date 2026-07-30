@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from stock.domain.entities.analysis_config import AnalysisConfig
 from stock.domain.entities.outlook import Direction
 from stock.domain.services.indicator_calculator import MA_LONG, IndicatorCalculator
@@ -139,8 +141,8 @@ class Backtester:
         if excluded is not None and len(excluded) != len(closes):
             raise ValueError(f"excluded 길이가 봉 수와 다릅니다: {len(excluded)} != {len(closes)}")
 
-        returns: dict[str, list[float]] = {d.value: [] for d in Direction}
-        regime_returns: dict[str, dict[str, list[float]]] = {}
+        outcomes: dict[str, list[_Outcome]] = {d.value: [] for d in Direction}
+        regime_outcomes: dict[str, dict[str, list[_Outcome]]] = {}
         regime_baseline_up: dict[str, int] = {}
         baseline_up = 0
         vetoed = 0
@@ -154,14 +156,23 @@ class Backtester:
                 highs[: t + 1],
                 volumes[: t + 1] if volumes is not None else None,
             )
-            ret = closes[t + horizon] / closes[t] - 1.0
+            base = closes[t]
+            ret = closes[t + horizon] / base - 1.0
+            # 구간 내 하방·회복 — 마감 수익률만으로는 "빠졌다 회복한 것"과 "그냥 오른 것"이 구분되지
+            # 않는다. 낙폭은 장중 저가, 회복은 종가 기준(기준가를 실제로 되찾은 날).
+            trough = min(lows[t + 1 : t + horizon + 1]) / base - 1.0
+            recovery_day = next(
+                (k for k, c in enumerate(closes[t + 1 : t + horizon + 1], start=1) if c >= base),
+                None,
+            )
             baseline_up += 1 if ret > 0 else 0
             outlook = self._predictor.predict(indicators, neutral, cfg)
-            returns[outlook.direction.value].append(ret)
+            outcome = _Outcome(ret=ret, trough=trough, recovery_day=recovery_day)
+            outcomes[outlook.direction.value].append(outcome)
             regime = regimes[t] if regimes is not None else None
             if regime is not None:
-                bucket = regime_returns.setdefault(regime, {d.value: [] for d in Direction})
-                bucket[outlook.direction.value].append(ret)
+                bucket = regime_outcomes.setdefault(regime, {d.value: [] for d in Direction})
+                bucket[outlook.direction.value].append(outcome)
                 regime_baseline_up[regime] = regime_baseline_up.get(regime, 0) + (1 if ret > 0 else 0)
 
         evaluated = end - start - vetoed
@@ -171,30 +182,51 @@ class Backtester:
             horizon_days=horizon,
             evaluated=evaluated,
             baseline_up_rate=baseline_up / evaluated,
-            by_direction=_direction_stats(returns),
+            by_direction=_direction_stats(outcomes),
             by_regime={
                 regime: RegimeStats(
-                    evaluated=(n := sum(len(rets) for rets in bucket.values())),
+                    evaluated=(n := sum(len(rows) for rows in bucket.values())),
                     baseline_up_rate=regime_baseline_up.get(regime, 0) / n,
                     by_direction=_direction_stats(bucket),
                 )
-                for regime, bucket in regime_returns.items()
+                for regime, bucket in regime_outcomes.items()
             },
             vetoed=vetoed,
         )
 
 
-def _direction_stats(returns: dict[str, list[float]]) -> dict[str, DirectionStats]:
-    return {
-        direction: DirectionStats(
-            sample_size=len(rets),
-            hits=sum(1 for r in rets if r > 0),
-            q25=_quantile(rets, 0.25),
-            median=_quantile(rets, 0.5),
-            q75=_quantile(rets, 0.75),
-        )
-        for direction, rets in returns.items()
-    }
+@dataclass(frozen=True, slots=True)
+class _Outcome:
+    """평가일 1건의 사후 결과 — 마감 수익률 + 구간 내 최대 낙폭 + 기준가 회복일."""
+
+    ret: float
+    trough: float             # 장중 저가 기준 최대 낙폭 (0 이상이면 구간 내 하락 없음)
+    recovery_day: int | None  # 기준가를 종가로 되찾은 첫 거래일(1-based), 못 찾으면 None
+
+
+def _direction_stats(outcomes: dict[str, list[_Outcome]]) -> dict[str, DirectionStats]:
+    return {direction: _stats_of(rows) for direction, rows in outcomes.items()}
+
+
+def _stats_of(rows: list[_Outcome]) -> DirectionStats:
+    rets = [o.ret for o in rows]
+    troughs = [o.trough for o in rows]
+    # 회복률의 분모는 "실제로 빠진 적이 있는" 표본뿐 — 무조정 상승일을 섞으면 회복률이 부풀려진다.
+    dips = [o for o in rows if o.trough < 0]
+    recovered = [o.recovery_day for o in dips if o.recovery_day is not None]
+    return DirectionStats(
+        sample_size=len(rows),
+        hits=sum(1 for r in rets if r > 0),
+        q25=_quantile(rets, 0.25),
+        median=_quantile(rets, 0.5),
+        q75=_quantile(rets, 0.75),
+        trough_median_pct=_quantile(troughs, 0.5),
+        trough_q25_pct=_quantile(troughs, 0.25),
+        down_close_rate=(sum(1 for r in rets if r < 0) / len(rets)) if rets else None,
+        dip_samples=len(dips),
+        recovery_rate=(len(recovered) / len(dips)) if dips else None,
+        recovery_days_median=_quantile([float(d) for d in recovered], 0.5),
+    )
 
 
 def _quantile(values: list[float], q: float) -> float | None:

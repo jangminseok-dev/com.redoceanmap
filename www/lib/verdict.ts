@@ -41,6 +41,39 @@ export function verdict(
   };
 }
 
+// 백엔드 position_profile.py와 같은 라벨 축 — 화면 문구와 해설이 어긋나지 않게 맞춘다
+const RSI_ZONE_WORD: Record<NonNullable<StockForecast["position"]>["rsi_zone"], string> = {
+  oversold: "과매도",
+  neutral: "중립",
+  overbought: "과매수",
+};
+
+/** 지금 어느 국면인가 — 고점 대비 낙폭 + RSI 구간. 예측이 아니라 현재 상태 서술. */
+export function positionLine(forecast?: StockForecast): string | null {
+  const p = forecast?.position;
+  if (!p) return null;
+  const drop = Math.round(p.drawdown_from_high_pct * 1000) / 10;
+  const room = Math.round(p.above_support_pct * 1000) / 10;
+  return `60일 고점 대비 ${drop >= 0 ? "+" : ""}${drop}% · 저점보다 ${room >= 0 ? "+" : ""}${room}% 위 · RSI ${Math.round(p.rsi)}(${RSI_ZONE_WORD[p.rsi_zone]})`;
+}
+
+/** 더 떨어지면 어디까지였고 회복은 됐나 — 하락을 단정하지 않고 같은 신호의 실측 분포로만 말한다.
+ *  백엔드가 하락 방향을 예측하지 않는 이유(검증 실패)를 화면에서도 "확률 단정"으로 바꾸지 않는다. */
+export function downsideLine(forecast?: StockForecast): string | null {
+  const d = forecast?.downside;
+  if (!d || d.trough_median_pct === null) return null;
+  const trough = Math.round(d.trough_median_pct * 1000) / 10;
+  const worst = d.trough_q25_pct === null ? null : Math.round(d.trough_q25_pct * 1000) / 10;
+  const head = `과거 같은 신호에서 장중 최대 낙폭 중앙값 ${trough}%${worst === null ? "" : ` (나쁜 쪽 25%는 ${worst}%)`}`;
+  if (d.dip_samples === 0) return `${head}. 기준가 아래로 내려간 사례는 없었습니다.`;
+  if (d.recovery_rate === null) return `${head}.`;
+  const days =
+    d.recovery_days_median === null
+      ? ""
+      : ` 회복까지 중앙값 ${Math.round(d.recovery_days_median)}거래일.`;
+  return `${head}. 내려간 ${d.dip_samples}회 중 ${Math.round(d.recovery_rate * 100)}%가 기준가를 회복했습니다.${days}`;
+}
+
 /** 신호 세기 — "확신도 36%"는 초보자가 확률로 오독한다. 확률이 아니라는 게 드러나는 표기로 바꾼다. */
 export function strength(analyze: StockAnalyzeResult): string {
   const score = Math.abs(analyze.score ?? 0);
