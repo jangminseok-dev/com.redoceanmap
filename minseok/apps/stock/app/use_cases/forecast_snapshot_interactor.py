@@ -169,9 +169,15 @@ class ForecastSnapshotInteractor(ForecastSnapshotUseCase):
         return result
 
     async def summary(self, horizon: int | None, recent_limit: int) -> SnapshotSummaryView:
-        total, scored_count = await self._snapshots.counts(horizon)
-        scored = await self._snapshots.find_scored(horizon, SUMMARY_SCORED_CAP)
-        recent = await self._snapshots.find_recent(horizon, recent_limit)
+        # 현재 판정 조합으로 낸 스냅샷만 집계한다 — 2026-07-30 이전 default() 조합(NULL)은
+        # 규칙이 다른 판정이라 같은 적중률·신호 일치율 분모에 넣으면 서로 다른 성적을 합친
+        # 숫자가 된다. 특히 by_signal은 hit이 아니라 실현 수익률 부호로 계산해 구 조합
+        # 채점분이 그대로 섞인다(구 조합은 전량 NEUTRAL이라 hit_rate에는 안 섞였다).
+        total, scored_count = await self._snapshots.counts(horizon, _SIGNAL_CONFIG_KEY)
+        scored = await self._snapshots.find_scored(
+            horizon, SUMMARY_SCORED_CAP, _SIGNAL_CONFIG_KEY
+        )
+        recent = await self._snapshots.find_recent(horizon, recent_limit, _SIGNAL_CONFIG_KEY)
         return SnapshotSummaryView(
             kpi=self._kpi(total, scored_count, scored),
             by_horizon=self._by_horizon(scored),

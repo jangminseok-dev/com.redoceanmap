@@ -61,12 +61,14 @@ def _snapshot(
     snapshot_id: int, ticker: str = "TEST.KS", direction: str = "UP", horizon: int = 5,
     as_of: datetime = AS_OF, base_price: float = 100.0, signals: tuple = (),
     evaluated: bool = False, realized_return_pct: float | None = None, hit: bool | None = None,
+    signal_config: str | None = "forecast_signal",
 ) -> ForecastSnapshot:
     return ForecastSnapshot(
         id=snapshot_id, ticker=ticker, as_of=as_of, horizon_days=horizon,
         direction=direction, base_price=base_price, score=0.4, signals=signals,
         evaluated_at=datetime(2026, 7, 10, tzinfo=UTC) if evaluated else None,
         realized_return_pct=realized_return_pct, hit=hit,
+        signal_config=signal_config,
     )
 
 
@@ -104,6 +106,7 @@ class _StubRepo:
         self.pending = pending or []
         self.scored = scored or []
         self.applied = []
+        self.asked_configs: list[str | None] = []  # 집계가 조합을 좁혀 물었는지 검증용
 
     async def save_many(self, snapshots):
         self.saved.extend(snapshots)
@@ -116,16 +119,22 @@ class _StubRepo:
         self.applied.extend(updates)
         return len(updates)
 
-    async def find_scored(self, horizon, limit):
-        return [s for s in self.scored if horizon is None or s.horizon_days == horizon][:limit]
+    async def find_scored(self, horizon, limit, signal_config=None):
+        self.asked_configs.append(signal_config)
+        return [s for s in self.scored if self._match(s, horizon, signal_config)][:limit]
 
-    async def find_recent(self, horizon, limit):
+    async def find_recent(self, horizon, limit, signal_config=None):
         return ([s for s in self.pending + self.scored
-                 if horizon is None or s.horizon_days == horizon][:limit])
+                 if self._match(s, horizon, signal_config)][:limit])
 
-    async def counts(self, horizon):
+    @staticmethod
+    def _match(s, horizon, signal_config) -> bool:
+        return ((horizon is None or s.horizon_days == horizon)
+                and (signal_config is None or s.signal_config == signal_config))
+
+    async def counts(self, horizon, signal_config=None):
         both = self.pending + self.scored
-        pool = [s for s in both if horizon is None or s.horizon_days == horizon]
+        pool = [s for s in both if self._match(s, horizon, signal_config)]
         return len(pool), len([s for s in pool if s.evaluated_at is not None])
 
 
@@ -323,3 +332,27 @@ async def test_summary_by_regime_groups_null_as_none():
     regimes = {r.regime: r for r in view.by_regime}
     assert regimes["BULL"].scored == 1 and regimes["BULL"].hit_rate == 1.0
     assert regimes["NONE"].scored == 1 and regimes["NONE"].hit_rate == 0.0
+
+
+async def test_summary_excludes_previous_signal_config():
+    """구 조합(signal_config NULL) 판정은 집계에서 빠진다.
+
+    규칙이 다른 판정을 한 분모에 넣으면 적중률·신호 일치율이 서로 다른 성적의 합이 된다.
+    특히 by_signal은 hit이 아니라 실현 수익률 부호로 계산해 구 조합 채점분이 그대로 섞인다
+    (구 조합은 전량 NEUTRAL이라 hit_rate에는 안 섞였다 — 그래서 조용히 틀렸다).
+    """
+    scored = [
+        _snapshot(1, direction="UP", evaluated=True, realized_return_pct=0.02, hit=True),
+        # 구 조합 — 같은 UP·같은 채점이지만 다른 규칙의 판정
+        _snapshot(2, direction="UP", evaluated=True, realized_return_pct=-0.05, hit=False,
+                  signal_config=None),
+    ]
+    repo = _StubRepo(scored=scored)
+    view = await _interactor(_StubForecaster({}), _StubHistory({}), repo).summary(
+        horizon=None, recent_limit=10
+    )
+
+    assert repo.asked_configs == ["forecast_signal"]  # 조합을 좁혀 물었는지
+    assert view.kpi.scored == 1 and view.kpi.hit_rate == 1.0  # 구 조합 오답이 섞이면 0.5가 된다
+    assert view.by_direction[0].avg_realized_return_pct == pytest.approx(0.02)
+    assert [r.ticker for r in view.recent] == ["TEST.KS"] and len(view.recent) == 1

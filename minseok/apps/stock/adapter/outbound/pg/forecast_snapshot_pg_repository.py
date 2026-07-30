@@ -93,38 +93,53 @@ class ForecastSnapshotPgRepository(ForecastSnapshotRepositoryPort):
         await self._session.commit()
         return len(updates)
 
-    async def find_scored(self, horizon: int | None, limit: int) -> list[ForecastSnapshot]:
+    async def find_scored(
+        self, horizon: int | None, limit: int, signal_config: str | None = None
+    ) -> list[ForecastSnapshot]:
         stmt = (
             select(ForecastSnapshotOrm)
             .where(ForecastSnapshotOrm.evaluated_at.is_not(None))
             .order_by(ForecastSnapshotOrm.evaluated_at.desc(), ForecastSnapshotOrm.id.desc())
             .limit(limit)
         )
-        if horizon is not None:
-            stmt = stmt.where(ForecastSnapshotOrm.horizon_days == horizon)
-        rows = (await self._session.execute(stmt)).scalars().all()
+        rows = (await self._session.execute(
+            self._narrow(stmt, horizon, signal_config)
+        )).scalars().all()
         return [self._to_entity(r) for r in rows]
 
-    async def find_recent(self, horizon: int | None, limit: int) -> list[ForecastSnapshot]:
+    async def find_recent(
+        self, horizon: int | None, limit: int, signal_config: str | None = None
+    ) -> list[ForecastSnapshot]:
         stmt = (
             select(ForecastSnapshotOrm)
             .order_by(ForecastSnapshotOrm.as_of.desc(), ForecastSnapshotOrm.ticker.asc())
             .limit(limit)
         )
-        if horizon is not None:
-            stmt = stmt.where(ForecastSnapshotOrm.horizon_days == horizon)
-        rows = (await self._session.execute(stmt)).scalars().all()
+        rows = (await self._session.execute(
+            self._narrow(stmt, horizon, signal_config)
+        )).scalars().all()
         return [self._to_entity(r) for r in rows]
 
-    async def counts(self, horizon: int | None) -> tuple[int, int]:
+    async def counts(
+        self, horizon: int | None, signal_config: str | None = None
+    ) -> tuple[int, int]:
         stmt = select(
             func.count(ForecastSnapshotOrm.id),
             func.count(ForecastSnapshotOrm.evaluated_at),
         )
+        total, scored = (await self._session.execute(
+            self._narrow(stmt, horizon, signal_config)
+        )).one()
+        return int(total), int(scored)
+
+    @staticmethod
+    def _narrow(stmt, horizon: int | None, signal_config: str | None):
+        """horizon·판정 조합 좁히기 — 세 조회가 같은 규칙을 쓰게 한 곳에 모은다."""
         if horizon is not None:
             stmt = stmt.where(ForecastSnapshotOrm.horizon_days == horizon)
-        total, scored = (await self._session.execute(stmt)).one()
-        return int(total), int(scored)
+        if signal_config is not None:
+            stmt = stmt.where(ForecastSnapshotOrm.signal_config == signal_config)
+        return stmt
 
     @staticmethod
     def _to_entity(r: ForecastSnapshotOrm) -> ForecastSnapshot:

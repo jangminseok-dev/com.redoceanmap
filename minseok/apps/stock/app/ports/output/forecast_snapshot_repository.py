@@ -24,17 +24,27 @@ class ForecastSnapshotRepositoryPort(ABC):
         """채점 결과를 반영하고 반영 건수를 반환한다."""
         ...
 
+    # 아래 셋은 `signal_config`로 판정 조합을 좁힌다 — 조합이 다른 판정을 한 분모에 섞으면
+    # 적중률·신호별 일치율이 서로 다른 규칙의 성적을 합친 숫자가 된다(2026-07-30 조합 교체).
+    # None이면 전 조합(이력 전체 조회용).
+
     @abstractmethod
-    async def find_scored(self, horizon: int | None, limit: int) -> list[ForecastSnapshot]:
+    async def find_scored(
+        self, horizon: int | None, limit: int, signal_config: str | None = None
+    ) -> list[ForecastSnapshot]:
         """채점 완료분(evaluated_at 내림차순) — 요약 집계 재료."""
         ...
 
     @abstractmethod
-    async def find_recent(self, horizon: int | None, limit: int) -> list[ForecastSnapshot]:
+    async def find_recent(
+        self, horizon: int | None, limit: int, signal_config: str | None = None
+    ) -> list[ForecastSnapshot]:
         """최근 스냅샷(as_of 내림차순) — 어드민 목록."""
         ...
 
     @abstractmethod
-    async def counts(self, horizon: int | None) -> tuple[int, int]:
+    async def counts(
+        self, horizon: int | None, signal_config: str | None = None
+    ) -> tuple[int, int]:
         """(전체, 채점 완료) 건수."""
         ...
