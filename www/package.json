@@ -9,7 +9,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
     "@tanstack/react-query": "^5.101.2",
     "lightweight-charts": "^5.2.0",
     "lucide-react": "^1.16.0",
