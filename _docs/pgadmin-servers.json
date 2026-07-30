@@ -1,0 +1,24 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "redoceanmap",
+      "Group": "redoceanmap",
+      "Comment": "공유 DB — users·news_articles·price_bars·forecast_snapshots 등",
+      "Host": "redoceanmap-pgvector-1",
+      "Port": 5432,
+      "MaintenanceDB": "redoceanmap",
+      "Username": "redocean",
+      "SSLMode": "prefer"
+    },
+    "2": {
+      "Name": "market",
+      "Group": "redoceanmap",
+      "Comment": "market 앱 전용 DB — 상권 3NF·상권뉴스·인허가 업소(앱 전용 DB 불가침)",
+      "Host": "market-pgvector",
+      "Port": 5432,
+      "MaintenanceDB": "market",
+      "Username": "market",
+      "SSLMode": "prefer"
+    }
+  }
+}

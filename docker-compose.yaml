@@ -108,9 +108,45 @@ services:
       start_period: 40s
     restart: unless-stopped
 
+  # DB 브라우저 — 공유 DB(:5432)와 market 전용 DB(:5434)를 한 화면에서 본다.
+  # 2026-07-30까지 수동 `docker run`으로만 떠 있어 이 PC를 다시 세팅하면 사라지는 상태였다.
+  # 두 DB는 서로 다른 compose에 있으므로 각 네트워크에 external로 붙는다(호스트 포트가 아니라
+  # 컨테이너 이름으로 접속 — 그래서 servers.json의 Host가 redoceanmap-pgvector-1/market-pgvector다).
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin      # 기존 수동 컨테이너와 같은 이름 — 볼륨째 그대로 승계한다
+    profiles: ["tools"]          # 선택 기동: docker compose --profile tools up -d pgadmin
+    ports:
+      - "127.0.0.1:5050:80"      # 루프백만 — 0.0.0.0 금지(LAN 노출 차단)
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_EMAIL:?PGADMIN_EMAIL 미설정}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PASSWORD:?PGADMIN_PASSWORD 미설정}
+      # 신규 설치일 때만 서버 2개를 자동 등록한다(기존 볼륨에는 이미 등록돼 있어 무해).
+      - PGADMIN_SERVER_JSON_FILE=/pgadmin4/servers.json
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./_docs/pgadmin-servers.json:/pgadmin4/servers.json:ro
+    networks:
+      - default
+      - redoceanmap_shared
+      - market_app
+    mem_limit: 512m
+    restart: unless-stopped
+
+networks:
+  # 실행 중인 두 DB는 각각 다른 compose 소유라 external로 참조만 한다(여기서 만들지 않는다).
+  redoceanmap_shared:
+    external: true
+    name: redoceanmap_default
+  market_app:
+    external: true
+    name: market_default
+
 volumes:
   n8n_data:
     name: n8n_data
+  pgadmin_data:
+    name: pgadmin_data          # 프로젝트 접두사 없이 기존 볼륨을 그대로 쓴다(등록된 서버 보존)
   redis_data:
   pgvector_data:
   neo4j_data:

@@ -133,6 +133,13 @@ docker compose up -d
 # market 앱 전용 DB (:5434) — 공유 DB와 별개로 따로 띄운다
 cd minseok/apps/market && docker compose up -d
 
+# DB 브라우저 pgadmin (선택 기동) — http://127.0.0.1:5050
+# 공유 DB·market DB 2개가 _docs/pgadmin-servers.json으로 자동 등록된다(.env에 PGADMIN_* 필요)
+docker compose --profile tools up -d pgadmin
+
+# 그래프 브라우저는 Neo4j에 내장 — http://127.0.0.1:7474 (계정은 .env의 NEO4J_USER/PASSWORD)
+docker compose --profile graph up -d neo4j
+
 # 프론트엔드 개발 서버 (패키지 매니저는 pnpm — pnpm-lock.yaml이 정본)
 cd www && pnpm run dev
 
