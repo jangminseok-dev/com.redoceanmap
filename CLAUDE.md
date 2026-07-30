@@ -8,6 +8,24 @@
 
 ---
 
+## 프로젝트 개요
+
+한 저장소에 백엔드·프론트엔드가 함께 있다.
+
+| 영역 | 스택 | 위치 |
+| --- | --- | --- |
+| 백엔드 | Python 3.13 · FastAPI 0.128 · SQLAlchemy 2.0(asyncio) · Pydantic 2 · Alembic | `minseok/` |
+| 인증 | 위와 동일 (별도 프로세스 `auth_main.py` — 개인키를 분리 보유) | `minseok/apps/auth` |
+| 프론트엔드 | Next.js 16 · React 19 · TypeScript 5 · Tailwind 4 · zustand · TanStack Query | `www/` |
+| 데이터 | PostgreSQL 17(pgvector) · Redis 7 · Neo4j | 도커 컴포즈 |
+| LLM | EXAONE 3.5 7.8B 로컬 추론(Ollama) — 단일 모델 정책 | `minseok/core/llm` |
+
+백엔드는 **모듈러 모놀리식**이다. 앱 내부는 헥사고날/클린(`adapter → app → domain`),
+앱 사이는 스타 토폴로지(허브 `hub` + 스포크)이며 두 구조는 `minseok/.importlinter`로 강제된다.
+프론트엔드는 브라우저 fetch를 `/api/backend` rewrite로만 백엔드에 보낸다.
+
+---
+
 ## 하위 CLAUDE.md 링크 (WikiLink)
 
 작업 디렉토리가 아래 영역에 속하면 해당 CLAUDE.md를 **먼저 읽고** 규칙을 적용한다.
@@ -99,3 +117,122 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+
+---
+
+## 명령어
+
+**호스트에 파이썬 개발 환경이 없다.** 루트 `venv/`는 cron 전용 경량, `.venv`는 EXAONE 학습 전용이며
+둘 다 pytest·fastapi가 없다. 백엔드 검증은 전부 도커 경유다. node는 호스트에 있다(프론트는 직접 실행).
+
+```bash
+# 전체 스택 기동 — backend:8000 · auth:9000 · pgvector:5432 · redis:6379 · neo4j:7474/7687 · n8n:5678
+# (모두 127.0.0.1 루프백 바인딩. 0.0.0.0 금지 — LAN 노출 차단)
+docker compose up -d
+
+# market 앱 전용 DB (:5434) — 공유 DB와 별개로 따로 띄운다
+cd minseok/apps/market && docker compose up -d
+
+# 프론트엔드 개발 서버
+cd www && npm run dev
+
+# 프론트엔드 타입 체크 (test/lint npm 스크립트는 없다)
+cd www && npx tsc --noEmit
+```
+
+```bash
+# 백엔드 테스트 전체
+docker run --rm -v /home/host/projects/com.redoceanmap:/work -w /work \
+  -e PYTHONPATH=/work/minseok:/work/minseok/apps \
+  minseok97/redoceanmap-backend:latest python -m pytest minseok/apps -q -p no:cacheprovider
+
+# import-linter — 아키텍처 계약 5종(클린 아키텍처 · 스포크 상호 독립 ·
+#                  프레임워크 격리 · 도메인 순수성 · 허브 격리)
+docker run --rm -v /home/host/projects/com.redoceanmap:/work -w /work/minseok \
+  -e PYTHONPATH=apps minseok97/redoceanmap-backend:latest lint-imports --config .importlinter
+```
+
+- 마이그레이션은 `docker compose up` 시 backend 컨테이너가 `alembic upgrade head`로 자동 적용한다.
+  `minseok/alembic.ini`(공유 DB)와 `minseok/apps/market/alembic.ini`(market 전용 DB)는 **독립**이다.
+- 실 DB에 붙는 스크립트는 `--network host`를 추가한다(`DATABASE_URL`이 `localhost:5432`).
+- psql: `docker exec redoceanmap-pgvector-1 psql -U redocean -d redoceanmap`
+
+---
+
+## 코딩 컨벤션
+
+영역별 상세는 하위 문서가 정본이다. 아래는 저장소 전체에 걸리는 공통 사항이다.
+
+| 영역 | 정본 |
+| --- | --- |
+| 백엔드 | [[minseok/_docs/CLAUDE\|minseok CLAUDE]] · [[minseok/_docs/ENTITY_RULES\|ENTITY_RULES]] |
+| 프론트엔드 | [[www/_docs/CLAUDE\|www CLAUDE]] · [[www/_docs/REACT_RULES\|REACT_RULES]] · `.claude/rules/typescript.md` |
+
+- **주석·문서·커밋 메시지는 한국어.** 커밋은 `type(scope): 요약` 형식(예: `fix(auth): …`).
+- **백엔드:** I/O-bound는 `async def`, CPU-bound는 `def`. 포트(ABC)와 구현체의 `def`/`async def`를
+  일치시킨다. 유스케이스는 어댑터 스키마가 아니라 `app/dtos`를 받는다.
+- **백엔드 임계값·상수:** `load_dotenv`·`os.getenv`를 새로 쓰지 않는다 —
+  `core/key/secret_manager.py`(스크립트·엔트리포인트) 또는 `core/config.py`(런타임) 경유.
+- **프론트엔드:** strict mode 유지, `any` 금지(카카오맵 SDK 경계 예외), `interface`보다 `type`,
+  백엔드 응답 필드명은 변환하지 않는다.
+- 새 라우터는 `GET <prefix>/myself` 자기소개 + 헥사고날 프랙탈 단면을 함께 만든다(백엔드 정본 참고).
+
+---
+
+## 테스트
+
+- 프레임워크: **pytest 9 + pytest-asyncio**(`asyncio_mode = auto` — `@pytest.mark.asyncio` 불필요).
+- 테스트 파일: `test_*.py` 패턴, 앱별 `minseok/apps/<app>/tests/` 아래(현재 89개 파일).
+- 마커(`pytest.ini`) — 기본 검증에서 빼려면 `-m "not ollama and not network"`:
+  - `ollama`: 로컬 EXAONE 모델을 호출하는 통합 테스트
+  - `network`: 외부 API(야후 파이낸스 등) 호출이 필요한 통합 테스트
+- 유스케이스는 **스텁 포트**로 검증한다(mock 프레임워크보다 스텁 구현 선호).
+- 구조 위반은 테스트가 아니라 import-linter가 잡는다. 아키텍처를 건드린 변경은 둘 다 돌린다.
+- 프론트엔드에는 테스트 러너가 없다 — 검증 수단은 `npx tsc --noEmit`뿐이다.
+
+---
+
+## 브랜치 전략
+
+- `main` — 프로덕션. 프론트엔드는 이 브랜치가 Vercel에 자동 배포된다.
+- `window` / `mac` — 작업 기기별 브랜치. **세 브랜치(`window`·`mac`·`main`)를 항상 같은 커밋으로
+  유지한다.** 작업 후 세 곳 모두에 push하고, 다른 기기에서 시작할 때 먼저 fetch한다.
+- `aws` — EC2 배포용 compose가 갈라져 있는 원격 전용 브랜치. 위 3개와 동기화하지 않는다.
+- 커밋·push는 사용자가 요청할 때만 한다.
+
+---
+
+## 환경 변수
+
+- `.env` — 실제 값(git 제외). 키를 추가하면 **`.env.example`에도 반드시 등록**한 뒤
+  `core/config.py`에 상수 한 줄을 더한다.
+- `.env.auth` — JWT **개인키**(`JWT_PRIVATE_KEY_B64`) 전용. 자동 로드되지 않으며
+  `load_auth_env()`를 명시 호출한 프로세스(`auth_main.py`·`conftest.py`)만 본다.
+  백엔드 프로세스가 토큰을 발급할 수 없어야 하는 경계이므로 이 파일을 일반 로드 경로에 넣지 않는다.
+  회귀 방지: `minseok/tests/test_secret_manager.py`.
+- `www/.env.local` — 프론트엔드 전용(`NEXT_PUBLIC_*`).
+- 필수: `DATABASE_URL`, `JWT_PUBLIC_KEY_B64`(`core/config.py`가 없으면 기동 거부).
+  이 둘 없이 돌아야 하는 스크립트는 `core.config` 대신 `get_secret_manager()`를 직접 쓴다.
+- 그 외 계열: `MARKET_DATABASE_URL`, `POSTGRES_*`, 소셜 로그인(`GOOGLE_`/`KAKAO_`/`NAVER_`),
+  공공데이터(`SEOUL_OPENDATA_API_KEY`·`DATA_GO_KR_API_KEY`·`DART_API_KEY`), `AWS_*`, `NEO4J_*`.
+
+---
+
+## 주의사항
+
+- **스포크끼리 직접 import 금지.** 교차 협력은 허브(`apps/hub`) 포트 경유. 허브는 스포크를 모른다.
+- **공유 DB 불가침.** 앱 전용 DB(market `:5434`)와 공유 DB(`:5432`)를 섞지 않는다.
+  앱 전용 테이블을 공유 DB에 만들거나 그 반대로 하지 않는다.
+- **도커 스택이 2벌 공존한다.** 실행 중인 실운영 스택은 이 저장소 밖(`/home/host/projects/redoceanmap/`)의
+  compose이고 컨테이너 이름이 `redoceanmap-*`(실 DB = `redoceanmap-pgvector-1`, pg16, `:5432`)이다.
+  이 저장소의 compose도 `:5432`를 바인딩하므로 **그대로 올리면 실운영 DB와 포트가 충돌한다** —
+  기동 전에 `docker ps`로 무엇이 떠 있는지 확인한다. 볼륨 삭제·`down -v`·스키마 파괴 명령은
+  사용자 확인 없이 실행하지 않는다. 백업은 매일 04:00 cron(`scripts/backup_db.sh`).
+- **cron 스크립트는 루트 `venv/`를 쓴다.** 새 cron에 `.venv`(EXAONE 학습 전용)를 쓰면 학습 환경
+  정리 시 조용히 죽는다.
+- **비밀값을 로그·커밋·문서에 남기지 않는다.** `.env*` 파일 내용을 그대로 출력하지 않는다.
+- **프론트엔드 브라우저 fetch는 절대 URL을 쓰지 않는다** — `/api/backend` rewrite 경유.
+  쿼리만 바꾸는 내비게이션은 `router.replace/push`가 프로덕션 빌드에서 무시되므로
+  `history.replaceState`를 쓴다(dev에서는 재현되지 않는다).
+- `minseok/EXAONE-3.5-7.8B-Instruct/`(모델 가중치)와 `minseok/data/`(원본 데이터)는 코드가 아니다.
+  검색·일괄 수정 대상에서 제외한다.
