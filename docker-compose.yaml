@@ -83,15 +83,30 @@ services:
       timeout: 5s
       retries: 5
 
+  # 실운영 정의는 구 스택(/home/host/projects/redoceanmap/docker-compose.yaml)에 있다.
+  # 두 파일이 갈라지면 머신마다 다른 설정으로 뜨므로 값을 동일하게 유지한다 — neo4j-strategy §2
   neo4j:
-    image: neo4j:5
+    image: neo4j:5.26                      # LTS 고정 — 부동 태그 금지
+    profiles: ["graph"]                    # 선택 기동
     ports:
       - "127.0.0.1:7474:7474"
       - "127.0.0.1:7687:7687"
     volumes:
       - neo4j_data:/data
     environment:
-      - NEO4J_AUTH=${NEO4J_AUTH:-neo4j/please_change}
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:?NEO4J_PASSWORD 미설정}
+      - NEO4J_server_memory_heap_initial__size=512m
+      - NEO4J_server_memory_heap_max__size=512m
+      - NEO4J_server_memory_pagecache_size=512m
+      - NEO4J_db_transaction_timeout=5s
+    mem_limit: 1500m
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:7474 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    restart: unless-stopped
 
 volumes:
   n8n_data:

@@ -17,15 +17,16 @@ langgraph-harness §3이 맡는다.
 
 ---
 
-## 0. 현재 상태 (2026-07-28 기준 사실)
+## 0. 현재 상태 (2026-07-30 갱신)
 
 | 항목 | 상태 |
 |---|---|
-| 도입 여부 | **도입 예정 · 시점 미정.** 랭체인이 `langchain-core` 1개로 먼저 들어간 것과 달리(→ [[minseok/apps/admin/_docs/langchain-harness\|langchain-harness]]), 그래프는 아직 첫 코드 전이다 |
-| 서버 | `docker-compose.yaml`의 `neo4j` 서비스 — 이미지 `neo4j:5`, `127.0.0.1:7474`(HTTP)·`127.0.0.1:7687`(Bolt), 볼륨 `neo4j_data`. **준비만 되어 있고 상시 기동 아님** |
-| 인증 | `NEO4J_AUTH=${NEO4J_AUTH:-neo4j/please_change}` — 기본값이 그대로 쓰이면 안 된다(§5) |
+| 도입 여부 | **인프라·데이터는 들어갔고 런타임 질의 코드는 아직이다.** 랭체인이 `langchain-core` 1개로 먼저 들어간 것과 달리(→ [[minseok/apps/admin/_docs/langchain-harness\|langchain-harness]]), 그래프는 배치(투영)만 있고 앱이 부르는 경로가 없다 |
+| 서버 | **기동 중** — 실운영(구) 스택의 `neo4j` 서비스, 이미지 `neo4j:5.26`(LTS 고정), `127.0.0.1:7474`·`127.0.0.1:7687` 루프백, 볼륨 `redoceanmap_neo4j_data`. `profiles: ["graph"]` 선택 기동이라 기본 `up -d`에는 뜨지 않고, `depends_on`도 없다(장애 격리). 힙·페이지캐시 512 MiB 고정 · `mem_limit 1500m` · 서버측 `db.transaction.timeout=5s` |
+| 인증 | `NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:?...}` — 기본값 경로 제거됨(미설정이면 기동 실패). 키 3종(`NEO4J_URI`·`NEO4J_USER`·`NEO4J_PASSWORD`)은 `.env.example` 등록 완료 |
 | 클라이언트 | `minseok/requirements.txt`의 `neo4j-graphrag==1.18.0` (전이 의존 `neo4j` 드라이버 6.2.0). 지금은 **PDF 추출기로만** 쓰인다(admin `pdf_loader_extractor_adapter` — 그래프 접속 아님) |
-| 코드 | 그래프 접속 코드 **0건**. 자리만 예약됨 — `hub/adapter/outbound/graph/`(허브 소유 전역 인프라) |
+| 코드 | **앱 코드는 여전히 0건** — `hub/adapter/outbound/graph/`는 자리만 예약됨. 2026-07-30에 투영 배치만 추가됐다(`scripts/{project_graph.py,graph_constraints.cypher}`) — 앱 밖이라 런타임 질의 경로는 아직 없다. `.importlinter` `framework-isolation`에 `neo4j`·`neo4j_graphrag` 등록 완료 |
+| 데이터 | **투영 완료**(2026-07-30) — 노드 3,582 / 관계 79,188. 상세·실측 → [[minseok/apps/admin/_docs/neo4j-strategy\|neo4j-strategy]] §4 1단계 |
 | prod | ROADMAP ①-M2에서 **prod compose 제외**(미사용). 도입 시 prod 편입 여부를 §7과 함께 재검토 |
 
 ---
@@ -114,10 +115,14 @@ SHOW CONSTRAINTS;  // 검증
    사실을 두지 않는 것(§4 정본 규칙)이 1차 방어이며, 그럼에도 필요해지면
    `neo4j-admin database dump`를 별도 절차로 문서화하고 나서 도입한다.
 5. **도입 조건(게이트)** — 아래를 모두 적고 나서 `graph/` 폴더에 첫 코드를 쓴다. 하나라도 비면 도입 보류다.
-   - 그래프로만 답할 수 있는 질문 1개 이상(PG 조인으로 답이 되면 PG를 쓴다)
-   - 라벨·관계·속성 목록과 그 제약 Cypher
-   - PG→그래프 투영 경로(누가, 언제, 멱등한가)
-   - 그래프가 죽었을 때의 응답 (§4 장애 격리)
+   - ⚠️ 그래프로만 답할 수 있는 질문 1개 이상(PG 조인으로 답이 되면 PG를 쓴다)
+     → **부분 충족.** 4홉 질의가 실동작함은 확인됐지만(neo4j-strategy §4 1단계), *사용자가 실제로
+     그런 질문을 하는가*는 미확인이다. 계수 방법 → langgraph-strategy §4-1
+   - ✅ 라벨·관계·속성 목록과 그 제약 Cypher → `scripts/graph_constraints.cypher`(제약 5 + 인덱스 1)
+   - ✅ PG→그래프 투영 경로 → `scripts/project_graph.py`(단방향·`MERGE` 멱등, 2회 회귀 통과).
+     **다만 "언제"가 아직 수동이다** — cron 등록은 이미지 재빌드가 선행(neo4j-strategy §4 1단계 각주)
+   - ⚠️ 그래프가 죽었을 때의 응답 (§4 장애 격리) → 설계는 있으나(langgraph-harness §2-3 `degraded`
+     + rag 폴백) **코드가 없다.** 런타임 질의 경로를 쓰는 커밋에서 함께 만든다
 
 ## 6. 검증 명령
 

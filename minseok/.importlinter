@@ -95,6 +95,8 @@ forbidden_modules =
     langchain_core
     langchain
     langgraph
+    neo4j
+    neo4j_graphrag
 
 # -----------------------------------------------------------------------------
 # 계약 2.6) 도메인 순수성 — domain 계층은 pydantic 도 모른다 (순수 파이썬)

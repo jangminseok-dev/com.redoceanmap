@@ -13,6 +13,11 @@ langgraph-harness §3이 정한다. **이 문서는 "어느 스택에 · 어떤 
 > 이 파일에는 원래 neo4j-harness의 사본이 들어 있었다(내용 중복). 2026-07-28에 도커 설치
 > 전략으로 교체했다 — 운영 규칙이 필요하면 harness 쪽을 본다.
 
+> **✅ 0단계 실행 완료 (2026-07-30).** 구 스택에 `neo4j:5.26` 기동(`profiles: ["graph"]`, `healthy`),
+> 굳은 볼륨 폐기, 비밀값 `NEO4J_PASSWORD`로 교체, 드라이버 6.2.0 ↔ 서버 5.26.28 실연결 검증.
+> **아래 §0의 함정 3개는 모두 해소된 기록이다** — 실측 결과는 §4 0단계 완료 판정에 있다.
+> 접속 코드는 여전히 0건이며(게이트 미통과), 다음 단계는 §4 1단계(스키마·투영)다.
+
 ---
 
 ## 0. 실측한 현재 상태 (2026-07-28) — 함정 3개
@@ -166,22 +171,86 @@ docker compose --profile graph up -d neo4j
 docker compose ps neo4j
 ```
 
-**완료 판정(4개 다 통과해야 1단계로 간다)**
+**완료 판정(4개 다 통과해야 1단계로 간다) — ✅ 2026-07-30 전부 통과**
 
-- [ ] `cypher-shell`에서 `CALL dbms.components()` — 버전·edition 확인, 응답 정상
-- [ ] 백엔드 컨테이너에서 드라이버 스모크 통과 → **드라이버 6.2.0 ↔ 서버 5.26 조합 최초 검증**
-      (neo4j-harness §8의 미해결 항목이 여기서 닫힌다)
-- [ ] `docker stats neo4j` 실측이 `mem_limit` 안에 있고, **EXAONE 추론 지연이 변하지 않음**
-      (그래프 기동 전/후로 ROM 2.0 질문 하나를 같은 조건에서 재실행해 비교)
-- [ ] 헬스체크가 `healthy`로 안정화(§2 각주 — 통과하는 방식 하나만 남기기)
+- [x] `CALL dbms.components()` → **Neo4j Kernel 5.26.28 · community**
+- [x] 백엔드 컨테이너 드라이버 스모크 → `bolt://neo4j:7687` 연결 + READ 세션 `RETURN 1` 성공.
+      **드라이버 6.2.0 ↔ 서버 5.26.28 조합 최초 검증** (neo4j-harness §8 항목 닫힘)
+- [x] `docker stats` **814~917 MiB / 1.465 GiB** (`mem_limit` 내) · 설정 반영 확인
+      (`SHOW SETTINGS`: heap.max 512MiB · pagecache 512MiB · `db.transaction.timeout=5s`)
+- [x] **EXAONE 추론 지연 무변화** — 실측표 아래
+- [x] 헬스체크 `healthy` (40초 내 안정화). **방식 확정: `wget`** — 이미지에 `wget` 있고
+      `curl`은 **없다**(실측). §2 각주의 미확정이 여기서 닫힌다
 
-### 1단계 — 스키마와 투영 (neo4j-harness §5-5 게이트를 여기서 채운다)
+**EXAONE 추론 지연 전/후 실측 (2026-07-30)**
 
-- 제약·인덱스 `.cypher` 파일(라벨별 `external_id` 유니크) — 적재 스크립트가 `IF NOT EXISTS`로 멱등 적용
-- `scripts/project_graph.py` — PG → 그래프 **단방향** 투영, `MERGE` 멱등, 야간 배치
-- 대상 라벨은 langgraph-harness §3-2 표(`Area`·`Region`·`Industry`·`Article`·`Topic`)로 한정
+조건 고정: `exaone3.5:7.8b`(Q4_K_M) · 동일 프롬프트 · `num_predict=64` · `temperature=0` · `seed=42`.
+벽시계가 아니라 Ollama가 돌려주는 나노초 계측(`total`/`load`/`eval`)을 쓴다 — `load_duration`이
+분리돼 나와야 "모델이 메모리에서 밀려나 재적재됐는지"를 직접 볼 수 있다.
 
-**완료 판정:** 스크립트를 연속 2회 돌려 노드·관계 수가 동일(멱등 회귀) · `SHOW CONSTRAINTS` 일치.
+| 상태 | warm 중앙값 | 생성 속도 | warm `load` | available RAM | swap |
+|---|---|---|---|---|---|
+| before (neo4j 정지) | **1.69 s** | 42.50 tok/s | 0.15 s | 6.7 GiB | 1.0 GiB |
+| after (neo4j 기동) | **1.69 s** | 42.54 tok/s | 0.15 s | 5.5 GiB | 1.0 GiB (증가 없음) |
+| after + bge-m3 동시 상주 | **1.69 s** | 42.43 tok/s | 0.15 s | 5.5 GiB | 1.0 GiB |
+
+- **판정: 회귀 없음.** 차이는 0.1% 미만으로 측정 노이즈 범위다. warm `load`가 0.15초로 유지된다는
+  것이 핵심 — 재적재가 발생하지 않았다는 직접 증거다(재적재 시 20~30초가 붙는다).
+- **세 번째 행이 실전 조건이다.** `reasoning` 경로는 검색(bge-m3)과 생성(EXAONE)을 함께 쓰므로
+  두 모델이 동시 상주한다 — 합계 **5.85 GB**가 neo4j와 공존해도 축출이 없었다.
+- 콜드 적재는 28.6 s → 21.3 s로 오히려 짧아졌는데 **이건 neo4j 효과가 아니다** — 첫 측정이
+  디스크 페이지 캐시를 데워놓은 것이다. 콜드 수치는 상태 비교에 쓰지 않는다.
+- 여유는 줄었다(6.7 → 5.5 GiB). Ollama는 GGUF를 mmap하므로 모델은 `buff/cache`에 잡히고
+  neo4j의 814 MiB는 JVM 익명 메모리다 — **압박이 오면 OOM이 아니라 모델 페이지 축출(=재적재
+  20~30초)로 나타난다.** 그래서 감시 지표는 `free`가 아니라 **warm `load_duration`**이다.
+- 재측정 시점: §4 1단계 투영 후(그래프가 커져 페이지캐시를 실제로 쓸 때) · `reasoning` 분기 도입 후.
+
+### 1단계 — 스키마와 투영 — ✅ 완료 (2026-07-30)
+
+- `scripts/graph_constraints.cypher` — 라벨별 `external_id` 유니크 5개 + `Article.published_at` 인덱스.
+  전부 `IF NOT EXISTS`이고 적재 스크립트가 매 실행 적용한다.
+- `scripts/project_graph.py` — PG(market, :5434) → 그래프 **단방향** 투영. 전량 `MERGE` 멱등.
+  `--dry-run`(집계만) · `--quarter latest|all` 지원.
+- 대상 라벨은 langgraph-harness §3-2 표로 한정. **LLM 호출 0회** — 전부 PG 코드값의 결정적 투영.
+
+**투영 실측 (2026-07-30)**
+
+| 라벨 | 개수 | 출처 | 관계 | 개수 |
+|---|---|---|---|---|
+| `Area` | 1,650 | `trade_area.code`·`name` | `(:Area)-[:IN_REGION]->(:Region)` | 1,650 |
+| `Region` | 425 | `region.code`·`name` (시 1·구 25·동 399) | `(:Region)-[:IN_REGION]->(:Region)` | 424 |
+| `Industry` | 100 | `service_category.code`·`name` | `(:Area)-[:HAS_INDUSTRY]->(:Industry)` | 75,985 |
+| `Article` | 1,377 | `market_news_articles.id`·`title`·`published_at` | `(:Article)-[:ABOUT]->(:Topic)` | 1,129 |
+| `Topic` | 30 | `area_tag` (LLM 아님 — 아래) | | |
+
+**완료 판정 — 전부 통과**
+
+- [x] 스크립트 연속 2회 실행 후 노드·관계 수 동일(멱등 회귀)
+- [x] `SHOW CONSTRAINTS` 5개 일치 (`Area`·`Region`·`Industry`·`Article`·`Topic`)
+- [x] `docker stats` **990 MiB / 1.465 GiB** — 적재 후에도 상한 내
+- [x] 다중 홉 실동작 확인 — 4홉("같은 구의 다른 상권" 54곳) · 4홉(업종 공유 상권 구별 집계) ·
+      3홉(같은 태그 기사쌍 2,080). ③은 PG로는 `store ⋈ trade_area ⋈ region ⋈ region` 4단 조인이다
+
+**문서 표와 달라진 것 3개 (실측이 이긴 결과 — langgraph-harness §3-2에 반영)**
+
+1. **`(:Region)-[:IN_REGION]->(:Region)` 추가.** `region.parent_code`가 동→구→시 계층을 이미 갖고
+   있다. 이 관계가 없으면 "같은 **동**의 다른 상권"(2홉)까지만 되고 "같은 **구**"(4홉)가 막힌다 —
+   그래프를 넣는 이유의 절반이 여기다. 새 라벨·새 관계 타입이 아니라 기존 타입의 재사용이다.
+2. **`Topic`을 LLM 없이 채웠다.** `area_tag`는 수집 스크립트가 관리하는 고정 키워드 30종이라
+   결정적으로 넣을 수 있다. 출처 구분을 위해 `external_id`에 `area:` 접두어를 붙였다 —
+   나중에 본문에서 LLM으로 뽑은 주제와 한 라벨에 섞여도 충돌하지 않는다.
+3. **`(:Article)-[:MENTIONS]->(:Area)`는 만들지 않았다.** `area_tag`는 코드가 아니라 검색
+   키워드라 상권과 이으려면 상권명 문자열 추측이 필요하다. 실측: `"영등포"` 하나가 **19개 상권**에
+   부분일치한다. 그대로 이으면 *"이 기사가 이 상권을 언급했다"*는 **정본에 없는 사실**이 그래프에
+   생긴다(§4 정본 규칙 위반). 대신 `ABOUT`으로 태그에 붙였다 — 애매함 0.
+   MENTIONS가 정말 필요해지면 선행 조건은 **문자열 추측이 아니라 태그↔상권 매핑 테이블(PG)**이다.
+
+**정기 실행(야간 배치) 선행 조건 — 아직 남았다**
+
+이번 실행은 `docker exec -e NEO4J_URI=... -e NEO4J_PASSWORD=...`로 **환경변수를 주입해** 돌렸다.
+백엔드 컨테이너가 `.env` 수정 전에 생성돼 새 키를 모르고, 재생성하면 수동 설치된
+`neo4j-graphrag`가 사라진다(§8). **cron 등록 전에 requirements 반영 + 이미지 재빌드 + 컨테이너
+재생성**이 필요하다. 그때 `NEO4J_*`가 `env_file`로 정상 주입되므로 주입 우회도 사라진다.
 
 ### 2단계 — 상시 기동 승격 여부 판단
 
@@ -245,10 +314,9 @@ grep -rn --include="*.py" "GraphDatabase" minseok/apps | grep -v "apps/hub/"
 
 ## 8. 미해결
 
-- **헬스체크 방식 미확정** — cypher-shell 방식은 컨테이너 안에 비밀번호 주입이 한 번 더 필요하다.
-  첫 기동에서 통과하는 쪽으로 하나만 남긴다(§2 각주).
-- **드라이버 6.2.0 ↔ 서버 5.26 실연결 미검증** — 0단계 완료 판정 2번이 이걸 닫는 유일한 지점이다.
-  실패하면 서버를 올리는 대신 **드라이버를 내리는** 선택지도 있다(`neo4j-graphrag` 제약은 `>=5.17,<7`).
+- ~~헬스체크 방식 미확정~~ → **`wget` 확정**(2026-07-30 실측: 이미지에 `wget` 있음 · `curl` 없음).
+  cypher-shell 방식은 비밀번호를 컨테이너 안에 한 번 더 주입해야 해서 버렸다.
+- ~~드라이버 6.2.0 ↔ 서버 5.26 실연결 미검증~~ → **검증 완료**(서버 5.26.28 · READ 세션 왕복 성공).
 - **`neo4j-graphrag`가 이미지에 안 구워져 있다** — 실행 중 백엔드 컨테이너에 수동 설치만 된 상태라
   컨테이너 재생성 시 사라진다. 그래프 코드를 쓰기 전에 requirements 반영 + 이미지 재빌드가 선행이다.
 - **구 스택 compose는 git 밖이다** — 이 문서의 §2 블록이 사실상 그 파일의 유일한 버전 기록이다.

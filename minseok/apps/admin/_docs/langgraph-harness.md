@@ -3,6 +3,7 @@
 admin 앱 → [[minseok/apps/admin/_docs/CLAUDE|admin CLAUDE]] ·
 랭체인 도입 경계(선행 필독) → [[minseok/apps/admin/_docs/langchain-harness|langchain-harness]] ·
 그래프DB 운영 규칙(선행 필독) → [[minseok/apps/admin/_docs/neo4j-harness|neo4j-harness]] ·
+도입 순서·단계별 완료 판정 → [[minseok/apps/admin/_docs/langgraph-strategy|langgraph-strategy]] ·
 실행 계획 → [[minseok/apps/admin/_docs/langchain-example-strategy|langchain-example-strategy]]
 
 **용도:** 시멘틱 라우터가 **`reasoning`으로 분류한 질문 하나**에 한해 LCEL 선형 체인 대신
@@ -21,7 +22,7 @@ admin 앱 → [[minseok/apps/admin/_docs/CLAUDE|admin CLAUDE]] ·
 | 시멘틱 분류 | `ExaoneSemanticAdapter.classify` — 목적지 **3종(`crud`·`rag`·`gemini`)**, 파싱 실패·미지 값은 `rag` 폴백. **ROM 1.0과 ROM 2.0이 이 분류기를 공유**한다 |
 | ROM 2.0 답변 | `LangchainSemanticInteractor` → `LangchainChatEnginePort` → LCEL 체인 2벌(`rag_chain`·`chat_chain`). 근거는 `MarketNewsSearchPort`(상권 뉴스 4건), 근거 0건이면 체인을 태우지 않고 거부 |
 | 이력 | `langchain_sessions`·`langchain_turns`(허브 소유 ORM 예외). 최근 10턴을 매 턴 주입 |
-| Neo4j | 서버 compose 준비·상시 기동 아님, 그래프 접속 코드 **0건**, `hub/adapter/outbound/graph/` 자리만 예약. `neo4j-graphrag==1.18.0`은 admin PDF 추출기로만 쓰인다 |
+| Neo4j | **2026-07-30 갱신** — 서버 기동됨(구 스택 `neo4j:5.26`, `profiles: ["graph"]`, 드라이버 6.2.0 검증) + **투영 완료**(노드 3,582 / 관계 79,188, `scripts/project_graph.py`). 단 **런타임 질의 코드는 여전히 0건** — `hub/adapter/outbound/graph/`는 자리만 예약. `neo4j-graphrag==1.18.0`은 admin PDF 추출기로만 쓰인다 |
 | 판정 | **`reasoning` 분기도 GraphRAG도 아직 도입 전이다.** 이 문서는 게이트(§5)를 채우기 전까지 코드를 쓰지 않기 위한 사전 배선이다 |
 
 ---
@@ -163,22 +164,33 @@ neo4j-harness의 소유·모델링 규칙이 전부 그대로 적용되고, 아�
 `LLMGraphTransformer`류로 엔티티·관계를 자유 추출하면 라벨이 무한 증식한다
 (neo4j-harness §2-4 자유 속성 금지의 그래프판). 허용 목록을 먼저 적고 그 안에서만 쓴다.
 
-| 라벨 | 속성 | 출처 |
-|---|---|---|
-| `Area`(상권) | `external_id`(trdar_code) · `name` | PG 결정적 투영 — LLM 없음 |
-| `Region`(지역) | `external_id` · `name` | PG 결정적 투영 |
-| `Industry`(업종) | `external_id`(service_code) · `name` | PG 결정적 투영 |
-| `Article`(기사) | `external_id`(news id) · `title` · `published_at` | PG 결정적 투영 |
-| `Topic`(주제/이벤트) | `external_id`(슬러그) · `name` | **LLM 추출 허용 구간** — 비정형 본문에서만 |
+**아래 표는 2026-07-30 투영으로 실측 확정됐다**(실행 결과·개수 → neo4j-strategy §4 1단계).
+
+| 라벨 | 속성 | 출처 | 실적 |
+|---|---|---|---|
+| `Area`(상권) | `external_id`(trdar_code) · `name` | PG 결정적 투영 — LLM 없음 | 1,650 |
+| `Region`(지역) | `external_id` · `name` | PG 결정적 투영 | 425 |
+| `Industry`(업종) | `external_id`(service_code) · `name` | PG 결정적 투영 | 100 |
+| `Article`(기사) | `external_id`(news id) · `title` · `published_at` | PG 결정적 투영 | 1,377 |
+| `Topic`(주제/이벤트) | `external_id`(`area:` 접두 슬러그) · `name` | **결정적 투영으로 시작**(`area_tag` 30종). LLM 추출은 비정형 본문에서만 — 같은 라벨에 접두어로 공존 | 30 |
 
 ```cypher
-(:Area)-[:IN_REGION]->(:Region)
-(:Area)-[:HAS_INDUSTRY]->(:Industry)
-(:Article)-[:MENTIONS]->(:Area|:Industry)
-(:Article)-[:ABOUT]->(:Topic)
+(:Area)-[:IN_REGION]->(:Region)        // 1,650
+(:Region)-[:IN_REGION]->(:Region)      //   424 — parent_code 계층(동→구→시). 아래 ★
+(:Area)-[:HAS_INDUSTRY]->(:Industry)   // 75,985 — 최신 분기(store) 조합
+(:Article)-[:ABOUT]->(:Topic)          // 1,129 — area_tag 매칭
+(:Article)-[:MENTIONS]->(:Area)        //     0 — 만들지 않았다. 아래 ☆
 ```
 
-- 제약·인덱스 Cypher는 라벨 도입 커밋에 동봉한다(neo4j-harness §3). 적재는 `MERGE` 멱등.
+- **★ `Region`→`Region` 추가 이유:** 이 관계가 없으면 "같은 **동**의 다른 상권"(2홉)까지만 되고
+  "같은 **구**"(4홉)가 막힌다 — 멀티홉이라는 도입 근거의 절반이 여기 걸려 있다. 새 라벨·새 관계
+  타입이 아니라 기존 타입 재사용이라 §3-2의 고정 목록을 넓히는 것은 아니다.
+- **☆ `MENTIONS`를 만들지 않은 이유:** `area_tag`는 코드가 아니라 검색 키워드(`"성수"`·`"강남역"`)라
+  상권과 이으려면 상권명 문자열 추측이 필요하다. 실측 `"영등포"` → **19개 상권** 부분일치.
+  그대로 이으면 *"이 기사가 이 상권을 언급했다"*는 **정본에 없는 사실**이 그래프에 생긴다
+  (neo4j-harness §4 위반). 선행 조건은 문자열 추측이 아니라 **태그↔상권 매핑 테이블(PG)**이다.
+- 제약·인덱스 Cypher는 `scripts/graph_constraints.cypher`(라벨별 `external_id` 유니크 5 +
+  `Article.published_at` 인덱스). 적재는 `MERGE` 멱등 — 2회 연속 실행 회귀 통과.
 - **정형 데이터에는 LLM을 쓰지 않는다.** 상권·업종·지역은 PG에 이미 관계가 있다 — 그것을
   LLM으로 다시 추출하는 것은 비용을 내고 정확도를 낮추는 일이다. LLM 추출은 `Topic` 한 칸뿐이고,
   그마저 허용 목록(사전 정의된 주제 슬러그)에 매칭되지 않으면 버린다.
@@ -245,14 +257,16 @@ langchain-harness §5(패키지 4문항) + neo4j-harness §5-5(그래프 4조건
 
 | # | 항목 | 현재 답 |
 |---|---|---|
-| 1 | 그래프로만 답할 수 있는 질문 | ⚠️ **검증 필요.** "같은 지역·같은 업종의 유사 상권 3곳"은 **PG 조인으로도 된다.** 그래프가 이기려면 3홉 이상(상권→기사→주제→다른 상권)이어야 하고, 그런 질문이 `reasoning` 로그에 실제로 오는지 먼저 센다 — **분기 도입 후 로그 관찰이 그래프 도입의 선행 조건이다** |
-| 2 | 라벨·관계·속성 + 제약 Cypher | ⚠️ 목록은 §3-2에 있고 제약 Cypher는 미작성 |
-| 3 | PG→그래프 투영 경로 | ❌ 미정. 야간 배치(`scripts/project_graph.py`) + `MERGE` 멱등을 전제로 하되 착수 시 확정 |
-| 4 | 그래프가 죽었을 때 | ✅ §2-3 `degraded` + §2-4 rag 폴백. 그래프 부재는 `reasoning`을 **더 얕게** 만들 뿐 500이 되지 않는다 |
+| 1 | 그래프로만 답할 수 있는 질문 | ⚠️ **절반 남음.** 4홉 질의가 **실동작함은 확인됐다**(2026-07-30 — "같은 구의 다른 상권" 54곳 · 업종 공유 상권 구별 집계, PG로는 4단 조인). 남은 것은 *사용자가 그런 질문을 실제로 하는가* — 계수 방법은 langgraph-strategy §4-1. 이 계수가 여전히 그래프 **질의 코드** 도입의 선행 조건이다 |
+| 2 | 라벨·관계·속성 + 제약 Cypher | ✅ **완료** — §3-2 표 실측 확정 + `scripts/graph_constraints.cypher`(제약 5 + 인덱스 1) |
+| 3 | PG→그래프 투영 경로 | ✅ **완료** — `scripts/project_graph.py`(단방향·`MERGE` 멱등, 2회 회귀 통과, 노드 3,582/관계 79,188). ⚠️ "언제"는 아직 수동 — cron 등록은 이미지 재빌드가 선행 |
+| 4 | 그래프가 죽었을 때 | ⚠️ **설계만 있다.** §2-3 `degraded` + §2-4 rag 폴백 — 그래프 부재는 `reasoning`을 더 얕게 만들 뿐 500이 되지 않는다. **코드는 질의 경로와 함께 만든다** |
 
-**결론: 지금은 둘 다 미통과다.** 순서는 **`reasoning` 분기(그래프DB 없이, pgvector 근거만) →
-로그로 멀티홉 수요 확인 → Neo4j 투영**이다. 두 개를 한 커밋에 넣지 않는다 — 그러면 느려졌을 때
-원인이 랭그래프인지 Neo4j인지 가릴 수 없다.
+**결론: 데이터는 들어갔고 질의 코드는 아직이다.** 2·3은 채워졌고 1·4가 남았다 —
+**투영(데이터 적재)과 질의 경로(런타임 코드)는 다른 게이트**이며, 데이터가 있다는 것이 코드를
+써도 된다는 뜻이 아니다. 순서는 그대로다: **`reasoning` 분기(pgvector 근거만) → 로그로 멀티홉
+수요 확인 → graph 노드 추가.** 두 개를 한 커밋에 넣지 않는다 — 그러면 느려졌을 때 원인이
+랭그래프인지 Neo4j인지 가릴 수 없다.
 
 ---
 
