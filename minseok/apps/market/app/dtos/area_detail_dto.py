@@ -6,6 +6,7 @@ from market.domain.value_objects.area_profile_vo import (
     ApartmentProfile,
     FacilityProfile,
     FloatingRhythm,
+    PermitChurn,
     ResidentProfile,
     SalesMix,
     ServiceRank,
@@ -39,6 +40,8 @@ class AreaDetailView:
     # 리포지토리가 조회해 서술자에 넘기던 값 — 뷰에 싣지 않아 화면이 차트로 못 그렸다.
     floating: FloatingRhythm | None
     facility: FacilityProfile | None
+    # 인허가 대장 기준 업소 교체 — 수집 전이거나 붙은 업소가 없으면 None
+    permit_churn: PermitChurn | None
     # 상권 안 업종 랭킹 — 자동 선택된 기준 업종의 근거이기도 하다
     service_ranking: list[ServiceRank]
     insights: list[Insight]

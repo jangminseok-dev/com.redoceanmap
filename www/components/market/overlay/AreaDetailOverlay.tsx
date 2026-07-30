@@ -1,12 +1,13 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Building2, CalendarClock, Store, UsersRound, Wallet, X } from "lucide-react";
+import { Building2, CalendarClock, DoorOpen, Store, UsersRound, Wallet, X } from "lucide-react";
 import { fetchAreaDetail } from "@/lib/api";
 import InsightList from "@/components/common/InsightList";
 import CustomerProfileSection from "./CustomerProfileSection";
 import DemandSection from "./DemandSection";
 import SalesRhythmSection from "./SalesRhythmSection";
+import PermitChurnSection from "./PermitChurnSection";
 import ServiceRankingSection from "./ServiceRankingSection";
 import SpendingSection from "./SpendingSection";
 
@@ -87,6 +88,12 @@ export default function AreaDetailOverlay({
               <div className="rounded-xl border border-border bg-background px-3 py-2.5">
                 <InsightList insights={data.insights} />
               </div>
+            )}
+            {/* 인허가는 분기 팩트보다 시의성이 높다(어제 연 가게가 보인다) — 업종 랭킹 앞에 둔다 */}
+            {data.permitChurn && (
+              <Section icon={DoorOpen} title="요즘 뭐가 열고 닫나">
+                <PermitChurnSection churn={data.permitChurn} />
+              </Section>
             )}
             {/* 업종 랭킹은 매출 분해와 별개다 — 기준 업종이 안 잡혀도 목록은 뜬다 */}
             {data.serviceRanking.length > 0 && (

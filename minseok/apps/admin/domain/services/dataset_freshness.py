@@ -48,6 +48,9 @@ SCHEDULES: dict[str, DatasetSchedule] = {
     "forecast_snapshots": DatasetSchedule("매일(거래일)", timedelta(days=4), timedelta(days=8)),
     # 0 3 * * 1  collect_fundamentals.py
     "fundamental_snapshots": DatasetSchedule("주 1회", timedelta(days=10), timedelta(days=21)),
+    # 0 5 * * 2  collect_business_permits.py — 인허가 대장은 지자체 등록이 몇 주 밀리므로
+    # 수집이 돌아도 최신 인허가일은 늦다. 판정 기준은 created_at(적재 시각)이라 무관하다.
+    "business_permits": DatasetSchedule("주 1회", timedelta(days=10), timedelta(days=21)),
 }
 
 

@@ -3,6 +3,7 @@ from market.domain.value_objects.area_profile_vo import (
     ApartmentProfile,
     FacilityProfile,
     FloatingRhythm,
+    PermitChurn,
     ResidentProfile,
     SalesMix,
     SpendingCategory,
@@ -541,3 +542,57 @@ def test_백분위가_없으면_지출만_말한다():  # 열화
 def test_지출_카테고리도_없으면_소득_위치만_말한다():
     got = _by_key(narrate(None, None, None, _spending(band=9, pct=0.98, categories=[])))
     assert got["spending_power"].text == "배후 주민 소득이 서울 상권 상위 2% 수준."
+
+
+# ── 인허가 업소 교체 ──────────────────────────────────────────────
+# 임계값은 2026-07-30 실측 분위수(업소가 붙은 1,489상권). 순증률 중앙이 -1.5%라
+# "순증=좋다"가 아니라 양 끝(p10/p90)만 말한다 — 경계 동작을 여기서 고정한다.
+
+def _churn(opened=0, closed=0, active=100, months=12):
+    return PermitChurn(
+        months=months, opened=opened, closed=closed, active=active,
+        recent_openings=[], recent_closings=[],
+    )
+
+
+def _churn_text(churn):
+    said = [i for i in narrate(None, None, None, None, permit_churn=churn) if i.key == "permit_churn"]
+    return said[0] if said else None
+
+
+def test_인허가_데이터가_없으면_침묵한다():
+    assert _churn_text(None) is None
+
+
+def test_영업중_업소가_적으면_침묵한다():
+    # 영업중 19곳에서 개업 5·폐업 0이면 순증률 26%로 튄다 — 비율을 믿을 표본이 아니다.
+    assert _churn_text(_churn(opened=5, closed=0, active=19)) is None
+
+
+def test_순증이_뚜렷하면_상위_10퍼센트로_말한다():
+    got = _churn_text(_churn(opened=10, closed=5, active=100))  # 순증률 +5%
+    assert got is not None and got.tone == "positive"
+    assert "10곳" in got.text and "5곳" in got.text
+
+
+def test_순감이_뚜렷하면_경고한다():
+    got = _churn_text(_churn(opened=2, closed=12, active=100))  # 순증률 -10%
+    assert got is not None and got.tone == "warning"
+    assert "빠지고 있는" in got.text
+
+
+def test_중간이면_침묵한다():
+    # 순증률 +1.8%(성수동카페거리 실측 수준) — 서울 대부분이 여기 들어온다.
+    assert _churn_text(_churn(opened=17, closed=14, active=163)) is None
+
+
+def test_순증은_중간이어도_교체가_빠르면_말한다():
+    # 순증률 0%지만 교체율 40%(p90=38%) — "자리는 나지만 오래 버티기 어렵다"
+    got = _churn_text(_churn(opened=20, closed=20, active=100))
+    assert got is not None and got.tone == "neutral"
+    assert "교체가 빠른" in got.text
+
+
+def test_경계값은_말한다():
+    assert _churn_text(_churn(opened=5, closed=0, active=100)).tone == "positive"   # 정확히 +5%
+    assert _churn_text(_churn(opened=0, closed=10, active=100)).tone == "warning"   # 정확히 -10%

@@ -29,6 +29,7 @@ class AreaDetailInteractor(AreaDetailUseCase):
         floating = await self._detail.find_floating_rhythm(query.trdar_code)
         facility = await self._detail.find_facility(query.trdar_code)
         service_ranking = await self._detail.find_service_ranking(query.trdar_code)
+        permit_churn = await self._detail.find_permit_churn(query.trdar_code)
 
         return AreaDetailView(
             trdar_code=header.trdar_code,
@@ -43,8 +44,10 @@ class AreaDetailInteractor(AreaDetailUseCase):
             spending=spending,
             floating=floating,
             facility=facility,
+            permit_churn=permit_churn,
             service_ranking=service_ranking,
             insights=narrate(
-                sales_mix, resident, working, spending, floating, facility, apartment
+                sales_mix, resident, working, spending, floating, facility, apartment,
+                permit_churn,
             ),
         )

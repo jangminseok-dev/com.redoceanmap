@@ -7,6 +7,7 @@ from market.domain.value_objects.area_profile_vo import (
     ApartmentProfile,
     FacilityProfile,
     FloatingRhythm,
+    PermitChurn,
     ResidentProfile,
     SalesMix,
     ServiceRank,
@@ -66,4 +67,15 @@ class AreaDetailRepositoryPort(ABC):
     @abstractmethod
     async def find_facility(self, trdar_code: int) -> FacilityProfile | None:
         """최신 분기 집객시설(역·정류장·대학·백화점·병원) — 외부 유입 동선의 앵커."""
+        ...
+
+    @abstractmethod
+    async def find_permit_churn(
+        self, trdar_code: int, months: int = 12, sample: int = 5
+    ) -> PermitChurn | None:
+        """인허가 대장 기준 업소 교체 — 분기 팩트가 못 주는 '업소 단위·임의 기간' 축.
+
+        좌표로 상권에 붙인 업소만 센다(반경 밖·좌표 없음은 애초에 trdar_code가 NULL).
+        수집 전이거나 붙은 업소가 없으면 None — 화면은 해당 섹션을 통째로 생략한다.
+        """
         ...

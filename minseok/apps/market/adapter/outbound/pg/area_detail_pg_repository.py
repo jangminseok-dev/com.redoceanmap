@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from market.adapter.outbound.orm.apartment_orm import ApartmentOrm
+from market.adapter.outbound.orm.business_permit_orm import BusinessPermitOrm
 from market.adapter.outbound.orm.consumption_orm import ConsumptionOrm
 from market.adapter.outbound.orm.estimated_sales_orm import EstimatedSalesOrm
 from market.adapter.outbound.orm.facility_orm import FacilityOrm
@@ -22,6 +25,8 @@ from market.domain.value_objects.area_profile_vo import (
     ApartmentProfile,
     FacilityProfile,
     FloatingRhythm,
+    PermitChurn,
+    PermitOpening,
     ResidentProfile,
     SalesMix,
     ServiceRank,
@@ -307,6 +312,47 @@ class AreaDetailPgRepository(AreaDetailRepositoryPort):
                          + r.supermarket_count + r.public_office_count),
         )
 
+    async def find_permit_churn(
+        self, trdar_code: int, months: int = 12, sample: int = 5
+    ) -> PermitChurn | None:
+        # 기준일은 "오늘"이 아니라 **이 상권 데이터의 최신 인허가일**이다. 인허가 대장은
+        # 지자체 등록이 밀려 몇 주 늦게 들어오는데, 오늘 기준으로 창을 잡으면 그 지연이
+        # 그대로 "개업 급감"으로 보인다.
+        latest = (await self._session.execute(
+            select(func.max(BusinessPermitOrm.permit_date))
+            .where(BusinessPermitOrm.trdar_code == trdar_code)
+        )).scalar()
+        if latest is None:
+            return None  # 수집 전이거나 이 상권에 붙은 업소가 없다 — 섹션을 통째로 생략한다
+        since = latest - timedelta(days=months * 30)
+
+        counts = (await self._session.execute(
+            select(
+                func.count().filter(BusinessPermitOrm.permit_date >= since),
+                func.count().filter(BusinessPermitOrm.close_date >= since),
+                # 영업상태명은 '영업/정상'·'영업'처럼 표기가 갈려 접두 매칭으로 센다.
+                func.count().filter(BusinessPermitOrm.state.like("영업%")),
+            ).where(BusinessPermitOrm.trdar_code == trdar_code)
+        )).one()
+
+        def recent(column):
+            return select(
+                BusinessPermitOrm.name, BusinessPermitOrm.category, column
+            ).where(
+                BusinessPermitOrm.trdar_code == trdar_code, column >= since
+            ).order_by(column.desc()).limit(sample)
+
+        openings = (await self._session.execute(recent(BusinessPermitOrm.permit_date))).all()
+        closings = (await self._session.execute(recent(BusinessPermitOrm.close_date))).all()
+        return PermitChurn(
+            months=months,
+            opened=counts[0],
+            closed=counts[1],
+            active=counts[2],
+            recent_openings=_openings(openings),
+            recent_closings=_openings(closings),
+        )
+
     async def find_spending(self, trdar_code: int) -> SpendingProfile | None:
         r = (await self._session.execute(
             select(ConsumptionOrm)
@@ -349,6 +395,10 @@ class AreaDetailPgRepository(AreaDetailRepositoryPort):
         )).one()
         lower, total = row
         return lower / total if total else None
+
+
+def _openings(rows) -> list[PermitOpening]:
+    return [PermitOpening(name=r[0], category=r[1], happened_on=r[2]) for r in rows]
 
 
 def _age_bands(row: object, suffix: str) -> list[AgeBand]:

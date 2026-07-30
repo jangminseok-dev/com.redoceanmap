@@ -10,6 +10,8 @@ from market.adapter.inbound.api.schemas.area_detail_schema import (
     DemandSchema,
     HouseholdsSchema,
     InsightSchema,
+    PermitChurnSchema,
+    PermitOpeningSchema,
     PopulationSchema,
     SalesMixSchema,
     SpendingCategorySchema,
@@ -88,6 +90,20 @@ async def get_area_detail(
             nightlife=view.facility.nightlife,
             convenience=view.facility.convenience,
         ) if view.facility else None,
+        permitChurn=PermitChurnSchema(
+            months=view.permit_churn.months,
+            opened=view.permit_churn.opened,
+            closed=view.permit_churn.closed,
+            active=view.permit_churn.active,
+            recentOpenings=[
+                PermitOpeningSchema(name=o.name, category=o.category, happenedOn=o.happened_on)
+                for o in view.permit_churn.recent_openings
+            ],
+            recentClosings=[
+                PermitOpeningSchema(name=o.name, category=o.category, happenedOn=o.happened_on)
+                for o in view.permit_churn.recent_closings
+            ],
+        ) if view.permit_churn else None,
         serviceRanking=[
             ServiceRankSchema(
                 code=r.code, name=r.name, monthlySales=r.monthly_sales,

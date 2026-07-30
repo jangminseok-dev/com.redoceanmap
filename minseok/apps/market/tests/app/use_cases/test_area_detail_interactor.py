@@ -23,7 +23,7 @@ def _sales_mix():
 class _StubRepo:
     def __init__(self, header=None, service=None, sales_mix=None,
                  resident=None, working=None, apartment=None, spending=None,
-                 floating=None, facility=None, service_ranking=None):
+                 floating=None, facility=None, service_ranking=None, permit_churn=None):
         self.header = header
         self.service = service
         self.sales_mix = sales_mix
@@ -33,6 +33,7 @@ class _StubRepo:
         self.spending = spending
         self.floating = floating
         self.facility = facility
+        self.permit_churn = permit_churn
         self.service_ranking = service_ranking or []
         self.requested_service: tuple | None = None
         self.sales_mix_called_with: tuple | None = None
@@ -68,6 +69,9 @@ class _StubRepo:
 
     async def find_spending(self, trdar_code):
         return self.spending
+
+    async def find_permit_churn(self, trdar_code, months=12, sample=5):
+        return self.permit_churn
 
 
 _HEADER = AreaHeader(trdar_code=1000123, trdar_name="성수동 카페거리", district_name="성동구")

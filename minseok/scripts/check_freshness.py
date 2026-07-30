@@ -43,6 +43,7 @@ DATASETS = [
     ("forecast_snapshots", "예측 스냅샷", "forecast_snapshots", False),
     ("fundamental_snapshots", "펀더멘털 스냅샷", "fundamental_snapshots", False),
     ("market_news", "상권 뉴스", "market_news_articles", True),
+    ("business_permits", "인허가 업소", "business_permits", True),
 ]
 
 # 알릴 상태. FRESH·UNSCHEDULED는 정상이므로 뺀다.

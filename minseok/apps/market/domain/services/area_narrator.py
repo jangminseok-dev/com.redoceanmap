@@ -4,6 +4,7 @@ from market.domain.value_objects.area_profile_vo import (
     ApartmentProfile,
     FacilityProfile,
     FloatingRhythm,
+    PermitChurn,
     ResidentProfile,
     SalesMix,
     SpendingProfile,
@@ -49,6 +50,14 @@ SCHOOL_MIN = 2       # 22상권(1.4%). 1곳은 동네 어디에나 있어 "학�
 NIGHTLIFE_MIN = 3    # 42상권(2.7%)
 CONVENIENCE_MIN = 10  # 172상권(11%) — 가장 흔해서 마지막 순위
 
+# 인허가 교체 임계값 — 업소가 붙은 1,489상권 실측 분위수(2026-07-30, 기준일 2026-07-28).
+# 순증률 중앙은 **-1.5%**다(서울 요식업이 전반적으로 줄고 있다). 그래서 "순증이면 좋다"가
+# 아니라 분포의 양 끝만 말한다 — 중간값 근처에 "보통입니다"를 붙여봐야 판단 재료가 아니다.
+CHURN_MIN_ACTIVE = 20     # 영업중 이 미만이면 비율이 튄다(p25가 6곳). 799상권이 이 기준을 넘는다
+CHURN_NET_HIGH = 0.05     # 순증률 p90 = +0.048 — 상위 10%
+CHURN_NET_LOW = -0.10     # 순증률 p10 = -0.103 — 하위 10%
+CHURN_TURNOVER_HIGH = 0.38  # 교체율((개업+폐업)/영업중) p90 = 0.381. 중앙 0.200
+
 _HIGH_PRICE_KEYS = ("b4", "b5", "over6b")
 _LARGE_AREA_KEYS = ("a132", "a165")
 
@@ -79,6 +88,7 @@ def narrate(
     floating: FloatingRhythm | None = None,
     facility: FacilityProfile | None = None,
     apartment: ApartmentProfile | None = None,
+    permit_churn: PermitChurn | None = None,
 ) -> list[Insight]:
     """최신 분기 구조 수치 → 초보자용 해석 문장. 결측 축은 해당 문장을 생략한다."""
     insights: list[Insight] = []
@@ -106,6 +116,9 @@ def narrate(
     character = _facility_character(facility)
     if character is not None:
         insights.append(character)
+    churn = _permit_churn_insight(permit_churn)
+    if churn is not None:
+        insights.append(churn)
     return insights
 
 
@@ -520,3 +533,35 @@ def _money(won: float) -> str:
     if won >= 100_000_000:
         return f"{won / 100_000_000:.1f}억원"
     return f"{round(won / 10_000):,}만원"
+
+
+def _permit_churn_insight(churn: PermitChurn | None) -> Insight | None:
+    """인허가 대장 기준 업소 교체 — 분기 팩트가 못 주는 "요즘 어떤가"를 한 줄로 말한다.
+
+    분포의 **양 끝만** 말한다(소득 백분위 선례). 서울 요식업 순증률 중앙이 -1.5%라
+    "순증이면 좋은 상권"이 아니고, 중간값 근처에 문장을 붙이면 전 상권이 같은 말을 한다.
+    영업중 업소가 적으면 비율이 튀므로 침묵한다 — 틀린 문장보다 없는 문장이 낫다.
+    """
+    if churn is None or churn.active < CHURN_MIN_ACTIVE:
+        return None
+    net = (churn.opened - churn.closed) / churn.active
+    period = f"최근 {churn.months}개월"
+    if net >= CHURN_NET_HIGH:
+        return Insight(
+            key="permit_churn", tone="positive",
+            text=(f"{period} 새로 연 곳 {churn.opened}곳 · 닫은 곳 {churn.closed}곳 — "
+                  f"들어오는 가게가 뚜렷이 많은 상권입니다(서울 상위 10%)."),
+        )
+    if net <= CHURN_NET_LOW:
+        return Insight(
+            key="permit_churn", tone="warning",
+            text=(f"{period} 닫은 곳 {churn.closed}곳 · 새로 연 곳 {churn.opened}곳 — "
+                  f"가게가 빠지고 있는 상권입니다(서울 하위 10%). 이유를 먼저 확인하세요."),
+        )
+    if (churn.opened + churn.closed) / churn.active >= CHURN_TURNOVER_HIGH:
+        return Insight(
+            key="permit_churn", tone="neutral",
+            text=(f"{period} 개업 {churn.opened}곳·폐업 {churn.closed}곳으로 "
+                  f"업소 교체가 빠른 상권입니다(서울 상위 10%). 자리는 나지만 오래 버티기도 어렵습니다."),
+        )
+    return None

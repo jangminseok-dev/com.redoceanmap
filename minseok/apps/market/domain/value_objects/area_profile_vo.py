@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 
 
 @dataclass(frozen=True)
@@ -114,6 +115,34 @@ class ApartmentProfile:
     # 원천의 빈칸은 결측이 아니라 "그 구간 세대 없음"이다(전 행이 최소 한 구간을 보유) — 0으로 읽는다.
     price_bands: dict[str, int] | None = None  # under1b·b1·b2·b3·b4·b5·over6b
     area_bands: dict[str, int] | None = None   # under66·a66·a99·a132·a165
+
+
+@dataclass(frozen=True)
+class PermitOpening:
+    """개업(또는 폐업) 업소 한 건 — 상호가 붙어야 "무엇이 열렸나"가 읽힌다."""
+
+    name: str
+    category: str | None  # 업태(한식·커피숍 등)
+    happened_on: date
+
+
+@dataclass(frozen=True)
+class PermitChurn:
+    """인허가 기준 업소 교체 — 분기 팩트(`store`)가 못 주는 '업소 단위·임의 기간' 축.
+
+    `store`는 분기별 점포 **수**라 "지난달 무엇이 새로 열었나"를 못 답한다. 여기서는
+    인허가일·폐업일을 그대로 세므로 최근 12개월 같은 임의 창을 잡을 수 있다.
+
+    **영업중 업소 수(`active`)는 `store`의 점포 수와 다르다** — 출처(인허가 대장 vs 상권분석
+    서비스)도 집계 기준도 달라서, 둘을 같은 화면에서 비교하거나 검산하지 않는다.
+    """
+
+    months: int             # 집계 창(개월)
+    opened: int             # 창 안에 인허가된 업소 수
+    closed: int             # 창 안에 폐업한 업소 수
+    active: int             # 현재 영업중(창과 무관한 스냅샷)
+    recent_openings: list[PermitOpening]  # 최신순 상위 몇 건
+    recent_closings: list[PermitOpening]
 
 
 @dataclass(frozen=True)

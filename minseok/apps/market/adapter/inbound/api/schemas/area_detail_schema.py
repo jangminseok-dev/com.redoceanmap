@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 from pydantic import BaseModel
 
 
@@ -108,6 +110,27 @@ class ServiceRankSchema(BaseModel):
     closureRate: float | None
 
 
+class PermitOpeningSchema(BaseModel):
+    name: str
+    category: str | None
+    happenedOn: date
+
+
+class PermitChurnSchema(BaseModel):
+    """인허가 대장 기준 업소 교체 — 분기 팩트가 못 주는 '업소 단위·임의 기간' 축.
+
+    active(영업중 수)는 상권분석서비스의 점포 수와 **출처도 집계 기준도 다르다** —
+    같은 화면에서 비교하거나 검산하지 않는다.
+    """
+
+    months: int
+    opened: int
+    closed: int
+    active: int
+    recentOpenings: list[PermitOpeningSchema]
+    recentClosings: list[PermitOpeningSchema]
+
+
 class InsightSchema(BaseModel):
     key: str
     tone: str  # positive | neutral | warning
@@ -125,5 +148,6 @@ class AreaDetailResponse(BaseModel):
     spending: SpendingSchema | None
     floating: FloatingRhythmSchema | None
     facility: FacilitySchema | None
+    permitChurn: PermitChurnSchema | None
     serviceRanking: list[ServiceRankSchema]
     insights: list[InsightSchema]

@@ -315,6 +315,13 @@ export type Insight = {
 
 export type AgeBandRow = { band: string; male: number; female: number };
 
+// 인허가 대장의 개업(또는 폐업) 업소 한 건 — 상호가 붙어야 "무엇이 열렸나"가 읽힌다
+export type PermitOpening = {
+  name: string;
+  category: string | null; // 업태(한식·커피숍 등)
+  happenedOn: string; // ISO date
+};
+
 export type AreaDetail = {
   trdarCode: number;
   trdarName: string;
@@ -383,6 +390,16 @@ export type AreaDetail = {
     schools: number; // 유치원·초·중·고
     nightlife: number; // 극장·숙박
     convenience: number; // 은행·약국·슈퍼마켓·관공서
+  } | null;
+  // 인허가 대장 기준 업소 교체 — "요즘 여기 뭐가 새로 열었나"
+  // active(영업중 수)는 상권분석서비스의 점포 수와 출처·집계 기준이 달라 함께 비교하지 않는다.
+  permitChurn: {
+    months: number;
+    opened: number;
+    closed: number;
+    active: number;
+    recentOpenings: PermitOpening[];
+    recentClosings: PermitOpening[];
   } | null;
   // 상권 안 업종 랭킹 — "이 자리에서 뭐가 되나"
   serviceRanking: {

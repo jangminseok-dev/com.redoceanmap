@@ -19,7 +19,7 @@
 market의 모든 테이블(3NF 15 + market_news_articles + area_score_backtest_reports)은
 **전용 DB(market-pgvector, pg17+pgvector, 호스트 :5434)**에 산다. 접근은 market 프로바이더가
 `core.database.get_market_db`(엔진은 `MARKET_DATABASE_URL`, 미설정 시 메인 폴백)로만 한다 —
-앱별 DB 불가침. 스키마 진실은 `apps/market/alembic` 독립 체인(7c5cfbd1c35f → 8d6efce2a41b → 9a1b2c3d4e5f),
+앱별 DB 불가침. 스키마 진실은 `apps/market/alembic` 독립 체인(7c5cfbd1c35f → 8d6efce2a41b → 9a1b2c3d4e5f → f3e4d5c6b7a8 → f4e5d6c7b8a9 → b5c6d7e8f9a0),
 루트 체인의 market 리비전들은 이력 동결(루트 env.py에서 ORM 제거 + include_name 필터).
 컨테이너 접속: 실운영 backend는 `host.docker.internal:5434`(네트워크 분리, extra_hosts).
 백업: `scripts/backup_db.sh`의 market 블록(market-*.dump 7세대). 배치(ingest·backtest)도
@@ -99,6 +99,30 @@ market의 모든 테이블(3NF 15 + market_news_articles + area_score_backtest_r
 
 팩트별 개별 조회 슬라이스(라우터·인터랙터·리포지토리·매퍼·엔티티)는 제거됨 —
 런타임 조회는 위 다섯 경로로 수렴한다. 팩트 ORM은 게이트웨이·적재 스크립트·마이그레이션이 사용하므로 유지.
+
+## 인허가 업소 (업소 단위 개폐업)
+
+분기 팩트 `store`는 점포 **수**라 "지난달 어떤 가게가 새로 열었나"를 못 답한다.
+`business_permits`는 업소 한 곳이 한 행이고 인허가일·폐업일을 그대로 들고 있어 임의 기간을 센다.
+
+- **출처는 localdata.go.kr이 아니다.** 그 호스트는 백엔드 PC에서 TCP 443이 닿지 않는다
+  (2026-07-30 확인, DNS는 풀림). 같은 원본을 서울 열린데이터광장이
+  `LOCALDATA_072404`(일반음식점 535,715) · `LOCALDATA_072405`(휴게음식점 146,579)로 주고,
+  기존 상권 수집과 같은 창구·키(`SEOUL_OPENDATA_API_KEY`)를 재사용한다.
+- **수집**: `scripts/collect_business_permits.py`(주 1회 화 05:00 cron, 683요청·약 10분).
+  `(service_id, mgt_no)` 유니크로 멱등. **같은 청크 안의 중복 키를 먼저 제거해야 한다** —
+  원본에 실제로 중복이 있어(6,000건에 1건) 그대로 넣으면 PostgreSQL이
+  `ON CONFLICT DO UPDATE cannot affect row a second time`으로 죽는다.
+- **상권 매칭**: 원본 X/Y가 `trade_area.x_coord/y_coord`와 같은 EPSG:5174라 변환 없이 거리로 붙인다.
+  폴리곤이 없어 면적에서 원 근사(반경 = √(area/π), 중앙 151m). 격자 인덱스로 전수 비교를 피한다.
+  **실측: 682,294건 중 331,920건(48.6%) 매칭, 1,489/1,650 상권에 업소가 붙는다.**
+  반경 밖·좌표 없음은 `trdar_code` NULL(서울 전역 업소 중 상권 밖은 정상적으로 존재).
+- **노출**: `area_detail` 슬라이스의 `permit_churn` + 서술 `permit_churn` + 프론트
+  `PermitChurnSection`("요즘 뭐가 열고 닫나", 상호·업태·날짜).
+  임계값은 업소가 붙은 1,489상권 실측 분위수 — **순증률 중앙이 -1.5%**라(서울 요식업 전반 감소)
+  "순증=좋다"가 아니라 양 끝(p10 -10.3% / p90 +4.8%)만 말하고, 영업중 20곳 미만은 침묵한다.
+- **영업중 수를 `store`의 점포 수와 나란히 두지 않는다** — 출처도 집계 기준도 다르다.
+  사용자가 검산하려 들면 반드시 어긋난다.
 
 ## 상권 뉴스 (RAG 코퍼스)
 
