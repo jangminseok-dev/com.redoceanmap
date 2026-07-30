@@ -136,12 +136,12 @@ def post_to_hub(items: list[dict]) -> dict:
     return res.json()
 
 
-def main() -> None:
+def main() -> int:
     dry_run = "--dry-run" in sys.argv
     with_analyst = "--analyst" in sys.argv  # yfinance 호출 절감 — 일 1회 cron에서만 켠다
     mode = "RSS+기관등급" if with_analyst else "RSS만 (기관등급은 --analyst 실행에서)"
     print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] 수집 시작 — {mode}", flush=True)  # cron 로그 추적용
-    total_fetched = total_saved = 0
+    total_fetched = total_saved = failures = 0
     for name, ticker, en_query in load_watchlist():
         items: list[dict] = []
         sources = [("한글뉴스", lambda: fetch_google_rss(RSS_KR, name, ticker))]
@@ -157,6 +157,7 @@ def main() -> None:
                 counts.append(f"{label} {len(got)}")
             except Exception as e:
                 counts.append(f"{label} 실패({e})")
+                failures += 1
         total_fetched += len(items)
         time.sleep(REQUEST_DELAY_SECONDS)
         line = f"{name}: " + " · ".join(counts)
@@ -171,12 +172,16 @@ def main() -> None:
             print(f"{line} → 신규 저장 {result['saved']}")
         except Exception as e:
             print(f"{line} → 허브 POST 실패 — {e}")
+            failures += 1
     print(
         f"[{datetime.now():%Y-%m-%d %H:%M:%S}] 합계: 수집 {total_fetched}"
-        + ("" if dry_run else f" / 신규 저장 {total_saved}"),
+        + ("" if dry_run else f" / 신규 저장 {total_saved}")
+        + (f" / 실패 {failures}건" if failures else ""),
         flush=True,
     )
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":
-    main()
+    # 부분 실패도 종료코드 1 — cron·감시가 실패를 관측할 수 있어야 한다.
+    sys.exit(main())

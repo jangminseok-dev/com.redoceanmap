@@ -170,15 +170,17 @@ def post_to_hub(items: list[dict]) -> dict:
     return res.json()
 
 
-def main() -> None:
+def main() -> int:
     dry_run = "--dry-run" in sys.argv
     print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] 펀더멘털 수집 시작", flush=True)
+    failures = 0
     corp_codes: dict[str, str] = {}
     if DART_API_KEY:
         try:
             corp_codes = load_corp_codes()
         except Exception as e:
             print(f"DART corp_code 매핑 실패 — yfinance만 진행: {e}")
+            failures += 1
     else:
         print("DART_API_KEY 없음 — yfinance만 적재 (키는 opendart.fss.or.kr 무료 발급)")
 
@@ -196,6 +198,7 @@ def main() -> None:
                 counts.append("yfinance ✓")
         except Exception as e:
             counts.append(f"yfinance 실패({e})")
+            failures += 1
         if corp_codes and ticker.split(".")[0].isdigit():
             try:
                 snapshot = dart_snapshot(ticker, corp_codes, price, market_cap)
@@ -204,6 +207,7 @@ def main() -> None:
                     counts.append("dart ✓")
             except Exception as e:
                 counts.append(f"dart 실패({e})")
+                failures += 1
         print(f"{name}({ticker}): " + " · ".join(counts or ["지표 없음"]))
         if dry_run and items:
             latest_items = [i for i in items if i["ticker"] == ticker]
@@ -213,16 +217,20 @@ def main() -> None:
 
     if dry_run:
         print(f"[dry-run] 스냅샷 {len(items)}건 생성 — POST 생략", flush=True)
-        return
+        return 1 if failures else 0
     try:
         result = post_to_hub(items)
         print(
-            f"[{datetime.now():%Y-%m-%d %H:%M:%S}] 합계: 수집 {len(items)} / 신규 저장 {result['saved']}",
+            f"[{datetime.now():%Y-%m-%d %H:%M:%S}] 합계: 수집 {len(items)} / 신규 저장 {result['saved']}"
+            + (f" / 실패 {failures}건" if failures else ""),
             flush=True,
         )
     except Exception as e:
         print(f"허브 POST 실패 — {e}", flush=True)
+        failures += 1
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":
-    main()
+    # 부분 실패도 종료코드 1 — cron·감시가 실패를 관측할 수 있어야 한다.
+    sys.exit(main())

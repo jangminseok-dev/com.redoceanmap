@@ -64,6 +64,10 @@ N8N_EMAIL_WEBHOOK_URL = _secrets.get(
 )
 N8N_OUTBOUND_TOKEN = _secrets.get("N8N_OUTBOUND_TOKEN")
 
+# 운영 알림 수신 주소 (scripts/check_freshness.py — 수집 지연·정지 통보).
+# 비어 있으면 감시는 판정만 하고 발송에서 실패한다 — 조용히 넘어가지 않는다.
+ALERT_EMAIL = _secrets.get("ALERT_EMAIL")
+
 # vision 업로드 이미지를 저장할 S3 버킷 (자격 증명은 boto3 기본 체인 — .env의 AWS_* 키).
 VISION_S3_BUCKET = _secrets.get("VISION_S3_BUCKET")
 AWS_DEFAULT_REGION = _secrets.get("AWS_DEFAULT_REGION", "ap-northeast-2")

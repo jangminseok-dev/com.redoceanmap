@@ -144,7 +144,7 @@ def label_one(ticker: str, title: str) -> dict:
     return parse_label(text) or {"sentiment": 0.0, "event": "기타", "confidence": 0.0}
 
 
-def main() -> None:
+def main() -> int:
     dry_run = "--dry-run" in sys.argv
     limit = int(sys.argv[sys.argv.index("--limit") + 1]) if "--limit" in sys.argv else 3000
     print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] 라벨링 시작 (labeler={LABELER})", flush=True)
@@ -152,7 +152,7 @@ def main() -> None:
     pending = fetch_pending(limit)
     if not pending:
         print("미라벨 뉴스 없음 — 종료", flush=True)
-        return
+        return 0
     print(f"미라벨 {len(pending)}건 — Ollama({OLLAMA_MODEL}) 웜업 후 라벨링 시작", flush=True)
     warmup()
 
@@ -180,7 +180,7 @@ def main() -> None:
 
     if dry_run:
         print(f"[dry-run] 라벨 {labeled}건 생성 (파싱 실패 {parse_failed}) — POST 생략", flush=True)
-        return
+        return 1 if parse_failed else 0
     if items:
         saved += post_labels(items)
     print(
@@ -188,7 +188,11 @@ def main() -> None:
         f"(파싱 실패 {parse_failed}) / 신규 저장 {saved}건",
         flush=True,
     )
+    # 파싱 실패는 중립으로 저장돼 데이터는 남지만 모델이 형식을 못 지킨 것 — 실패로 센다.
+    # Ollama 자체 장애는 label_one이 재시도 후 예외를 전파해 이미 비정상 종료한다.
+    return 1 if parse_failed else 0
 
 
 if __name__ == "__main__":
-    main()
+    # 부분 실패도 종료코드 1 — cron·감시가 실패를 관측할 수 있어야 한다.
+    sys.exit(main())

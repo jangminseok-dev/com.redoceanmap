@@ -98,11 +98,11 @@ def post_bars(items: list[dict]) -> int:
     return res.json()["saved"]
 
 
-def main() -> None:
+def main() -> int:
     dry_run = "--dry-run" in sys.argv
     print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] 수집 시작", flush=True)  # cron 로그 일자별 추적용
     coverage = {} if dry_run else fetch_coverage()
-    total_fetched = total_saved = 0
+    total_fetched = total_saved = failures = 0
     # 워치리스트 종목(전 타임프레임) + 레짐용 지수(1d만)
     targets = [(ticker, TIMEFRAMES) for _, ticker, _ in load_watchlist() if ticker]
     targets += [(ticker, TIMEFRAMES[1:]) for ticker in INDEX_TICKERS]
@@ -121,13 +121,17 @@ def main() -> None:
                 counts.append(f"{timeframe} {len(items)}봉({period}) 신규 {saved}")
             except Exception as e:
                 counts.append(f"{timeframe} 실패({e})")
+                failures += 1
         print(f"{ticker}: " + " · ".join(counts), flush=True)
     print(
         f"[{datetime.now():%Y-%m-%d %H:%M:%S}] 합계: 수집 {total_fetched}봉"
-        + ("" if dry_run else f" / 신규 저장 {total_saved}봉"),
+        + ("" if dry_run else f" / 신규 저장 {total_saved}봉")
+        + (f" / 실패 {failures}건" if failures else ""),
         flush=True,
     )
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":
-    main()
+    # 부분 실패도 종료코드 1 — cron·감시가 실패를 관측할 수 있어야 한다.
+    sys.exit(main())

@@ -95,16 +95,17 @@ def post_to_hub(items: list[dict]) -> dict:
     return res.json()
 
 
-def main() -> None:
+def main() -> int:
     dry_run = "--dry-run" in sys.argv
     print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] 상권 뉴스 수집 시작", flush=True)
-    total_fetched = total_saved = 0
+    total_fetched = total_saved = failures = 0
     for tag, query in load_watchlist():
         label = tag or f"공통({query})"
         try:  # 쿼리 단위 실패는 건너뛰고 계속 — cron 무인 실행 전제
             items = fetch_google_rss(query, tag)
         except Exception as e:
             print(f"{label}: 수집 실패({e})")
+            failures += 1
             continue
         total_fetched += len(items)
         if dry_run:
@@ -118,12 +119,16 @@ def main() -> None:
             print(f"{label}: {len(items)}건 → 신규 저장 {result['saved']}")
         except Exception as e:
             print(f"{label}: 허브 POST 실패 — {e}")
+            failures += 1
     print(
         f"[{datetime.now():%Y-%m-%d %H:%M:%S}] 합계: 수집 {total_fetched}"
-        + ("" if dry_run else f" / 신규 저장 {total_saved}"),
+        + ("" if dry_run else f" / 신규 저장 {total_saved}")
+        + (f" / 실패 {failures}건" if failures else ""),
         flush=True,
     )
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":
-    main()
+    # 부분 실패도 종료코드 1 — cron·감시가 실패를 관측할 수 있어야 한다.
+    sys.exit(main())

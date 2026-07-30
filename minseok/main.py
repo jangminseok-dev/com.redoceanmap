@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "apps"))
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import RedirectResponse
@@ -29,7 +29,9 @@ from auth.dependencies.member_directory_provider import get_member_directory_gat
 from chat.adapter.inbound.api.v1.chat_router import chat_router
 from chat.adapter.inbound.api.v1.concierge_router import concierge_router
 from core.database import dispose_engine, dispose_market_engine, init_engine, init_market_engine
+from core.database import ping as database_ping
 from core.redis import dispose_redis
+from core.redis import ping as redis_ping
 from core.security import get_current_user_id, verify_docs_credentials
 from chat.adapter.outbound.gateways.email_composer_gateway import EmailComposerN8nGateway
 from hub.adapter.inbound.api.v1.dispatcher_router import dispatcher_router
@@ -262,8 +264,23 @@ def openapi_schema():
 
 
 @app.get("/health")
-def health():
-    return {"status": "ok"}
+async def health(response: Response):
+    """의존성까지 확인하는 헬스체크 — 외부 업타임 모니터가 물리는 지점이다.
+
+    같은 PC에 둔 감시는 그 PC가 꺼지면 함께 죽는다(2026-07-25~27 2일 정지를 아무도 몰랐던 이유).
+    밖에서 이 엔드포인트를 폴링하는 것만이 호스트·컨테이너 다운을 잡는다.
+    하나라도 죽으면 503으로 답해 모니터가 실패로 세게 한다. 실패 원인 문자열은 싣지 않는다 —
+    인증 없이 열린 엔드포인트다(원인은 서버 로그에 남는다).
+    """
+    db_ok, market_db_ok = await database_ping()
+    checks = {
+        "database": db_ok,
+        "market_database": market_db_ok,
+        "redis": await redis_ping(),
+    }
+    healthy = all(checks.values())
+    response.status_code = 200 if healthy else 503
+    return {"status": "ok" if healthy else "degraded", "checks": checks}
 
 
 

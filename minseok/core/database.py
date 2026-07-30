@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -77,6 +78,25 @@ async def create_all_tables() -> None:
     if engine is not None:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+
+
+async def ping() -> tuple[bool, bool]:
+    """공유 DB·market DB에 각각 `SELECT 1`을 던져 살아 있는지 본다 (/health 전용).
+
+    엔진은 기동 시 lazy 초기화라 모듈 상수로 잡아두면 None에 묶인다 — 호출 시점에 읽는다.
+    """
+    async def _alive(target: AsyncEngine | None) -> bool:
+        if target is None:
+            return False
+        try:
+            async with target.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+            return True
+        except Exception:  # 원인은 /health 응답에 싣지 않는다 — 공개 엔드포인트
+            logger.exception("DB 헬스체크 실패")
+            return False
+
+    return await _alive(engine), await _alive(market_engine)
 
 
 async def dispose_engine() -> None:

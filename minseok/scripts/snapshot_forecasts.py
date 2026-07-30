@@ -45,8 +45,8 @@ BATCH_SIZE = 20      # 요청당 티커 수 — 서버 계산 시간 상한(배�
 TIMEOUT = 1800
 
 
-def capture(tickers: list[str]) -> tuple[int, list[str]]:
-    captured, skipped = 0, []
+def capture(tickers: list[str]) -> tuple[int, list[str], int]:
+    captured, skipped, failed_batches = 0, [], 0
     for i in range(0, len(tickers), BATCH_SIZE):
         batch = tickers[i:i + BATCH_SIZE]
         try:
@@ -61,7 +61,8 @@ def capture(tickers: list[str]) -> tuple[int, list[str]]:
             skipped.extend(body["skipped"])
         except requests.RequestException as e:
             print(f"  [경고] 배치 실패({batch[0]}~{batch[-1]}): {e} — 다음 배치 계속")
-    return captured, skipped
+            failed_batches += 1
+    return captured, skipped, failed_batches
 
 
 def score() -> tuple[int, int]:
@@ -73,21 +74,24 @@ def score() -> tuple[int, int]:
     return body["scored"], body["pending"]
 
 
-def main() -> None:
+def main() -> int:
     dry_run = "--dry-run" in sys.argv
     tickers = [ticker for _, ticker, _ in load_watchlist() if ticker]
     print(f"[{datetime.now():%Y-%m-%d %H:%M}] 대상 {len(tickers)}종목 × horizons {HORIZONS}")
     if dry_run:
         print(" ".join(tickers))
-        return
+        return 0
 
-    captured, skipped = capture(tickers)
+    captured, skipped, failed_batches = capture(tickers)
     print(f"캡처: 신규 {captured}건, skip {len(skipped)}티커"
-          + (f" ({', '.join(skipped[:10])}{'…' if len(skipped) > 10 else ''})" if skipped else ""))
+          + (f" ({', '.join(skipped[:10])}{'…' if len(skipped) > 10 else ''})" if skipped else "")
+          + (f" / 배치 실패 {failed_batches}건" if failed_batches else ""))
 
     scored, pending = score()
     print(f"채점: {scored}건 완료, {pending}건 대기(horizon 미도래)")
+    return 1 if failed_batches else 0
 
 
 if __name__ == "__main__":
-    main()
+    # 부분 실패도 종료코드 1 — cron·감시가 실패를 관측할 수 있어야 한다.
+    sys.exit(main())
