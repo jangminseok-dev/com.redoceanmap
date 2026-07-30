@@ -165,7 +165,24 @@ const EDGE_MIN_PP = 3;
 타입 변경을 포함한 작업은 아래로 검증하고, 결과를 한 줄로 보고한다.
 
 ```bash
-cd www && npx tsc --noEmit
+cd www && pnpm run typecheck
 ```
 
+`npx tsc --noEmit`을 쓰지 않는다 — 로컬 typescript를 못 찾으면 레지스트리의 무관한 `tsc` 패키지를
+설치하고 **exit 0으로 끝나** 타입 체크를 하지 않았는데 통과한 것처럼 보인다(2026-07-30 실측:
+에러 19건이 이렇게 가려져 있었다).
+
 `.next/types`에 구 경로 캐시가 남아 오탐하면 `rm -rf .next/types` 후 재실행한다.
+
+### `useSearchParams()` · `usePathname()`은 `| null`이다
+
+Next의 타입 정의상 둘 다 null을 반환할 수 있으므로 `params.get(...)`을 바로 쓰면 strict 모드에서
+TS18047이 난다. 옵셔널 체이닝으로 받고 **원래 타입을 유지**한다(`?? null`을 빼면 `| undefined`가
+붙어 하위 사용처가 흔들린다).
+
+```ts
+const params = useSearchParams();
+const symbol = params?.get("symbol") ?? "";   // string
+const c = params?.get("c") ?? null;           // string | null
+const isActive = (href: string) => !!pathname?.startsWith(href);  // boolean
+```

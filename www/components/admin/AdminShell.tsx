@@ -47,7 +47,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     router.push("/");
   };
   const isActive = (href: string) =>
-    href === "/admin" ? pathname === "/admin" : pathname.startsWith(href);
+    href === "/admin" ? pathname === "/admin" : !!pathname?.startsWith(href);
 
   return (
     <div className="min-h-screen flex bg-background text-foreground">

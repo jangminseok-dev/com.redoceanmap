@@ -133,11 +133,13 @@ docker compose up -d
 # market 앱 전용 DB (:5434) — 공유 DB와 별개로 따로 띄운다
 cd minseok/apps/market && docker compose up -d
 
-# 프론트엔드 개발 서버
-cd www && npm run dev
+# 프론트엔드 개발 서버 (패키지 매니저는 pnpm — pnpm-lock.yaml이 정본)
+cd www && pnpm run dev
 
-# 프론트엔드 타입 체크 (test/lint npm 스크립트는 없다)
-cd www && npx tsc --noEmit
+# 프론트엔드 타입 체크 (test/lint 스크립트는 없다)
+# npx tsc는 로컬 typescript를 못 찾으면 레지스트리의 무관한 tsc 패키지를 설치하고
+# exit 0으로 끝난다(가짜 초록). 반드시 package.json 스크립트로 돌린다.
+cd www && pnpm run typecheck
 ```
 
 ```bash

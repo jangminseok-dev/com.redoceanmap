@@ -19,9 +19,9 @@ const EMPTY_PROMPTS = [
 
 function MarketWorkspace() {
   const params = useSearchParams();
-  const trdar = params.get("trdar") ?? "";
-  const c = params.get("c");
-  const overlayOpen = !!trdar && params.get("ov") !== "0";
+  const trdar = params?.get("trdar") ?? "";
+  const c = params?.get("c") ?? null;
+  const overlayOpen = !!trdar && params?.get("ov") !== "0";
 
   const recommendations = useChatStore((s) => s.recommendations);
   // 채팅이 고른 업종 — 넘기지 않으면 백엔드가 "매출 최대 업종"으로 폴백해, 답변과 지도 패널이

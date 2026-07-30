@@ -58,8 +58,8 @@ const DEFAULT_RANGE: Record<Timeframe, number | null> = { "1d": 180, "5m": 7 };
 
 function StockWorkspace() {
   const params = useSearchParams();
-  const symbol = params.get("symbol") ?? "";
-  const c = params.get("c");
+  const symbol = params?.get("symbol") ?? "";
+  const c = params?.get("c") ?? null;
   // 단일 객체 패턴 — 타임프레임과 표시 구간은 항상 함께 바뀐다(REACT_RULES 패턴 B)
   const [view, setView] = useState<{ timeframe: Timeframe; rangeDays: number | null }>({
     timeframe: "1d",

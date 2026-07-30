@@ -27,7 +27,7 @@ function ConsentPage() {
   }>({ phase: "loading", error: "", loading: false, profile: null });
 
   const returnTo = (() => {
-    const raw = search.get("return_to") ?? "/";
+    const raw = search?.get("return_to") ?? "/";
     return raw.startsWith("/") && !raw.startsWith("//") ? raw : "/";
   })();
 
