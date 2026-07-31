@@ -35,12 +35,16 @@
 | --- | --- |
 | 백엔드 (Python / FastAPI) | [[minseok/_docs/CLAUDE\|minseok CLAUDE]] |
 | 프론트엔드 (Next.js) | [[www/_docs/CLAUDE\|www CLAUDE]] |
+| 모바일 (Flutter — 실기기 테스트 환경) | [[flutter/_docs/flutter-harness\|flutter harness]] |
 | 하네스 (구조 검증) | [[_docs/harness\|harness]] |
 | 고도화 로드맵 (3단계·18 마일스톤) | [[minseok/_docs/ROADMAP\|ROADMAP]] |
 
 > 앱은 **스타 토폴로지**(허브 `hub` + 스포크)다. 앱별 문서는 [[minseok/_docs/CLAUDE|minseok CLAUDE]]의
 > 앱 표에서 잇는다. 새 앱은 `minseok/apps/<app>/_docs/CLAUDE.md` + 심볼릭 링크
 > `<app>/CLAUDE.md → _docs/CLAUDE.md`를 같은 패턴으로 추가한다.
+
+> `flutter/`에는 아직 코드가 없고 `_docs/`만 있다. 영역 규칙 문서(`flutter/CLAUDE.md` 심볼릭 링크)는
+> 코드가 들어올 때 위와 같은 패턴으로 만든다.
 
 ---
 
