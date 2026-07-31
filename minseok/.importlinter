@@ -23,6 +23,7 @@ root_packages =
     mail
     recommendation
     admin
+    game
 include_external_packages = True
 
 # -----------------------------------------------------------------------------
@@ -46,6 +47,7 @@ containers =
     mail
     recommendation
     admin
+    game
 
 # -----------------------------------------------------------------------------
 # 계약 2) 스타 토폴로지 — 스포크는 서로를 import 하지 않는다
@@ -62,6 +64,7 @@ modules =
     mail
     recommendation
     admin
+    game
 
 # -----------------------------------------------------------------------------
 # 계약 2.5) 프레임워크 격리 — app·domain 계층은 웹/DB/LLM 프레임워크를 모른다
@@ -88,6 +91,8 @@ source_modules =
     recommendation.domain
     admin.app
     admin.domain
+    game.app
+    game.domain
 forbidden_modules =
     fastapi
     sqlalchemy
@@ -113,6 +118,7 @@ source_modules =
     mail.domain
     recommendation.domain
     admin.domain
+    game.domain
 forbidden_modules =
     pydantic
 
@@ -133,3 +139,4 @@ forbidden_modules =
     mail
     recommendation
     admin
+    game

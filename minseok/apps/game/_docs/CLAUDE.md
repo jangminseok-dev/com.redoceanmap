@@ -1,0 +1,86 @@
+# CLAUDE.md — game 앱
+
+백엔드 → [[minseok/_docs/CLAUDE|minseok CLAUDE]] ·
+**경계·결정론 규칙(선행 필독)** → [[minseok/apps/game/_docs/game-harness|game-harness]] ·
+도입 순서·수치 설계 → [[minseok/apps/game/_docs/game-strategy|game-strategy]]
+
+게임 스포크. 한 앱에 게임 2개가 산다 — **모의투자**(가상 주가에 롱/숏)와
+**상권 창업 시뮬레이터**(서울 상권 실데이터 위에 가게를 세워 키운다). 둘은 지갑 하나를 공유한다.
+
+**이 앱을 만지기 전에 game-harness를 먼저 읽는다.** 아래는 요약이고 정본은 그쪽이다.
+
+---
+
+## 이 앱의 성질 — 다른 스포크와 다른 점
+
+| 규칙 | 내용 |
+|---|---|
+| **상태 = 시각의 함수** | 주가·이벤트·손님 분포를 **저장하지 않는다.** `f(EPOCH, tick, 대상)`으로 계산하며 같은 입력은 언제·누가·몇 번 물어도 같은 값이다(harness §1-A) |
+| **결정론 난수만** | `random`·내장 `hash()`·`uuid4`·`time.time()` **전부 금지.** blake2b 시드 유도 하나뿐(`domain/rng/deterministic.py`) |
+| **현재 시각은 1파일** | `adapter/outbound/system_game_clock_adapter.py`만 `datetime.now()`를 부른다. 도메인·유스케이스는 `tick: int`을 받는다 |
+| **cron 0개** | 인프로세스 스케줄러·배치가 없다. 서버가 꺼져 있어도 게임 시간은 밀리지 않는다 |
+| **가상 주가** | 실시세를 쓰지 않는다. 모든 시세 응답이 `virtual: true`를 싣는다. 종목명도 가상 회사(업종만 실제) |
+| **상권 데이터는 읽기 전용** | market 전용 DB(:5434)에 붙지 않는다. 허브 `AreaDemandProfilePort` 경유(5단계) |
+| **가정치 표기 강제** | 금액 필드는 `observed_*`(실데이터) / `assumed_*`(게임 규칙) / `simulated_*` 접두사를 붙인다(harness §5-1) |
+
+## 슬라이스 (1:1 컨벤션)
+
+| 슬라이스 | 엔드포인트 | 내용 |
+|---|---|---|
+| rulebook | `GET /game/myself` | 자기소개(가상 주가·매매 실행 아님·가정치 고지) **+ 현재 게임 시각**(tick·game_day·game_quarter·시즌 잔여) |
+| market_price | `GET /game/market/prices?ticks=` | 전 종목 현재가·등락률·최근 곡선. `ticks` 2~240 |
+| wallet | `GET /game/wallet` | 현금·투자가능액·보유 포지션(현재 시세 평가)·총자산. 계정이 없으면 초기자본 100만원으로 자동 생성 |
+| trade | `POST /game/trades` · `POST /game/trades/{id}/close` | 롱/숏 진입·청산. 레버리지 없음, 숏 손실 상한은 증거금, 체결가는 요청 도착 틱 |
+
+## 레이어
+
+```
+apps/game/
+├── domain/                                  # 순수 파이썬 — 프레임워크 전면 금지, 전부 def(CPU-bound)
+│   ├── clock/game_epoch.py                  # 에포크 상수 단일 소유 + 틱↔게임달력
+│   ├── rng/deterministic.py                 # blake2b u64/uniform/normal
+│   ├── market/
+│   │   ├── symbol_params.py                 # 종목 12개 σ·μ (캘리브레이션 산출물)
+│   │   └── price_engine.py                  # 브라운 브리지 — price_at / price_series
+│   └── trading/trading_rules.py             # 수수료·증거금·손실상한·최소생활자금
+├── app/
+│   ├── dtos/{rulebook,market_price,wallet,trade,account}_dto.py
+│   ├── ports/input/{rulebook,market_price,wallet,trade}_use_case.py
+│   ├── ports/output/rulebook_record_port.py     # 활동 기록
+│   ├── ports/output/game_clock_port.py          # 현재 틱 주입 — 전 슬라이스 공유
+│   ├── ports/output/game_account_repository.py  # 지갑·포지션·원장 (한 트랜잭션이라 한 포트)
+│   ├── use_cases/{rulebook,market_price,wallet,trade}_interactor.py
+│   └── exceptions.py
+├── adapter/
+│   ├── inbound/api/{schemas,v1}/…_{schema,router}.py
+│   └── outbound/
+│       ├── system_game_clock_adapter.py         # datetime.now()를 부르는 유일한 파일
+│       ├── log_rulebook_record_adapter.py
+│       ├── orm/game_{wallet,position,ledger}_orm.py
+│       └── pg/game_account_pg_repository.py     # 쓰기는 전부 커밋 한 번
+├── dependencies/…_provider.py
+└── tests/{domain,app/use_cases,adapter}/
+```
+
+**의존 방향:** `adapter → app → domain`. 컨벤션 → [[minseok/_docs/CLAUDE|minseok CLAUDE]].
+
+## 아직 없는 것 (단계별로 들어온다)
+
+`game_wallets`·`game_positions`·`game_ledger`(3단계) · 허브 `AreaDemandProfilePort`(5단계) ·
+`game_stores`·`game_store_decisions`(6단계) · `game_quarter_settlements`(8단계) ·
+시장 이벤트(9단계). **미리 폴더를 만들어두지 않는다**(harness §6 게이트 ⑥).
+
+## 검증
+
+```bash
+cd minseok
+
+# 테스트 — 도메인이 순수 파이썬이라 도커 없이 이 맥에서 돈다
+PYTHONPATH=apps python3 -m pytest apps/game -q
+
+# 결정론·경계 회귀 (AST — grep은 주석까지 잡아 오탐률 100%였다, harness §8-0)
+PYTHONPATH=apps python3 scripts/check_game_determinism.py
+
+# 구조 계약 5종
+PYTHONPATH=apps lint-imports --config .importlinter
+```

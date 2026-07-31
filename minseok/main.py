@@ -94,6 +94,8 @@ from market.adapter.inbound.api.v1.area_score_router import area_score_router
 from market.adapter.inbound.api.v1.area_showcase_router import area_showcase_router
 from market.adapter.inbound.api.v1.area_stats_router import area_stats_router
 from market.adapter.inbound.api.v1.cartographer_router import cartographer_router
+from game.adapter.inbound.api.v1.market_price_router import market_price_router
+from game.adapter.inbound.api.v1.rulebook_router import rulebook_router
 from stock.adapter.inbound.api.v1.analyst_router import analyst_router
 from stock.adapter.inbound.api.v1.stock_board_router import stock_board_router
 from stock.adapter.inbound.api.v1.stock_forecast_router import stock_forecast_router
@@ -186,6 +188,8 @@ app.include_router(stock_forecast_router, dependencies=_authenticated)
 app.include_router(stock_quote_router, dependencies=_authenticated)
 app.include_router(stock_board_router, dependencies=_authenticated)
 app.include_router(analyst_router, dependencies=_authenticated)
+app.include_router(market_price_router, dependencies=_authenticated)  # 게임 — 가상 시세
+app.include_router(rulebook_router, dependencies=_authenticated)
 app.include_router(recommendation_router, dependencies=_authenticated)
 app.include_router(curator_router, dependencies=_authenticated)
 app.include_router(email_request_router, dependencies=_authenticated)  # 허브 — 이메일 발송 요청
