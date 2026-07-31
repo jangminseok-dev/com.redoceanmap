@@ -96,6 +96,8 @@ from market.adapter.inbound.api.v1.area_stats_router import area_stats_router
 from market.adapter.inbound.api.v1.cartographer_router import cartographer_router
 from game.adapter.inbound.api.v1.market_price_router import market_price_router
 from game.adapter.inbound.api.v1.rulebook_router import rulebook_router
+from game.adapter.inbound.api.v1.trade_router import trade_router
+from game.adapter.inbound.api.v1.wallet_router import wallet_router
 from stock.adapter.inbound.api.v1.analyst_router import analyst_router
 from stock.adapter.inbound.api.v1.stock_board_router import stock_board_router
 from stock.adapter.inbound.api.v1.stock_forecast_router import stock_forecast_router
@@ -189,6 +191,8 @@ app.include_router(stock_quote_router, dependencies=_authenticated)
 app.include_router(stock_board_router, dependencies=_authenticated)
 app.include_router(analyst_router, dependencies=_authenticated)
 app.include_router(market_price_router, dependencies=_authenticated)  # 게임 — 가상 시세
+app.include_router(wallet_router, dependencies=_authenticated)
+app.include_router(trade_router, dependencies=_authenticated)
 app.include_router(rulebook_router, dependencies=_authenticated)
 app.include_router(recommendation_router, dependencies=_authenticated)
 app.include_router(curator_router, dependencies=_authenticated)
