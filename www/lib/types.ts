@@ -687,6 +687,38 @@ export type GameStoreDaily = {
   seasonOver: boolean;
 };
 
+export type GameAdvice = {
+  tone: "good" | "warn" | "bad";
+  message: string;
+};
+
+export type GameSettlement = {
+  storeId: number;
+  trdarName: string;
+  serviceName: string;
+  gameQuarter: number;
+  daysCounted: number;
+  simulatedSalesKrw: number;
+  assumedRentKrw: number;
+  assumedLaborKrw: number;
+  assumedCogsKrw: number;
+  assumedUtilityKrw: number;
+  profitKrw: number;
+  customerCount: number;
+  averageTurnedAwayRatio: number;
+  performanceRatio: number; // 내 매출 ÷ 상권 평균 점포가 같은 규모였을 때의 매출
+  advices: GameAdvice[];
+};
+
+export type GameSettlementList = {
+  settlements: GameSettlement[];
+  newlySettled: number; // 이번 조회에서 새로 확정된 분기 수
+  totalProfitKrw: number;
+  gameDay: number;
+  gameQuarter: number;
+  seasonOver: boolean;
+};
+
 export type GameTradeReceipt = {
   positionId: number;
   symbol: string;

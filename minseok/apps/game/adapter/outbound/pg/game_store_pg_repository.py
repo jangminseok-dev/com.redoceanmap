@@ -4,10 +4,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from game.adapter.outbound.orm.game_ledger_orm import GameLedgerOrm
+from game.adapter.outbound.orm.game_quarter_settlement_orm import GameQuarterSettlementOrm
 from game.adapter.outbound.orm.game_store_decision_orm import GameStoreDecisionOrm
 from game.adapter.outbound.orm.game_store_orm import GameStoreOrm
 from game.adapter.outbound.orm.game_wallet_orm import GameWalletOrm
-from game.app.dtos.store_dto import StoreDecisionRecord, StoreRecord
+from game.app.dtos.store_dto import SettlementRecord, StoreDecisionRecord, StoreRecord
 from game.app.ports.output.game_store_repository import GameStoreRepository
 
 
@@ -51,7 +52,8 @@ class GameStorePgRepository(GameStoreRepository):
             deposit_krw=deposit_krw,
             interior_krw=interior_krw,
             profile_snapshot=profile_snapshot,
-            settled_through_day=0,
+            # 앵커는 창업일 직전이다 — 0으로 두면 '0일차까지 정산됨'과 구분되지 않는다
+            settled_through_day=opened_game_day - 1,
             epoch_id=epoch_id,
         )
         self._session.add(store)
@@ -104,6 +106,98 @@ class GameStorePgRepository(GameStoreRepository):
             return None
         return await self._with_decisions(store)
 
+    async def list_settlements(
+        self, user_id: int, epoch_id: int
+    ) -> tuple[SettlementRecord, ...]:
+        rows = (
+            await self._session.scalars(
+                select(GameQuarterSettlementOrm)
+                .join(GameStoreOrm, GameStoreOrm.id == GameQuarterSettlementOrm.store_id)
+                .where(
+                    GameStoreOrm.user_id == user_id,
+                    GameQuarterSettlementOrm.epoch_id == epoch_id,
+                )
+                .order_by(
+                    GameQuarterSettlementOrm.game_quarter, GameQuarterSettlementOrm.store_id
+                )
+            )
+        ).all()
+        return tuple(
+            SettlementRecord(
+                store_id=r.store_id,
+                game_quarter=r.game_quarter,
+                days_counted=r.days_counted,
+                total_sales_krw=r.total_sales_krw,
+                total_rent_krw=r.total_rent_krw,
+                total_labor_krw=r.total_labor_krw,
+                total_cogs_krw=r.total_cogs_krw,
+                total_utility_krw=r.total_utility_krw,
+                profit_krw=r.profit_krw,
+                payload=r.payload or {},
+            )
+            for r in rows
+        )
+
+    async def record_settlement(
+        self,
+        *,
+        user_id: int,
+        epoch_id: int,
+        store_id: int,
+        settlement: SettlementRecord,
+        settled_through_day: int,
+        game_day: int,
+    ) -> None:
+        store = await self._session.scalar(
+            select(GameStoreOrm)
+            .where(GameStoreOrm.id == store_id, GameStoreOrm.user_id == user_id)
+            .with_for_update()
+        )
+        if store is None:
+            raise LookupError("가게가 없습니다")
+        if store.settled_through_day >= settled_through_day:
+            return  # 다른 요청이 먼저 정산했다 — 지연 실행이라 동시 조회가 겹칠 수 있다
+
+        wallet = await self._session.scalar(
+            select(GameWalletOrm)
+            .where(GameWalletOrm.user_id == user_id, GameWalletOrm.epoch_id == epoch_id)
+            .with_for_update()
+        )
+        if wallet is None:
+            raise LookupError("지갑이 없습니다")
+
+        self._session.add(
+            GameQuarterSettlementOrm(
+                store_id=store_id,
+                game_quarter=settlement.game_quarter,
+                days_counted=settlement.days_counted,
+                total_sales_krw=settlement.total_sales_krw,
+                total_rent_krw=settlement.total_rent_krw,
+                total_labor_krw=settlement.total_labor_krw,
+                total_cogs_krw=settlement.total_cogs_krw,
+                total_utility_krw=settlement.total_utility_krw,
+                profit_krw=settlement.profit_krw,
+                payload=settlement.payload,
+                epoch_id=epoch_id,
+            )
+        )
+        # 손실이 나도 지갑은 음수가 되지 않는다 — 파산 없음(game-harness §2)
+        applied = max(settlement.profit_krw, -wallet.cash_krw)
+        wallet.cash_krw += applied
+        store.settled_through_day = settled_through_day
+        self._session.add(
+            GameLedgerOrm(
+                user_id=user_id,
+                game_day=game_day,
+                source="settlement",
+                amount_krw=applied,
+                ref_type="store",
+                ref_id=store_id,
+                epoch_id=epoch_id,
+            )
+        )
+        await self._session.commit()
+
     async def _with_decisions(self, store: GameStoreOrm) -> StoreRecord:
         rows = (
             await self._session.scalars(
@@ -133,6 +227,7 @@ class GameStorePgRepository(GameStoreRepository):
             store_scale=store.store_scale,
             deposit_krw=store.deposit_krw,
             interior_krw=store.interior_krw,
+            settled_through_day=store.settled_through_day,
             observed_sales_per_store=int(snapshot.get("observed_sales_per_store", 0)),
             observed_ticket_price=int(snapshot.get("observed_ticket_price", 1)),
             fitness=float(snapshot.get("fitness", 1.0)),

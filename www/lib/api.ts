@@ -11,6 +11,7 @@ import type {
   GameMarketPrices,
   GameOpenStoreReceipt,
   GameRulebook,
+  GameSettlementList,
   GameStoreDaily,
   GameStoreSummary,
   GameTradeReceipt,
@@ -186,3 +187,8 @@ export const fetchGameStores = (): Promise<GameStoreSummary[]> => getJson(`/game
 
 export const fetchGameStoreDaily = (storeId: number, days = 14): Promise<GameStoreDaily> =>
   getJson(`/game/stores/${storeId}?days=${days}`);
+
+// 분기 결산 — 조회가 곧 정산 시점이다(지연 실행). cron이 없어 밀린 분기를 여기서 확정한다.
+// 멱등하므로 여러 번 불러도 안전하다.
+export const fetchGameSettlements = (): Promise<GameSettlementList> =>
+  getJson(`/game/settlements`);

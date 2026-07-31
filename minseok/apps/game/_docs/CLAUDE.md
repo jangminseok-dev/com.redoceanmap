@@ -34,6 +34,7 @@
 | area_fitness | `GET /game/areas/{trdar_code}/fitness?service_code=` | 창업 전 입지 미리보기 — 적합도 4축(수요·시간대·경쟁·생존) + 실데이터 근거 진단 문장. 허브 `AreaDemandProfilePort` 소비 |
 | store_open | `POST /game/stores` | 창업 — 투입 자본이 가게 규모를 정한다. 보증금(회수 가능)·인테리어(회수 불가) 지불 |
 | store_daily | `GET /game/stores` · `GET /game/stores/{id}?days=` | 가게 목록·현황. 일별 매출·비용·반려율과 오늘 온 손님 구성. **일별 매출은 저장하지 않고 재계산한다** |
+| settlement | `GET /game/settlements` | 분기 결산 — **조회가 곧 정산 시점**(지연 실행, cron 0개). 밀린 분기를 확정하고 손익을 지갑에 반영한다. 멱등 |
 
 ## 레이어
 
@@ -51,7 +52,8 @@ apps/game/
 │       ├── fitness.py                       # 적합도 4축 — 분포는 market, 판정은 게임 규칙
 │       ├── diagnosis.py                     # 진단 문장 템플릿(LLM 미사용) + 조사 처리
 │       ├── store_simulation.py              # 일일 매출·비용 — 시설이 매출 상한을 만든다
-│       └── customer_sampler.py              # 손님 표본 40명 — 실데이터 분포 역변환 샘플링
+│       ├── customer_sampler.py              # 손님 표본 40명 — 실데이터 분포 역변환 샘플링
+│       └── settlement.py                    # 분기 경계 계산 + 다음 분기 조언
 ├── app/
 │   ├── dtos/{rulebook,market_price,wallet,trade,account}_dto.py
 │   ├── ports/input/{rulebook,market_price,wallet,trade}_use_case.py
@@ -75,7 +77,7 @@ apps/game/
 
 ## 아직 없는 것 (단계별로 들어온다)
 
-프론트 상권 화면(7단계) · `game_quarter_settlements`와 분기 결산(8단계) · 시장 이벤트(9단계).
+시장 이벤트와 밸런스 실측 리포트(9단계).
 **미리 폴더를 만들어두지 않는다**(harness §6 게이트 ⑥).
 
 ## 검증

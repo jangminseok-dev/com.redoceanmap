@@ -4,6 +4,7 @@ import { useState } from "react";
 import dynamic from "next/dynamic";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Info } from "lucide-react";
+import SettlementCard from "@/components/game/SettlementCard";
 import StoreDetailCard from "@/components/game/StoreDetailCard";
 import StoreFitnessCard from "@/components/game/StoreFitnessCard";
 import {
@@ -145,6 +146,9 @@ export default function StorePanel() {
               <StoreDetailCard storeId={draft.storeId} />
             </div>
           )}
+          <div className="mt-4">
+            <SettlementCard />
+          </div>
         </section>
       )}
 

@@ -11,6 +11,22 @@ class StoreDecisionRecord:
 
 
 @dataclass(frozen=True)
+class SettlementRecord:
+    """영속된 분기 결산 1건."""
+
+    store_id: int
+    game_quarter: int
+    days_counted: int
+    total_sales_krw: int
+    total_rent_krw: int
+    total_labor_krw: int
+    total_cogs_krw: int
+    total_utility_krw: int
+    profit_krw: int
+    payload: dict
+
+
+@dataclass(frozen=True)
 class StoreRecord:
     """영속된 가게 1곳. `profile_snapshot`은 market 실데이터의 스냅샷이다."""
 
@@ -26,6 +42,7 @@ class StoreRecord:
     store_scale: float
     deposit_krw: int
     interior_krw: int
+    settled_through_day: int  # 분기 결산 앵커 — 이 날까지는 정산이 끝났다
     # --- 스냅샷(실데이터) ---
     observed_sales_per_store: int
     observed_ticket_price: int

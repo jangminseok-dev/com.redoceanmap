@@ -13,6 +13,7 @@ from core.security import get_current_user_id
 from game.adapter.inbound.api.v1.area_fitness_router import area_fitness_router
 from game.adapter.inbound.api.v1.market_price_router import market_price_router
 from game.adapter.inbound.api.v1.rulebook_router import rulebook_router
+from game.adapter.inbound.api.v1.settlement_router import settlement_router
 from game.adapter.inbound.api.v1.store_daily_router import store_daily_router
 from game.adapter.inbound.api.v1.store_open_router import store_open_router
 from game.adapter.inbound.api.v1.trade_router import trade_router
@@ -20,6 +21,7 @@ from game.adapter.inbound.api.v1.wallet_router import wallet_router
 from game.app.use_cases.area_fitness_interactor import AreaFitnessInteractor
 from game.app.use_cases.market_price_interactor import MarketPriceInteractor
 from game.app.use_cases.rulebook_interactor import RulebookInteractor
+from game.app.use_cases.settlement_interactor import SettlementInteractor
 from game.app.use_cases.store_daily_interactor import StoreDailyInteractor
 from game.app.use_cases.store_open_interactor import StoreOpenInteractor
 from game.app.use_cases.trade_interactor import TradeInteractor
@@ -27,6 +29,7 @@ from game.app.use_cases.wallet_interactor import WalletInteractor
 from game.dependencies.area_fitness_provider import get_area_fitness_use_case
 from game.dependencies.market_price_provider import get_market_price_use_case
 from game.dependencies.rulebook_provider import get_rulebook_use_case
+from game.dependencies.settlement_provider import get_settlement_use_case
 from game.dependencies.store_daily_provider import get_store_daily_use_case
 from game.dependencies.store_open_provider import get_store_open_use_case
 from game.dependencies.trade_provider import get_trade_use_case
@@ -56,6 +59,7 @@ def client() -> TestClient:
         area_fitness_router,
         store_open_router,
         store_daily_router,
+        settlement_router,
     ):
         app.include_router(router)
 
@@ -81,6 +85,9 @@ def client() -> TestClient:
         profiles=_StubProfiles(_profile()), stores=stores, accounts=repository, clock=clock
     )
     app.dependency_overrides[get_store_daily_use_case] = lambda: StoreDailyInteractor(
+        stores=stores, clock=clock
+    )
+    app.dependency_overrides[get_settlement_use_case] = lambda: SettlementInteractor(
         stores=stores, clock=clock
     )
     return TestClient(app)
@@ -206,3 +213,11 @@ def test_창업_조건이_범위를_벗어나면_422다(client):
               "facilityScore": 99999, "staffCount": 2, "priceFactor": 1.0},
     )
     assert body.status_code == 422
+
+
+def test_결산은_조회_시점에_밀린_분기를_확정한다(client):
+    """cron이 없으므로 조회가 곧 정산 시점이다(지연 실행)."""
+    body = client.get("/game/settlements").json()
+    assert body["settlements"] == []  # 틱 1,500 = 게임 25일 — 아직 분기가 안 끝났다
+    assert body["newlySettled"] == 0
+    assert body["gameQuarter"] >= 1

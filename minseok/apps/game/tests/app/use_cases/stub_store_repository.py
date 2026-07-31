@@ -1,12 +1,13 @@
 """인메모리 가게 리포지토리 스텁. 원장까지 쌓아 불변식을 함께 검증한다."""
 from __future__ import annotations
 
-from game.app.dtos.store_dto import StoreDecisionRecord, StoreRecord
+from game.app.dtos.store_dto import SettlementRecord, StoreDecisionRecord, StoreRecord
 
 
 class StubStoreRepository:
     def __init__(self, accounts=None) -> None:
         self.stores: dict[int, dict] = {}
+        self.settlements: list[SettlementRecord] = []
         self._next_id = 1
         self._accounts = accounts  # 지갑·원장을 함께 움직이려면 주입한다
 
@@ -41,6 +42,7 @@ class StubStoreRepository:
             "interior_krw": interior_krw,
             "profile_snapshot": profile_snapshot,
             "decisions": [decision | {"effective_from_day": opened_game_day}],
+            "settled_through_day": opened_game_day - 1,
         }
         if self._accounts is not None:
             self._accounts.wallets[user_id]["cash_krw"] += cash_delta_krw
@@ -78,6 +80,7 @@ class StubStoreRepository:
             store_scale=store["store_scale"],
             deposit_krw=store["deposit_krw"],
             interior_krw=store["interior_krw"],
+            settled_through_day=store["settled_through_day"],
             observed_sales_per_store=int(snapshot.get("observed_sales_per_store", 0)),
             observed_ticket_price=int(snapshot.get("observed_ticket_price", 1)),
             fitness=float(snapshot.get("fitness", 1.0)),
@@ -96,3 +99,30 @@ class StubStoreRepository:
                 for d in store["decisions"]
             ),
         )
+
+    # --- 결산 (8단계) ------------------------------------------------------
+
+    async def list_settlements(self, user_id, epoch_id) -> tuple[SettlementRecord, ...]:
+        mine = {s["id"] for s in self.stores.values() if s["user_id"] == user_id}
+        return tuple(
+            sorted(
+                (s for s in self.settlements if s.store_id in mine),
+                key=lambda s: (s.game_quarter, s.store_id),
+            )
+        )
+
+    async def record_settlement(
+        self, *, user_id, epoch_id, store_id, settlement, settled_through_day, game_day
+    ) -> None:
+        store = self.stores[store_id]
+        if store["settled_through_day"] >= settled_through_day:
+            return  # 멱등 — 같은 분기를 두 번 정산하지 않는다
+        self.settlements.append(settlement)
+        store["settled_through_day"] = settled_through_day
+        if self._accounts is not None:
+            wallet = self._accounts.wallets[user_id]
+            applied = max(settlement.profit_krw, -wallet["cash_krw"])  # 지갑은 음수가 되지 않는다
+            wallet["cash_krw"] += applied
+            self._accounts.ledger.append(
+                {"user_id": user_id, "source": "settlement", "amount_krw": applied}
+            )

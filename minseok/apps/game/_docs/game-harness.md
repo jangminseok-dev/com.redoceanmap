@@ -4,8 +4,8 @@
 > (서울 상권 실데이터 위에 가게를 세워 키운다). 참조 게임은 아이러브커피(파티게임즈)이나
 > 우리 게임에는 **수동 탭이 없어** 원작 장치 중 ①꾸미기 점수 ②취향 룩업 ③파산 없음
 > ④퀘스트 상한만 골라 이식한다.
-> 2026-07-31 현재 `apps/game/`에는 **이 문서와 game-strategy 두 개의 0바이트 파일뿐이고
-> 코드는 0줄**이다. 이 문서는 기능 설계서가 아니라 *무엇을 해도 되는가*를 고정하는 배선(harness)이다.
+> 이 문서는 기능 설계서가 아니라 *무엇을 해도 되는가*를 고정하는 배선(harness)이다.
+> 착수 시점(2026-07-31)에는 코드가 0줄이었고, 지금은 8단계까지 구현돼 있다 — §0이 실측 현황이다.
 
 관련: [[minseok/_docs/CLAUDE|minseok CLAUDE]] · [[_docs/harness|harness]] ·
 [[minseok/apps/hub/_docs/CLAUDE|hub CLAUDE]] · [[minseok/apps/market/_docs/CLAUDE|market CLAUDE]] ·
@@ -16,20 +16,17 @@
 정한다. *어떤 순서로 · 어떤 수치로 · 무엇으로 끝났다고 판정하는가*는 game-strategy가 맡는다.
 게임 규칙의 구체값(변동성 계수·매출 산식·밸런스 목표)은 전부 strategy 쪽이다.
 
-> `minseok/apps/game/_docs/CLAUDE.md`(앱 문서)와 `game/CLAUDE.md` 심볼릭 링크는 **아직 없다.**
-> strategy 1단계에서 다른 스포크와 같은 패턴으로 만든다.
-
 ---
 
-## 0. 현재 상태 (2026-07-31, 1단계 완료 시점 갱신)
+## 0. 현재 상태 (2026-07-31, 8단계 완료 시점 갱신)
 
 | 항목 | 실측 | 확인 방법 |
 |---|---|---|
-| game 앱 코드 | **6단계 완료.** 슬라이스 7개(+`store_open`·`store_daily`) + 도메인 10모듈. 테스트 167개 통과 | `PYTHONPATH=apps python3 -m pytest apps/game -q` |
+| game 앱 코드 | **8단계 완료.** 슬라이스 8개(+`settlement`) + 도메인 11모듈. 테스트 191개 통과 | `PYTHONPATH=apps python3 -m pytest apps/game -q` |
 | 허브 포트 | `AreaDemandProfilePort` **1개**(메서드 1개) — market이 구현, game이 소비. `CommercialDataPort`는 **무변경** | `hub/app/ports/output/` |
-| 결정론·경계 검사 | **위반 0건** (91파일 AST 검사) | `python3 scripts/check_game_determinism.py` |
+| 결정론·경계 검사 | **위반 0건** (99파일 AST 검사) | `python3 scripts/check_game_determinism.py` |
 | 응답 성능 | 12종목 × 60틱 **p95 13.8ms** / × 240틱(최대) **p95 54.5ms** — 목표 200ms | 인터랙터 직접 호출 30회 |
-| DB | **테이블 3개**(`game_wallets`·`game_positions`·`game_ledger`), 마이그레이션 `a2b3c4d5e6f7`. ⏸ **적용은 미실행**(이 맥에 DB 없음) | ORM↔마이그레이션 일치 테스트 |
+| DB | **테이블 6개** — 지갑·포지션·원장(`a2b3c4d5e6f7`), 가게·운영결정(`b3c4d5e6f7a8`), 분기결산(`c4d5e6f7a8b9`). ⏸ **적용은 미실행**(이 맥에 DB 없음) | ORM↔마이그레이션 일치 테스트 |
 | 프론트 | `/game` — **세그먼트 탭 2개**(모의 투자 · 상권 창업). 투자는 시세·자산·주문·청산, 창업은 지도 핀 선택→적합도 진단→창업→가게 현황. 수수료율·계수는 서버가 내려준다 | `www/app/(seoul)/game/` · `www/components/game/` |
 | ROADMAP 스포크 판정 | `game` 행 **추가됨**(0단계). 같은 표에 `soccer = 삭제됨 (2026-07-15)` | `minseok/_docs/ROADMAP.md` |
 | `.importlinter` | `root_packages` **9개** — `game` 등록 완료(6지점). **계약 5종 전부 KEPT** | `PYTHONPATH=apps lint-imports --config .importlinter` |
@@ -259,7 +256,7 @@ has_sales · has_store
 | `game_ledger` | 3 | `user_id` · `game_day` · `source`(`initial`\|`trade`\|`store`\|`settlement`) · `amount_krw` · `ref_type` · `ref_id` |
 | `game_stores` | 6 | `user_id` · `trdar_code` · `service_code` · `opened_game_day` · `closed_game_day` · `status` · **`store_scale`** · `deposit_krw` · `interior_krw` · **`profile_snapshot`**(JSONB) · `settled_through_day` · `epoch_id` |
 | `game_store_decisions` | 6 | `store_id` · `effective_from_day` · `payload`(JSONB: 가격·직원·시설) — **결정론 재계산의 입력** |
-| `game_quarter_settlements` | 8 | `store_id` · `game_quarter` · 수익·비용 분해 · `payload`(JSONB) |
+| `game_quarter_settlements` | 8 | `store_id` · `game_quarter` · `days_counted` · 수익·비용 4분해 · `profit_krw` · `payload`(JSONB). **(store_id, game_quarter) 유니크가 이중 정산을 DB에서 막는다** |
 
 **한 번에 6개를 만들지 않는다**(§6 게이트 ⑤). 3단계에 3개, 6단계에 2개, 8단계에 1개다.
 
