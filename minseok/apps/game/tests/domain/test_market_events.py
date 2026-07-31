@@ -104,11 +104,45 @@ def test_즉시_충격은_여러_틱에_걸쳐_들어간다():
 def test_해당하지_않는_종목에는_영향이_없다():
     symbol_events = [e for e in _all_events(600) if e.scope == "symbol"]
     event = symbol_events[0]
-    other = next(s for s in SYMBOLS if s.symbol != event.target and s.sector != event.target)
+    other = next(
+        s for s in SYMBOLS if s.symbol != event.target and s.sector_group != event.target
+    )
     # 그 시점에 시장·섹터 이벤트가 없다면 다른 종목 영향은 0이어야 한다
     window = [e for e in events.events_in_window(event.tick) if e.scope != "symbol"]
     if not window:
         assert events.impact(other, event.tick) == 0.0
+
+
+def test_섹터_이벤트는_3종목_이상에_걸린다():
+    """game-strategy §3-3 표는 '섹터 3~5종목'이다.
+
+    세부 업종(`sector`)은 12종목에 12개라 그걸로 판정하면 항상 1종목만 맞는다 —
+    섹터 이벤트가 종목 이벤트의 약한 복제본이 되어 유형이 하나 사라진다.
+    """
+    sector_events = [e for e in _all_events(2_000) if e.scope == "sector"]
+    assert sector_events
+    for event in sector_events:
+        hit = [s for s in SYMBOLS if events._applies_to(event, s)]
+        assert 3 <= len(hit) <= 5, f"{event.target}에 {len(hit)}종목"
+
+
+def test_창은_가장_긴_지속기간을_담는다():
+    """창이 지속기간보다 짧으면 드리프트가 정점에 닿기 전에 잘린다."""
+    longest = max(spec[3] for spec in events._SCOPE_SPEC.values())
+    assert events.EVENT_WINDOW_TICKS >= longest * TICKS_PER_GAME_DAY
+
+
+def test_이벤트_영향은_창_경계에서_0으로_수렴한다():
+    """테이퍼가 없으면 창을 벗어나는 순간 충격이 통째로 사라져 절벽이 생긴다.
+
+    유저에게는 아무 뉴스도 없이 차트가 최대 6% 꺾이는 것으로 보인다.
+    """
+    event = next(e for e in _all_events(2_000) if e.scope == "symbol")
+    params = next(s for s in SYMBOLS if s.symbol == event.target)
+    edge = event.tick + events.EVENT_WINDOW_TICKS
+    just_inside = abs(events.impact(params, edge - 1))
+    peak = abs(events.impact(params, event.tick + events.EVENT_RAMP_TICKS))
+    assert just_inside < peak * 0.05
 
 
 def test_이벤트가_가격을_실제로_움직인다():

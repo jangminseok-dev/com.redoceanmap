@@ -8,7 +8,7 @@ from game.app.use_cases.market_price_interactor import (
     MarketPriceInteractor,
 )
 from game.domain.clock.game_epoch import SEASON_TICKS
-from game.domain.market.symbol_params import SYMBOLS
+from game.domain.market.symbol_params import CALIBRATED_AT, SYMBOLS
 
 
 class _StubClock:
@@ -38,7 +38,9 @@ async def test_응답은_스스로_가상임을_밝힌다():
         MarketPriceQuery(ticks=10)
     )
     assert result.virtual is True
-    assert result.calibrated is False  # 캘리브레이션 미실행 잠정값
+    # 캘리브레이션 여부는 상수 파일이 정하므로 그 상태를 그대로 따라간다 —
+    # 값을 박아두면 σ를 다시 구울 때마다 무관한 테스트가 깨진다.
+    assert result.calibrated is (CALIBRATED_AT is not None)
 
 
 async def test_미래_틱은_만들지_않는다():

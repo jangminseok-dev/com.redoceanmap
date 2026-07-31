@@ -85,11 +85,16 @@ def _calibrate(returns: dict[str, list[float]]) -> list[tuple[float, float]]:
 
 
 def _pick_slots(stats: list[tuple[float, float]], count: int) -> list[tuple[float, float]]:
-    """σ 분위수를 균등 분할해 대표 `count`개를 뽑는다(저·중·고변동이 고르게 섞이도록)."""
+    """σ 분위수를 균등 분할해 대표 `count`개를 뽑는다(저·중·고변동이 고르게 섞이도록).
+
+    **양 끝점을 포함한다.** `i * (len / count)`으로 나누면 마지막 슬롯이 p91에서 멈춰
+    최고변동 종목 몇 개가 한 번도 선택되지 않는다(68종목·12슬롯일 때 상위 5개 배제).
+    게임에 고변동 종목이 필요하고 `SIGMA_CLIP_MAX`도 그 구간을 위해 있으므로 꼬리까지 쓴다.
+    """
     if len(stats) < count:
         raise SystemExit(f"종목이 부족하다: {len(stats)}개 < {count}개")
-    step = len(stats) / count
-    return [stats[min(int(i * step), len(stats) - 1)] for i in range(count)]
+    last = len(stats) - 1
+    return [stats[round(i * last / (count - 1))] for i in range(count)]
 
 
 def _center(mus: list[float]) -> list[float]:
@@ -107,7 +112,7 @@ def _render(slots: list[tuple[float, float]], mus: list[float]) -> str:
     for params, (sigma, _), mu in zip(SYMBOLS, slots, mus, strict=True):
         lines.append(
             f'    SymbolParams("{params.symbol}", "{params.name}", "{params.sector}", '
-            f"{params.base_price_krw:_}, {sigma:.4f}, {mu:+.5f}),"
+            f'"{params.sector_group}", {params.base_price_krw:_}, {sigma:.4f}, {mu:+.5f}),'
         )
     return "\n".join(lines)
 

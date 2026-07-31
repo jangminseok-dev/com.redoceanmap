@@ -58,6 +58,11 @@ def test_시즌_잔여_틱은_음수가_되지_않는다():
     assert clock.describe(0).ticks_remaining == clock.SEASON_TICKS
 
 
-def test_에포크_시작은_KST_09시다():
+def test_에포크_시작은_UTC로_고정된_aware_시각이다():
+    """KST/UTC 혼동을 잡는다 — 로컬 시각을 UTC로 오인하면 게임 시각이 9시간 어긋난다.
+
+    시작 **시각 자체**는 배포일에 정하는 값이라 여기에 박지 않는다(§1-4: 확정 후 불변).
+    """
+    assert clock.GAME_EPOCH_START_UTC.tzinfo is timezone.utc
     kst = timezone(timedelta(hours=9))
-    assert clock.GAME_EPOCH_START_UTC.astimezone(kst).hour == 9
+    assert clock.GAME_EPOCH_START_UTC.astimezone(kst).minute == 0  # 정시에 맞춘다

@@ -10,6 +10,10 @@
 
 - **즉시 충격** — 3틱에 걸쳐 선형으로 반영한다. 한 틱에 다 넣으면 차트가 수직선이 된다.
 - **지속 드리프트** — 지수감쇠하며 며칠에 걸쳐 밀어 올리거나 끌어내린다.
+
+두 갈래 모두 **창 경계로 갈수록 0에 수렴한다**(테이퍼). 창은 계산 비용을 일정하게 만들려고
+두는 것인데, 테이퍼가 없으면 이벤트가 창을 벗어나는 순간 기여가 통째로 사라져 최대 6%짜리
+역방향 점프가 생긴다 — 유저에게는 아무 뉴스도 없이 차트가 꺾이는 절벽으로 보인다.
 """
 from __future__ import annotations
 
@@ -23,7 +27,8 @@ from game.domain.rng.deterministic import uniform
 EVENT_SLOT_TICKS = 15  # 게임 6시간마다 1슬롯 = 하루 4슬롯
 EVENT_PROBABILITY = 0.25  # 슬롯당 발생 확률 → 평균 게임 1일 1건 = 현실 1시간 1건
 EVENT_RAMP_TICKS = 3  # 즉시 충격을 이 틱에 나눠 반영
-EVENT_WINDOW_TICKS = 180  # 게임 3일 — 이보다 오래된 이벤트는 계산에서 뺀다
+EVENT_WINDOW_TICKS = 300  # 게임 5일 — 이보다 오래된 이벤트는 계산에서 뺀다.
+#                           가장 긴 지속(섹터 5일)을 담아야 드리프트가 정점 전에 잘리지 않는다
 
 # 범위별 비중·강도. 시장 전체 이벤트가 가장 세고 가장 짧다.
 _SCOPE_SYMBOL, _SCOPE_SECTOR, _SCOPE_MARKET = "symbol", "sector", "market"
@@ -139,9 +144,9 @@ def event_at_slot(slot: int) -> MarketEvent | None:
         params = SYMBOLS[int(uniform("evt-target", key) * len(SYMBOLS)) % len(SYMBOLS)]
         target, target_name = params.symbol, params.name
     elif scope == _SCOPE_SECTOR:
-        sectors = sorted({s.sector for s in SYMBOLS})
-        sector = sectors[int(uniform("evt-target", key) * len(sectors)) % len(sectors)]
-        target, target_name = sector, sector
+        groups = sorted({s.sector_group for s in SYMBOLS})
+        group = groups[int(uniform("evt-target", key) * len(groups)) % len(groups)]
+        target, target_name = group, group
     else:
         target, target_name = "", "시장 전체"
 
@@ -187,7 +192,7 @@ def _applies_to(event: MarketEvent, params: SymbolParams) -> bool:
     if event.scope == _SCOPE_MARKET:
         return True
     if event.scope == _SCOPE_SECTOR:
-        return params.sector == event.target
+        return params.sector_group == event.target
     return params.symbol == event.target
 
 
@@ -205,12 +210,14 @@ def impact(params: SymbolParams, tick: int) -> float:
             continue
         # 즉시 충격 — 3틱에 걸쳐 선형으로 들어간다
         ramp = min(1.0, (elapsed_ticks + 1) / EVENT_RAMP_TICKS)
-        total += event.shock * ramp
         # 지속 드리프트 — 지수감쇠
         elapsed_days = elapsed_ticks / TICKS_PER_GAME_DAY
-        total += (
+        drift = (
             event.drift_per_day
             * elapsed_days
             * math.exp(-elapsed_days / event.duration_days)
         )
+        # 창 경계에서 0이 되게 깎는다 — 없으면 창을 벗어나는 순간 절벽이 생긴다
+        taper = max(0.0, 1.0 - elapsed_ticks / EVENT_WINDOW_TICKS)
+        total += (event.shock * ramp + drift) * taper
     return total

@@ -14,8 +14,11 @@ from datetime import datetime, timezone
 GAME_EPOCH_ID = 1
 RULES_VERSION = "v1"
 
-# 시즌 1 시작 — 2026-07-31 09:00 KST. 확정 후 불변이다.
-GAME_EPOCH_START_UTC = datetime(2026, 7, 31, 0, 0, 0, tzinfo=timezone.utc)
+# 시즌 1 시작 — 2026-07-31 17:00 KST(실배포 시각). 확정 후 불변이다.
+#
+# 원래 09:00 KST로 박혀 있었는데 그대로 배포하면 게임이 7일차(현실 1시간 = 게임 1일)부터
+# 시작한다 — 아무도 플레이하지 않은 과거가 이미 지나간 상태가 된다. 배포 시각으로 옮겼다.
+GAME_EPOCH_START_UTC = datetime(2026, 7, 31, 8, 0, 0, tzinfo=timezone.utc)
 
 # --- 시간 축 -----------------------------------------------------------------
 TICK_SECONDS = 60           # 프론트 폴링 하한과 정합
