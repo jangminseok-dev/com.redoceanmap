@@ -66,6 +66,7 @@ from mail.adapter.inbound.api.v1.inbound_mail_router import inbound_mail_router
 from mail.adapter.inbound.api.v1.postman_router import postman_router
 from mail.adapter.inbound.api.v1.watcher_router import watcher_router
 from mail.dependencies.watcher_provider import get_mail_storage_gateway
+from hub.dependencies.area_demand_profile_provider import get_area_demand_profile_port
 from hub.dependencies.commercial_data_provider import get_commercial_data_port
 from hub.dependencies.grade_policy_provider import get_grade_policy_port
 from hub.dependencies.member_directory_provider import get_member_directory_port
@@ -82,6 +83,7 @@ from hub.dependencies.stock_demand_provider import get_stock_demand_port
 from hub.dependencies.stock_dataset_stats_provider import get_stock_dataset_stats_port
 from hub.dependencies.news_event_study_provider import get_news_event_study_port
 from market.dependencies.area_backtest_report_provider import get_area_backtest_report_gateway
+from market.dependencies.area_demand_profile_provider import get_area_demand_profile_gateway
 from market.dependencies.commercial_data_provider import get_commercial_data_gateway
 from market.dependencies.market_news_provider import (
     get_market_news_search_gateway,
@@ -94,6 +96,7 @@ from market.adapter.inbound.api.v1.area_score_router import area_score_router
 from market.adapter.inbound.api.v1.area_showcase_router import area_showcase_router
 from market.adapter.inbound.api.v1.area_stats_router import area_stats_router
 from market.adapter.inbound.api.v1.cartographer_router import cartographer_router
+from game.adapter.inbound.api.v1.area_fitness_router import area_fitness_router
 from game.adapter.inbound.api.v1.market_price_router import market_price_router
 from game.adapter.inbound.api.v1.rulebook_router import rulebook_router
 from game.adapter.inbound.api.v1.trade_router import trade_router
@@ -193,6 +196,7 @@ app.include_router(analyst_router, dependencies=_authenticated)
 app.include_router(market_price_router, dependencies=_authenticated)  # 게임 — 가상 시세
 app.include_router(wallet_router, dependencies=_authenticated)
 app.include_router(trade_router, dependencies=_authenticated)
+app.include_router(area_fitness_router, dependencies=_authenticated)
 app.include_router(rulebook_router, dependencies=_authenticated)
 app.include_router(recommendation_router, dependencies=_authenticated)
 app.include_router(curator_router, dependencies=_authenticated)
@@ -223,6 +227,7 @@ app.include_router(langchain_semantic_router, dependencies=_authenticated)  # �
 # 합성 루트: 허브(hub)의 포트들을 스포크 구현으로 주입한다.
 # (허브는 스포크를 모르고, main.py만 둘을 안다 — 스타 토폴로지 허브 격리 유지)
 app.dependency_overrides[get_commercial_data_port] = get_commercial_data_gateway
+app.dependency_overrides[get_area_demand_profile_port] = get_area_demand_profile_gateway
 app.dependency_overrides[get_recommendation_record_port] = get_recommendation_record_gateway
 app.dependency_overrides[get_stock_analysis_port] = get_stock_analysis_gateway
 app.dependency_overrides[get_stock_analysis_port_batch] = get_stock_analysis_gateway_batch

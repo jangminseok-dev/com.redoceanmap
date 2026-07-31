@@ -25,8 +25,9 @@
 
 | 항목 | 실측 | 확인 방법 |
 |---|---|---|
-| game 앱 코드 | **4단계 완료.** 슬라이스 4개(`rulebook`·`market_price`·`wallet`·`trade`) + 도메인 5모듈. 테스트 92개 통과 | `PYTHONPATH=apps python3 -m pytest apps/game -q` |
-| 결정론·경계 검사 | **위반 0건** (61파일 AST 검사) | `python3 scripts/check_game_determinism.py` |
+| game 앱 코드 | **5단계 완료.** 슬라이스 5개(+`area_fitness`) + 도메인 7모듈. 테스트 123개 통과 | `PYTHONPATH=apps python3 -m pytest apps/game -q` |
+| 허브 포트 | `AreaDemandProfilePort` **1개**(메서드 1개) — market이 구현, game이 소비. `CommercialDataPort`는 **무변경** | `hub/app/ports/output/` |
+| 결정론·경계 검사 | **위반 0건** (69파일 AST 검사) | `python3 scripts/check_game_determinism.py` |
 | 응답 성능 | 12종목 × 60틱 **p95 13.8ms** / × 240틱(최대) **p95 54.5ms** — 목표 200ms | 인터랙터 직접 호출 30회 |
 | DB | **테이블 3개**(`game_wallets`·`game_positions`·`game_ledger`), 마이그레이션 `a2b3c4d5e6f7`. ⏸ **적용은 미실행**(이 맥에 DB 없음) | ORM↔마이그레이션 일치 테스트 |
 | 프론트 | `/game` — 시세 차트 + 자산 요약 + 주문 폼 + 포지션 청산(4단계). **수수료율은 서버가 내려준다** | `www/app/(seoul)/game/` |

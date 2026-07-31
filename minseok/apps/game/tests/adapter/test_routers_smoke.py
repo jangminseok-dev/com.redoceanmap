@@ -10,20 +10,24 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from core.security import get_current_user_id
+from game.adapter.inbound.api.v1.area_fitness_router import area_fitness_router
 from game.adapter.inbound.api.v1.market_price_router import market_price_router
 from game.adapter.inbound.api.v1.rulebook_router import rulebook_router
 from game.adapter.inbound.api.v1.trade_router import trade_router
 from game.adapter.inbound.api.v1.wallet_router import wallet_router
+from game.app.use_cases.area_fitness_interactor import AreaFitnessInteractor
 from game.app.use_cases.market_price_interactor import MarketPriceInteractor
 from game.app.use_cases.rulebook_interactor import RulebookInteractor
 from game.app.use_cases.trade_interactor import TradeInteractor
 from game.app.use_cases.wallet_interactor import WalletInteractor
+from game.dependencies.area_fitness_provider import get_area_fitness_use_case
 from game.dependencies.market_price_provider import get_market_price_use_case
 from game.dependencies.rulebook_provider import get_rulebook_use_case
 from game.dependencies.trade_provider import get_trade_use_case
 from game.dependencies.wallet_provider import get_wallet_use_case
 from game.domain.market.symbol_params import SYMBOLS
 from game.tests.app.use_cases.stub_account_repository import StubAccountRepository, StubClock
+from game.tests.app.use_cases.test_area_fitness_interactor import _StubProfiles, _profile
 
 USER = 42
 TICK = 1_500
@@ -37,7 +41,13 @@ class _StubRecord:
 @pytest.fixture
 def client() -> TestClient:
     app = FastAPI()
-    for router in (rulebook_router, market_price_router, wallet_router, trade_router):
+    for router in (
+        rulebook_router,
+        market_price_router,
+        wallet_router,
+        trade_router,
+        area_fitness_router,
+    ):
         app.include_router(router)
 
     repository = StubAccountRepository()
@@ -53,6 +63,9 @@ def client() -> TestClient:
     )
     app.dependency_overrides[get_trade_use_case] = lambda: TradeInteractor(
         repository=repository, clock=clock
+    )
+    app.dependency_overrides[get_area_fitness_use_case] = lambda: AreaFitnessInteractor(
+        profiles=_StubProfiles(_profile())
     )
     return TestClient(app)
 
@@ -123,3 +136,18 @@ def test_예산을_넘는_주문은_400이다(client):
 
 def test_없는_포지션_청산은_404다(client):
     assert client.post("/game/trades/999/close").status_code == 404
+
+
+def test_입지_적합도_미리보기가_실데이터와_게임값을_구분해_낸다(client):
+    body = client.get("/game/areas/1001/fitness?service_code=CS100010").json()
+
+    # 접두사가 곧 출처다 — observed는 실데이터, simulated는 게임 규칙
+    assert body["observedSalesPerStore"] > 0
+    assert body["simulatedMonthlySalesKrw"] > 0
+    assert 0.4 <= body["fitness"] <= 1.6
+    assert len(body["components"]) == 4
+    assert body["diagnoses"]
+
+
+def test_업종_코드가_없으면_422다(client):
+    assert client.get("/game/areas/1001/fitness").status_code == 422

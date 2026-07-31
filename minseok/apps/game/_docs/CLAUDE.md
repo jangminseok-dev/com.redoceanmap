@@ -31,6 +31,7 @@
 | market_price | `GET /game/market/prices?ticks=` | 전 종목 현재가·등락률·최근 곡선. `ticks` 2~240 |
 | wallet | `GET /game/wallet` | 현금·투자가능액·보유 포지션(현재 시세 평가)·총자산. 계정이 없으면 초기자본 100만원으로 자동 생성 |
 | trade | `POST /game/trades` · `POST /game/trades/{id}/close` | 롱/숏 진입·청산. 레버리지 없음, 숏 손실 상한은 증거금, 체결가는 요청 도착 틱 |
+| area_fitness | `GET /game/areas/{trdar_code}/fitness?service_code=` | 창업 전 입지 미리보기 — 적합도 4축(수요·시간대·경쟁·생존) + 실데이터 근거 진단 문장. 허브 `AreaDemandProfilePort` 소비 |
 
 ## 레이어
 
@@ -42,7 +43,10 @@ apps/game/
 │   ├── market/
 │   │   ├── symbol_params.py                 # 종목 12개 σ·μ (캘리브레이션 산출물)
 │   │   └── price_engine.py                  # 브라운 브리지 — price_at / price_series
-│   └── trading/trading_rules.py             # 수수료·증거금·손실상한·최소생활자금
+│   ├── trading/trading_rules.py             # 수수료·증거금·손실상한·최소생활자금
+│   └── commerce/
+│       ├── fitness.py                       # 적합도 4축 — 분포는 market, 판정은 게임 규칙
+│       └── diagnosis.py                     # 진단 문장 템플릿(LLM 미사용) + 조사 처리
 ├── app/
 │   ├── dtos/{rulebook,market_price,wallet,trade,account}_dto.py
 │   ├── ports/input/{rulebook,market_price,wallet,trade}_use_case.py

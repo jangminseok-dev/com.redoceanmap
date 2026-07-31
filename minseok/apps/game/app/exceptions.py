@@ -32,3 +32,7 @@ class PositionNotFound(GameError):
 
 class SeasonClosed(GameError):
     """시즌이 끝나 더 이상 매매할 수 없다. 기록은 읽기 전용으로 남는다."""
+
+
+class AreaProfileUnavailable(GameError):
+    """상권·업종 조합의 실데이터가 없다. 없는 상권이거나 없는 업종이다."""
