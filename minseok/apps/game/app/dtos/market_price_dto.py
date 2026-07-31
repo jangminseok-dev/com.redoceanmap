@@ -26,6 +26,18 @@ class SymbolPrices:
 
 
 @dataclass(frozen=True)
+class MarketEventView:
+    """최근 호재·악재. 저장하지 않고 매번 재현한다 — 같은 틱이면 같은 목록이다."""
+
+    tick: int
+    scope: str  # symbol | sector | market
+    target: str
+    target_name: str
+    positive: bool
+    headline: str
+
+
+@dataclass(frozen=True)
 class MarketPricesResponse:
     """게임 시세 응답.
 
@@ -41,3 +53,4 @@ class MarketPricesResponse:
     game_quarter: int
     season_over: bool
     symbols: tuple[SymbolPrices, ...]
+    events: tuple[MarketEventView, ...]

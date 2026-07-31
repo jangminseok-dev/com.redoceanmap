@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from game.app.dtos.market_price_dto import (
+    MarketEventView,
     MarketPricesResponse,
     MarketPriceQuery,
     PricePoint,
@@ -16,7 +17,7 @@ from game.domain.clock.game_epoch import (
     TICKS_PER_GAME_DAY,
     describe,
 )
-from game.domain.market import price_engine
+from game.domain.market import market_events, price_engine
 from game.domain.market.symbol_params import CALIBRATED_AT, SYMBOLS
 
 MIN_TICKS = 2
@@ -59,6 +60,17 @@ class MarketPriceInteractor(MarketPriceUseCase):
             for params in SYMBOLS
         )
         return MarketPricesResponse(
+            events=tuple(
+                MarketEventView(
+                    tick=e.tick,
+                    scope=e.scope,
+                    target=e.target,
+                    target_name=e.target_name,
+                    positive=e.positive,
+                    headline=e.headline,
+                )
+                for e in market_events.recent_headlines(end_tick)
+            ),
             virtual=True,
             calibrated=CALIBRATED_AT is not None,
             epoch_id=GAME_EPOCH_ID,

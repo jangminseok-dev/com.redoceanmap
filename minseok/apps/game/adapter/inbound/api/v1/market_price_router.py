@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from game.adapter.inbound.api.schemas.market_price_schema import (
+    MarketEventSchema,
     MarketPricesResponseSchema,
     PricePointSchema,
     SymbolPricesSchema,
@@ -45,5 +46,16 @@ async def list_prices(
                 ],
             )
             for s in result.symbols
+        ],
+        events=[
+            MarketEventSchema(
+                tick=e.tick,
+                scope=e.scope,
+                target=e.target,
+                targetName=e.target_name,
+                positive=e.positive,
+                headline=e.headline,
+            )
+            for e in result.events
         ],
     )

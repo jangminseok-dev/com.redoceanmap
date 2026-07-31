@@ -17,6 +17,16 @@ class SymbolPricesSchema(BaseModel):
     series: list[PricePointSchema]
 
 
+class MarketEventSchema(BaseModel):
+
+    tick: int
+    scope: str = Field(description="symbol | sector | market")
+    target: str
+    targetName: str
+    positive: bool
+    headline: str = Field(description="템플릿 문구 — 가상 회사 대상이며 LLM 생성이 아니다")
+
+
 class MarketPricesResponseSchema(BaseModel):
 
     virtual: bool = Field(description="항상 true — 실시세가 아니라 서버가 생성한 가상 주가")
@@ -30,3 +40,4 @@ class MarketPricesResponseSchema(BaseModel):
     gameQuarter: int
     seasonOver: bool
     symbols: list[SymbolPricesSchema]
+    events: list[MarketEventSchema]

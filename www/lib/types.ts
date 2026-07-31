@@ -748,6 +748,15 @@ export type GameSymbolPrices = {
   series: GamePricePoint[];
 };
 
+export type GameMarketEvent = {
+  tick: number;
+  scope: "symbol" | "sector" | "market";
+  target: string;
+  targetName: string;
+  positive: boolean;
+  headline: string; // 템플릿 문구 — 가상 회사 대상이며 LLM 생성이 아니다
+};
+
 export type GameMarketPrices = {
   virtual: boolean; // 항상 true — 실시세가 아니라 서버가 생성한 가상 주가
   calibrated: boolean; // false면 변동성이 실데이터 캘리브레이션 전 잠정값
@@ -758,4 +767,5 @@ export type GameMarketPrices = {
   gameQuarter: number;
   seasonOver: boolean;
   symbols: GameSymbolPrices[];
+  events: GameMarketEvent[]; // 최근 호재·악재(최신순)
 };

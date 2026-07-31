@@ -7,12 +7,16 @@
 구현은 **틱 단위 단일 브라운 브리지**다. 구간 `[0, 2^16]`을 이분 분할하며 목표 틱을 향해
 내려가므로 호출당 정규난수 16개(= blake2b 32회)로 끝난다. 일봉이 필요하면 `t = d × 60`에서
 평가하면 된다 — 브라운 운동의 자기유사성 덕에 별도의 일봉 축이 필요 없다.
+
+여기에 **이벤트 충격**(`market_events.impact`)이 더해진다. 창(게임 3일) 밖 이벤트는 계산에서
+빠지므로 이 항도 경과 시간과 무관하게 비용이 일정하다.
 """
 from __future__ import annotations
 
 import math
 
 from game.domain.clock.game_epoch import SEASON_TICKS, TICKS_PER_GAME_DAY
+from game.domain.market import market_events
 from game.domain.market.symbol_params import SIGMA_GAME_MULTIPLIER, SymbolParams
 from game.domain.rng.deterministic import normal
 
@@ -63,6 +67,7 @@ def price_at(params: SymbolParams, tick: int) -> int:
         math.log(params.base_price_krw)
         + params.mu_daily * days
         + sigma_tick * _brownian(params.symbol, t)
+        + market_events.impact(params, t)  # 호재·악재 — 창 밖 이벤트는 계산에서 빠진다
     )
     return max(1, round(math.exp(log_price)))
 

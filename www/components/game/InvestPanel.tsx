@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Info, TriangleAlert } from "lucide-react";
 import GameOrderForm from "@/components/game/GameOrderForm";
+import MarketNewsFeed from "@/components/game/MarketNewsFeed";
 import GamePositionList from "@/components/game/GamePositionList";
 import GamePriceLine from "@/components/game/GamePriceLine";
 import {
@@ -212,6 +213,14 @@ export default function InvestPanel() {
                 onSubmit={(side, quantity) =>
                   open.mutate({ symbol: current.symbol, side, quantity })
                 }
+              />
+            )}
+
+            {data && (
+              <MarketNewsFeed
+                events={data.events}
+                currentTick={data.tick}
+                ticksPerGameDay={rulebookQ.data?.ticksPerGameDay ?? 60}
               />
             )}
 

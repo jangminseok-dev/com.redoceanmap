@@ -22,9 +22,9 @@
 
 | 항목 | 실측 | 확인 방법 |
 |---|---|---|
-| game 앱 코드 | **8단계 완료.** 슬라이스 8개(+`settlement`) + 도메인 11모듈. 테스트 191개 통과 | `PYTHONPATH=apps python3 -m pytest apps/game -q` |
+| game 앱 코드 | **9단계 완료(전 단계).** 슬라이스 8개 + 도메인 12모듈. 테스트 204개 통과 | `PYTHONPATH=apps python3 -m pytest apps/game -q` |
 | 허브 포트 | `AreaDemandProfilePort` **1개**(메서드 1개) — market이 구현, game이 소비. `CommercialDataPort`는 **무변경** | `hub/app/ports/output/` |
-| 결정론·경계 검사 | **위반 0건** (99파일 AST 검사) | `python3 scripts/check_game_determinism.py` |
+| 결정론·경계 검사 | **위반 0건** (100파일 AST 검사) | `python3 scripts/check_game_determinism.py` |
 | 응답 성능 | 12종목 × 60틱 **p95 13.8ms** / × 240틱(최대) **p95 54.5ms** — 목표 200ms | 인터랙터 직접 호출 30회 |
 | DB | **테이블 6개** — 지갑·포지션·원장(`a2b3c4d5e6f7`), 가게·운영결정(`b3c4d5e6f7a8`), 분기결산(`c4d5e6f7a8b9`). ⏸ **적용은 미실행**(이 맥에 DB 없음) | ORM↔마이그레이션 일치 테스트 |
 | 프론트 | `/game` — **세그먼트 탭 2개**(모의 투자 · 상권 창업). 투자는 시세·자산·주문·청산, 창업은 지도 핀 선택→적합도 진단→창업→가게 현황. 수수료율·계수는 서버가 내려준다 | `www/app/(seoul)/game/` · `www/components/game/` |
@@ -95,7 +95,8 @@ logP(sym, t) = logP0(sym) + μ(sym)·(t / 60) + σ_tick(sym)·W(sym, t) + J(sym,
             시드가 (lo, hi) 쌍이라 같은 노드는 어느 경로로 와도 같은 값이다.
   σ_tick  : sigma_daily × SIGMA_GAME_MULTIPLIER / sqrt(60)
             — 60틱(게임 1일) 누적이 정확히 일간 변동성이 되도록 나눈다
-  J       : 최근 EVENT_WINDOW(게임 3일 = 180틱) 내 이벤트 충격 합 (9단계에 도입)
+  J       : 최근 EVENT_WINDOW(게임 3일 = 180틱) 내 이벤트 충격 합
+            — 창 밖은 계산에서 빠져 이 항도 경과 시간과 무관하다
 ```
 
 호출당 **정규난수 16개**(= blake2b 32회)로 경과 시간과 무관하다.
