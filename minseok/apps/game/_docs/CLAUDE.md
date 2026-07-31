@@ -32,6 +32,8 @@
 | wallet | `GET /game/wallet` | 현금·투자가능액·보유 포지션(현재 시세 평가)·총자산. 계정이 없으면 초기자본 100만원으로 자동 생성 |
 | trade | `POST /game/trades` · `POST /game/trades/{id}/close` | 롱/숏 진입·청산. 레버리지 없음, 숏 손실 상한은 증거금, 체결가는 요청 도착 틱 |
 | area_fitness | `GET /game/areas/{trdar_code}/fitness?service_code=` | 창업 전 입지 미리보기 — 적합도 4축(수요·시간대·경쟁·생존) + 실데이터 근거 진단 문장. 허브 `AreaDemandProfilePort` 소비 |
+| store_open | `POST /game/stores` | 창업 — 투입 자본이 가게 규모를 정한다. 보증금(회수 가능)·인테리어(회수 불가) 지불 |
+| store_daily | `GET /game/stores` · `GET /game/stores/{id}?days=` | 가게 목록·현황. 일별 매출·비용·반려율과 오늘 온 손님 구성. **일별 매출은 저장하지 않고 재계산한다** |
 
 ## 레이어
 
@@ -44,9 +46,12 @@ apps/game/
 │   │   ├── symbol_params.py                 # 종목 12개 σ·μ (캘리브레이션 산출물)
 │   │   └── price_engine.py                  # 브라운 브리지 — price_at / price_series
 │   ├── trading/trading_rules.py             # 수수료·증거금·손실상한·최소생활자금
+│   ├── economy/rule_coefficients.py         # 임대료·인건비·원가 계수 — 이 파일이 유일 소유자
 │   └── commerce/
 │       ├── fitness.py                       # 적합도 4축 — 분포는 market, 판정은 게임 규칙
-│       └── diagnosis.py                     # 진단 문장 템플릿(LLM 미사용) + 조사 처리
+│       ├── diagnosis.py                     # 진단 문장 템플릿(LLM 미사용) + 조사 처리
+│       ├── store_simulation.py              # 일일 매출·비용 — 시설이 매출 상한을 만든다
+│       └── customer_sampler.py              # 손님 표본 40명 — 실데이터 분포 역변환 샘플링
 ├── app/
 │   ├── dtos/{rulebook,market_price,wallet,trade,account}_dto.py
 │   ├── ports/input/{rulebook,market_price,wallet,trade}_use_case.py
@@ -70,9 +75,8 @@ apps/game/
 
 ## 아직 없는 것 (단계별로 들어온다)
 
-`game_wallets`·`game_positions`·`game_ledger`(3단계) · 허브 `AreaDemandProfilePort`(5단계) ·
-`game_stores`·`game_store_decisions`(6단계) · `game_quarter_settlements`(8단계) ·
-시장 이벤트(9단계). **미리 폴더를 만들어두지 않는다**(harness §6 게이트 ⑥).
+프론트 상권 화면(7단계) · `game_quarter_settlements`와 분기 결산(8단계) · 시장 이벤트(9단계).
+**미리 폴더를 만들어두지 않는다**(harness §6 게이트 ⑥).
 
 ## 검증
 

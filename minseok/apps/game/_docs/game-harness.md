@@ -25,9 +25,9 @@
 
 | 항목 | 실측 | 확인 방법 |
 |---|---|---|
-| game 앱 코드 | **5단계 완료.** 슬라이스 5개(+`area_fitness`) + 도메인 7모듈. 테스트 123개 통과 | `PYTHONPATH=apps python3 -m pytest apps/game -q` |
+| game 앱 코드 | **6단계 완료.** 슬라이스 7개(+`store_open`·`store_daily`) + 도메인 10모듈. 테스트 167개 통과 | `PYTHONPATH=apps python3 -m pytest apps/game -q` |
 | 허브 포트 | `AreaDemandProfilePort` **1개**(메서드 1개) — market이 구현, game이 소비. `CommercialDataPort`는 **무변경** | `hub/app/ports/output/` |
-| 결정론·경계 검사 | **위반 0건** (69파일 AST 검사) | `python3 scripts/check_game_determinism.py` |
+| 결정론·경계 검사 | **위반 0건** (91파일 AST 검사) | `python3 scripts/check_game_determinism.py` |
 | 응답 성능 | 12종목 × 60틱 **p95 13.8ms** / × 240틱(최대) **p95 54.5ms** — 목표 200ms | 인터랙터 직접 호출 30회 |
 | DB | **테이블 3개**(`game_wallets`·`game_positions`·`game_ledger`), 마이그레이션 `a2b3c4d5e6f7`. ⏸ **적용은 미실행**(이 맥에 DB 없음) | ORM↔마이그레이션 일치 테스트 |
 | 프론트 | `/game` — 시세 차트 + 자산 요약 + 주문 폼 + 포지션 청산(4단계). **수수료율은 서버가 내려준다** | `www/app/(seoul)/game/` |
@@ -257,8 +257,8 @@ has_sales · has_store
 | `game_wallets` | 3 | `user_id`(UNIQUE) · `cash_krw`(BigInteger) · `epoch_id` · `rule_version` |
 | `game_positions` | 3 | `user_id` · `symbol` · `side` · `quantity` · `entry_tick` · `entry_price_krw` · `closed_tick` · `realized_pnl_krw` · `fee_krw` · `epoch_id` |
 | `game_ledger` | 3 | `user_id` · `game_day` · `source`(`initial`\|`trade`\|`store`\|`settlement`) · `amount_krw` · `ref_type` · `ref_id` |
-| `game_stores` | 6 | `user_id` · `trdar_code` · `service_code` · `opened_game_day` · `status` · `facility_score` · `deposit_krw` · `epoch_id` |
-| `game_store_decisions` | 6 | `store_id` · `effective_from_day` · `payload`(JSONB) — **결정론 재계산의 입력** |
+| `game_stores` | 6 | `user_id` · `trdar_code` · `service_code` · `opened_game_day` · `closed_game_day` · `status` · **`store_scale`** · `deposit_krw` · `interior_krw` · **`profile_snapshot`**(JSONB) · `settled_through_day` · `epoch_id` |
+| `game_store_decisions` | 6 | `store_id` · `effective_from_day` · `payload`(JSONB: 가격·직원·시설) — **결정론 재계산의 입력** |
 | `game_quarter_settlements` | 8 | `store_id` · `game_quarter` · 수익·비용 분해 · `payload`(JSONB) |
 
 **한 번에 6개를 만들지 않는다**(§6 게이트 ⑤). 3단계에 3개, 6단계에 2개, 8단계에 1개다.
@@ -268,7 +268,9 @@ has_sales · has_store
 | 대상 | 저장 | 이유 |
 |---|---|---|
 | 주가·이벤트·손님 분포 | ⛔ **저장하지 않는다** | 순수 파생본이다. 언제든 재계산되고, 저장하는 순간 계산식과 갈라질 자리가 생긴다 |
+| 일별 매출·비용 | ⛔ **저장하지 않는다** | 창업 시각과 결정만 있으면 재계산된다. 유저가 며칠 접속하지 않아도 가게는 장사한 것이 된다 |
 | 체결가(`entry_price_krw`) | ✅ 저장하되 **정본은 계산식** | 저장값은 대조용 스냅샷이다. 재계산값과 어긋나면 그건 캐시 불일치가 아니라 **버그 알람**이다(§8 회귀 대상) |
+| `profile_snapshot`(상권 실데이터) | ✅ 저장 | **게임이 계산한 값이 아니라 외부 사실**이다(체결가와 같은 성격). 기준 분기가 에포크에 박혀 있어 재조회해도 같은 값이므로, 저장 이유는 일일 시뮬이 market DB를 왕복하지 않게 하려는 것뿐이다 |
 | 지갑·원장·결산 | ✅ **도메인 사실** | 유저 행위의 결과이지 시각의 함수가 아니다. 분기 결산은 캐시가 아니라 게임 규칙상 실재하는 사건이다 |
 
 ---

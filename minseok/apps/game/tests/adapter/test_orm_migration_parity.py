@@ -9,12 +9,17 @@ game 테이블은 6·8단계에 3개가 더 들어온다. 그때도 이 테스�
 from __future__ import annotations
 
 import ast
+import importlib
 import pathlib
+import pkgutil
 
-import game.adapter.outbound.orm.game_ledger_orm  # noqa: F401
-import game.adapter.outbound.orm.game_position_orm  # noqa: F401
-import game.adapter.outbound.orm.game_wallet_orm  # noqa: F401
+import game.adapter.outbound.orm as orm_package
 from core.database import Base
+
+# ORM 모듈을 손으로 나열하지 않는다 — 6단계에서 테이블 2개를 추가하며 여기 import를
+# 빠뜨려 테스트가 "마이그레이션에만 있다"고 잘못 지적했다. 패키지를 순회하면 그 실수가 없다.
+for _module in pkgutil.iter_modules(orm_package.__path__):
+    importlib.import_module(f"{orm_package.__name__}.{_module.name}")
 
 # FK 대상(`users.id`)을 import하지 않는다 — 스포크 직접 참조는 import-linter가 막는다.
 # `ForeignKey("users.id")`는 문자열 참조라 컬럼 메타데이터를 읽는 데는 resolve가 필요 없다

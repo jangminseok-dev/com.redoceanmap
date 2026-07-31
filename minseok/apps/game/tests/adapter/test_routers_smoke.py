@@ -13,20 +13,27 @@ from core.security import get_current_user_id
 from game.adapter.inbound.api.v1.area_fitness_router import area_fitness_router
 from game.adapter.inbound.api.v1.market_price_router import market_price_router
 from game.adapter.inbound.api.v1.rulebook_router import rulebook_router
+from game.adapter.inbound.api.v1.store_daily_router import store_daily_router
+from game.adapter.inbound.api.v1.store_open_router import store_open_router
 from game.adapter.inbound.api.v1.trade_router import trade_router
 from game.adapter.inbound.api.v1.wallet_router import wallet_router
 from game.app.use_cases.area_fitness_interactor import AreaFitnessInteractor
 from game.app.use_cases.market_price_interactor import MarketPriceInteractor
 from game.app.use_cases.rulebook_interactor import RulebookInteractor
+from game.app.use_cases.store_daily_interactor import StoreDailyInteractor
+from game.app.use_cases.store_open_interactor import StoreOpenInteractor
 from game.app.use_cases.trade_interactor import TradeInteractor
 from game.app.use_cases.wallet_interactor import WalletInteractor
 from game.dependencies.area_fitness_provider import get_area_fitness_use_case
 from game.dependencies.market_price_provider import get_market_price_use_case
 from game.dependencies.rulebook_provider import get_rulebook_use_case
+from game.dependencies.store_daily_provider import get_store_daily_use_case
+from game.dependencies.store_open_provider import get_store_open_use_case
 from game.dependencies.trade_provider import get_trade_use_case
 from game.dependencies.wallet_provider import get_wallet_use_case
 from game.domain.market.symbol_params import SYMBOLS
 from game.tests.app.use_cases.stub_account_repository import StubAccountRepository, StubClock
+from game.tests.app.use_cases.stub_store_repository import StubStoreRepository
 from game.tests.app.use_cases.test_area_fitness_interactor import _StubProfiles, _profile
 
 USER = 42
@@ -47,6 +54,8 @@ def client() -> TestClient:
         wallet_router,
         trade_router,
         area_fitness_router,
+        store_open_router,
+        store_daily_router,
     ):
         app.include_router(router)
 
@@ -66,6 +75,13 @@ def client() -> TestClient:
     )
     app.dependency_overrides[get_area_fitness_use_case] = lambda: AreaFitnessInteractor(
         profiles=_StubProfiles(_profile())
+    )
+    stores = StubStoreRepository(accounts=repository)
+    app.dependency_overrides[get_store_open_use_case] = lambda: StoreOpenInteractor(
+        profiles=_StubProfiles(_profile()), stores=stores, accounts=repository, clock=clock
+    )
+    app.dependency_overrides[get_store_daily_use_case] = lambda: StoreDailyInteractor(
+        stores=stores, clock=clock
     )
     return TestClient(app)
 
@@ -151,3 +167,42 @@ def test_입지_적합도_미리보기가_실데이터와_게임값을_구분해
 
 def test_업종_코드가_없으면_422다(client):
     assert client.get("/game/areas/1001/fitness").status_code == 422
+
+
+def test_창업하고_현황을_조회한다(client):
+    opened = client.post(
+        "/game/stores",
+        json={
+            "trdarCode": 1001,
+            "serviceCode": "CS100010",
+            "budgetKrw": 500_000,
+            "facilityScore": 300,
+            "staffCount": 2,
+            "priceFactor": 1.0,
+        },
+    )
+    assert opened.status_code == 200
+    receipt = opened.json()
+    assert receipt["cashDeltaKrw"] < 0
+    assert 0.02 <= receipt["storeScale"] <= 1.0
+
+    listed = client.get("/game/stores").json()
+    assert len(listed) == 1
+
+    detail = client.get(f"/game/stores/{receipt['storeId']}?days=7").json()
+    assert detail["seats"] == 30  # 시설 300점 = 좌석 30석
+    assert detail["rows"]
+    assert detail["customersByAge"]
+
+
+def test_없는_가게_조회는_404다(client):
+    assert client.get("/game/stores/999").status_code == 404
+
+
+def test_창업_조건이_범위를_벗어나면_422다(client):
+    body = client.post(
+        "/game/stores",
+        json={"trdarCode": 1001, "serviceCode": "CS100010", "budgetKrw": 500_000,
+              "facilityScore": 99999, "staffCount": 2, "priceFactor": 1.0},
+    )
+    assert body.status_code == 422

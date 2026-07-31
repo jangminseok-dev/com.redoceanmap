@@ -36,3 +36,7 @@ class SeasonClosed(GameError):
 
 class AreaProfileUnavailable(GameError):
     """상권·업종 조합의 실데이터가 없다. 없는 상권이거나 없는 업종이다."""
+
+
+class StoreNotFound(GameError):
+    """가게가 없거나 남의 것이다."""
