@@ -520,3 +520,47 @@ export type AreaShowcase = {
   rows: AreaShowcaseRow[];
   divisionMedians: DivisionMedian[];
 };
+
+// --- GET /game/myself · /game/market/prices ---------------------------------
+// 게임 시각은 서버가 계산한다 — 프론트는 틱을 만들지도, 가격을 계산하지도 않는다
+// (게임 상태는 시각의 함수이고 그 함수는 서버에만 있다 — game-harness §1-6).
+
+export type GameRulebook = {
+  id: number;
+  name: string;
+  introduction: string;
+  epochId: number; // 바뀌면 이전 시즌 기록은 읽기 전용
+  ruleVersion: string;
+  tick: number; // 1틱 = 60초
+  gameDay: number;
+  gameQuarter: number; // 1~8
+  dayOfQuarter: number; // 1~90
+  seasonOver: boolean;
+  ticksRemaining: number;
+};
+
+export type GamePricePoint = {
+  tick: number;
+  priceKrw: number;
+};
+
+export type GameSymbolPrices = {
+  symbol: string;
+  name: string; // 가상 회사명 — 실재 기업이 아니다
+  sector: string; // 업종은 실제 시장에서 가져왔다
+  priceKrw: number;
+  changePct: number; // 게임 1일(현실 1시간) 전 대비
+  series: GamePricePoint[];
+};
+
+export type GameMarketPrices = {
+  virtual: boolean; // 항상 true — 실시세가 아니라 서버가 생성한 가상 주가
+  calibrated: boolean; // false면 변동성이 실데이터 캘리브레이션 전 잠정값
+  epochId: number;
+  ruleVersion: string;
+  tick: number;
+  gameDay: number;
+  gameQuarter: number;
+  seasonOver: boolean;
+  symbols: GameSymbolPrices[];
+};

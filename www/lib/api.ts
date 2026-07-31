@@ -7,6 +7,8 @@ import type {
   ConversationMessage,
   ConversationSummary,
   Fundamentals,
+  GameMarketPrices,
+  GameRulebook,
   MarketArea,
   PriceHistory,
   RecommendationItem,
@@ -124,3 +126,11 @@ export const fetchAreaRanking = (params: {
 // 첫 화면 쇼케이스 — 이 앱에서 로그인 없이 열리는 유일한 조회다(자치구별 점포당 매출 1위).
 export const fetchAreaShowcase = (): Promise<AreaShowcase> =>
   getJson(`/market/areas/showcase`);
+
+// 게임 — 규칙 안내 + 현재 게임 시각. 화면 진입 시 한 번 부른다.
+export const fetchGameRulebook = (): Promise<GameRulebook> => getJson(`/game/myself`);
+
+// 게임 시세 — 가격은 서버가 틱마다 계산한다(저장하지 않는다).
+// 같은 틱을 다시 물으면 같은 값이라 폴링이 안전하다.
+export const fetchGamePrices = (ticks = 120): Promise<GameMarketPrices> =>
+  getJson(`/game/market/prices?ticks=${ticks}`);

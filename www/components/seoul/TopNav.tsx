@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Plus, MessageSquare, MapPin, CandlestickChart, Zap, ScanEye, type LucideIcon } from "lucide-react";
+import { Plus, MessageSquare, MapPin, CandlestickChart, Zap, ScanEye, Gamepad2, type LucideIcon } from "lucide-react";
 import Wordmark from "./Wordmark";
 import EmailModal from "./EmailModal";
 import { useUIStore } from "@/lib/uiStore";
@@ -29,6 +29,9 @@ const navItems: NavItem[] = [
     children: [{ label: "상권 둘러보기", href: "/areas" }],
   },
   { icon: CandlestickChart, label: "주식 분석", href: "/stock", key: "stock" },
+  // 게임은 key가 없다 = 등급 게이팅 대상이 아니다(전 유저 공개, game-harness §10-1).
+  // "새로 물어보기"와 같은 취급이며 hub의 TAB_KEYS에도 넣지 않는다.
+  { icon: Gamepad2, label: "게임", href: "/game" },
   {
     icon: ScanEye,
     label: "비전처리",
@@ -42,6 +45,7 @@ const navItems: NavItem[] = [
 const mobileNavItems: NavItem[] = [
   { icon: MapPin, label: "상권 분석", href: "/market", key: "market" },
   { icon: CandlestickChart, label: "주식 분석", href: "/stock", key: "stock" },
+  { icon: Gamepad2, label: "게임", href: "/game" },
   { icon: MessageSquare, label: "지난 대화", href: "/history", key: "history" },
 ];
 
