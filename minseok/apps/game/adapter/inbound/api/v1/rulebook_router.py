@@ -30,4 +30,9 @@ async def introduce_myself(
         dayOfQuarter=result.day_of_quarter,
         seasonOver=result.season_over,
         ticksRemaining=result.ticks_remaining,
+        initialCashKrw=result.initial_cash_krw,
+        reservedCashKrw=result.reserved_cash_krw,
+        feeRate=result.fee_rate,
+        shortCarryRatePerGameDay=result.short_carry_rate_per_game_day,
+        ticksPerGameDay=result.ticks_per_game_day,
     )

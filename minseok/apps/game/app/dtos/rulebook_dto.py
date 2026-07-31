@@ -28,3 +28,11 @@ class RulebookResponse:
     day_of_quarter: int
     season_over: bool
     ticks_remaining: int
+    # --- 매매 규칙 ---
+    # 프론트가 수수료율·예약금을 하드코딩하지 않도록 서버가 실어 보낸다.
+    # 규칙이 바뀌면 화면이 자동으로 따라온다(계수 단일 소유 원칙의 프론트 쪽 짝).
+    initial_cash_krw: int
+    reserved_cash_krw: int
+    fee_rate: float
+    short_carry_rate_per_game_day: float
+    ticks_per_game_day: int

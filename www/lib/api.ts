@@ -9,6 +9,8 @@ import type {
   Fundamentals,
   GameMarketPrices,
   GameRulebook,
+  GameTradeReceipt,
+  GameWallet,
   MarketArea,
   PriceHistory,
   RecommendationItem,
@@ -134,3 +136,28 @@ export const fetchGameRulebook = (): Promise<GameRulebook> => getJson(`/game/mys
 // 같은 틱을 다시 물으면 같은 값이라 폴링이 안전하다.
 export const fetchGamePrices = (ticks = 120): Promise<GameMarketPrices> =>
   getJson(`/game/market/prices?ticks=${ticks}`);
+
+export const fetchGameWallet = (): Promise<GameWallet> => getJson(`/game/wallet`);
+
+// 매매 — 체결가는 요청이 도착한 틱의 가격이다(예약 주문·지연 체결 없음).
+async function postGame<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`/api/backend${path}`, {
+    method: "POST",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => null);
+    throw new ApiError(res.status, detail?.detail ?? "요청에 실패했습니다.");
+  }
+  return res.json();
+}
+
+export const openGameTrade = (
+  symbol: string,
+  side: "LONG" | "SHORT",
+  quantity: number,
+): Promise<GameTradeReceipt> => postGame(`/game/trades`, { symbol, side, quantity });
+
+export const closeGameTrade = (positionId: number): Promise<GameTradeReceipt> =>
+  postGame(`/game/trades/${positionId}/close`);

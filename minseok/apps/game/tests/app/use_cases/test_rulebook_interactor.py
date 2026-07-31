@@ -48,6 +48,19 @@ async def test_자기소개는_현재_게임_시각을_함께_낸다():
     assert result.ticks_remaining == SEASON_TICKS - 5_400
 
 
+async def test_자기소개는_매매_규칙_상수를_함께_낸다():
+    """프론트가 수수료율을 하드코딩하지 않게 서버가 실어 보낸다."""
+    result = await RulebookInteractor(
+        record=_StubRecord(), clock=_StubClock(0)
+    ).introduce_myself(RulebookQuery(id=12, name="게임 (game)"))
+
+    assert result.initial_cash_krw == 1_000_000
+    assert result.reserved_cash_krw == 100_000
+    assert 0 < result.fee_rate < 0.01
+    assert 0 < result.short_carry_rate_per_game_day < 0.01
+    assert result.ticks_per_game_day == 60
+
+
 async def test_시즌이_끝나면_종료로_표시한다():
     result = await RulebookInteractor(
         record=_StubRecord(), clock=_StubClock(SEASON_TICKS + 100)

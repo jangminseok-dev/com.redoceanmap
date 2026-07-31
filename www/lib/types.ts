@@ -537,6 +537,59 @@ export type GameRulebook = {
   dayOfQuarter: number; // 1~90
   seasonOver: boolean;
   ticksRemaining: number;
+  // 매매 규칙 — 서버가 실어 보낸다. 프론트가 수수료율을 하드코딩하지 않는다.
+  initialCashKrw: number;
+  reservedCashKrw: number;
+  feeRate: number;
+  shortCarryRatePerGameDay: number;
+  ticksPerGameDay: number;
+};
+
+export type GamePosition = {
+  id: number;
+  symbol: string;
+  name: string;
+  sector: string;
+  side: "LONG" | "SHORT";
+  quantity: number;
+  entryTick: number;
+  entryPriceKrw: number;
+  currentPriceKrw: number;
+  marketValueKrw: number; // 지금 청산하면 돌아올 금액(수수료·보유비용 반영)
+  unrealizedPnlKrw: number;
+  unrealizedPct: number;
+};
+
+export type GameWallet = {
+  cashKrw: number;
+  investableKrw: number; // 최소 생활자금을 뺀 투자 가능액
+  reservedKrw: number;
+  positionValueKrw: number;
+  totalAssetKrw: number;
+  initialCashKrw: number;
+  totalReturnPct: number;
+  epochId: number;
+  ruleVersion: string;
+  tick: number;
+  gameDay: number;
+  gameQuarter: number;
+  seasonOver: boolean;
+  positions: GamePosition[];
+};
+
+export type GameTradeReceipt = {
+  positionId: number;
+  symbol: string;
+  name: string;
+  side: "LONG" | "SHORT";
+  quantity: number;
+  priceKrw: number; // 체결가 — 요청이 도착한 틱의 가격
+  feeKrw: number;
+  carryKrw: number;
+  cashDeltaKrw: number;
+  realizedPnlKrw: number | null; // 청산에만
+  cashKrw: number;
+  tick: number;
 };
 
 export type GamePricePoint = {

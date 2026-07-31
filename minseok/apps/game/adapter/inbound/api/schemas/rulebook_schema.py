@@ -30,3 +30,8 @@ class RulebookResponseSchema(BaseModel):
     dayOfQuarter: int = Field(description="1~90")
     seasonOver: bool
     ticksRemaining: int
+    initialCashKrw: int
+    reservedCashKrw: int = Field(description="투자에 쓸 수 없는 최소 생활자금")
+    feeRate: float = Field(description="체결당 수수료율")
+    shortCarryRatePerGameDay: float = Field(description="숏 보유비용 (게임 1일당)")
+    ticksPerGameDay: int

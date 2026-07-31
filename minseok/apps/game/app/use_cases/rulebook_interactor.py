@@ -6,7 +6,18 @@ from game.app.dtos.rulebook_dto import RulebookQuery, RulebookResponse
 from game.app.ports.input.rulebook_use_case import RulebookUseCase
 from game.app.ports.output.game_clock_port import GameClockPort
 from game.app.ports.output.rulebook_record_port import RulebookRecordPort
-from game.domain.clock.game_epoch import GAME_EPOCH_ID, RULES_VERSION, describe
+from game.domain.clock.game_epoch import (
+    GAME_EPOCH_ID,
+    RULES_VERSION,
+    TICKS_PER_GAME_DAY,
+    describe,
+)
+from game.domain.trading.trading_rules import (
+    FEE_RATE,
+    INITIAL_CASH_KRW,
+    RESERVED_CASH_KRW,
+    SHORT_CARRY_RATE_PER_GAME_DAY,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,4 +56,9 @@ class RulebookInteractor(RulebookUseCase):
             day_of_quarter=now.day_of_quarter,
             season_over=now.season_over,
             ticks_remaining=now.ticks_remaining,
+            initial_cash_krw=INITIAL_CASH_KRW,
+            reserved_cash_krw=RESERVED_CASH_KRW,
+            fee_rate=FEE_RATE,
+            short_carry_rate_per_game_day=SHORT_CARRY_RATE_PER_GAME_DAY,
+            ticks_per_game_day=TICKS_PER_GAME_DAY,
         )
