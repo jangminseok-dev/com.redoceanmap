@@ -30,7 +30,7 @@
 | 결정론·경계 검사 | **위반 0건** (91파일 AST 검사) | `python3 scripts/check_game_determinism.py` |
 | 응답 성능 | 12종목 × 60틱 **p95 13.8ms** / × 240틱(최대) **p95 54.5ms** — 목표 200ms | 인터랙터 직접 호출 30회 |
 | DB | **테이블 3개**(`game_wallets`·`game_positions`·`game_ledger`), 마이그레이션 `a2b3c4d5e6f7`. ⏸ **적용은 미실행**(이 맥에 DB 없음) | ORM↔마이그레이션 일치 테스트 |
-| 프론트 | `/game` — 시세 차트 + 자산 요약 + 주문 폼 + 포지션 청산(4단계). **수수료율은 서버가 내려준다** | `www/app/(seoul)/game/` |
+| 프론트 | `/game` — **세그먼트 탭 2개**(모의 투자 · 상권 창업). 투자는 시세·자산·주문·청산, 창업은 지도 핀 선택→적합도 진단→창업→가게 현황. 수수료율·계수는 서버가 내려준다 | `www/app/(seoul)/game/` · `www/components/game/` |
 | ROADMAP 스포크 판정 | `game` 행 **추가됨**(0단계). 같은 표에 `soccer = 삭제됨 (2026-07-15)` | `minseok/_docs/ROADMAP.md` |
 | `.importlinter` | `root_packages` **9개** — `game` 등록 완료(6지점). **계약 5종 전부 KEPT** | `PYTHONPATH=apps lint-imports --config .importlinter` |
 | 인프로세스 스케줄러 | **0건** — `APScheduler`·`asyncio.create_task`·`BackgroundTasks` grep 전부 0줄. Celery·RQ 없음. **game이 추가한 cron·배치도 0개** | `grep -rn "APScheduler\|BackgroundTasks\|asyncio.create_task" minseok/` |

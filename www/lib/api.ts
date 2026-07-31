@@ -7,8 +7,12 @@ import type {
   ConversationMessage,
   ConversationSummary,
   Fundamentals,
+  GameAreaFitness,
   GameMarketPrices,
+  GameOpenStoreReceipt,
   GameRulebook,
+  GameStoreDaily,
+  GameStoreSummary,
   GameTradeReceipt,
   GameWallet,
   MarketArea,
@@ -161,3 +165,24 @@ export const openGameTrade = (
 
 export const closeGameTrade = (positionId: number): Promise<GameTradeReceipt> =>
   postGame(`/game/trades/${positionId}/close`);
+
+// 창업 — 적합도 미리보기는 실데이터 근거, 매출·비용은 게임 규칙이다(응답 필드 접두사로 구분).
+export const fetchGameAreaFitness = (
+  trdarCode: number,
+  serviceCode: string,
+): Promise<GameAreaFitness> =>
+  getJson(`/game/areas/${trdarCode}/fitness?service_code=${encodeURIComponent(serviceCode)}`);
+
+export const openGameStore = (body: {
+  trdarCode: number;
+  serviceCode: string;
+  budgetKrw: number;
+  facilityScore: number;
+  staffCount: number;
+  priceFactor: number;
+}): Promise<GameOpenStoreReceipt> => postGame(`/game/stores`, body);
+
+export const fetchGameStores = (): Promise<GameStoreSummary[]> => getJson(`/game/stores`);
+
+export const fetchGameStoreDaily = (storeId: number, days = 14): Promise<GameStoreDaily> =>
+  getJson(`/game/stores/${storeId}?days=${days}`);

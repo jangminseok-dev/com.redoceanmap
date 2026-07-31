@@ -577,6 +577,116 @@ export type GameWallet = {
   positions: GamePosition[];
 };
 
+// 창업 — observed_*는 서울시 상권분석서비스 실데이터, assumed_*는 게임 규칙 산출값,
+// simulated_*는 규칙 + 결정론 난수. 접두사가 곧 출처다.
+
+export type GameFitnessComponent = {
+  key: "demand_match" | "hour_match" | "saturation" | "survival";
+  label: string;
+  score: number; // 0.0~1.0
+  weight: number;
+};
+
+export type GameDiagnosis = {
+  tone: "good" | "warn" | "bad";
+  message: string;
+};
+
+export type GameAreaFitness = {
+  trdarCode: number;
+  trdarName: string;
+  serviceCode: string;
+  serviceName: string;
+  observedQuarter: number;
+  observedMonthlySalesAmount: number;
+  observedStoreCount: number;
+  observedSimilarStoreCount: number;
+  observedSalesPerStore: number;
+  observedTicketPrice: number;
+  observedClosureRate: number;
+  observedOperatingMonthsAvg: number;
+  fitness: number; // 0.4~1.6
+  totalScore: number;
+  components: GameFitnessComponent[];
+  simulatedMonthlySalesKrw: number;
+  diagnoses: GameDiagnosis[];
+  hasSales: boolean;
+  hasStore: boolean;
+};
+
+export type GameOpenStoreReceipt = {
+  storeId: number;
+  trdarName: string;
+  serviceName: string;
+  openedGameDay: number;
+  storeScale: number;
+  fitness: number;
+  depositKrw: number;
+  interiorKrw: number;
+  cashDeltaKrw: number;
+  cashKrw: number;
+  assumedMonthlyRentKrw: number;
+};
+
+export type GameStoreSummary = {
+  storeId: number;
+  trdarName: string;
+  serviceName: string;
+  status: string;
+  openedGameDay: number;
+  daysOpen: number;
+  storeScale: number;
+  fitness: number;
+  cumulativeSalesKrw: number;
+  cumulativeProfitKrw: number;
+};
+
+export type GameDailyRow = {
+  gameDay: number;
+  simulatedSalesKrw: number;
+  simulatedCustomerCount: number;
+  capacityCustomerCount: number;
+  turnedAwayRatio: number;
+  assumedRentKrw: number;
+  assumedLaborKrw: number;
+  assumedCogsKrw: number;
+  assumedUtilityKrw: number;
+  profitKrw: number;
+};
+
+export type GameCustomerBucket = {
+  label: string;
+  count: number;
+};
+
+export type GameStoreDaily = {
+  storeId: number;
+  trdarName: string;
+  serviceName: string;
+  status: string;
+  openedGameDay: number;
+  daysOpen: number;
+  storeScale: number;
+  fitness: number;
+  seats: number;
+  depositKrw: number;
+  interiorKrw: number;
+  observedSalesPerStore: number;
+  observedTicketPrice: number;
+  assumedMonthlyRentKrw: number;
+  cumulativeSalesKrw: number;
+  cumulativeProfitKrw: number;
+  averageTurnedAwayRatio: number;
+  rows: GameDailyRow[];
+  customersByAge: GameCustomerBucket[];
+  customersByHour: GameCustomerBucket[];
+  customersByTaste: GameCustomerBucket[];
+  tick: number;
+  gameDay: number;
+  gameQuarter: number;
+  seasonOver: boolean;
+};
+
 export type GameTradeReceipt = {
   positionId: number;
   symbol: string;
