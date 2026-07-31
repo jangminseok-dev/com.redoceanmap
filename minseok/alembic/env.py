@@ -45,6 +45,8 @@ import hub.adapter.outbound.orm.langchain_session_orm  # noqa: F401
 import game.adapter.outbound.orm.game_wallet_orm  # noqa: F401
 import game.adapter.outbound.orm.game_position_orm  # noqa: F401
 import game.adapter.outbound.orm.game_ledger_orm  # noqa: F401
+import game.adapter.outbound.orm.game_store_orm  # noqa: F401
+import game.adapter.outbound.orm.game_store_decision_orm  # noqa: F401
 
 target_metadata = Base.metadata
 
