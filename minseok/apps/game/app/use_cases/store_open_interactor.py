@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from game.app.dtos.store_open_dto import OpenStoreCommand, OpenStoreReceipt
 from game.app.exceptions import (
     AreaProfileUnavailable,
@@ -18,8 +20,6 @@ from game.domain.economy import rule_coefficients as rules
 from game.domain.trading.trading_rules import INITIAL_CASH_KRW, investable_cash
 from hub.app.ports.output.area_demand_profile_port import AreaDemandProfilePort
 
-MIN_FACILITY_SCORE = 10
-MAX_FACILITY_SCORE = 2_000
 MAX_STAFF = 20
 MIN_PRICE_FACTOR = 0.6
 MAX_PRICE_FACTOR = 1.3
@@ -49,10 +49,6 @@ class StoreOpenInteractor(StoreOpenUseCase):
         if moment.season_over:
             raise SeasonClosed("시즌이 종료되어 새로 창업할 수 없습니다")
 
-        if not MIN_FACILITY_SCORE <= command.facility_score <= MAX_FACILITY_SCORE:
-            raise InvalidOrder(
-                f"시설 점수는 {MIN_FACILITY_SCORE}~{MAX_FACILITY_SCORE} 범위여야 합니다"
-            )
         if not 0 <= command.staff_count <= MAX_STAFF:
             raise InvalidOrder(f"직원 수는 0~{MAX_STAFF}명이어야 합니다")
         if not MIN_PRICE_FACTOR <= command.price_factor <= MAX_PRICE_FACTOR:
@@ -112,10 +108,15 @@ class StoreOpenInteractor(StoreOpenUseCase):
             rules.RENT_LOCATION_MAX.value - rules.RENT_LOCATION_MIN.value
         ) * min(1.0, profile.saturation_percentile)
 
-        scale = sim.scale_for_budget(
+        # 시설 점수는 유저가 넣지 않는다 — 투입 자본과 예상 수요에서 함께 역산한다.
+        # 직접 입력이면 자본을 전부 보증금에 넣어 규모만 키운 "좌석 1석짜리 역세권 카페"가
+        # 만들어진다(§4-1).
+        scale, facility_score = sim.plan_opening(
             observed_sales_per_store=sales_per_store,
+            observed_ticket_price=ticket_price,
+            fitness=result.fitness,
             rent_location_factor=rent_location,
-            facility_score=command.facility_score,
+            service_code=command.service_code,
             budget_krw=budget,
         )
         setup = sim.StoreSetup(
@@ -129,12 +130,21 @@ class StoreOpenInteractor(StoreOpenUseCase):
             rent_location_factor=rent_location,
             area_weekday_share=profile.area_weekday_share,
         )
-        deposit, interior = sim.opening_cost(setup, command.facility_score)
+        takeout = rules.takeout_ratio(command.service_code).value
+        deposit, interior = sim.opening_cost(setup, facility_score)
         total_cost = deposit + interior
-        if total_cost > investable_cash(account.cash_krw):
+        # 규모 → 비용 경로에 반올림이 두 번 끼어 예산을 원 단위로 넘길 수 있다. 그만큼 줄인다.
+        if total_cost > budget and scale > rules.MIN_STORE_SCALE.value:
+            scale = max(rules.MIN_STORE_SCALE.value, scale * budget / total_cost)
+            setup = replace(setup, store_scale=scale)
+            deposit, interior = sim.opening_cost(setup, facility_score)
+            total_cost = deposit + interior
+        # 규모는 최소치(MIN_STORE_SCALE) 아래로 못 내려가므로 자본이 그 최소 가게값에도
+        # 못 미치면 비용이 투입 자본을 넘는다. **요청한 자본보다 많이 청구하지 않는다.**
+        if total_cost > budget:
             raise InsufficientCash(
-                f"창업 비용을 낼 수 없습니다 (필요 {total_cost:,}원 · "
-                f"가능 {investable_cash(account.cash_krw):,}원)"
+                f"이 상권에서 창업하려면 최소 {total_cost:,}원이 필요합니다 "
+                f"(투입 가능 {budget:,}원)"
             )
 
         store = await self._stores.create_store(
@@ -161,7 +171,7 @@ class StoreOpenInteractor(StoreOpenUseCase):
             decision={
                 "price_factor": command.price_factor,
                 "staff_count": command.staff_count,
-                "facility_score": command.facility_score,
+                "facility_score": facility_score,
             },
             cash_delta_krw=-total_cost,
         )
@@ -172,6 +182,10 @@ class StoreOpenInteractor(StoreOpenUseCase):
             service_name=profile.service_name,
             opened_game_day=moment.game_day,
             store_scale=round(scale, 4),
+            facility_score=facility_score,
+            seat_count=sim.seats(facility_score),
+            daily_capacity_customers=sim.daily_capacity_customers(facility_score, takeout),
+            takeout_ratio=takeout,
             fitness=result.fitness,
             deposit_krw=deposit,
             interior_krw=interior,

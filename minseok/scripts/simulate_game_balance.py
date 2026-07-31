@@ -110,14 +110,27 @@ TICKET_PRICE = 5_000
 WEEKDAY_SHARE = (0.15, 0.14, 0.14, 0.15, 0.16, 0.14, 0.12)
 
 
-def simulate_founder(run: int, budget_krw: int, facility_score: int) -> float:
-    """무작위 입지에 창업한 한 판의 분기 수익률(투입 자본 대비 %)."""
+SERVICE_CODE = "CS100010"  # 커피-음료 — 포장 비중이 높은 업종이라 상한 분리가 드러난다
+
+
+def simulate_founder(run: int, budget_krw: int) -> float:
+    """무작위 입지에 창업한 한 판의 분기 수익률(투입 자본 대비 %).
+
+    시설 점수는 유저 입력이 아니라 자본·수요에서 역산한다 — 창업 유스케이스와 같은 경로다.
+    """
     fitness = FITNESS_MIN + (FITNESS_MAX - FITNESS_MIN) * uniform("bal-fitness", str(run))
     location = 0.6 + uniform("bal-location", str(run))
-    scale = store_sim.scale_for_budget(SALES_PER_STORE, location, facility_score, budget_krw)
+    scale, facility_score = store_sim.plan_opening(
+        observed_sales_per_store=SALES_PER_STORE,
+        observed_ticket_price=TICKET_PRICE,
+        fitness=fitness,
+        rent_location_factor=location,
+        service_code=SERVICE_CODE,
+        budget_krw=budget_krw,
+    )
     setup = store_sim.StoreSetup(
         store_id=run,
-        service_code="CS100010",
+        service_code=SERVICE_CODE,
         opened_game_day=0,
         store_scale=scale,
         observed_sales_per_store=SALES_PER_STORE,
@@ -150,20 +163,22 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="게임 밸런스 실측")
     parser.add_argument("--runs", type=int, default=1000)
     parser.add_argument("--budget", type=int, default=3_000_000, help="창업 투입 자본")
-    parser.add_argument("--facility", type=int, default=300, help="창업 시설 점수")
     args = parser.parse_args()
 
     print(f"게임 1분기(90게임일 · 현실 3.75일) · 표본 {args.runs:,}회")
     print("=" * 62)
 
     investor = [simulate_investor(run) for run in range(args.runs)]
-    _print("■ 모의투자 — 무작위 매매", _quantiles(investor), "중앙값 +5~15% · 손실 35~45%")
-
-    founder = [
-        simulate_founder(run, args.budget, args.facility) for run in range(args.runs)
-    ]
+    # 목표 문구는 game-strategy §3-4 표와 같은 값이어야 한다 — 갈라지면 조정 근거가 둘이 된다
     _print(
-        f"■ 상권 창업 — 무작위 입지 (자본 {args.budget:,}원 · 시설 {args.facility}점)",
+        "■ 모의투자 — 무작위 매매",
+        _quantiles(investor),
+        "중앙값 -2~-1% · 상위 10% +15~20% · 손실 45~55%",
+    )
+
+    founder = [simulate_founder(run, args.budget) for run in range(args.runs)]
+    _print(
+        f"■ 상권 창업 — 무작위 입지 (자본 {args.budget:,}원 · 시설은 수요에서 역산)",
         _quantiles(founder),
         "중앙값 소폭 적자 · 손실 절반 내외",
     )

@@ -183,7 +183,6 @@ def test_창업하고_현황을_조회한다(client):
             "trdarCode": 1001,
             "serviceCode": "CS100010",
             "budgetKrw": 500_000,
-            "facilityScore": 300,
             "staffCount": 2,
             "priceFactor": 1.0,
         },
@@ -196,8 +195,13 @@ def test_창업하고_현황을_조회한다(client):
     listed = client.get("/game/stores").json()
     assert len(listed) == 1
 
+    # 시설 점수는 입력이 아니라 자본·수요에서 역산된다 — 영수증이 정본이다
+    assert receipt["facilityScore"] >= 10
+    assert receipt["seatCount"] == receipt["facilityScore"] // 10
+    assert receipt["takeoutRatio"] > 0  # 커피-음료는 포장 비중이 높다
+
     detail = client.get(f"/game/stores/{receipt['storeId']}?days=7").json()
-    assert detail["seats"] == 30  # 시설 300점 = 좌석 30석
+    assert detail["seats"] == receipt["seatCount"]
     assert detail["rows"]
     assert detail["customersByAge"]
 
@@ -210,7 +214,7 @@ def test_창업_조건이_범위를_벗어나면_422다(client):
     body = client.post(
         "/game/stores",
         json={"trdarCode": 1001, "serviceCode": "CS100010", "budgetKrw": 500_000,
-              "facilityScore": 99999, "staffCount": 2, "priceFactor": 1.0},
+              "staffCount": 99999, "priceFactor": 1.0},
     )
     assert body.status_code == 422
 

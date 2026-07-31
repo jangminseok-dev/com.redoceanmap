@@ -27,7 +27,6 @@ type Draft = {
   serviceCode: string;
   trdarCode: number | null;
   budgetKrw: number;
-  facilityScore: number;
   staffCount: number;
   storeId: number | null; // 선택한 내 가게
   notice: string | null;
@@ -40,7 +39,6 @@ export default function StorePanel() {
     serviceCode: "",
     trdarCode: null,
     budgetKrw: 500_000,
-    facilityScore: 300,
     staffCount: 2,
     storeId: null,
     notice: null,
@@ -68,8 +66,7 @@ export default function StorePanel() {
       openGameStore({
         trdarCode: draft.trdarCode!,
         serviceCode: draft.serviceCode,
-        budgetKrw: draft.budgetKrw,
-        facilityScore: draft.facilityScore,
+        budgetKrw: budget,
         staffCount: draft.staffCount,
         priceFactor: 1.0,
       }),
@@ -78,7 +75,10 @@ export default function StorePanel() {
       queryClient.invalidateQueries({ queryKey: ["game-wallet"] });
       patch({
         storeId: r.storeId,
-        notice: `${r.trdarName}에 ${r.serviceName} 개업 — 규모 ${(r.storeScale * 100).toFixed(1)}% · 보증금 ${won(r.depositKrw)}`,
+        notice:
+          `${r.trdarName}에 ${r.serviceName} 개업 — 규모 ${(r.storeScale * 100).toFixed(1)}% · ` +
+          `좌석 ${r.seatCount}석 · 하루 ${r.dailyCapacityCustomers}명 수용` +
+          `(포장 ${Math.round(r.takeoutRatio * 100)}%) · 보증금 ${won(r.depositKrw)}`,
       });
     },
     onError: (e) =>
@@ -94,6 +94,8 @@ export default function StorePanel() {
   const selected = rows.find((r) => r.trdarCode === draft.trdarCode);
   const stores = storesQ.data ?? [];
   const investable = walletQ.data?.investableKrw ?? 0;
+  // 기본값이 잔액을 넘으면 폼이 열리자마자 비활성 상태가 된다 — 가능액으로 눌러 둔다
+  const budget = Math.min(draft.budgetKrw, Math.max(10_000, investable));
 
   return (
     <div className="space-y-5">
@@ -201,29 +203,31 @@ export default function StorePanel() {
               type="number"
               min={10_000}
               step={100_000}
-              value={draft.budgetKrw}
+              value={budget}
               onChange={(e) => patch({ budgetKrw: Math.max(10_000, Number(e.target.value)) })}
               className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm tabular-nums"
             />
           </label>
 
           <label className="text-xs text-foreground-muted">
-            시설 점수 (좌석 {Math.floor(draft.facilityScore / 10)}석)
+            직원 수
             <input
               type="number"
-              min={10}
-              max={2000}
-              step={50}
-              value={draft.facilityScore}
+              min={0}
+              max={20}
+              step={1}
+              value={draft.staffCount}
               onChange={(e) =>
-                patch({
-                  facilityScore: Math.min(2000, Math.max(10, Number(e.target.value))),
-                })
+                patch({ staffCount: Math.min(20, Math.max(0, Number(e.target.value))) })
               }
               className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm tabular-nums"
             />
           </label>
         </div>
+
+        <p className="mt-2 text-xs text-foreground-muted">
+          시설 점수(좌석·회전율)는 투입 자본과 이 상권의 예상 수요에서 자동으로 정해집니다.
+        </p>
 
         <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_360px]">
           <div className="rounded-2xl border border-border bg-surface overflow-hidden h-72 lg:h-[26rem]">
@@ -271,14 +275,14 @@ export default function StorePanel() {
               <button
                 type="button"
                 onClick={() => open.mutate()}
-                disabled={open.isPending || draft.budgetKrw > investable}
+                disabled={open.isPending || budget > investable}
                 className="w-full h-11 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-40 transition-colors"
               >
-                {draft.budgetKrw > investable
+                {budget > investable
                   ? "투자 가능 금액을 넘습니다"
                   : open.isPending
                     ? "개업 중…"
-                    : `${won(draft.budgetKrw)}으로 창업하기`}
+                    : `${won(budget)}으로 창업하기`}
               </button>
             )}
           </div>

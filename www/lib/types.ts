@@ -620,6 +620,10 @@ export type GameOpenStoreReceipt = {
   serviceName: string;
   openedGameDay: number;
   storeScale: number;
+  facilityScore: number;
+  seatCount: number;
+  dailyCapacityCustomers: number;
+  takeoutRatio: number;
   fitness: number;
   depositKrw: number;
   interiorKrw: number;

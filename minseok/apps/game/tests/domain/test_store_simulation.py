@@ -7,6 +7,7 @@ from game.domain.commerce.store_simulation import (
     daily_capacity_customers,
     monthly_rent,
     opening_cost,
+    plan_opening,
     scale_for_budget,
     seats,
     simulate_day,
@@ -54,7 +55,39 @@ def test_회전율은_임계점수에서_최대에_닿는다():
 
 
 def test_수용력은_시설에_비례한다():
-    assert daily_capacity_customers(300) > daily_capacity_customers(100)
+    assert daily_capacity_customers(300, 0.0) > daily_capacity_customers(100, 0.0)
+
+
+def test_포장_비중이_높으면_같은_시설로_더_많이_받는다():
+    """포장 손님은 자리를 차지하지 않는다 — 좌석에 묶으면 카페가 구조적으로 장사를 못 한다."""
+    seated_only = daily_capacity_customers(100, 0.0)
+    takeout_heavy = daily_capacity_customers(100, 0.65)
+    assert takeout_heavy > seated_only
+
+
+def test_시설은_자본과_수요에서_함께_역산된다():
+    """자본을 전부 보증금에 넣어 좌석 1석짜리 가게가 만들어지면 안 된다."""
+    scale, facility = plan_opening(
+        observed_sales_per_store=30_000_000,
+        observed_ticket_price=5_000,
+        fitness=1.2,
+        rent_location_factor=1.2,
+        service_code="CS100010",
+        budget_krw=3_000_000,
+    )
+    assert rules.MIN_STORE_SCALE.value <= scale <= rules.MAX_STORE_SCALE.value
+    assert facility >= rules.FACILITY_SCORE_MIN.value
+    # 역산한 시설이 그 규모의 수요를 실제로 감당해야 한다
+    demand = 30_000_000 / rules.DAYS_PER_MONTH.value * scale * 1.2 / 5_000
+    takeout = rules.takeout_ratio("CS100010").value
+    assert daily_capacity_customers(facility, takeout) >= int(demand)
+
+
+def test_자본이_커지면_규모도_시설도_커진다():
+    small = plan_opening(30_000_000, 5_000, 1.0, 1.0, "CS100010", 1_000_000)
+    large = plan_opening(30_000_000, 5_000, 1.0, 1.0, "CS100010", 8_000_000)
+    assert large[0] > small[0]
+    assert large[1] >= small[1]
 
 
 def test_좋은_상권에_작은_가게를_내면_손님을_돌려보낸다():

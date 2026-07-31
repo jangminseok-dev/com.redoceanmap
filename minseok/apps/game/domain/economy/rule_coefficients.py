@@ -61,6 +61,34 @@ SEATS_PER_FACILITY_POINT = Coefficient(0.1, source="rule")  # 10점당 좌석 1�
 FACILITY_SCORE_FOR_MAX_TURNOVER = Coefficient(850, source="rule")  # 원작의 "최속" 임계값
 TURNOVER_MIN = Coefficient(0.4, source="rule")  # 시설 0점일 때 회전율 계수
 BASE_TURNOVER_PER_SEAT = Coefficient(6.0, source="rule")  # 좌석 1석의 하루 최대 회전 수
+# 포장 손님은 자리를 차지하지 않는다 — 같은 시설이 응대에만 쓰이므로 회전이 훨씬 빠르다.
+TAKEOUT_TURNOVER_PER_SEAT = Coefficient(24.0, source="rule")  # 착석의 4배
+FACILITY_SCORE_MIN = Coefficient(10, source="rule")  # 좌석 1석
+FACILITY_SCORE_MAX = Coefficient(2_000, source="rule")  # 좌석 200석
+
+# --- 포장 비율 (업종별) ------------------------------------------------------
+# 좌석을 쓰지 않고 나가는 손님의 비율. **좌석 제약을 받는 것은 착석 손님뿐이다.**
+# 이 값이 없으면 커피·제과처럼 포장이 지배적인 업종이 좌석 수에 매출을 묶여
+# "역세권 카페인데 하루 2명"이 나온다.
+TAKEOUT_BY_SERVICE = {
+    "CS100001": Coefficient(0.10, source="rule"),  # 한식음식점
+    "CS100002": Coefficient(0.30, source="rule"),  # 중식음식점 — 배달 비중
+    "CS100003": Coefficient(0.10, source="rule"),  # 일식음식점
+    "CS100004": Coefficient(0.10, source="rule"),  # 양식음식점
+    "CS100005": Coefficient(0.80, source="rule"),  # 제과점 — 대부분 사서 나간다
+    "CS100006": Coefficient(0.55, source="rule"),  # 패스트푸드점
+    "CS100007": Coefficient(0.70, source="rule"),  # 치킨전문점 — 포장·배달 지배적
+    "CS100008": Coefficient(0.35, source="rule"),  # 분식전문점
+    "CS100009": Coefficient(0.05, source="rule"),  # 호프-간이주점 — 거의 전원 착석
+    "CS100010": Coefficient(0.65, source="rule"),  # 커피-음료
+}
+# 대분류 폴백 — CS1=외식 · CS2=서비스 · CS3=소매
+TAKEOUT_BY_CATEGORY = {
+    "CS1": Coefficient(0.20, source="rule"),
+    "CS2": Coefficient(0.00, source="rule"),  # 서비스는 받는 동안 자리를 차지한다
+    "CS3": Coefficient(0.95, source="rule"),  # 소매는 물건을 사서 나간다
+}
+TAKEOUT_DEFAULT = Coefficient(0.20, source="rule")
 
 # --- 규모 -------------------------------------------------------------------
 # 상권 실데이터의 점포당 월매출은 수천만 원이라 초기 자본으로는 그 규모를 감당할 수 없다.
@@ -78,3 +106,11 @@ DAYS_PER_MONTH = Coefficient(30.0, source="rule")
 def cogs_ratio(service_code: str) -> Coefficient:
     """업종 대분류(코드 앞 3자)로 원가율을 고른다."""
     return COGS_BY_CATEGORY.get(service_code[:3], COGS_DEFAULT)
+
+
+def takeout_ratio(service_code: str) -> Coefficient:
+    """좌석을 쓰지 않는 손님 비율. 세부 업종이 먼저이고 없으면 대분류로 떨어진다."""
+    exact = TAKEOUT_BY_SERVICE.get(service_code)
+    if exact is not None:
+        return exact
+    return TAKEOUT_BY_CATEGORY.get(service_code[:3], TAKEOUT_DEFAULT)

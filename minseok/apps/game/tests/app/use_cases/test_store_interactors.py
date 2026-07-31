@@ -39,7 +39,6 @@ def _command(**overrides):
         trdar_code=1001,
         service_code="CS100010",
         budget_krw=500_000,
-        facility_score=300,
         staff_count=2,
         price_factor=1.0,
     )
@@ -76,17 +75,25 @@ async def test_에포크에_박힌_분기로_상권을_읽는다():
     assert open_uc._profiles.calls[0][2] == DATA_QUARTER
 
 
-async def test_자본이_모자라면_거부한다():
+async def test_자본이_최소_가게값에도_못_미치면_거부한다():
+    """규모에 하한이 있어 자본이 너무 적으면 비용이 투입 자본을 넘는다 — 그때는 거부한다.
+
+    조용히 더 청구하면 유저가 넣겠다고 한 금액과 실제 지출이 갈라진다.
+    """
     open_uc, _, _, _ = _build()
     with pytest.raises(InsufficientCash):
-        await open_uc.open_store(_command(budget_krw=INITIAL_CASH_KRW * 10, facility_score=2000))
+        await open_uc.open_store(_command(budget_krw=10_000))
+
+
+async def test_요청한_자본보다_많이_청구하지_않는다():
+    open_uc, _, _, _ = _build()
+    receipt = await open_uc.open_store(_command(budget_krw=500_000))
+    assert -receipt.cash_delta_krw <= 500_000
 
 
 @pytest.mark.parametrize(
     "overrides",
     [
-        {"facility_score": 5},
-        {"facility_score": 5000},
         {"staff_count": -1},
         {"price_factor": 2.0},
         {"budget_krw": 0},

@@ -178,7 +178,6 @@ export const openGameStore = (body: {
   trdarCode: number;
   serviceCode: string;
   budgetKrw: number;
-  facilityScore: number;
   staffCount: number;
   priceFactor: number;
 }): Promise<GameOpenStoreReceipt> => postGame(`/game/stores`, body);

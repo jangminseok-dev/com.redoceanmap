@@ -31,7 +31,6 @@ async def open_store(
                 trdar_code=body.trdarCode,
                 service_code=body.serviceCode,
                 budget_krw=body.budgetKrw,
-                facility_score=body.facilityScore,
                 staff_count=body.staffCount,
                 price_factor=body.priceFactor,
             )
@@ -47,6 +46,10 @@ async def open_store(
         serviceName=receipt.service_name,
         openedGameDay=receipt.opened_game_day,
         storeScale=receipt.store_scale,
+        facilityScore=receipt.facility_score,
+        seatCount=receipt.seat_count,
+        dailyCapacityCustomers=receipt.daily_capacity_customers,
+        takeoutRatio=receipt.takeout_ratio,
         fitness=receipt.fitness,
         depositKrw=receipt.deposit_krw,
         interiorKrw=receipt.interior_krw,

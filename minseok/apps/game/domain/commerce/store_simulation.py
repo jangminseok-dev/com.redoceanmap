@@ -65,8 +65,8 @@ def turnover_factor(facility_score: int) -> float:
     return floor + (1.0 - floor) * ratio
 
 
-def daily_capacity_customers(facility_score: int) -> int:
-    """하루에 받을 수 있는 최대 손님 수 = 좌석 × 회전율."""
+def seated_capacity(facility_score: int) -> int:
+    """하루에 받을 수 있는 **착석** 손님 수 = 좌석 × 회전율."""
     return max(
         1,
         int(
@@ -75,6 +75,37 @@ def daily_capacity_customers(facility_score: int) -> int:
             * turnover_factor(facility_score)
         ),
     )
+
+
+def takeout_capacity(facility_score: int) -> int:
+    """하루에 받을 수 있는 **포장** 손님 수.
+
+    포장 손님은 자리를 차지하지 않으므로 좌석 수가 아니라 응대 처리량이 상한이다.
+    같은 시설이 착석보다 훨씬 빠르게 돌아간다.
+    """
+    return max(
+        1,
+        int(
+            seats(facility_score)
+            * rules.TAKEOUT_TURNOVER_PER_SEAT.value
+            * turnover_factor(facility_score)
+        ),
+    )
+
+
+def daily_capacity_customers(facility_score: int, takeout_ratio: float) -> int:
+    """그 업종 손님 구성에서 **아무도 돌려보내지 않고** 받을 수 있는 하루 손님 수.
+
+    착석·포장 상한이 각각 따로 걸리므로 둘 중 먼저 차는 쪽이 총량을 정한다.
+    구성비가 한쪽으로 쏠려 있으면 그쪽 상한만 의미가 있다.
+    """
+    seated_share = 1.0 - takeout_ratio
+    limits = []
+    if seated_share > 0:
+        limits.append(seated_capacity(facility_score) / seated_share)
+    if takeout_ratio > 0:
+        limits.append(takeout_capacity(facility_score) / takeout_ratio)
+    return max(1, int(min(limits)))
 
 
 def awareness(days_open: int) -> float:
@@ -144,6 +175,78 @@ def scale_for_budget(
     )
 
 
+def facility_for_demand(demand_customers: float, takeout_ratio: float) -> int:
+    """이만큼의 손님을 돌려보내지 않으려면 시설 점수가 얼마나 필요한가.
+
+    수용력은 시설 점수에 대해 단조 증가하므로 이분 탐색으로 최솟값을 찾는다.
+    """
+    lo = int(rules.FACILITY_SCORE_MIN.value)
+    hi = int(rules.FACILITY_SCORE_MAX.value)
+    if daily_capacity_customers(hi, takeout_ratio) < demand_customers:
+        return hi
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if daily_capacity_customers(mid, takeout_ratio) >= demand_customers:
+            hi = mid
+        else:
+            lo = mid + 1
+    return lo
+
+
+def plan_opening(
+    observed_sales_per_store: int,
+    observed_ticket_price: int,
+    fitness: float,
+    rent_location_factor: float,
+    service_code: str,
+    budget_krw: int,
+) -> tuple[float, int]:
+    """투입 자본 하나로 **(규모, 시설 점수)를 함께** 정한다.
+
+    시설을 유저가 직접 넣게 두면 "역세권인데 하루 2명"이 나온다 — 자본을 전부 보증금에
+    밀어넣어 규모만 키우고 좌석은 1석인 가게가 만들어지기 때문이다. 그래서 **수요에서
+    역산한다**: 그 규모가 부를 손님을 받을 만큼만 시설에 쓰고 나머지를 규모에 넣는다.
+
+    시설을 키우면 규모에 쓸 몫이 줄고 → 수요가 줄고 → 필요한 시설도 준다. 한 번에 못 풀어서
+    "필요 시설 ≤ 지금 시설"이 되는 최소 지점을 이분 탐색한다(순수 계산·결정론).
+    """
+    takeout = rules.takeout_ratio(service_code).value
+    ticket = max(1, observed_ticket_price)
+
+    def scale_at(facility: int) -> float:
+        return scale_for_budget(
+            observed_sales_per_store=observed_sales_per_store,
+            rent_location_factor=rent_location_factor,
+            facility_score=facility,
+            budget_krw=budget_krw,
+        )
+
+    def shortfall(facility: int) -> int:
+        """이 시설 점수로 정해진 규모의 수요가 요구하는 시설 - 지금 시설. 감소함수."""
+        daily_sales = (
+            observed_sales_per_store / rules.DAYS_PER_MONTH.value
+            * scale_at(facility)
+            * fitness
+        )
+        return facility_for_demand(daily_sales / ticket, takeout) - facility
+
+    lo = int(rules.FACILITY_SCORE_MIN.value)
+    hi = int(rules.FACILITY_SCORE_MAX.value)
+    if shortfall(lo) <= 0:
+        best = lo
+    elif shortfall(hi) > 0:
+        best = hi
+    else:
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if shortfall(mid) <= 0:
+                hi = mid
+            else:
+                lo = mid + 1
+        best = lo
+    return scale_at(best), best
+
+
 def simulate_day(setup: StoreSetup, decision: StoreDecision, game_day: int) -> DailyResult:
     """하루치 매출과 비용. 같은 입력이면 언제 계산해도 같은 결과다."""
     days_open = game_day - setup.opened_game_day
@@ -165,9 +268,17 @@ def simulate_day(setup: StoreSetup, decision: StoreDecision, game_day: int) -> D
     ticket = max(1, round(setup.observed_ticket_price * decision.price_factor))
     demand_customers = max(0, round(demand_sales / ticket))
 
-    # 시설이 받을 수 있는 최대 — 여기서 "좋은 상권 + 작은 가게"가 손님을 돌려보낸다
-    capacity = daily_capacity_customers(decision.facility_score)
-    served = min(demand_customers, capacity)
+    # 시설이 받을 수 있는 최대 — 여기서 "좋은 상권 + 작은 가게"가 손님을 돌려보낸다.
+    # **착석과 포장은 상한이 따로다.** 포장 손님을 좌석에 묶으면 커피·제과처럼 포장이
+    # 지배적인 업종이 구조적으로 매출을 못 낸다(§4-1).
+    takeout_share = rules.takeout_ratio(setup.service_code).value
+    seated_demand = demand_customers * (1.0 - takeout_share)
+    takeout_demand = demand_customers * takeout_share
+    served = int(
+        min(seated_demand, seated_capacity(decision.facility_score))
+        + min(takeout_demand, takeout_capacity(decision.facility_score))
+    )
+    capacity = daily_capacity_customers(decision.facility_score, takeout_share)
     turned_away = (
         (demand_customers - served) / demand_customers if demand_customers > 0 else 0.0
     )

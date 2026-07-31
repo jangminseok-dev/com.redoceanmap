@@ -34,7 +34,6 @@ def _command(**overrides):
         trdar_code=1001,
         service_code="CS100010",
         budget_krw=600_000,
-        facility_score=300,
         staff_count=2,
         price_factor=1.0,
     )
