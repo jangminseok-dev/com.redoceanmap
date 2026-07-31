@@ -58,6 +58,7 @@
 | 시계열/스코어링 | market **내부** | 동일 애그리거트(상권)·동일 언어. 분리하면 스포크 간 데이터 왕복만 발생 |
 | admin | 스포크 **실구현 완료** (2026-07) | 라우터 25개(`/admin/*`)·유스케이스 11종·프론트 9페이지. 권한은 엔드포인트 단 `require_permission`이며 `tests/test_admin_access_matrix.py`가 가드 누락·코드 오타·read권한 쓰기를 고정한다 |
 | listing(매물) | ③에서 **새 스포크**, 수요 게이트 뒤 | 공공데이터 읽기(market)와 사용자 생성 쓰기(listing)는 액터·라이프사이클 상이 |
+| game(모의투자·상권 창업) | **새 스포크** (2026-07-31) | listing과 동일 논리 — 유저 진행상태(쓰기)는 공공데이터 스포크(market·stock)와 액터·라이프사이클이 다르다. 게다가 **두 도메인을 지갑 하나로 가로질러** market·stock 어느 쪽에도 넣을 수 없다(넣으면 스포크 간 직접 참조가 필요해진다). 상권 데이터는 허브 신규 포트 1개로 읽기 전용 소비. 경계·게이트 → [[minseok/apps/game/_docs/game-harness\|game-harness]], 도입 순서 → [[minseok/apps/game/_docs/game-strategy\|game-strategy]] |
 | 학습 파이프라인 | **앱 아님** — scripts/ 유지 | 오프라인 배치. 모델은 `models/<이름>/v<n>/`+지표 JSON+git 태그. MLflow/DVC 금지 |
 | soccer | **삭제됨 (2026-07-15)** | 스켈레톤 금지 원칙. 코드·DB 컨테이너(:5433)·볼륨 제거, git 이력으로 복원 가능 |
 | mail judge | **삭제 예정** (②-M6) | 스켈레톤 금지 원칙. git 이력으로 복원 가능 |
