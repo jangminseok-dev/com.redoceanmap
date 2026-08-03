@@ -39,6 +39,7 @@ services:
       - ENV=development
       - DATABASE_URL=postgresql://${POSTGRES_USER:-redocean}:${POSTGRES_PASSWORD:-redocean}@pgvector:5432/${POSTGRES_DB:-redoceanmap}
       - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL_MOBILE=redis://redis:6379/1  # 모바일 세션 — 웹(db 0)과 논리 DB 분리
     depends_on:
       pgvector:
         condition: service_healthy

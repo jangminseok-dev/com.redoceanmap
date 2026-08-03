@@ -9,9 +9,11 @@ class User:
     """사용자 도메인 엔티티 — ORM/프레임워크에 의존하지 않는다."""
 
     id: int
-    email: str
+    email: str | None  # 카카오 로그인은 이메일 동의가 선택이라 없을 수 있다
     password_hash: str
     name: str
+    kakao_id: int | None = None  # 카카오 회원번호 — 모바일 로그인의 식별자
+    last_login_at: datetime | None = None
     terms_agreed_at: datetime | None = None  # 필수 약관 동의 시각 (구 유저는 None)
     marketing_agreed: bool = False
     suspended_at: datetime | None = None  # 운영자 정지 시각 (None = 정상, 해제 가능)

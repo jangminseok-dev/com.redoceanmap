@@ -12,6 +12,8 @@ class UserMapper:
             email=orm.email,
             password_hash=orm.password_hash,
             name=orm.name,
+            kakao_id=orm.kakao_id,
+            last_login_at=orm.last_login_at,
             terms_agreed_at=orm.terms_agreed_at,
             marketing_agreed=orm.marketing_agreed,
             suspended_at=orm.suspended_at,

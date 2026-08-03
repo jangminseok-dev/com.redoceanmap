@@ -55,6 +55,9 @@ DOCS_PASSWORD = _secrets.get("DOCS_PASSWORD")
 # 리프레시 토큰 저장소 (auth) — 컨테이너는 redis://redis:6379/0 로 덮어쓴다.
 REDIS_URL = _secrets.get("REDIS_URL", "redis://localhost:6379/0")
 
+# 모바일 세션 전용 — 같은 Redis의 논리 db 1. 웹 세션(db 0)과 키 공간·커넥션을 분리한다.
+REDIS_URL_MOBILE = _secrets.get("REDIS_URL_MOBILE", "redis://localhost:6379/1")
+
 # n8n → 백엔드 인바운드 웹훅 검증 토큰. 비어 있으면 검증 생략(로컬 개발).
 N8N_INBOUND_TOKEN = _secrets.get("N8N_INBOUND_TOKEN")
 
@@ -87,5 +90,8 @@ GOOGLE_CLIENT_ID = _secrets.get("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = _secrets.get("GOOGLE_CLIENT_SECRET")
 KAKAO_CLIENT_ID = _secrets.get("KAKAO_CLIENT_ID")  # 카카오 REST API 키
 KAKAO_CLIENT_SECRET = _secrets.get("KAKAO_CLIENT_SECRET")  # 콘솔에서 선택 사항
+# 카카오 앱 ID(숫자) — REST/네이티브 앱 키와 다른 값이다. 모바일 로그인에서 토큰의 앱 소유권 검증에 쓴다.
+# 비어 있으면 모바일 카카오 로그인이 전부 거부된다(검증 불가 상태로 통과시키지 않는다).
+KAKAO_APP_ID = _secrets.get("KAKAO_APP_ID")
 NAVER_CLIENT_ID = _secrets.get("NAVER_CLIENT_ID")
 NAVER_CLIENT_SECRET = _secrets.get("NAVER_CLIENT_SECRET")

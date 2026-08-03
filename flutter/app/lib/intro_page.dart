@@ -1,9 +1,12 @@
-// 앱 실행 시 첫 화면 — 인트로 영상을 한 번 재생하고 홈으로 넘어간다.
+// 앱 실행 시 첫 화면 — 인트로 영상을 최대 10초까지 재생하고 로그인 화면으로 넘어간다.
+// 세션이 이미 살아 있으면 main.dart가 이 화면을 건너뛴다.
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
-import 'package:app/home_page.dart';
+import 'package:app/auth.dart';
 import 'package:app/theme.dart';
 
 class IntroPage extends StatefulWidget {
@@ -15,6 +18,7 @@ class IntroPage extends StatefulWidget {
 
 class _IntroPageState extends State<IntroPage> {
   late final VideoPlayerController _controller;
+  Timer? _cap;
   bool _ready = false;
   bool _left = false;
 
@@ -34,25 +38,27 @@ class _IntroPageState extends State<IntroPage> {
       await _controller.initialize();
       if (!mounted) return;
       setState(() => _ready = true);
+      // 영상이 더 길어도 10초에서 끊는다.
+      _cap = Timer(const Duration(seconds: 10), _goNext);
       await _controller.play();
     } catch (_) {
-      // 영상이 깨져도 앱이 멈추면 안 된다 — 바로 홈으로 보낸다.
-      _goHome();
+      // 영상이 깨져도 앱이 멈추면 안 된다 — 바로 다음 화면으로 보낸다.
+      _goNext();
     }
   }
 
   void _onTick() {
     final v = _controller.value;
-    if (v.isInitialized && v.position >= v.duration) _goHome();
+    if (v.isInitialized && v.position >= v.duration) _goNext();
   }
 
-  void _goHome() {
+  void _goNext() {
     if (_left || !mounted) return;
     _left = true;
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 450),
-        pageBuilder: (_, _, _) => const HomePage(),
+        pageBuilder: (_, _, _) => const AuthPage(),
         transitionsBuilder: (_, animation, _, child) =>
             FadeTransition(opacity: animation, child: child),
       ),
@@ -61,6 +67,7 @@ class _IntroPageState extends State<IntroPage> {
 
   @override
   void dispose() {
+    _cap?.cancel();
     _controller.removeListener(_onTick);
     _controller.dispose();
     super.dispose();
@@ -103,7 +110,7 @@ class _IntroPageState extends State<IntroPage> {
             right: 12,
             child: SafeArea(
               child: TextButton(
-                onPressed: _goHome,
+                onPressed: _goNext,
                 style: TextButton.styleFrom(foregroundColor: Colors.white70),
                 child: const Text('건너뛰기'),
               ),

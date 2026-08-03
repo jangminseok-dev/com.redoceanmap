@@ -16,6 +16,13 @@ JWT 기반 인증 스포크. 회원 가입·로그인·토큰 발급을 담당�
   부재 시 no-op). 공개 `GET /auth/tabs` — 토큰 유효 시 보유 역할 탭 합집합, 없음/무효 시 basic
   구성 반환. 등급 CRUD는 허브 `GradePolicyPort`를 `GradePolicyGateway`로 구현(어드민 소비).
 
+- **모바일 카카오 로그인(alembic `c9d0e1f2a3b4`)**: `POST /auth/mobile/kakao` — 앱이 보낸 카카오
+  액세스 토큰을 서버가 카카오에 직접 확인(`access_token_info`로 **app_id 검증** → `/v2/user/me`)한 뒤
+  자체 JWT(`platform=mobile`)를 발급한다. 식별자는 `users.kakao_id`(이메일 연동 아님 — 이메일은
+  선택 동의라 NULL 가능). 리프레시는 **Redis db 1**(`mobile:refresh:{user_id}:{jti}`)에 저장하고
+  웹 세션(db 0)과 커넥션을 분리한다. 갱신·로그아웃·동의 엔드포인트는 아직 없다 →
+  [[minseok/_docs/flutter-kakao-oauth-harness|flutter kakao oauth harness]] 8.4.
+
 ## 헥사고날 레이어
 
 ```

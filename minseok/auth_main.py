@@ -20,6 +20,8 @@ from fastapi.responses import RedirectResponse
 
 from auth.adapter.inbound.api.v1.auth_router import auth_router
 from auth.adapter.inbound.api.v1.gatekeeper_router import gatekeeper_router
+from auth.adapter.inbound.api.v1.mobile_auth_router import mobile_auth_router
+from auth.adapter.inbound.api.v1.mobile_gatekeeper_router import mobile_gatekeeper_router
 from auth.adapter.inbound.api.v1.social_router import social_router
 from core.database import dispose_engine, init_engine
 from core.redis import dispose_redis
@@ -61,6 +63,8 @@ app.add_middleware(
 app.include_router(auth_router)  # 공개 — register/login/refresh, me·tabs는 자체 검증
 app.include_router(social_router)  # 공개 — 소셜 로그인(google·kakao·naver), 코드 교환 후 자체 JWT 발급
 app.include_router(gatekeeper_router)  # 공개 — auth 자기소개
+app.include_router(mobile_auth_router)  # 공개 — Flutter 앱 카카오 로그인(본문으로 토큰 발급)
+app.include_router(mobile_gatekeeper_router)  # 공개 — auth/mobile 자기소개
 
 
 @app.get("/", include_in_schema=False)

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, String, false
+from sqlalchemy import BigInteger, Boolean, DateTime, String, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
@@ -10,9 +10,12 @@ class UserOrm(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    # 카카오는 이메일 제공이 선택 동의라 없을 수 있다 — 식별자는 kakao_id가 맡는다.
+    email: Mapped[str | None] = mapped_column(String(255), unique=True, index=True, nullable=True)
+    kakao_id: Mapped[int | None] = mapped_column(BigInteger, unique=True, nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     name: Mapped[str] = mapped_column(String(100))
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # 약관 동의 증빙 — 필수 약관(이용약관·개인정보) 동의 시각. 기존 유저는 NULL(소급 없음).
     terms_agreed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     marketing_agreed: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())

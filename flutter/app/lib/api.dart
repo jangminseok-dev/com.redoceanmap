@@ -21,7 +21,7 @@ class ApiException implements Exception {
 }
 
 /// 응답 본문의 `detail`을 그대로 쓴다 — 백엔드가 한국어 메시지를 준다.
-Never _throwFrom(http.Response res) {
+Never throwFrom(http.Response res) {
   String message;
   try {
     final body = jsonDecode(utf8.decode(res.bodyBytes));
@@ -85,7 +85,7 @@ class ShowcaseRow {
 
 Future<Showcase> fetchShowcase() async {
   final res = await http.get(Uri.parse('$apiBase/market/areas/showcase'));
-  if (res.statusCode != 200) _throwFrom(res);
+  if (res.statusCode != 200) throwFrom(res);
   return Showcase.fromJson(
     jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>,
   );
@@ -112,7 +112,7 @@ Future<ChatAnswer> askChat(String prompt, {int? conversationId}) async {
     headers: {'Content-Type': 'application/json'},
     body: jsonEncode({'prompt': prompt, 'conversationId': conversationId}),
   );
-  if (res.statusCode != 200) _throwFrom(res);
+  if (res.statusCode != 200) throwFrom(res);
   return ChatAnswer.fromJson(
     jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>,
   );
