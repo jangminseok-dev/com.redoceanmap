@@ -19,7 +19,7 @@ from game.domain.clock.game_epoch import (
     TICKS_PER_GAME_DAY,
     describe,
 )
-from game.domain.market import orderbook, price_engine
+from game.domain.market import fundamentals, orderbook, price_engine
 from game.domain.market.symbol_params import find as find_symbol
 from game.domain.trading.liquidation import resolve_close
 from game.domain.trading.trading_rules import (
@@ -196,6 +196,11 @@ class TradeInteractor(TradeUseCase):
             entry_fee_krw=position.entry_fee_krw,
             leverage=position.leverage,
             forced=hit.forced if hit else False,
+            # 보유 중 지나간 분기 배당 — 배당락으로 이미 주가가 빠졌으므로 이걸 안 주면
+            # 롱 보유자가 배당락만 맞고 배당은 못 받는다
+            dividend_per_share_krw=fundamentals.dividends_between(
+                params, position.entry_tick, closed_tick
+            ),
         )
 
         await self._repository.close_position(

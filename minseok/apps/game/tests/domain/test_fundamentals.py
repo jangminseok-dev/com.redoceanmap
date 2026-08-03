@@ -100,3 +100,64 @@ def test_전_종목이_계산되고_값이_유한하다():
         v = f.value_at(params, params.base_price_krw, fin)
         assert v.market_cap_krw > 0
         assert v.pbr is None or v.pbr > 0
+
+
+# --- 배당 --------------------------------------------------------------------
+
+def test_적자_종목은_배당이_없다():
+    """실제 기업이 그렇다. 밈 종목이 배당까지 주면 적자라는 성격이 무의미해진다."""
+    for params in (s for s in SYMBOLS if s.meme):
+        for q in range(1, QUARTERS_PER_SEASON + 1):
+            assert f.dividend_per_share(params, q) == 0
+
+
+def test_배당성향이_업종마다_다르다():
+    """성장주는 재투자하고 통신·금융은 많이 준다 — 실제 시장의 특성이다."""
+    def yield_of(group: str) -> float:
+        params = next(s for s in SYMBOLS if s.sector_group == group)
+        return f.dividend_per_share(params, 3) / params.base_price_krw
+
+    assert yield_of("통신·미디어") > yield_of("소프트웨어·플랫폼") * 2
+
+
+def test_배당락이_반드시_따라온다():
+    """배당만 주고 배당락이 없으면 분기 경계만 넘기는 것이 공짜 수익이 된다."""
+    params = next(s for s in SYMBOLS if not s.meme and f.dividend_per_share(s, 2) > 0)
+    events = f.quarterly_events(params)
+    drops = [e for e in events if "배당락" in e.headline]
+    assert drops, f"{params.name}은 배당을 주는데 배당락 이벤트가 없다"
+    assert all(e.shock < 0 for e in drops)
+
+
+def test_보유_구간의_배당만_센다():
+    params = next(s for s in SYMBOLS if not s.meme and f.dividend_per_share(s, 2) > 0)
+    boundary = 90 * 60  # 2분기 시작
+    assert f.dividends_between(params, boundary - 10, boundary - 1) == 0  # 경계 전에 청산
+    assert f.dividends_between(params, boundary - 10, boundary + 10) > 0  # 경계를 넘김
+
+
+# --- 유상증자 ------------------------------------------------------------------
+
+def test_유상증자는_주식수를_늘리고_EPS를_희석한다():
+    """희석이 없으면 유상증자가 이름뿐인 이벤트가 된다."""
+    target = next(
+        (s for s in SYMBOLS for q in range(2, 9) if f.rights_issue_ratio(s, q) > 0), None
+    )
+    assert target is not None, "시즌 전체에 유상증자가 한 번도 없다"
+    quarter = next(q for q in range(2, 9) if f.rights_issue_ratio(target, q) > 0)
+    assert f.shares_outstanding(target, quarter) > f.shares_outstanding(target, quarter - 1)
+
+
+def test_주식수는_한번_늘면_줄지_않는다():
+    for params in SYMBOLS[:6]:
+        counts = [f.shares_outstanding(params, q) for q in range(1, QUARTERS_PER_SEASON + 1)]
+        assert all(b >= a for a, b in zip(counts, counts[1:]))
+
+
+def test_밈_종목이_유상증자를_더_자주_한다():
+    """AMC·GME가 주가가 뛸 때마다 증자로 자금을 조달했다."""
+    def count(meme: bool) -> int:
+        pool = [s for s in SYMBOLS if s.meme == meme]
+        return sum(1 for s in pool for q in range(2, 9) if f.rights_issue_ratio(s, q) > 0) / len(pool)
+
+    assert count(True) > count(False)

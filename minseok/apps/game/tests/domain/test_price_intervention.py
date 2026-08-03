@@ -97,7 +97,8 @@ def test_상한가를_넘는_개입은_그날_상한가에서_멈춘다():
     day_open = price_engine._day_open(SYMBOL, (tick // 60) * 60, ())
     extra = pi.to_events((_intervention(from_tick=tick, shock_pct=200.0),))
     moved = price_engine.price_at(SYMBOL, tick + events.EVENT_RAMP_TICKS, None, extra)
-    assert moved <= round(day_open * (1 + price_engine.DAILY_LIMIT_PCT))
+    ceiling = price_engine._floor_to_tick(day_open * (1 + price_engine.DAILY_LIMIT_PCT))
+    assert moved <= ceiling
 
 
 def test_퍼센트가_로그_공간으로_옳게_넘어간다():

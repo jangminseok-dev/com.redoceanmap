@@ -69,6 +69,18 @@ def round_to_tick(price_krw: int) -> int:
     size = tick_size(price_krw)
     return max(size, round(price_krw / size) * size)
 
+
+def _floor_to_tick(price_krw: float) -> int:
+    """호가 격자로 **내림**. 상한가가 격자 위에 서게 한다."""
+    size = tick_size(int(price_krw))
+    return max(size, int(price_krw // size) * size)
+
+
+def _ceil_to_tick(price_krw: float) -> int:
+    """호가 격자로 **올림**. 하한가가 격자 위에 서게 한다."""
+    size = tick_size(int(price_krw))
+    return max(size, -(-int(price_krw) // size) * size)
+
 PRICE_BAND_LOG = 1.8       # 일반 종목 — 약 ×6 / ÷6
 PRICE_BAND_LOG_MEME = 2.5  # 밈 종목 — 약 ×12 / ÷12. 더 크게 열어두되 무한하지 않다
 
@@ -230,9 +242,10 @@ def price_at(
     )
     band = PRICE_BAND_LOG_MEME if params.meme else PRICE_BAND_LOG
     log_price = math.log(params.base_price_krw) + band * math.tanh(log_ratio / band)
-    raw = max(1, round(math.exp(log_price)))
-    limited = _apply_daily_limit(params, t, raw, nodes, extra_events)
-    return round_to_tick(limited)
+    # **호가 반올림이 먼저다.** 제한을 걸고 반올림하면 격자가 상한가를 밀어올려
+    # ±30%를 넘긴 값이 나온다(회귀 테스트가 잡았다). 실제 시장도 상한가 자체가 격자 위에 있다.
+    raw = round_to_tick(max(1, round(math.exp(log_price))))
+    return _apply_daily_limit(params, t, raw, nodes, extra_events)
 
 
 def _apply_daily_limit(
@@ -256,8 +269,8 @@ def _apply_daily_limit(
     # 하루 60틱이 같은 시가를 60번 다시 계산하면 시리즈 조회가 두 배로 느려진다.
     # 순수 함수라 캐시가 값을 바꾸지 않는다(개입도 키에 들어간다).
     open_price = _day_open(params, day_start, extra_events)
-    ceiling = round(open_price * (1.0 + DAILY_LIMIT_PCT))
-    floor = round(open_price * (1.0 - DAILY_LIMIT_PCT))
+    ceiling = _floor_to_tick(open_price * (1.0 + DAILY_LIMIT_PCT))
+    floor = _ceil_to_tick(open_price * (1.0 - DAILY_LIMIT_PCT))
     return max(1, min(max(raw_price, floor), ceiling))
 
 
@@ -273,9 +286,9 @@ def _day_open(
 
 @lru_cache(maxsize=128)
 def _earnings(params: SymbolParams) -> tuple[market_events.MarketEvent, ...]:
-    """이 종목의 어닝 이벤트. **가격 경로 어디서든 자동으로 포함된다** —
+    """이 종목의 분기 사건(어닝·배당락·유상증자). **가격 경로 어디서든 자동으로 포함된다** —
     호출자가 넘기게 두면 한 곳이라도 빠졌을 때 화면 가격과 체결가가 갈라진다."""
-    return fundamentals.earnings_events(params)
+    return fundamentals.quarterly_events(params)
 
 
 def _unlimited_price(
@@ -307,9 +320,9 @@ def limit_state(params: SymbolParams, tick: int) -> str:
         return "none"
     open_price = _day_open(params, day_start, ())
     raw = _unlimited_price(params, tick, None, ())
-    if raw >= round(open_price * (1.0 + DAILY_LIMIT_PCT)):
+    if raw >= _floor_to_tick(open_price * (1.0 + DAILY_LIMIT_PCT)):
         return "upper"
-    if raw <= round(open_price * (1.0 - DAILY_LIMIT_PCT)):
+    if raw <= _ceil_to_tick(open_price * (1.0 - DAILY_LIMIT_PCT)):
         return "lower"
     return "none"
 

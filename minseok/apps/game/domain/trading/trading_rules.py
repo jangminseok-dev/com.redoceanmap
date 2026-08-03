@@ -84,6 +84,7 @@ class CloseResult:
     fee_krw: int
     carry_krw: int  # 숏 보유비용
     realized_pnl_krw: int  # 회수액 − 투입액(진입 수수료 포함)
+    dividend_krw: int = 0  # 보유 중 지나간 배당. 롱은 +, 숏은 −(빌린 주식의 배당을 물어낸다)
 
 
 def investable_cash(cash_krw: int) -> int:
@@ -140,6 +141,7 @@ def close_result(
     entry_fee_krw: int,
     leverage: int = 1,
     forced: bool = False,
+    dividend_per_share_krw: int = 0,
 ) -> CloseResult:
     """청산 정산.
 
@@ -167,11 +169,17 @@ def close_result(
             + borrowed * LEVERAGE_CARRY_RATE_PER_GAME_DAY * days
         )
     gross_pnl = max(gross_pnl, -margin)  # 손실 상한 = 증거금
-    proceeds = max(0, margin + gross_pnl - exit_fee - carry)
+    # 보유 중 지나간 배당. **숏은 물어낸다** — 빌린 주식의 배당은 원주인 몫이라
+    # 공매도자가 대신 지급한다(실제 시장의 배당락 조정과 같은 원리다).
+    dividend = dividend_per_share_krw * quantity
+    if side is not Side.LONG:
+        dividend = -dividend
+    proceeds = max(0, margin + gross_pnl + dividend - exit_fee - carry)
 
     return CloseResult(
         proceeds_krw=proceeds,
         fee_krw=exit_fee,
         carry_krw=carry,
         realized_pnl_krw=proceeds - (margin + entry_fee_krw),
+        dividend_krw=dividend,
     )

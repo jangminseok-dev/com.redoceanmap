@@ -102,3 +102,23 @@ def test_회수액은_결코_음수가_아니다(side):
     for exit_price in (1, 10, 50_000, 500_000, 5_000_000):
         result = close_result(side, 50_000, exit_price, 3, 100.0, entry.fee_krw)
         assert result.proceeds_krw >= 0
+
+
+def test_배당은_롱이_받고_숏이_물어낸다():
+    """빌린 주식의 배당은 원주인 몫이라 공매도자가 대신 지급한다."""
+    from game.domain.trading.trading_rules import Side, close_result
+
+    common = dict(
+        entry_price_krw=10_000,
+        exit_price_krw=10_000,
+        quantity=10,
+        holding_game_days=0.0,
+        entry_fee_krw=0,
+    )
+    long_paid = close_result(side=Side.LONG, dividend_per_share_krw=200, **common)
+    short_paid = close_result(side=Side.SHORT, dividend_per_share_krw=200, **common)
+    assert long_paid.dividend_krw == +2_000
+    assert short_paid.dividend_krw == -2_000
+    # 배당이 실제 회수액에 반영된다
+    long_none = close_result(side=Side.LONG, dividend_per_share_krw=0, **common)
+    assert long_paid.proceeds_krw == long_none.proceeds_krw + 2_000
