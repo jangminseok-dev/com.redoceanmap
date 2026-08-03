@@ -36,6 +36,7 @@
 | store_daily | `GET /game/stores` · `GET /game/stores/{id}?days=` | 가게 목록·현황. 일별 매출·비용·반려율과 오늘 온 손님 구성. **일별 매출은 저장하지 않고 재계산한다** |
 | (운영) | `GET·POST /admin/game/*` | 어드민 전용 — 자본 지급·주가 개입. admin은 스포크라 직접 못 부르고 허브 `GameOpsPort`를 `adapter/outbound/gateways/game_ops_gateway.py`가 구현한다 |
 | settlement | `GET /game/settlements` | 분기 결산 — **조회가 곧 정산 시점**(지연 실행, cron 0개). 밀린 분기를 확정하고 손익을 지갑에 반영한다. 멱등 |
+| limit_order | `GET·POST /game/orders` · `POST /game/orders/exits` · `POST /game/orders/{id}/{cancel,extend}` | 지정가 — 진입 예약 + 청산 예약(익절·손절, 같은 포지션이면 OCO). **조회가 곧 체결 시점**(결산과 같은 지연 실행). 체결가는 지정가 고정·부분체결 없음(잔량 초과는 접수 거부), 진입 예약은 현금을 묶는다. **강제청산이 예약보다 우선**한다. 만료 180틱은 스캔 범위를 묶는 성능 장치라 없애지 않고 연장만 한다 |
 
 ## 레이어
 
@@ -89,7 +90,7 @@ apps/game/
 
 | 남은 단계 | 내용 | 정본 |
 |---|---|---|
-| 12 | 지정가 주문 (새 테이블 1개 · 지연 체결 판정) | game-strategy §7-12 |
+| ~~12~~ | ~~지정가 주문~~ → **백엔드 완료 2026-08-03**(`limit_order` 슬라이스 · `game_limit_orders`). 프론트 주문 UI가 남았다 | game-strategy §7-12 |
 | 이후 | SLM 빌드타임 코퍼스 → 가상 인물·국가 → 종목 간 상관 | game-strategy §13 |
 
 **11·13~20단계는 완료됐다**(2026-08-03) — 뉴스 UX·주식 화면 고도화·차트 패턴 분석·상권 화면/

@@ -109,6 +109,7 @@ from game.adapter.inbound.api.v1.settlement_router import settlement_router
 from game.adapter.inbound.api.v1.store_action_router import store_action_router
 from game.adapter.inbound.api.v1.store_daily_router import store_daily_router
 from game.adapter.inbound.api.v1.store_open_router import store_open_router
+from game.adapter.inbound.api.v1.limit_order_router import limit_order_router
 from game.adapter.inbound.api.v1.trade_router import trade_router
 from game.dependencies.game_ops_provider import get_game_ops_gateway
 from game.adapter.inbound.api.v1.wallet_router import wallet_router
@@ -207,6 +208,7 @@ app.include_router(analyst_router, dependencies=_authenticated)
 app.include_router(market_price_router, dependencies=_authenticated)  # 게임 — 가상 시세
 app.include_router(wallet_router, dependencies=_authenticated)
 app.include_router(trade_router, dependencies=_authenticated)
+app.include_router(limit_order_router, dependencies=_authenticated)
 app.include_router(futures_router, dependencies=_authenticated)
 app.include_router(area_fitness_router, dependencies=_authenticated)
 app.include_router(store_open_router, dependencies=_authenticated)

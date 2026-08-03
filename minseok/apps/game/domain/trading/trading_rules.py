@@ -65,6 +65,14 @@ LIQUIDATION_FEE_RATE = 0.0020
 # (5 × 8ms = 40ms).
 MAX_LEVERAGED_POSITIONS = 5
 
+# --- 지정가 주문 (12단계) -----------------------------------------------------
+# 대기 주문의 스캔 범위 상한. 레버리지 만료와 같은 값이고 이유도 같다 — 만료가 없으면
+# 장기 미접속자의 체결 판정이 전 구간 순회가 된다. 만료 대신 **연장**을 제공한다.
+LIMIT_ORDER_EXPIRY_TICKS = LEVERAGED_EXPIRY_TICKS
+
+# 동시 대기 주문 수. 판정 비용이 주문 수에 비례하므로 상한이 필요하다(위 레버리지와 같은 근거).
+MAX_PENDING_LIMIT_ORDERS = 20
+
 
 class Side(StrEnum):
     LONG = "LONG"
