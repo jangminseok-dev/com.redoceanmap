@@ -48,6 +48,7 @@ import game.adapter.outbound.orm.game_ledger_orm  # noqa: F401
 import game.adapter.outbound.orm.game_store_orm  # noqa: F401
 import game.adapter.outbound.orm.game_store_decision_orm  # noqa: F401
 import game.adapter.outbound.orm.game_quarter_settlement_orm  # noqa: F401
+import game.adapter.outbound.orm.game_limit_order_orm  # noqa: F401
 
 target_metadata = Base.metadata
 
