@@ -49,7 +49,13 @@ export default function StoreFitnessCard({ fitness }: { fitness: GameAreaFitness
       <ul className="mt-4 space-y-2">
         {fitness.components.map((c) => (
           <li key={c.key} className="flex items-center gap-2 text-xs">
-            <span className="w-20 shrink-0 text-foreground-muted">{c.label}</span>
+            <span className="w-20 shrink-0 text-foreground-muted">
+              {c.label}
+              {/* 가중치를 보여야 어느 축을 고쳐야 적합도가 오르는지 판단할 수 있다 */}
+              <span className="ml-1 opacity-60 tabular-nums">
+                ×{c.weight.toFixed(2)}
+              </span>
+            </span>
             <span className="flex-1 h-1.5 rounded-full bg-black/[0.06] overflow-hidden">
               <span
                 className="block h-full rounded-full bg-brand"
@@ -75,6 +81,12 @@ export default function StoreFitnessCard({ fitness }: { fitness: GameAreaFitness
       </ul>
 
       <dl className="mt-4 pt-3 border-t border-border grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+        <div className="col-span-2">
+          <dt className="text-foreground-muted">이 자리에서 예상되는 월매출 (게임 규칙 추정)</dt>
+          <dd className="text-base font-bold tabular-nums">
+            {won(fitness.simulatedMonthlySalesKrw)}
+          </dd>
+        </div>
         <div>
           <dt className="text-foreground-muted">점포당 월매출 (실측)</dt>
           <dd className="tabular-nums font-medium">{won(fitness.observedSalesPerStore)}</dd>

@@ -97,9 +97,11 @@ from market.adapter.inbound.api.v1.area_showcase_router import area_showcase_rou
 from market.adapter.inbound.api.v1.area_stats_router import area_stats_router
 from market.adapter.inbound.api.v1.cartographer_router import cartographer_router
 from game.adapter.inbound.api.v1.area_fitness_router import area_fitness_router
+from game.adapter.inbound.api.v1.futures_router import futures_router
 from game.adapter.inbound.api.v1.market_price_router import market_price_router
 from game.adapter.inbound.api.v1.rulebook_router import rulebook_router
 from game.adapter.inbound.api.v1.settlement_router import settlement_router
+from game.adapter.inbound.api.v1.store_action_router import store_action_router
 from game.adapter.inbound.api.v1.store_daily_router import store_daily_router
 from game.adapter.inbound.api.v1.store_open_router import store_open_router
 from game.adapter.inbound.api.v1.trade_router import trade_router
@@ -199,9 +201,11 @@ app.include_router(analyst_router, dependencies=_authenticated)
 app.include_router(market_price_router, dependencies=_authenticated)  # 게임 — 가상 시세
 app.include_router(wallet_router, dependencies=_authenticated)
 app.include_router(trade_router, dependencies=_authenticated)
+app.include_router(futures_router, dependencies=_authenticated)
 app.include_router(area_fitness_router, dependencies=_authenticated)
 app.include_router(store_open_router, dependencies=_authenticated)
 app.include_router(store_daily_router, dependencies=_authenticated)
+app.include_router(store_action_router, dependencies=_authenticated)
 app.include_router(settlement_router, dependencies=_authenticated)
 app.include_router(rulebook_router, dependencies=_authenticated)
 app.include_router(recommendation_router, dependencies=_authenticated)

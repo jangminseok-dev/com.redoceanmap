@@ -134,13 +134,15 @@ def monthly_rent(setup: StoreSetup) -> int:
     )
 
 
+def interior_cost(facility_score: int, store_scale: float) -> int:
+    """시설 점수를 세우는 비용. **회수되지 않는다** — 창업할 때도, 나중에 더 올릴 때도 같은 값이다."""
+    return round(facility_score * rules.INTERIOR_COST_PER_POINT.value * store_scale)
+
+
 def opening_cost(setup: StoreSetup, facility_score: int) -> tuple[int, int]:
     """(보증금, 인테리어). 보증금은 폐업 시 회수되고 인테리어는 회수되지 않는다."""
     deposit = round(monthly_rent(setup) * rules.DEPOSIT_MONTHS.value)
-    interior = round(
-        facility_score * rules.INTERIOR_COST_PER_POINT.value * setup.store_scale
-    )
-    return deposit, interior
+    return deposit, interior_cost(facility_score, setup.store_scale)
 
 
 def scale_for_budget(

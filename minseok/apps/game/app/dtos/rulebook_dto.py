@@ -36,3 +36,8 @@ class RulebookResponse:
     fee_rate: float
     short_carry_rate_per_game_day: float
     ticks_per_game_day: int
+    # 레버리지 규칙 — 프론트가 배율·청산선·만료를 하드코딩하지 않게 서버가 내려준다
+    leverage_tiers: tuple[int, ...] = (1,)
+    maintenance_margin_ratio: float = 0.0
+    leveraged_expiry_ticks: int = 0
+    max_leveraged_positions: int = 0

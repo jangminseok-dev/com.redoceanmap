@@ -1,7 +1,11 @@
 from fastapi import APIRouter, Depends
 
 from core.security import get_current_user_id
-from game.adapter.inbound.api.schemas.wallet_schema import PositionSchema, WalletResponseSchema
+from game.adapter.inbound.api.schemas.wallet_schema import (
+    ClosedNoticeSchema,
+    PositionSchema,
+    WalletResponseSchema,
+)
 from game.app.dtos.wallet_dto import WalletQuery
 from game.app.ports.input.wallet_use_case import WalletUseCase
 from game.dependencies.wallet_provider import get_wallet_use_case
@@ -43,7 +47,25 @@ async def get_wallet(
                 marketValueKrw=p.market_value_krw,
                 unrealizedPnlKrw=p.unrealized_pnl_krw,
                 unrealizedPct=p.unrealized_pct,
+                leverage=p.leverage,
+                liquidationPriceKrw=p.liquidation_price_krw,
+                expiresTick=p.expires_tick,
             )
             for p in result.positions
+        ],
+        recentlyClosed=[
+            ClosedNoticeSchema(
+                id=c.id,
+                symbol=c.symbol,
+                name=c.name,
+                side=c.side,
+                quantity=c.quantity,
+                leverage=c.leverage,
+                closedGameDay=c.closed_game_day,
+                exitPriceKrw=c.exit_price_krw,
+                realizedPnlKrw=c.realized_pnl_krw,
+                reason=c.reason,
+            )
+            for c in result.recently_closed
         ],
     )

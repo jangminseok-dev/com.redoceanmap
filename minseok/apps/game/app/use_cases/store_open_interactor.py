@@ -44,6 +44,28 @@ class StoreOpenInteractor(StoreOpenUseCase):
         self._accounts = accounts
         self._clock = clock
 
+    async def _check_store_quota(self, user_id: int) -> None:
+        """동시 운영 가게 수 제한. n+1호점은 **흑자 분기 결산 n회**가 쌓여야 열린다.
+
+        "한 곳을 굴려 흑자를 내본 뒤에 늘린다"는 순서를 강제한다 — 자본만 있으면 첫날에
+        세 곳을 여는 것을 막는다.
+        """
+        stores = await self._stores.list_stores(user_id, GAME_EPOCH_ID)
+        open_count = sum(1 for s in stores if s.status == "open")
+        if open_count >= rules.MAX_CONCURRENT_STORES:
+            raise InvalidOrder(
+                f"가게는 동시에 {rules.MAX_CONCURRENT_STORES}곳까지만 운영할 수 있습니다"
+            )
+        if open_count == 0:
+            return  # 1호점은 조건 없다
+        settlements = await self._stores.list_settlements(user_id, GAME_EPOCH_ID)
+        profitable = sum(1 for s in settlements if s.profit_krw > 0)
+        if profitable < open_count:
+            raise InvalidOrder(
+                f"{open_count + 1}호점은 흑자 분기 결산 {open_count}회가 필요합니다 "
+                f"(현재 {profitable}회)"
+            )
+
     async def open_store(self, command: OpenStoreCommand) -> OpenStoreReceipt:
         moment = describe(self._clock.now_tick())
         if moment.season_over:
@@ -57,6 +79,8 @@ class StoreOpenInteractor(StoreOpenUseCase):
             )
         if command.budget_krw <= 0:
             raise InvalidOrder("투입 자본은 1원 이상이어야 합니다")
+
+        await self._check_store_quota(command.user_id)
 
         profile = await self._profiles.get_demand_profile(
             trdar_code=command.trdar_code,

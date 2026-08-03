@@ -8,6 +8,7 @@ class OpenTradeCommand:
     symbol: str
     side: str  # LONG | SHORT
     quantity: int
+    leverage: int = 1  # 1·2·3·4. 1배는 청산도 만료도 없다
 
 
 @dataclass(frozen=True)
@@ -33,3 +34,6 @@ class TradeReceipt:
     realized_pnl_krw: int | None  # 청산에만
     cash_krw: int  # 체결 후 잔고
     tick: int
+    leverage: int = 1
+    liquidation_price_krw: int | None = None  # 1배는 청산되지 않으므로 None
+    expires_tick: int | None = None           # 레버리지 포지션의 자동 마감 시점

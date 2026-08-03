@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from core.chart_pattern import DetectedPattern
 from stock.domain.entities.fundamental_snapshot import FundamentalSnapshot
 from stock.domain.entities.price_bar import PriceBar
 from stock.domain.value_objects.insight_vo import Insight
@@ -26,6 +27,9 @@ class PriceHistory:
     timeframe: str
     bars: list[PriceBar]
     live: bool = False  # True = 미수집 종목이라 yfinance 라이브 이력 폴백(저장 안 함)
+    # 종가 곡선에서 관측된 형태(신뢰도 상위). **예측이 아니다** — 어떤 형태가 그려져 있는지
+    # 알아본 것이며, 매매 판단은 이 목록으로 대체되지 않는다.
+    patterns: tuple[DetectedPattern, ...] = ()
 
 
 @dataclass(frozen=True)

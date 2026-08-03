@@ -64,6 +64,52 @@ class StubStoreRepository:
             return None
         return self._to_record(store)
 
+    # --- 운영 액션 (17단계) ------------------------------------------------
+
+    async def add_decision(
+        self,
+        *,
+        user_id,
+        store_id,
+        epoch_id,
+        effective_from_day,
+        price_factor,
+        staff_count,
+        facility_score,
+        interior_cost_krw,
+    ) -> StoreRecord:
+        store = self.stores[store_id]
+        store["decisions"].append(
+            {
+                "effective_from_day": effective_from_day,
+                "price_factor": price_factor,
+                "staff_count": staff_count,
+                "facility_score": facility_score,
+            }
+        )
+        if interior_cost_krw:
+            store["interior_krw"] += interior_cost_krw
+            self._move_cash(user_id, -interior_cost_krw)
+        return self._to_record(store)
+
+    async def close_store(
+        self, *, user_id, store_id, epoch_id, closed_game_day, deposit_refund_krw
+    ) -> StoreRecord:
+        store = self.stores[store_id]
+        store["status"] = "closed"
+        store["closed_game_day"] = closed_game_day
+        if deposit_refund_krw:
+            self._move_cash(user_id, deposit_refund_krw)
+        return self._to_record(store)
+
+    def _move_cash(self, user_id: int, amount_krw: int) -> None:
+        if self._accounts is None:
+            return
+        self._accounts.wallets[user_id]["cash_krw"] += amount_krw
+        self._accounts.ledger.append(
+            {"user_id": user_id, "source": "store", "amount_krw": amount_krw}
+        )
+
     @staticmethod
     def _to_record(store: dict) -> StoreRecord:
         snapshot = store["profile_snapshot"]

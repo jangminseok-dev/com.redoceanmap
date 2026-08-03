@@ -49,6 +49,9 @@ class StoreDailyResponseSchema(BaseModel):
     seats: int
     depositKrw: int
     interiorKrw: int
+    priceFactor: float
+    staffCount: int
+    facilityScore: int
 
     observedSalesPerStore: int
     observedTicketPrice: int

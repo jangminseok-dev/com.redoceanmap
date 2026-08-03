@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from game.app.dtos.account_dto import Account, ClosedPosition, OpenPosition
+from game.app.dtos.account_dto import Account, ClosedPosition, OpenPosition, RecentlyClosed
 
 
 class GameAccountRepository(ABC):
@@ -38,6 +38,9 @@ class GameAccountRepository(ABC):
         entry_fee_krw: int,
         cash_delta_krw: int,
         game_day: int,
+        instrument: str = "STOCK",
+        leverage: int = 1,
+        expires_tick: int | None = None,
     ) -> OpenPosition:
         """포지션 생성 + 지갑 차감 + 원장 기록을 한 트랜잭션으로."""
         ...
@@ -54,8 +57,23 @@ class GameAccountRepository(ABC):
         realized_pnl_krw: int,
         proceeds_krw: int,
         game_day: int,
+        close_reason: str = "user",
     ) -> ClosedPosition:
-        """포지션 마감 + 지갑 증가 + 원장 기록을 한 트랜잭션으로."""
+        """포지션 마감 + 지갑 증가 + 원장 기록을 한 트랜잭션으로.
+
+        이미 닫힌 포지션이면 `LookupError`다 — 동시 요청의 두 번째가 여기서 걸린다.
+        지연 마감 루프는 이 예외를 "이미 처리됨"으로 읽고 삼킨다.
+        """
+        ...
+
+    @abstractmethod
+    async def list_recently_closed(
+        self, user_id: int, epoch_id: int, limit: int = 5
+    ) -> tuple[RecentlyClosed, ...]:
+        """유저가 직접 청산하지 않은 최근 마감(강제청산·만료·만기정산).
+
+        복귀했을 때 "미접속 중에 무슨 일이 있었는지"를 보여줄 유일한 출처다.
+        """
         ...
 
     @abstractmethod

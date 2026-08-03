@@ -30,7 +30,7 @@
 | rulebook | `GET /game/myself` | 자기소개(가상 주가·매매 실행 아님·가정치 고지) **+ 현재 게임 시각**(tick·game_day·game_quarter·시즌 잔여) |
 | market_price | `GET /game/market/prices?ticks=` | 전 종목 현재가·등락률·최근 곡선 + **최근 호재·악재**. `ticks` 2~240 |
 | wallet | `GET /game/wallet` | 현금·투자가능액·보유 포지션(현재 시세 평가)·총자산. 계정이 없으면 초기자본 100만원으로 자동 생성 |
-| trade | `POST /game/trades` · `POST /game/trades/{id}/close` | 롱/숏 진입·청산. 레버리지 없음, 숏 손실 상한은 증거금, 체결가는 요청 도착 틱 |
+| trade | `POST /game/trades` · `POST /game/trades/{id}/close` | 롱/숏 진입·청산. **레버리지 1~4배**(2배 이상은 만료 180틱 + 강제청산), 손실 상한은 증거금, 체결가는 요청 도착 틱 |
 | area_fitness | `GET /game/areas/{trdar_code}/fitness?service_code=` | 창업 전 입지 미리보기 — 적합도 4축(수요·시간대·경쟁·생존) + 실데이터 근거 진단 문장. 허브 `AreaDemandProfilePort` 소비 |
 | store_open | `POST /game/stores` | 창업 — 투입 자본이 가게 규모를 정한다. 보증금(회수 가능)·인테리어(회수 불가) 지불 |
 | store_daily | `GET /game/stores` · `GET /game/stores/{id}?days=` | 가게 목록·현황. 일별 매출·비용·반려율과 오늘 온 손님 구성. **일별 매출은 저장하지 않고 재계산한다** |
@@ -83,15 +83,20 @@ apps/game/
 
 | 남은 단계 | 내용 | 정본 |
 |---|---|---|
-| 11 | 주식 화면 고도화 — 섹터별 보기 · 차트 Y축 · 봉차트 · 종목정보 카드 | game-strategy §7-11 |
 | 12 | 지정가 주문 (새 테이블 1개 · 지연 체결 판정) | game-strategy §7-12 |
+| 20 | **시즌 1 재시작** — 에포크 시각 갱신 + `game_*` 데이터 초기화(배포 시 1회) | game-strategy §15 |
 | 이후 | SLM 빌드타임 코퍼스 → 가상 인물·국가 → 어닝 캘린더 → 종목 간 상관 | game-strategy §13 |
+
+**11·13~19단계는 완료됐다**(2026-08-03) — 뉴스 UX·주식 화면 고도화·차트 패턴 분석·상권 화면/
+밸런스/운영 액션·레버리지 1~4배·지수 선물.
 
 **다른 기기에서 이어받는다면 game-strategy §14를 먼저 읽는다** — 맥에서 되는 검증과
 안 되는 것(마이그레이션 적용·σ 캘리브레이션·배포)이 갈린다.
 
-> ⚠️ **시즌 1이 2026-07-31 17:00 KST에 시작됐다.** 이제부터 σ·계수를 바꾸면 진행 중인
-> 과거가 소급 변조되므로 `GAME_EPOCH_ID`를 올려야 한다(harness §1-4).
+> ⚠️ **시즌 1을 재시작한다(20단계, 미배포).** 11~19단계에서 규칙이 바뀌었으므로
+> `game_*` 데이터를 비우고 `GAME_EPOCH_START_UTC`를 실배포 시각으로 옮긴 뒤 다시 연다.
+> 데이터를 전부 지우므로 소급될 과거가 없어 `GAME_EPOCH_ID`는 1로 둔다.
+> **배포 후에는** σ·계수를 바꿀 때 다시 에포크 승격이 따라온다(harness §1-4). 절차 → §15.
 
 ## 검증
 

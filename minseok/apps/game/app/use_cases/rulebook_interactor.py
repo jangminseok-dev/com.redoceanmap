@@ -14,6 +14,10 @@ from game.domain.clock.game_epoch import (
 )
 from game.domain.trading.trading_rules import (
     FEE_RATE,
+    LEVERAGE_TIERS,
+    LEVERAGED_EXPIRY_TICKS,
+    MAINTENANCE_MARGIN_RATIO,
+    MAX_LEVERAGED_POSITIONS,
     INITIAL_CASH_KRW,
     RESERVED_CASH_KRW,
     SHORT_CARRY_RATE_PER_GAME_DAY,
@@ -59,6 +63,10 @@ class RulebookInteractor(RulebookUseCase):
             initial_cash_krw=INITIAL_CASH_KRW,
             reserved_cash_krw=RESERVED_CASH_KRW,
             fee_rate=FEE_RATE,
+            leverage_tiers=LEVERAGE_TIERS,
+            maintenance_margin_ratio=MAINTENANCE_MARGIN_RATIO,
+            leveraged_expiry_ticks=LEVERAGED_EXPIRY_TICKS,
+            max_leveraged_positions=MAX_LEVERAGED_POSITIONS,
             short_carry_rate_per_game_day=SHORT_CARRY_RATE_PER_GAME_DAY,
             ticks_per_game_day=TICKS_PER_GAME_DAY,
         )

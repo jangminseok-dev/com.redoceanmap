@@ -1,9 +1,11 @@
 import pytest
 
 from game.app.dtos.market_price_dto import MarketPriceQuery
-from game.app.exceptions import InvalidTickRange
+from game.app.exceptions import InvalidTickRange, UnknownSymbol
 from game.app.use_cases.market_price_interactor import (
+    MAX_CANDLE_DAYS,
     MAX_TICKS,
+    MIN_CANDLE_DAYS,
     MIN_TICKS,
     MarketPriceInteractor,
 )
@@ -75,3 +77,53 @@ async def test_같은_틱을_두_번_물으면_같은_응답이다():
     first = await interactor.list_prices(MarketPriceQuery(ticks=30))
     second = await interactor.list_prices(MarketPriceQuery(ticks=30))
     assert first == second
+
+
+# --- 일봉·종목정보 (옵트인) ---------------------------------------------------
+
+async def test_종목을_지정하지_않으면_봉을_계산하지_않는다():
+    """전 종목 봉은 응답 목표를 넘긴다 — 기본은 계산하지 않는 것이다."""
+    result = await MarketPriceInteractor(clock=_StubClock(12_345)).list_prices(
+        MarketPriceQuery(ticks=30)
+    )
+    assert result.candles == ()
+    assert result.symbol_info is None
+
+
+async def test_지정한_종목의_봉과_카드가_함께_나온다():
+    result = await MarketPriceInteractor(clock=_StubClock(12_345)).list_prices(
+        MarketPriceQuery(ticks=30, candle_symbol="GX01", candle_days=7)
+    )
+    assert len(result.candles) == 7
+    info = result.symbol_info
+    assert info is not None
+    assert info.symbol == "GX01"
+    # 카드의 고저가는 그 봉들에서 나온 값이다 — 별도로 계산하지 않는다
+    assert info.recent_high_krw == max(c.high_krw for c in result.candles)
+    assert info.recent_low_krw == min(c.low_krw for c in result.candles)
+    assert info.recent_days == len(result.candles)
+
+
+async def test_없는_종목의_봉을_요청하면_거부한다():
+    with pytest.raises(UnknownSymbol):
+        await MarketPriceInteractor(clock=_StubClock(1_000)).list_prices(
+            MarketPriceQuery(ticks=30, candle_symbol="ZZ99")
+        )
+
+
+@pytest.mark.parametrize("days", [MIN_CANDLE_DAYS - 1, 0, -3, MAX_CANDLE_DAYS + 1, 400])
+async def test_허용_범위_밖의_candle_days는_거부한다(days):
+    with pytest.raises(InvalidTickRange):
+        await MarketPriceInteractor(clock=_StubClock(12_345)).list_prices(
+            MarketPriceQuery(ticks=30, candle_symbol="GX01", candle_days=days)
+        )
+
+
+async def test_섹터_그룹이_전_종목에_노출된다():
+    """화면의 섹터 필터가 쓰는 축 — 도메인에 이미 있던 값을 내보내기만 한다."""
+    result = await MarketPriceInteractor(clock=_StubClock(3_000)).list_prices(
+        MarketPriceQuery(ticks=10)
+    )
+    groups = {s.sector_group for s in result.symbols}
+    assert groups == {s.sector_group for s in SYMBOLS}
+    assert len(groups) == 4  # 4그룹 × 3종목(§3-3)

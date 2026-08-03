@@ -12,7 +12,11 @@ import type {
   GameOpenStoreReceipt,
   GameRulebook,
   GameSettlementList,
+  GameCloseStoreReceipt,
+  GameFuturesMarket,
+  GameFuturesReceipt,
   GameStoreDaily,
+  GameStoreDecisionReceipt,
   GameStoreSummary,
   GameTradeReceipt,
   GameWallet,
@@ -139,10 +143,34 @@ export const fetchGameRulebook = (): Promise<GameRulebook> => getJson(`/game/mys
 
 // 게임 시세 — 가격은 서버가 틱마다 계산한다(저장하지 않는다).
 // 같은 틱을 다시 물으면 같은 값이라 폴링이 안전하다.
-export const fetchGamePrices = (ticks = 120): Promise<GameMarketPrices> =>
-  getJson(`/game/market/prices?ticks=${ticks}`);
+// candleSymbol을 넘기면 그 종목의 일봉과 종목 카드가 함께 온다.
+// 한 종목만 받는 이유는 비용이다 — 하루당 60틱을 훑으므로 전 종목이면 응답 목표를 넘긴다.
+export const fetchGamePrices = (
+  ticks = 120,
+  candleSymbol?: string,
+  candleDays = 7,
+): Promise<GameMarketPrices> => {
+  const params = new URLSearchParams({ ticks: String(ticks) });
+  if (candleSymbol) {
+    params.set("candle_symbol", candleSymbol);
+    params.set("candle_days", String(candleDays));
+  }
+  return getJson(`/game/market/prices?${params.toString()}`);
+};
 
 export const fetchGameWallet = (): Promise<GameWallet> => getJson(`/game/wallet`);
+
+// 지수 선물 — 근월물 하나. 만기 도달분은 이 조회가 정산한다(지연 실행).
+export const fetchGameFutures = (ticks = 120): Promise<GameFuturesMarket> =>
+  getJson(`/game/futures?ticks=${ticks}`);
+
+export const openGameFutures = (
+  side: "LONG" | "SHORT",
+  contracts: number,
+): Promise<GameFuturesReceipt> => postGame(`/game/futures`, { side, contracts });
+
+export const closeGameFutures = (positionId: number): Promise<GameFuturesReceipt> =>
+  postGame(`/game/futures/${positionId}/close`);
 
 // 매매 — 체결가는 요청이 도착한 틱의 가격이다(예약 주문·지연 체결 없음).
 async function postGame<T>(path: string, body?: unknown): Promise<T> {
@@ -158,11 +186,13 @@ async function postGame<T>(path: string, body?: unknown): Promise<T> {
   return res.json();
 }
 
+// leverage 2배 이상은 만료(게임 3일)와 강제청산이 붙는다 — 규칙은 /game/myself가 내려준다.
 export const openGameTrade = (
   symbol: string,
   side: "LONG" | "SHORT",
   quantity: number,
-): Promise<GameTradeReceipt> => postGame(`/game/trades`, { symbol, side, quantity });
+  leverage = 1,
+): Promise<GameTradeReceipt> => postGame(`/game/trades`, { symbol, side, quantity, leverage });
 
 export const closeGameTrade = (positionId: number): Promise<GameTradeReceipt> =>
   postGame(`/game/trades/${positionId}/close`);
@@ -183,6 +213,16 @@ export const openGameStore = (body: {
 }): Promise<GameOpenStoreReceipt> => postGame(`/game/stores`, body);
 
 export const fetchGameStores = (): Promise<GameStoreSummary[]> => getJson(`/game/stores`);
+
+// 운영 결정 — 다음 게임일부터 적용된다. 넣지 않은 항목은 직전 결정을 잇는다.
+export const decideGameStore = (
+  storeId: number,
+  body: { priceFactor?: number; staffCount?: number; facilityScore?: number },
+): Promise<GameStoreDecisionReceipt> => postGame(`/game/stores/${storeId}/decisions`, body);
+
+// 폐업 — 보증금은 회수되고 인테리어는 회수되지 않는다.
+export const closeGameStore = (storeId: number): Promise<GameCloseStoreReceipt> =>
+  postGame(`/game/stores/${storeId}/close`);
 
 export const fetchGameStoreDaily = (storeId: number, days = 14): Promise<GameStoreDaily> =>
   getJson(`/game/stores/${storeId}?days=${days}`);

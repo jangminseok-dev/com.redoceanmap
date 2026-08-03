@@ -40,6 +40,10 @@ def pending_quarters(
 
     진행 중인 분기는 넣지 않는다 — 분기가 끝나야 결산이다. 창업일이 분기 중간이면
     그 분기는 남은 날짜만 센다.
+
+    **폐업은 예외다.** 폐업일이 분기 중간이면 그 부분 구간을 마지막 창으로 넣는다 —
+    안 그러면 마지막 분기의 누적 손익이 영원히 지갑에 반영되지 않는다(가게가 이미 닫혀
+    다음 분기 경계가 오지 않으므로).
     """
     # settled_through_day의 초기값은 0이라 "0일차까지 정산됨"과 "미정산"이 겹친다.
     # 창업일 직전을 하한으로 두어 그 모호함을 없앤다.
@@ -52,6 +56,10 @@ def pending_quarters(
         start = max(opened_game_day, index * GAME_DAYS_PER_QUARTER, cursor + 1)
         end = (index + 1) * GAME_DAYS_PER_QUARTER - 1
         if end > last_active:  # 아직 끝나지 않은 분기
+            if closed_game_day is not None and start <= last_active:
+                windows.append(
+                    QuarterWindow(game_quarter=index + 1, start_day=start, end_day=last_active)
+                )
             break
         if start <= end:
             windows.append(QuarterWindow(game_quarter=index + 1, start_day=start, end_day=end))

@@ -14,10 +14,11 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 
 from game.domain.clock.game_epoch import SEASON_TICKS, TICKS_PER_GAME_DAY
 from game.domain.market import market_events
-from game.domain.market.symbol_params import SIGMA_GAME_MULTIPLIER, SymbolParams
+from game.domain.market.symbol_params import SIGMA_GAME_MULTIPLIER, SYMBOLS, SymbolParams
 from game.domain.rng.deterministic import normal
 
 # 2의 거듭제곱이라야 이분 분할이 정확히 떨어진다. SEASON_TICKS(43,200)를 덮는 최소값.
@@ -79,6 +80,72 @@ def price_series(params: SymbolParams, end_tick: int, count: int) -> list[tuple[
     """
     start = max(0, end_tick - count + 1)
     return [(t, price_at(params, t)) for t in range(start, end_tick + 1)]
+
+
+INDEX_BASE_POINT = 1_000  # 시즌 시작 시점의 지수값
+
+
+def index_at(tick: int) -> int:
+    """시장 지수 `GXI` — 12종목 상대가격의 **기하평균** × 1000.
+
+    금액 가중이 아니라 상대가격(현재가 ÷ 시작가)인 이유: 기준가가 18,900원부터 154,000원까지
+    8배 차이라 금액으로 묶으면 비싼 종목 하나가 지수를 지배한다.
+
+    **산술평균이 아니라 기하평균인 것이 핵심이다.** 가격이 로그정규라 산술평균은
+    `E[P/P₀] = exp(σ²t/2) > 1`이라는 구조적 상승 편향을 갖는다 — μ를 0으로 중심화해도
+    지수만 계속 오르고, 그러면 선물 롱이 언제나 유리한 한쪽짜리 게임이 된다(실측: 산술은
+    시즌 중 1000→3142, 기하는 1000→1851이며 후자는 이 시즌의 실현 경로일 뿐 편향이 아니다).
+    로그 공간에서 평균하면 μ 중심화가 그대로 지수에 전달된다.
+
+    새 σ 캘리브레이션이 필요 없다 — 기존 12종목에서 유도되므로 에포크를 건드리지 않는다.
+    비용은 종목 수만큼(실측 0.58ms)이라 **틱 단위 순회에는 쓰지 않는다**(선물이 청산 스캔을
+    두지 않는 이유이기도 하다).
+    """
+    log_total = sum(
+        math.log(price_at(s, tick) / s.base_price_krw) for s in SYMBOLS
+    )
+    return max(1, round(INDEX_BASE_POINT * math.exp(log_total / len(SYMBOLS))))
+
+
+@dataclass(frozen=True)
+class Candle:
+    """게임 1일(60틱) OHLC 봉 하나. `game_day`는 에포크 기준 일차다."""
+
+    game_day: int
+    open_krw: int
+    high_krw: int
+    low_krw: int
+    close_krw: int
+
+
+def daily_candles(params: SymbolParams, end_tick: int, days: int) -> tuple[Candle, ...]:
+    """`end_tick`이 속한 날에서 끝나는 최근 `days`개 일봉. 오름차순.
+
+    브라운 운동의 자기유사성 덕에 별도의 일봉 축이 필요 없다 — 하루치 60틱을 그대로
+    훑어 극값을 잡는다. **하루당 60회 평가(≈2.7ms)라 전 종목에 돌리지 않는다**(12종목이면
+    응답 목표 200ms를 넘긴다). 호출자가 선택 종목 하나만 넘긴다.
+
+    마지막 봉은 **진행 중**일 수 있다 — 미래 틱은 만들지 않으므로(§1-6) 현재 틱까지만 훑는다.
+    """
+    end = max(0, min(end_tick, SEASON_TICKS))
+    last_day = end // TICKS_PER_GAME_DAY
+    first_day = max(0, last_day - days + 1)
+
+    out = []
+    for day in range(first_day, last_day + 1):
+        start_tick = day * TICKS_PER_GAME_DAY
+        stop_tick = min(start_tick + TICKS_PER_GAME_DAY - 1, end)
+        prices = [price_at(params, t) for t in range(start_tick, stop_tick + 1)]
+        out.append(
+            Candle(
+                game_day=day,
+                open_krw=prices[0],
+                high_krw=max(prices),
+                low_krw=min(prices),
+                close_krw=prices[-1],
+            )
+        )
+    return tuple(out)
 
 
 def change_pct(params: SymbolParams, tick: int, lookback_ticks: int) -> float:

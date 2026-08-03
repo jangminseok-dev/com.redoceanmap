@@ -38,6 +38,39 @@ class GameStoreRepository(ABC):
         ...
 
     @abstractmethod
+    async def add_decision(
+        self,
+        *,
+        user_id: int,
+        store_id: int,
+        epoch_id: int,
+        effective_from_day: int,
+        price_factor: float,
+        staff_count: int,
+        facility_score: int,
+        interior_cost_krw: int,
+    ) -> StoreRecord:
+        """운영 결정 1건 추가(+ 시설 추가투자분 지갑 차감·원장 기록)를 한 트랜잭션으로.
+
+        결정을 지우지 않고 쌓는다 — 과거 일별 매출은 결정 이력으로 재계산되므로,
+        덮어쓰면 이미 확정된 분기 결산과 어긋난다.
+        """
+        ...
+
+    @abstractmethod
+    async def close_store(
+        self,
+        *,
+        user_id: int,
+        store_id: int,
+        epoch_id: int,
+        closed_game_day: int,
+        deposit_refund_krw: int,
+    ) -> StoreRecord:
+        """폐업 + 보증금 환급 + 원장 기록을 한 트랜잭션으로. 인테리어는 회수되지 않는다."""
+        ...
+
+    @abstractmethod
     async def list_settlements(
         self, user_id: int, epoch_id: int
     ) -> tuple[SettlementRecord, ...]:

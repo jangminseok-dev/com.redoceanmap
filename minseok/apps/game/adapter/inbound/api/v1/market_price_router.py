@@ -1,15 +1,23 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from game.adapter.inbound.api.schemas.market_price_schema import (
+    CandleSchema,
+    ChartPatternSchema,
     MarketEventSchema,
     MarketPricesResponseSchema,
     PricePointSchema,
+    SymbolInfoSchema,
     SymbolPricesSchema,
 )
 from game.app.dtos.market_price_dto import MarketPriceQuery
-from game.app.exceptions import InvalidTickRange
+from game.app.exceptions import InvalidTickRange, UnknownSymbol
 from game.app.ports.input.market_price_use_case import MarketPriceUseCase
-from game.app.use_cases.market_price_interactor import MAX_TICKS, MIN_TICKS
+from game.app.use_cases.market_price_interactor import (
+    MAX_CANDLE_DAYS,
+    MAX_TICKS,
+    MIN_CANDLE_DAYS,
+    MIN_TICKS,
+)
 from game.dependencies.market_price_provider import get_market_price_use_case
 
 market_price_router = APIRouter(prefix="/game", tags=["game"])
@@ -18,10 +26,20 @@ market_price_router = APIRouter(prefix="/game", tags=["game"])
 @market_price_router.get("/market/prices", response_model=MarketPricesResponseSchema)
 async def list_prices(
     ticks: int = Query(60, ge=MIN_TICKS, le=MAX_TICKS, description="반환할 최근 틱 개수"),
+    candle_symbol: str | None = Query(
+        None, description="일봉·종목정보를 계산할 종목. 비용 때문에 한 종목만 받는다"
+    ),
+    candle_days: int = Query(
+        7, ge=MIN_CANDLE_DAYS, le=MAX_CANDLE_DAYS, description="일봉 개수(게임일)"
+    ),
     use_case: MarketPriceUseCase = Depends(get_market_price_use_case),
 ) -> MarketPricesResponseSchema:
     try:
-        result = await use_case.list_prices(MarketPriceQuery(ticks=ticks))
+        result = await use_case.list_prices(
+            MarketPriceQuery(ticks=ticks, candle_symbol=candle_symbol, candle_days=candle_days)
+        )
+    except UnknownSymbol as e:
+        raise HTTPException(status_code=404, detail=e.detail) from e
     except InvalidTickRange as e:
         raise HTTPException(status_code=400, detail=e.detail) from e
 
@@ -39,6 +57,7 @@ async def list_prices(
                 symbol=s.symbol,
                 name=s.name,
                 sector=s.sector,
+                sectorGroup=s.sector_group,
                 priceKrw=s.price_krw,
                 changePct=s.change_pct,
                 series=[
@@ -55,7 +74,47 @@ async def list_prices(
                 targetName=e.target_name,
                 positive=e.positive,
                 headline=e.headline,
+                affectedSymbols=list(e.affected_symbols),
+                expectedImpactPct=e.expected_impact_pct,
+                remainingImpactPct=e.remaining_impact_pct,
             )
             for e in result.events
+        ],
+        candles=[
+            CandleSchema(
+                gameDay=c.game_day,
+                openKrw=c.open_krw,
+                highKrw=c.high_krw,
+                lowKrw=c.low_krw,
+                closeKrw=c.close_krw,
+            )
+            for c in result.candles
+        ],
+        symbolInfo=(
+            SymbolInfoSchema(
+                symbol=result.symbol_info.symbol,
+                name=result.symbol_info.name,
+                sector=result.symbol_info.sector,
+                sectorGroup=result.symbol_info.sector_group,
+                basePriceKrw=result.symbol_info.base_price_krw,
+                gameDailySigmaPct=result.symbol_info.game_daily_sigma_pct,
+                recentHighKrw=result.symbol_info.recent_high_krw,
+                recentLowKrw=result.symbol_info.recent_low_krw,
+                recentDays=result.symbol_info.recent_days,
+            )
+            if result.symbol_info
+            else None
+        ),
+        patterns=[
+            ChartPatternSchema(
+                name=p.name,
+                label=p.label,
+                startIndex=p.start_index,
+                endIndex=p.end_index,
+                confidence=p.confidence,
+                points=[(i, price) for i, price in p.points],
+                note=p.note,
+            )
+            for p in result.patterns
         ],
     )

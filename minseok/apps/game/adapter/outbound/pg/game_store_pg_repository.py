@@ -106,6 +106,110 @@ class GameStorePgRepository(GameStoreRepository):
             return None
         return await self._with_decisions(store)
 
+    async def add_decision(
+        self,
+        *,
+        user_id: int,
+        store_id: int,
+        epoch_id: int,
+        effective_from_day: int,
+        price_factor: float,
+        staff_count: int,
+        facility_score: int,
+        interior_cost_krw: int,
+    ) -> StoreRecord:
+        store = await self._locked_open_store(user_id, store_id, epoch_id)
+        payload = {
+            "price_factor": price_factor,
+            "staff_count": staff_count,
+            "facility_score": facility_score,
+        }
+        self._session.add(
+            GameStoreDecisionOrm(
+                store_id=store.id,
+                effective_from_day=effective_from_day,
+                payload=payload,
+                epoch_id=epoch_id,
+            )
+        )
+        if interior_cost_krw:
+            # 인테리어는 회수되지 않는 지출이라 가게 원가에도 누적한다
+            store.interior_krw += interior_cost_krw
+            await self._move_cash(
+                user_id=user_id,
+                epoch_id=epoch_id,
+                game_day=effective_from_day,
+                amount_krw=-interior_cost_krw,
+                ref_id=store.id,
+            )
+        await self._session.commit()
+        return await self._with_decisions(store)
+
+    async def close_store(
+        self,
+        *,
+        user_id: int,
+        store_id: int,
+        epoch_id: int,
+        closed_game_day: int,
+        deposit_refund_krw: int,
+    ) -> StoreRecord:
+        store = await self._locked_open_store(user_id, store_id, epoch_id)
+        store.status = "closed"
+        store.closed_game_day = closed_game_day
+        if deposit_refund_krw:
+            await self._move_cash(
+                user_id=user_id,
+                epoch_id=epoch_id,
+                game_day=closed_game_day,
+                amount_krw=deposit_refund_krw,
+                ref_id=store.id,
+            )
+        await self._session.commit()
+        return await self._with_decisions(store)
+
+    async def _locked_open_store(
+        self, user_id: int, store_id: int, epoch_id: int
+    ) -> GameStoreOrm:
+        """영업 중인 내 가게를 잠그고 가져온다. 동시 요청은 두 번째가 여기서 걸린다."""
+        store = await self._session.scalar(
+            select(GameStoreOrm)
+            .where(
+                GameStoreOrm.id == store_id,
+                GameStoreOrm.user_id == user_id,  # 남의 가게 차단
+                GameStoreOrm.epoch_id == epoch_id,
+                GameStoreOrm.status == "open",
+            )
+            .with_for_update()
+        )
+        if store is None:
+            raise LookupError("영업 중인 가게가 없습니다")
+        return store
+
+    async def _move_cash(
+        self, *, user_id: int, epoch_id: int, game_day: int, amount_krw: int, ref_id: int
+    ) -> None:
+        """지갑 증감 + 원장 기록. 둘은 항상 함께여야 불변식(SUM(ledger)==cash)이 유지된다."""
+        wallet = await self._session.scalar(
+            select(GameWalletOrm)
+            .where(GameWalletOrm.user_id == user_id, GameWalletOrm.epoch_id == epoch_id)
+            .with_for_update()
+        )
+        if wallet is None:
+            raise LookupError("지갑이 없습니다")
+        wallet.cash_krw += amount_krw
+        self._session.add(
+            GameLedgerOrm(
+                user_id=user_id,
+                game_day=game_day,
+                source="store",
+                amount_krw=amount_krw,
+                ref_type="store",
+                ref_id=ref_id,
+                epoch_id=epoch_id,
+            )
+        )
+
     async def list_settlements(
         self, user_id: int, epoch_id: int
     ) -> tuple[SettlementRecord, ...]:

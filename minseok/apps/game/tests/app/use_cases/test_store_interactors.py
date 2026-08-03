@@ -38,7 +38,7 @@ def _command(**overrides):
         user_id=USER,
         trdar_code=1001,
         service_code="CS100010",
-        budget_krw=500_000,
+        budget_krw=700_000,
         staff_count=2,
         price_factor=1.0,
     )
@@ -62,10 +62,10 @@ async def test_창업하면_보증금과_인테리어가_빠지고_원장에_남
 async def test_투입_자본이_규모를_정한다():
     """상권 평균 점포는 수천만 원이라 초기 자본으로는 작게 시작할 수밖에 없다."""
     small_uc, _, _, _ = _build()
-    small = await small_uc.open_store(_command(budget_krw=300_000))
+    small = await small_uc.open_store(_command(budget_krw=600_000))
 
     big_uc, _, _, _ = _build()
-    big = await big_uc.open_store(_command(budget_krw=800_000))
+    big = await big_uc.open_store(_command(budget_krw=900_000))
     assert big.store_scale > small.store_scale
 
 
@@ -87,8 +87,8 @@ async def test_자본이_최소_가게값에도_못_미치면_거부한다():
 
 async def test_요청한_자본보다_많이_청구하지_않는다():
     open_uc, _, _, _ = _build()
-    receipt = await open_uc.open_store(_command(budget_krw=500_000))
-    assert -receipt.cash_delta_krw <= 500_000
+    receipt = await open_uc.open_store(_command(budget_krw=700_000))
+    assert -receipt.cash_delta_krw <= 700_000
 
 
 @pytest.mark.parametrize(

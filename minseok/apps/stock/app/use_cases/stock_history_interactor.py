@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import time
 
+from core import chart_pattern
 from stock.app.dtos.stock_history_dto import (
     FundamentalsQuery,
     FundamentalsView,
@@ -24,6 +25,9 @@ logger = logging.getLogger(__name__)
 # 심볼당 TTL 동안 재사용한다(일봉은 일 단위 갱신이라 10분이면 충분히 신선).
 _LIVE_BARS_TTL_SECONDS = 600.0
 _LIVE_BARS_CACHE: dict[str, tuple[float, list]] = {}
+
+# 차트 형태는 신뢰도 상위만 내려준다 — 전부 그리면 차트가 보조선에 덮인다.
+MAX_PATTERNS = 3
 
 
 class StockHistoryInteractor(StockHistoryUseCase):
@@ -67,6 +71,7 @@ class StockHistoryInteractor(StockHistoryUseCase):
             timeframe=query.timeframe,
             bars=bars,
             live=live,
+            patterns=chart_pattern.detect([b.close for b in bars])[:MAX_PATTERNS],
         )
 
     async def news(self, query: StockNewsQuery) -> list[StockNewsItem]:

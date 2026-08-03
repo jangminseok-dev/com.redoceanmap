@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CandlestickChart, Gamepad2, Store } from "lucide-react";
+import { CandlestickChart, Gamepad2, Store, TrendingUpDown } from "lucide-react";
+import FuturesPanel from "@/components/game/FuturesPanel";
 import InvestPanel from "@/components/game/InvestPanel";
 import StorePanel from "@/components/game/StorePanel";
 import { fetchGameRulebook } from "@/lib/api";
 
 const TABS = [
   { key: "invest", label: "모의 투자", icon: CandlestickChart },
+  { key: "futures", label: "지수 선물", icon: TrendingUpDown },
   { key: "store", label: "상권 창업", icon: Store },
 ] as const;
 
@@ -49,7 +51,7 @@ export default function GamePage() {
       </header>
 
       <p className="mt-3 text-sm text-foreground-muted leading-relaxed">
-        실제 1시간이 게임 1일입니다. 두 게임은 지갑 하나를 함께 씁니다 — 투자로 번 돈으로
+        실제 1시간이 게임 1일입니다. 세 게임은 지갑 하나를 함께 씁니다 — 투자로 번 돈으로
         창업하고, 가게 수익이 다시 투자금이 됩니다.
       </p>
 
@@ -78,6 +80,9 @@ export default function GamePage() {
       <div className="mt-5">
         <div className={tab === "invest" ? "" : "hidden"}>
           <InvestPanel />
+        </div>
+        <div className={tab === "futures" ? "" : "hidden"}>
+          <FuturesPanel />
         </div>
         <div className={tab === "store" ? "" : "hidden"}>
           <StorePanel />

@@ -61,9 +61,14 @@ function StockWorkspace() {
   const symbol = params?.get("symbol") ?? "";
   const c = params?.get("c") ?? null;
   // 단일 객체 패턴 — 타임프레임과 표시 구간은 항상 함께 바뀐다(REACT_RULES 패턴 B)
-  const [view, setView] = useState<{ timeframe: Timeframe; rangeDays: number | null }>({
+  const [view, setView] = useState<{
+    timeframe: Timeframe;
+    rangeDays: number | null;
+    pattern: string | null;
+  }>({
     timeframe: "1d",
     rangeDays: DEFAULT_RANGE["1d"],
+    pattern: null,
   });
   const { timeframe, rangeDays } = view;
 
@@ -164,6 +169,13 @@ function StockWorkspace() {
 
   const pricesNotCollected = pricesQ.error instanceof ApiError && pricesQ.error.status === 404;
 
+  // 차트 형태 — 기본은 꺼둔다. 이미 이평선·밴드·감성 마커가 올라가 있어 보조선을
+  // 하나 더 얹으려면 사용자가 고르게 하는 편이 낫다.
+  const patterns = pricesQ.data?.patterns ?? [];
+  const activePattern = view.pattern
+    ? (patterns.find((p) => p.name === view.pattern) ?? null)
+    : null;
+
   // 전일 대비 등락 — 백엔드 quote가 단일 소스다. 봉 계산은 quote가 전일 종가를 못 줄 때의
   // 폴백. 기준 봉은 "표시 중인 가격이 어느 세션인가"로 가른다: 현재가가 마지막 봉과 같으면
   // (장 마감) 그 직전 봉이, 다르면(장중 틱) 마지막 봉이 전일 종가다.
@@ -235,14 +247,22 @@ function StockWorkspace() {
           rangeDays={rangeDays}
           news={timeframe === "1d" ? newsQ.data : undefined}
           intraday={timeframe === "5m"}
+          pattern={activePattern}
         />
+      )}
+      {activePattern && (
+        <p className="shrink-0 px-4 pb-1 text-[11px] leading-relaxed text-foreground-muted">
+          {activePattern.note} 점선이 그 형태의 꼭짓점을 잇습니다. 형태를 알아본 것일 뿐 앞으로의
+          방향을 뜻하지 않습니다.
+        </p>
       )}
       <div className="shrink-0 flex flex-wrap items-center gap-1 px-4 py-2 border-t border-border">
         {(["1d", "5m"] as const).map((tf) => (
           <button
             key={tf}
             type="button"
-            onClick={() => setView({ timeframe: tf, rangeDays: DEFAULT_RANGE[tf] })}
+            // 타임프레임이 바뀌면 봉 배열이 통째로 달라져 형태 좌표가 무효가 된다
+            onClick={() => setView({ timeframe: tf, rangeDays: DEFAULT_RANGE[tf], pattern: null })}
             aria-pressed={timeframe === tf}
             className={`px-3 h-7 rounded-md text-xs font-medium transition-colors ${
               timeframe === tf
@@ -279,6 +299,36 @@ function StockWorkspace() {
           <span className="ml-2 px-2 py-0.5 rounded-full border border-border bg-surface text-[10px] text-foreground-muted">
             라이브 조회 · 수집 대상 아님
           </span>
+        )}
+        {patterns.length > 0 && (
+          <>
+            <span className="mx-1 h-4 w-px bg-border" aria-hidden />
+            <span className="text-[11px] text-foreground-muted">형태</span>
+            {patterns.map((p) => (
+              <button
+                key={p.name}
+                type="button"
+                onClick={() =>
+                  setView((prev) => ({
+                    ...prev,
+                    // 같은 칩을 다시 누르면 보조선을 끈다
+                    pattern: prev.pattern === p.name ? null : p.name,
+                  }))
+                }
+                aria-pressed={activePattern?.name === p.name}
+                className={`px-2.5 h-7 rounded-md text-xs font-medium transition-colors ${
+                  activePattern?.name === p.name
+                    ? "bg-foreground text-background"
+                    : "text-foreground-muted hover:bg-black/5"
+                }`}
+              >
+                {p.label}
+                <span className="ml-1 tabular-nums opacity-70">
+                  {Math.round(p.confidence * 100)}
+                </span>
+              </button>
+            ))}
+          </>
         )}
       </div>
     </>

@@ -2,8 +2,13 @@ from game.app.dtos.trade_dto import OpenTradeCommand
 from game.app.dtos.wallet_dto import WalletQuery
 from game.app.use_cases.trade_interactor import TradeInteractor
 from game.app.use_cases.wallet_interactor import WalletInteractor
+from game.domain.market import price_engine
 from game.domain.market.symbol_params import SYMBOLS
-from game.domain.trading.trading_rules import INITIAL_CASH_KRW, RESERVED_CASH_KRW
+from game.domain.trading.trading_rules import (
+    INITIAL_CASH_KRW,
+    LEVERAGED_EXPIRY_TICKS,
+    RESERVED_CASH_KRW,
+)
 from game.tests.app.use_cases.stub_account_repository import StubAccountRepository, StubClock
 
 USER = 3
@@ -87,3 +92,75 @@ async def test_조회는_게임_시각을_함께_낸다():
     assert view.game_day == 90
     assert view.game_quarter == 2
     assert view.season_over is False
+
+
+# --- 지연 마감 (18단계) -------------------------------------------------------
+
+async def test_레버리지_포지션은_조회_시점에_마감된다():
+    """미접속 중 청산됐어야 하는 포지션을 지갑 조회가 확정한다(지연 실행)."""
+    repo = StubAccountRepository()
+    clock = StubClock(1_000)
+    await repo.create(user_id=USER, epoch_id=1, rule_version="v1", initial_cash_krw=1_000_000, game_day=16)
+    price = price_engine.price_at(SYMBOLS[0], 1_000)
+    await repo.open_position(
+        user_id=USER,
+        epoch_id=1,
+        symbol=SYMBOLS[0].symbol,
+        side="LONG",
+        quantity=1,
+        entry_tick=1_000,
+        entry_price_krw=price,
+        entry_fee_krw=0,
+        cash_delta_krw=-(price // 4),
+        game_day=16,
+        leverage=4,
+        expires_tick=1_000 + LEVERAGED_EXPIRY_TICKS,
+    )
+    # 만료를 한참 넘긴 시점에 복귀한다
+    clock.tick = 1_000 + LEVERAGED_EXPIRY_TICKS + 5_000
+    view = await WalletInteractor(repository=repo, clock=clock).get_wallet(WalletQuery(user_id=USER))
+
+    assert view.positions == ()               # 열린 포지션이 남지 않는다
+    assert len(view.recently_closed) == 1     # 무슨 일이 있었는지 알린다
+    assert view.recently_closed[0].reason in {"liquidated", "expired"}
+    repo.assert_invariant(USER)
+
+
+async def test_지연_마감은_멱등이다():
+    """지갑은 30초마다 폴링된다 — 두 번 마감하면 원장이 어긋난다."""
+    repo = StubAccountRepository()
+    clock = StubClock(1_000)
+    await repo.create(user_id=USER, epoch_id=1, rule_version="v1", initial_cash_krw=1_000_000, game_day=16)
+    price = price_engine.price_at(SYMBOLS[0], 1_000)
+    await repo.open_position(
+        user_id=USER, epoch_id=1, symbol=SYMBOLS[0].symbol, side="LONG", quantity=1,
+        entry_tick=1_000, entry_price_krw=price, entry_fee_krw=0, cash_delta_krw=-(price // 4),
+        game_day=16, leverage=4, expires_tick=1_000 + LEVERAGED_EXPIRY_TICKS,
+    )
+    clock.tick = 1_000 + LEVERAGED_EXPIRY_TICKS + 5_000
+    interactor = WalletInteractor(repository=repo, clock=clock)
+
+    first = await interactor.get_wallet(WalletQuery(user_id=USER))
+    second = await interactor.get_wallet(WalletQuery(user_id=USER))
+    assert first.cash_krw == second.cash_krw   # 두 번째 조회가 잔고를 또 바꾸지 않는다
+    assert len(second.recently_closed) == 1
+    repo.assert_invariant(USER)
+
+
+async def test_1배_포지션은_마감되지_않는다():
+    """도입 전과 같은 동작 — 만료도 청산도 없다."""
+    repo = StubAccountRepository()
+    clock = StubClock(1_000)
+    await repo.create(user_id=USER, epoch_id=1, rule_version="v1", initial_cash_krw=1_000_000, game_day=16)
+    price = price_engine.price_at(SYMBOLS[0], 1_000)
+    await repo.open_position(
+        user_id=USER, epoch_id=1, symbol=SYMBOLS[0].symbol, side="LONG", quantity=1,
+        entry_tick=1_000, entry_price_krw=price, entry_fee_krw=0, cash_delta_krw=-price, game_day=16,
+    )
+    clock.tick = 40_000  # 한참 뒤
+    view = await WalletInteractor(repository=repo, clock=clock).get_wallet(WalletQuery(user_id=USER))
+
+    assert len(view.positions) == 1
+    assert view.positions[0].leverage == 1
+    assert view.positions[0].liquidation_price_krw is None
+    assert view.recently_closed == ()

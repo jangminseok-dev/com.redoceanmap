@@ -45,6 +45,7 @@ export default function GamePositionList({
               }`}
             >
               {isLong ? "롱" : "숏"}
+              {p.leverage > 1 && ` ${p.leverage}배`}
             </span>
 
             <span className="min-w-0">
@@ -60,6 +61,17 @@ export default function GamePositionList({
                 {signed(p.unrealizedPnlKrw)}원 ({p.unrealizedPct >= 0 ? "+" : ""}
                 {p.unrealizedPct.toFixed(2)}%)
               </span>
+              {/* 수수료·숏 캐리를 뺀 실수령액 — 평가손익만 보면 청산 후 잔고와 어긋난다 */}
+              <span className="block text-[11px] text-foreground-muted tabular-nums">
+                지금 청산 시 {won(p.marketValueKrw)}
+              </span>
+              {p.liquidationPriceKrw !== null && (
+                <span className="block text-[11px] text-amber-700 tabular-nums">
+                  청산선 {won(p.liquidationPriceKrw)}
+                  {p.expiresTick !== null &&
+                    ` · 게임 ${Math.max(0, Math.ceil((p.expiresTick - currentTick) / ticksPerGameDay))}일 남음`}
+                </span>
+              )}
             </span>
 
             <button

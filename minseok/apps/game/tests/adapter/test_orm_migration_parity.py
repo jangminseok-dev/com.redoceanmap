@@ -38,30 +38,52 @@ def _orm_columns() -> dict[str, dict[str, tuple[str, bool]]]:
     }
 
 
+def _column_spec(call: ast.Call) -> tuple[str, tuple[str, bool]]:
+    """`sa.Column('이름', sa.타입, nullable=…)` 한 개를 (이름, (타입, nullable))로."""
+    column_name = call.args[0].value
+    # sa.String(8)처럼 인자를 받는 타입은 Call, sa.Integer처럼 아니면 Attribute다
+    type_node = call.args[1]
+    column_type = getattr(
+        type_node.func if isinstance(type_node, ast.Call) else type_node, "attr", "?"
+    )
+    nullable = next((kw.value.value for kw in call.keywords if kw.arg == "nullable"), False)
+    return column_name, (column_type, bool(nullable))
+
+
 def _migration_columns() -> dict[str, dict[str, tuple[str, bool]]]:
-    """`op.create_table('game_…')` 호출을 AST로 읽는다(마이그레이션을 실행하지 않는다)."""
+    """`op.create_table('game_…')`와 `op.add_column('game_…', …)`을 AST로 읽는다.
+
+    마이그레이션을 실행하지 않는다. **`add_column`도 읽어야 한다** — 컬럼을 나중에 덧댄
+    테이블(레버리지 4개 등)이 create_table만 보면 ORM과 어긋난 것처럼 보인다.
+    파일 이름순으로 훑으므로 리비전 순서대로 누적된다.
+    """
     tables: dict[str, dict[str, tuple[str, bool]]] = {}
     for path in sorted(_VERSIONS.glob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
-            if not (isinstance(node, ast.Call) and getattr(node.func, "attr", "") == "create_table"):
+            if not isinstance(node, ast.Call):
+                continue
+            op_name = getattr(node.func, "attr", "")
+            if op_name not in {"create_table", "add_column"}:
                 continue
             if not (node.args and isinstance(node.args[0], ast.Constant)):
                 continue
             table_name = node.args[0].value
             if not str(table_name).startswith("game_"):
                 continue
-            columns: dict[str, tuple[str, bool]] = {}
-            for arg in node.args[1:]:
-                if not (isinstance(arg, ast.Call) and getattr(arg.func, "attr", "") == "Column"):
-                    continue
-                column_name = arg.args[0].value
-                column_type = getattr(arg.args[1].func, "attr", "?")
-                nullable = next(
-                    (kw.value.value for kw in arg.keywords if kw.arg == "nullable"), False
-                )
-                columns[column_name] = (column_type, bool(nullable))
-            tables[table_name] = columns
+
+            if op_name == "create_table":
+                columns: dict[str, tuple[str, bool]] = {}
+                for arg in node.args[1:]:
+                    if isinstance(arg, ast.Call) and getattr(arg.func, "attr", "") == "Column":
+                        name, spec = _column_spec(arg)
+                        columns[name] = spec
+                tables[table_name] = columns
+            else:  # add_column — 이미 만들어진 테이블에 덧댄다
+                target = node.args[1]
+                if isinstance(target, ast.Call) and getattr(target.func, "attr", "") == "Column":
+                    name, spec = _column_spec(target)
+                    tables.setdefault(table_name, {})[name] = spec
     return tables
 
 

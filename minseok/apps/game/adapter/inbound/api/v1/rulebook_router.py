@@ -34,5 +34,9 @@ async def introduce_myself(
         reservedCashKrw=result.reserved_cash_krw,
         feeRate=result.fee_rate,
         shortCarryRatePerGameDay=result.short_carry_rate_per_game_day,
+        leverageTiers=list(result.leverage_tiers),
+        maintenanceMarginRatio=result.maintenance_margin_ratio,
+        leveragedExpiryTicks=result.leveraged_expiry_ticks,
+        maxLeveragedPositions=result.max_leveraged_positions,
         ticksPerGameDay=result.ticks_per_game_day,
     )

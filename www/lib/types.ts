@@ -182,6 +182,18 @@ export type StockBoard = {
 
 // ── GET /stock/{symbol}/prices ──
 
+// 차트에서 관측된 형태. **예측이 아니다** — 어떤 형태가 그려져 있는지 알아본 결과이며
+// 매매 판단을 대체하지 않는다(게임 쪽 GameChartPattern과 같은 백엔드 알고리즘).
+export type ChartPattern = {
+  name: string; // head_and_shoulders 등 기계용 식별자
+  label: string;
+  startIndex: number; // bars 배열 위치
+  endIndex: number;
+  confidence: number; // 기하학적 근접도(0~1) — 적중 확률이 아니다
+  points: [number, number][]; // (bars 인덱스, 종가) — 인덱스 오름차순
+  note: string;
+};
+
 export type PriceBar = {
   ts: string; // 봉 시작(UTC ISO)
   open: number;
@@ -197,6 +209,7 @@ export type PriceHistory = {
   timeframe: "1d" | "5m";
   bars: PriceBar[]; // ts 오름차순
   live?: boolean; // true = 미수집 종목 — yfinance 라이브 이력 폴백
+  patterns?: ChartPattern[]; // 종가 곡선에서 관측된 형태(신뢰도 상위) — 구버전 응답 호환
 };
 
 // ── GET /stock/{symbol}/news ──
@@ -543,6 +556,11 @@ export type GameRulebook = {
   feeRate: number;
   shortCarryRatePerGameDay: number;
   ticksPerGameDay: number;
+  // 레버리지 규칙 — 프론트가 배율·청산선·만료를 하드코딩하지 않는다(구버전 응답 호환)
+  leverageTiers?: number[];
+  maintenanceMarginRatio?: number;
+  leveragedExpiryTicks?: number;
+  maxLeveragedPositions?: number;
 };
 
 export type GamePosition = {
@@ -556,8 +574,25 @@ export type GamePosition = {
   entryPriceKrw: number;
   currentPriceKrw: number;
   marketValueKrw: number; // 지금 청산하면 돌아올 금액(수수료·보유비용 반영)
+  leverage: number;
+  liquidationPriceKrw: number | null; // 이 가격에 닿으면 강제청산. 1배는 청산되지 않아 null
+  expiresTick: number | null; // 레버리지 포지션의 자동 마감 시점
   unrealizedPnlKrw: number;
   unrealizedPct: number;
+};
+
+// 유저가 직접 청산하지 않은 마감 — 미접속 중에 일어난 일이다
+export type GameClosedNotice = {
+  id: number;
+  symbol: string;
+  name: string;
+  side: "LONG" | "SHORT";
+  quantity: number;
+  leverage: number;
+  closedGameDay: number;
+  exitPriceKrw: number;
+  realizedPnlKrw: number;
+  reason: "liquidated" | "expired" | "settled";
 };
 
 export type GameWallet = {
@@ -575,6 +610,7 @@ export type GameWallet = {
   gameQuarter: number;
   seasonOver: boolean;
   positions: GamePosition[];
+  recentlyClosed?: GameClosedNotice[]; // 미접속 중 강제청산·만료된 포지션(구버전 응답 호환)
 };
 
 // 창업 — observed_*는 서울시 상권분석서비스 실데이터, assumed_*는 게임 규칙 산출값,
@@ -675,6 +711,9 @@ export type GameStoreDaily = {
   seats: number;
   depositKrw: number;
   interiorKrw: number;
+  priceFactor: number; // 지금 유효한 운영 결정 — 조정 폼의 기본값
+  staffCount: number;
+  facilityScore: number;
   observedSalesPerStore: number;
   observedTicketPrice: number;
   assumedMonthlyRentKrw: number;
@@ -689,6 +728,29 @@ export type GameStoreDaily = {
   gameDay: number;
   gameQuarter: number;
   seasonOver: boolean;
+};
+
+// ── POST /game/stores/{id}/decisions · /close ──
+export type GameStoreDecisionReceipt = {
+  storeId: number;
+  effectiveFromDay: number; // 오늘 다음 날 — 확정된 과거는 바뀌지 않는다
+  priceFactor: number;
+  staffCount: number;
+  facilityScore: number;
+  facilityAdded: number;
+  interiorCostKrw: number; // 시설 추가투자분 — 회수 불가
+  cashDeltaKrw: number;
+  cashKrw: number;
+};
+
+export type GameCloseStoreReceipt = {
+  storeId: number;
+  closedGameDay: number;
+  depositRefundKrw: number;
+  interiorLostKrw: number;
+  cashDeltaKrw: number;
+  cashKrw: number;
+  pendingSettlement: boolean; // 폐업일이 낀 분기 손익은 결산 조회 때 확정된다
 };
 
 export type GameAdvice = {
@@ -724,6 +786,9 @@ export type GameSettlementList = {
 };
 
 export type GameTradeReceipt = {
+  leverage: number;
+  liquidationPriceKrw: number | null;
+  expiresTick: number | null;
   positionId: number;
   symbol: string;
   name: string;
@@ -747,6 +812,7 @@ export type GameSymbolPrices = {
   symbol: string;
   name: string; // 가상 회사명 — 실재 기업이 아니다
   sector: string; // 업종은 실제 시장에서 가져왔다
+  sectorGroup: string; // 묶음 업종 — 섹터 이벤트가 걸리는 단위이자 화면 필터 축
   priceKrw: number;
   changePct: number; // 게임 1일(현실 1시간) 전 대비
   series: GamePricePoint[];
@@ -759,6 +825,9 @@ export type GameMarketEvent = {
   targetName: string;
   positive: boolean;
   headline: string; // 템플릿 문구 — 가상 회사 대상이며 LLM 생성이 아니다
+  affectedSymbols: string[]; // 이 뉴스가 실제로 가격을 미는 종목 코드들
+  expectedImpactPct: number; // 설계된 즉시 충격(%)
+  remainingImpactPct: number; // 현재 틱에 남아 있는 기여(%) — 0에 가까우면 영향 소멸
 };
 
 export type GameMarketPrices = {
@@ -772,4 +841,100 @@ export type GameMarketPrices = {
   seasonOver: boolean;
   symbols: GameSymbolPrices[];
   events: GameMarketEvent[]; // 최근 호재·악재(최신순)
+  candles: GameCandle[]; // candle_symbol 지정 시에만. 마지막 봉은 진행 중일 수 있다
+  symbolInfo: GameSymbolInfo | null; // candle_symbol 지정 시에만
+  patterns: GameChartPattern[]; // 〃 — 선택 종목의 틱 곡선에서 관측된 형태
+};
+
+// 관측된 형태일 뿐 예측이 아니다. 게임 주가는 브라운 운동+이벤트로 생성되므로
+// 이 형태에는 시장 심리가 담겨 있지 않다 — 화면 문구에서도 이 구분을 지킨다.
+export type GameChartPattern = {
+  name: string; // head_and_shoulders 등 기계용 식별자
+  label: string;
+  startIndex: number; // series 배열 위치
+  endIndex: number;
+  confidence: number; // 기하학적 근접도(0~1) — 적중 확률이 아니다
+  points: [number, number][]; // (series 인덱스, 가격 원)
+  note: string; // 통상적 해석 — 매매 지시나 예측이 아니다
+};
+
+export type GameCandle = {
+  gameDay: number;
+  openKrw: number;
+  highKrw: number;
+  lowKrw: number;
+  closeKrw: number;
+};
+
+// 실적 지표(PER·ROE 등)는 게임에 그 개념이 없어 백엔드가 내려주지 않는다 — 지어내지 않는다
+export type GameSymbolInfo = {
+  symbol: string;
+  name: string;
+  sector: string;
+  sectorGroup: string;
+  basePriceKrw: number; // 시즌 시작가
+  gameDailySigmaPct: number; // 게임 1일 변동성(%) — 체감 배수 적용값
+  recentHighKrw: number;
+  recentLowKrw: number;
+  recentDays: number;
+};
+
+// ── GET /game/futures · POST /game/futures ──
+// 가상 지수 GXI의 근월물. 현금정산이며 실물 인수도가 없다. 실제 지수·선물과 무관하다.
+
+export type GameIndexPoint = {
+  tick: number;
+  point: number;
+};
+
+export type GameFuturesPosition = {
+  id: number;
+  contractCode: string;
+  side: "LONG" | "SHORT";
+  contracts: number;
+  entryPriceKrw: number; // 1계약 진입 금액
+  currentPriceKrw: number;
+  marketValueKrw: number;
+  unrealizedPnlKrw: number;
+  unrealizedPct: number;
+  expiresTick: number;
+  ticksToExpiry: number;
+};
+
+export type GameFuturesMarket = {
+  virtual: boolean;
+  contractCode: string;
+  expiryTick: number;
+  ticksToExpiry: number;
+  indexPoint: number; // 현물 지수 — 12종목 상대가격의 기하평균 × 1000
+  futuresPoint: number;
+  basisPct: number; // 양수면 콘탱고
+  contractValueKrw: number;
+  marginPerContractKrw: number;
+  multiplierKrw: number;
+  marginRatio: number;
+  maxContracts: number;
+  series: GameIndexPoint[];
+  positions: GameFuturesPosition[];
+  investableKrw: number;
+  tick: number;
+  gameDay: number;
+  gameQuarter: number;
+  seasonOver: boolean;
+};
+
+export type GameFuturesReceipt = {
+  positionId: number;
+  contractCode: string;
+  side: "LONG" | "SHORT";
+  contracts: number;
+  priceKrw: number;
+  futuresPoint: number;
+  feeKrw: number;
+  marginKrw: number;
+  cashDeltaKrw: number;
+  realizedPnlKrw: number | null;
+  cashKrw: number;
+  expiresTick: number;
+  tick: number;
 };

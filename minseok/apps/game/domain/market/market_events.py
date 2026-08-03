@@ -184,7 +184,12 @@ def events_in_window(tick: int, window_ticks: int = EVENT_WINDOW_TICKS) -> tuple
 
 
 def recent_headlines(tick: int, limit: int = 8) -> tuple[MarketEvent, ...]:
-    """화면용 최근 뉴스. 최신 순으로 자른다."""
+    """화면용 최근 뉴스. 최신 순으로 자른다.
+
+    테이퍼로 기여가 사라진 뉴스도 그대로 내려보낸다 — 걸러내는 대신 `event_contribution()`을
+    함께 실어 화면이 "영향 소멸"로 표시하게 한다. 여기서 거르면 유저는 뉴스가 있었다는
+    사실 자체를 못 본다. (창 `EVENT_WINDOW_TICKS`를 줄이는 건 별개 문제다 — 그건 가격 변조다.)
+    """
     return tuple(reversed(events_in_window(tick)))[:limit]
 
 
@@ -196,6 +201,38 @@ def _applies_to(event: MarketEvent, params: SymbolParams) -> bool:
     return params.symbol == event.target
 
 
+def affected_symbols(event: MarketEvent) -> tuple[str, ...]:
+    """이 이벤트가 실제로 가격을 미는 종목 코드들.
+
+    화면이 "이 뉴스가 내 종목에 걸리는가"를 판단할 유일한 근거다 — 유저가 보는 피드의
+    대부분은 다른 종목 뉴스이므로, 구분이 없으면 "뉴스가 반영되지 않는다"로 읽힌다.
+    """
+    return tuple(s.symbol for s in SYMBOLS if _applies_to(event, s))
+
+
+def event_contribution(event: MarketEvent, tick: int) -> float:
+    """이벤트 1건이 `tick` 시점에 기여하는 값(로그 공간). 대상 종목 여부는 보지 않는다.
+
+    `impact()`가 합산하는 항이며, 화면이 "지금 남은 영향"을 표시할 때도 같은 값을 쓴다 —
+    보여주는 숫자와 가격에 들어가는 숫자가 갈라질 자리를 만들지 않는다.
+    """
+    elapsed_ticks = tick - event.tick
+    if elapsed_ticks < 0:
+        return 0.0
+    # 즉시 충격 — 3틱에 걸쳐 선형으로 들어간다
+    ramp = min(1.0, (elapsed_ticks + 1) / EVENT_RAMP_TICKS)
+    # 지속 드리프트 — 지수감쇠
+    elapsed_days = elapsed_ticks / TICKS_PER_GAME_DAY
+    drift = (
+        event.drift_per_day
+        * elapsed_days
+        * math.exp(-elapsed_days / event.duration_days)
+    )
+    # 창 경계에서 0이 되게 깎는다 — 없으면 창을 벗어나는 순간 절벽이 생긴다
+    taper = max(0.0, 1.0 - elapsed_ticks / EVENT_WINDOW_TICKS)
+    return (event.shock * ramp + drift) * taper
+
+
 def impact(params: SymbolParams, tick: int) -> float:
     """이 종목의 `tick` 시점 이벤트 영향 합(로그 공간).
 
@@ -205,19 +242,5 @@ def impact(params: SymbolParams, tick: int) -> float:
     for event in events_in_window(tick):
         if not _applies_to(event, params):
             continue
-        elapsed_ticks = tick - event.tick
-        if elapsed_ticks < 0:
-            continue
-        # 즉시 충격 — 3틱에 걸쳐 선형으로 들어간다
-        ramp = min(1.0, (elapsed_ticks + 1) / EVENT_RAMP_TICKS)
-        # 지속 드리프트 — 지수감쇠
-        elapsed_days = elapsed_ticks / TICKS_PER_GAME_DAY
-        drift = (
-            event.drift_per_day
-            * elapsed_days
-            * math.exp(-elapsed_days / event.duration_days)
-        )
-        # 창 경계에서 0이 되게 깎는다 — 없으면 창을 벗어나는 순간 절벽이 생긴다
-        taper = max(0.0, 1.0 - elapsed_ticks / EVENT_WINDOW_TICKS)
-        total += (event.shock * ramp + drift) * taper
+        total += event_contribution(event, tick)
     return total

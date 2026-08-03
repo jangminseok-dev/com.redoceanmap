@@ -58,11 +58,13 @@ def test_앵커가_창업일_직전이면_첫날부터_센다():
 
 
 def test_폐업한_가게는_폐업일까지만_정산한다():
-    assert _pending(opened=0, today=300, closed=100) == (
-        _pending(opened=0, today=300, closed=100)[0],
-    )
+    """폐업일 이후는 세지 않는다. 단 폐업일이 낀 분기의 **부분 구간은 정산한다** —
+    다음 분기 경계가 오지 않으므로 여기서 끊지 않으면 손익이 영원히 반영되지 않는다."""
     windows = _pending(opened=0, today=300, closed=100)
-    assert [w.game_quarter for w in windows] == [1]
+    assert [(w.game_quarter, w.start_day, w.end_day) for w in windows] == [
+        (1, 0, 89),
+        (2, 90, 100),
+    ]
 
 
 def test_시즌을_넘어서는_분기는_만들지_않는다():
@@ -108,3 +110,38 @@ def test_조언은_최대_세_줄이다(profit):
         profit_krw=profit, average_turned_away_ratio=0.3, performance_ratio=0.8, fitness=1.0
     )
     assert 1 <= len(advices) <= 3
+
+
+# --- 폐업 시 부분 분기 -------------------------------------------------------
+
+def test_분기_중간에_폐업하면_그_구간까지_정산한다():
+    """폐업하면 다음 분기 경계가 오지 않는다 — 여기서 안 끊으면 손익이 영원히 반영되지 않는다."""
+    windows = pending_quarters(
+        opened_game_day=0, settled_through_day=89, today=200, closed_game_day=120
+    )
+    assert len(windows) == 1
+    assert windows[0].game_quarter == 2
+    assert (windows[0].start_day, windows[0].end_day) == (90, 120)
+
+
+def test_폐업일이_분기_경계면_부분_구간을_따로_만들지_않는다():
+    """89일은 1분기 마지막 날이라 완결 분기 하나로 끝나야 한다(빈 창이 붙으면 중복 정산이다)."""
+    windows = pending_quarters(
+        opened_game_day=0, settled_through_day=-1, today=200, closed_game_day=89
+    )
+    assert [(w.game_quarter, w.start_day, w.end_day) for w in windows] == [(1, 0, 89)]
+
+
+def test_폐업해도_이미_정산된_구간은_다시_넣지_않는다():
+    windows = pending_quarters(
+        opened_game_day=0, settled_through_day=120, today=200, closed_game_day=120
+    )
+    assert windows == ()
+
+
+def test_영업_중이면_진행_중인_분기는_넣지_않는다():
+    """폐업 예외가 영업 중인 가게에까지 번지면 안 된다 — 분기가 끝나야 결산이다."""
+    windows = pending_quarters(
+        opened_game_day=0, settled_through_day=89, today=120, closed_game_day=None
+    )
+    assert windows == ()

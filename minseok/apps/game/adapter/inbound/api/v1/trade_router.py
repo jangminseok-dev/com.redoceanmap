@@ -33,6 +33,9 @@ def _to_schema(receipt: TradeReceipt) -> TradeReceiptSchema:
         realizedPnlKrw=receipt.realized_pnl_krw,
         cashKrw=receipt.cash_krw,
         tick=receipt.tick,
+        leverage=receipt.leverage,
+        liquidationPriceKrw=receipt.liquidation_price_krw,
+        expiresTick=receipt.expires_tick,
     )
 
 
@@ -45,7 +48,11 @@ async def open_trade(
     try:
         receipt = await use_case.open(
             OpenTradeCommand(
-                user_id=user_id, symbol=body.symbol, side=body.side, quantity=body.quantity
+                user_id=user_id,
+                symbol=body.symbol,
+                side=body.side,
+                quantity=body.quantity,
+                leverage=body.leverage,
             )
         )
     except UnknownSymbol as e:

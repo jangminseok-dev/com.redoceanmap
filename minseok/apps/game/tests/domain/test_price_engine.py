@@ -124,3 +124,38 @@ def test_시리즈는_에포크_이전으로_내려가지_않는다():
     series = price_engine.price_series(_SAMPLE, end_tick=10, count=60)
     assert series[0][0] == 0
     assert len(series) == 11
+
+
+# --- 일봉 -------------------------------------------------------------------
+
+def test_봉의_고저는_시종가를_감싼다():
+    """OHLC 불변식 — 깨지면 봉 몸통이 심지 밖으로 나간다."""
+    for params in SYMBOLS[:4]:
+        for candle in price_engine.daily_candles(params, end_tick=12_345, days=7):
+            assert candle.low_krw <= min(candle.open_krw, candle.close_krw)
+            assert max(candle.open_krw, candle.close_krw) <= candle.high_krw
+
+
+def test_완결된_봉의_종가는_그날_마지막_틱_가격이다():
+    """봉과 라인 차트가 같은 값을 그려야 한다 — 갈라지면 어느 쪽이 정본인지 알 수 없다."""
+    candles = price_engine.daily_candles(_SAMPLE, end_tick=12_345, days=7)
+    for candle in candles[:-1]:  # 마지막 봉은 진행 중이라 제외
+        last_tick = candle.game_day * TICKS_PER_GAME_DAY + TICKS_PER_GAME_DAY - 1
+        assert candle.close_krw == price_engine.price_at(_SAMPLE, last_tick)
+        assert candle.open_krw == price_engine.price_at(
+            _SAMPLE, candle.game_day * TICKS_PER_GAME_DAY
+        )
+
+
+def test_진행중인_봉은_현재_틱에서_멈춘다():
+    """미래 틱을 만들지 않는다(§1-6) — 오늘 봉의 종가는 지금 가격이다."""
+    now = 12_345
+    candles = price_engine.daily_candles(_SAMPLE, end_tick=now, days=3)
+    assert candles[-1].close_krw == price_engine.price_at(_SAMPLE, now)
+    assert candles[-1].game_day == now // TICKS_PER_GAME_DAY
+
+
+def test_봉은_에포크_이전으로_내려가지_않는다():
+    candles = price_engine.daily_candles(_SAMPLE, end_tick=90, days=7)
+    assert candles[0].game_day == 0
+    assert len(candles) == 2  # 0일차 + 1일차(진행 중)

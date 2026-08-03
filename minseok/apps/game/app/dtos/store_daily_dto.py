@@ -67,6 +67,11 @@ class StoreDailyView:
     deposit_krw: int
     interior_krw: int
 
+    # 지금 유효한 운영 결정 — 화면이 조정 폼의 기본값으로 쓴다(하드코딩 금지)
+    price_factor: float
+    staff_count: int
+    facility_score: int
+
     observed_sales_per_store: int
     observed_ticket_price: int
     assumed_monthly_rent_krw: int

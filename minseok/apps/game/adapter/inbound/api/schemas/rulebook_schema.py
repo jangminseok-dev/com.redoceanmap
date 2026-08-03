@@ -34,4 +34,12 @@ class RulebookResponseSchema(BaseModel):
     reservedCashKrw: int = Field(description="투자에 쓸 수 없는 최소 생활자금")
     feeRate: float = Field(description="체결당 수수료율")
     shortCarryRatePerGameDay: float = Field(description="숏 보유비용 (게임 1일당)")
+    leverageTiers: list[int] = Field(default=[1], description="선택 가능한 레버리지 배율")
+    maintenanceMarginRatio: float = Field(
+        default=0.0, description="자기자본이 명목 대비 이 아래로 내려가면 강제청산"
+    )
+    leveragedExpiryTicks: int = Field(
+        default=0, description="레버리지 포지션의 자동 마감까지 틱 수"
+    )
+    maxLeveragedPositions: int = Field(default=0, description="동시 보유 가능한 레버리지 포지션 수")
     ticksPerGameDay: int

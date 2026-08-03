@@ -15,6 +15,10 @@ from pathlib import Path
 
 GAME_ROOT = Path(__file__).resolve().parent.parent / "apps" / "game"
 
+# 게임이 소비하는 공용 알고리즘 — 게임의 결정론이 이 모듈의 순수성에 걸려 있으므로
+# 같은 게이트로 검사한다. 여기에 난수가 들어가면 같은 틱이 다른 화면을 만든다.
+SHARED_ROOTS = (Path(__file__).resolve().parent.parent / "core" / "chart_pattern",)
+
 # 현재 시각을 읽어도 되는 유일한 파일 — 도메인·유스케이스는 tick만 받는다(§1-1)
 CLOCK_ADAPTER = "adapter/outbound/system_game_clock_adapter.py"
 
@@ -100,6 +104,11 @@ def main() -> int:
             continue  # 테스트는 재현성을 검증하려고 일부러 서브프로세스·시드를 다룬다
         checked += 1
         problems.extend(_check(path, rel))
+
+    for root in SHARED_ROOTS:
+        for path in sorted(root.rglob("*.py")):
+            checked += 1
+            problems.extend(_check(path, f"{root.name}/{path.name}"))
 
     if problems:
         print(f"결정론·경계 위반 {len(problems)}건 (검사 {checked}파일)\n")

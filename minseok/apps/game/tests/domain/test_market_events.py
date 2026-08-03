@@ -1,3 +1,5 @@
+import hashlib
+import json
 import statistics
 import subprocess
 import sys
@@ -157,6 +159,53 @@ def test_이벤트가_가격을_실제로_움직인다():
 def test_이벤트를_넣어도_가격은_여전히_결정론이다():
     params = SYMBOLS[0]
     assert len({price_engine.price_at(params, 1_234) for _ in range(50)}) == 1
+
+
+def test_기여도_추출_전후_가격_영향이_동일하다():
+    """`event_contribution()` 추출은 값 불변 리팩터링이었다.
+
+    아래 해시는 추출 **전** 코드로 뽑은 것이다(12종목 × 205틱 = 2,460 샘플).
+    이 값이 바뀌면 뉴스가 가격에 미치는 영향이 달라진 것이고, 진행 중인 시즌의 과거가
+    소급 변조된다 — 그때는 `GAME_EPOCH_ID` 승격이 따라와야 한다(game-harness §1-4).
+    """
+    snapshot = {
+        params.symbol: [round(events.impact(params, t), 12) for t in range(0, 43_200, 211)]
+        for params in SYMBOLS
+    }
+    digest = hashlib.sha256(json.dumps(snapshot, sort_keys=True).encode()).hexdigest()
+    assert digest == "daaae8ff3a82463f03edc82d66c2c1e85fa49654b1b85f7ab34dfdc2a0afbf7d"
+
+
+def test_impact는_기여도의_단순_합이다():
+    """화면에 보여줄 기여도와 가격에 들어가는 값이 갈라질 자리를 없앤다."""
+    params = SYMBOLS[0]
+    for tick in (500, 1_200, 3_000, 12_000):
+        expected = sum(
+            events.event_contribution(e, tick)
+            for e in events.events_in_window(tick)
+            if events._applies_to(e, params)
+        )
+        assert events.impact(params, tick) == expected
+
+
+def test_영향_종목_목록이_범위와_일치한다():
+    """scope가 약속한 범위를 `affected_symbols()`가 그대로 돌려줘야 한다.
+
+    화면은 이 목록만 보고 "내 종목 뉴스"를 가른다 — 범위가 어긋나면 관계없는 뉴스가
+    내 종목 것으로 표시된다.
+    """
+    for event in _all_events(3_000):
+        affected = events.affected_symbols(event)
+        if event.scope == "symbol":
+            assert affected == (event.target,)
+        elif event.scope == "sector":
+            assert len(affected) >= 3  # 섹터 그룹은 3종목 이상(§3-3)
+            assert all(
+                next(s for s in SYMBOLS if s.symbol == code).sector_group == event.target
+                for code in affected
+            )
+        else:
+            assert len(affected) == len(SYMBOLS)  # 시장 전체
 
 
 def test_이벤트가_기대값이_아니라_분산을_키운다():

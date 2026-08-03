@@ -6,8 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from game.adapter.outbound.orm.game_ledger_orm import GameLedgerOrm
 from game.adapter.outbound.orm.game_position_orm import GamePositionOrm
 from game.adapter.outbound.orm.game_wallet_orm import GameWalletOrm
-from game.app.dtos.account_dto import Account, ClosedPosition, OpenPosition
+from game.app.dtos.account_dto import Account, ClosedPosition, OpenPosition, RecentlyClosed
 from game.app.ports.output.game_account_repository import GameAccountRepository
+from game.domain.clock.game_epoch import TICKS_PER_GAME_DAY
 
 
 class GameAccountPgRepository(GameAccountRepository):
@@ -52,6 +53,9 @@ class GameAccountPgRepository(GameAccountRepository):
                     entry_tick=r.entry_tick,
                     entry_price_krw=r.entry_price_krw,
                     entry_fee_krw=r.entry_fee_krw,
+                    instrument=r.instrument,
+                    leverage=r.leverage,
+                    expires_tick=r.expires_tick,
                 )
                 for r in rows
             ),
@@ -99,6 +103,9 @@ class GameAccountPgRepository(GameAccountRepository):
         entry_fee_krw: int,
         cash_delta_krw: int,
         game_day: int,
+        instrument: str = "STOCK",
+        leverage: int = 1,
+        expires_tick: int | None = None,
     ) -> OpenPosition:
         wallet = await self._locked_wallet(user_id, epoch_id)
         position = GamePositionOrm(
@@ -109,6 +116,9 @@ class GameAccountPgRepository(GameAccountRepository):
             entry_tick=entry_tick,
             entry_price_krw=entry_price_krw,
             entry_fee_krw=entry_fee_krw,
+            instrument=instrument,
+            leverage=leverage,
+            expires_tick=expires_tick,
             epoch_id=epoch_id,
         )
         self._session.add(position)
@@ -135,6 +145,9 @@ class GameAccountPgRepository(GameAccountRepository):
             entry_tick=entry_tick,
             entry_price_krw=entry_price_krw,
             entry_fee_krw=entry_fee_krw,
+            instrument=instrument,
+            leverage=leverage,
+            expires_tick=expires_tick,
         )
 
     async def close_position(
@@ -148,6 +161,7 @@ class GameAccountPgRepository(GameAccountRepository):
         realized_pnl_krw: int,
         proceeds_krw: int,
         game_day: int,
+        close_reason: str = "user",
     ) -> ClosedPosition:
         position = await self._session.scalar(
             select(GamePositionOrm)
@@ -167,6 +181,7 @@ class GameAccountPgRepository(GameAccountRepository):
         position.exit_fee_krw = exit_fee_krw
         position.carry_krw = carry_krw
         position.realized_pnl_krw = realized_pnl_krw
+        position.close_reason = close_reason
 
         wallet.cash_krw += proceeds_krw
         self._session.add(
@@ -191,6 +206,41 @@ class GameAccountPgRepository(GameAccountRepository):
             closed_tick=closed_tick,
             exit_price_krw=exit_price_krw,
             realized_pnl_krw=realized_pnl_krw,
+        )
+
+    async def list_recently_closed(
+        self, user_id: int, epoch_id: int, limit: int = 5
+    ) -> tuple[RecentlyClosed, ...]:
+        rows = (
+            await self._session.scalars(
+                select(GamePositionOrm)
+                .where(
+                    GamePositionOrm.user_id == user_id,
+                    GamePositionOrm.epoch_id == epoch_id,
+                    GamePositionOrm.closed_tick.is_not(None),
+                    # 유저가 직접 누른 청산은 이미 화면에서 결과를 봤다
+                    GamePositionOrm.close_reason.is_not(None),
+                    GamePositionOrm.close_reason != "user",
+                )
+                .order_by(GamePositionOrm.closed_tick.desc())
+                .limit(limit)
+            )
+        ).all()
+        return tuple(
+            RecentlyClosed(
+                id=r.id,
+                symbol=r.symbol,
+                name="",  # 종목명은 도메인 파라미터라 유스케이스가 채운다
+                side=r.side,
+                quantity=r.quantity,
+                leverage=r.leverage,
+                closed_tick=r.closed_tick or 0,
+                closed_game_day=(r.closed_tick or 0) // TICKS_PER_GAME_DAY,
+                exit_price_krw=r.exit_price_krw or 0,
+                realized_pnl_krw=r.realized_pnl_krw or 0,
+                reason=r.close_reason or "",
+            )
+            for r in rows
         )
 
     async def ledger_total(self, user_id: int, epoch_id: int) -> int:

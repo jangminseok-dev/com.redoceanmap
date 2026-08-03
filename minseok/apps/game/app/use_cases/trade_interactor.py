@@ -19,12 +19,17 @@ from game.domain.clock.game_epoch import (
 )
 from game.domain.market import price_engine
 from game.domain.market.symbol_params import find as find_symbol
+from game.domain.trading.liquidation import resolve_close
 from game.domain.trading.trading_rules import (
     INITIAL_CASH_KRW,
+    LEVERAGE_TIERS,
+    LEVERAGED_EXPIRY_TICKS,
+    MAX_LEVERAGED_POSITIONS,
     Side,
     close_result,
     entry_cost,
     investable_cash,
+    liquidation_price,
 )
 
 MAX_QUANTITY_PER_ORDER = 1_000_000  # 정수 오버플로·오타 방어
@@ -52,6 +57,10 @@ class TradeInteractor(TradeUseCase):
             side = Side(command.side)
         except ValueError as e:
             raise InvalidOrder("방향은 LONG 또는 SHORT여야 합니다") from e
+        if command.leverage not in LEVERAGE_TIERS:
+            raise InvalidOrder(
+                f"레버리지는 {'·'.join(str(t) for t in LEVERAGE_TIERS)}배 중 하나여야 합니다"
+            )
 
         params = find_symbol(command.symbol)
         if params is None:
@@ -67,14 +76,26 @@ class TradeInteractor(TradeUseCase):
                 game_day=moment.game_day,
             )
 
+        # 레버리지 포지션은 스캔 비용이 있다 — 동시 보유를 제한해 지갑 조회 상한을 지킨다
+        if command.leverage > 1:
+            open_leveraged = sum(1 for p in account.open_positions if p.leverage > 1)
+            if open_leveraged >= MAX_LEVERAGED_POSITIONS:
+                raise InvalidOrder(
+                    f"레버리지 포지션은 동시에 {MAX_LEVERAGED_POSITIONS}개까지만 보유할 수 있습니다"
+                )
+
         price = price_engine.price_at(params, moment.tick)
-        cost = entry_cost(price, command.quantity)
+        cost = entry_cost(price, command.quantity, command.leverage)
         budget = investable_cash(account.cash_krw)
         if cost.total_krw > budget:
             raise InsufficientCash(
                 f"투자 가능 금액을 넘습니다 (필요 {cost.total_krw:,}원 · 가능 {budget:,}원)"
             )
 
+        # 만료는 레버리지에만 붙는다 — 이게 청산 스캔 범위를 유한하게 만든다
+        expires_tick = (
+            moment.tick + LEVERAGED_EXPIRY_TICKS if command.leverage > 1 else None
+        )
         position = await self._repository.open_position(
             user_id=command.user_id,
             epoch_id=GAME_EPOCH_ID,
@@ -86,6 +107,8 @@ class TradeInteractor(TradeUseCase):
             entry_fee_krw=cost.fee_krw,
             cash_delta_krw=-cost.total_krw,
             game_day=moment.game_day,
+            leverage=command.leverage,
+            expires_tick=expires_tick,
         )
         return TradeReceipt(
             position_id=position.id,
@@ -100,6 +123,9 @@ class TradeInteractor(TradeUseCase):
             realized_pnl_krw=None,
             cash_krw=account.cash_krw - cost.total_krw,
             tick=moment.tick,
+            leverage=command.leverage,
+            liquidation_price_krw=liquidation_price(side, price, command.leverage),
+            expires_tick=expires_tick,
         )
 
     async def close(self, command: CloseTradeCommand) -> TradeReceipt:
@@ -118,10 +144,23 @@ class TradeInteractor(TradeUseCase):
         if params is None:
             raise UnknownSymbol(f"게임에 없는 종목입니다: {position.symbol}")
 
+        # **이미 청산됐어야 하는 포지션인지 먼저 본다.** 지갑을 거치지 않고 바로 청산 버튼을
+        # 누르면 미접속 중 터진 포지션을 현재가로 닫게 되어 결정론이 깨진다 — 같은 상황을
+        # 두 경로가 다르게 판정하면 안 된다.
+        hit = resolve_close(
+            lambda tick: price_engine.price_at(params, tick),
+            side=Side(position.side),
+            entry_price_krw=position.entry_price_krw,
+            leverage=position.leverage,
+            entry_tick=position.entry_tick,
+            now_tick=moment.tick,
+            expires_tick=position.expires_tick,
+        )
         # 시즌이 끝난 뒤 청산은 허용한다 — 막으면 마지막 포지션이 영원히 잠긴다.
         # 다만 가격은 시즌 마지막 틱에 멈춘다(price_engine이 클램프).
-        price = price_engine.price_at(params, moment.tick)
-        held_days = max(0.0, (moment.tick - position.entry_tick) / TICKS_PER_GAME_DAY)
+        closed_tick = hit.tick if hit else moment.tick
+        price = hit.price_krw if hit else price_engine.price_at(params, moment.tick)
+        held_days = max(0.0, (closed_tick - position.entry_tick) / TICKS_PER_GAME_DAY)
         result = close_result(
             side=Side(position.side),
             entry_price_krw=position.entry_price_krw,
@@ -129,18 +168,21 @@ class TradeInteractor(TradeUseCase):
             quantity=position.quantity,
             holding_game_days=held_days,
             entry_fee_krw=position.entry_fee_krw,
+            leverage=position.leverage,
+            forced=hit.forced if hit else False,
         )
 
         await self._repository.close_position(
             user_id=command.user_id,
             position_id=position.id,
-            closed_tick=moment.tick,
+            closed_tick=closed_tick,
             exit_price_krw=price,
             exit_fee_krw=result.fee_krw,
             carry_krw=result.carry_krw,
             realized_pnl_krw=result.realized_pnl_krw,
             proceeds_krw=result.proceeds_krw,
-            game_day=moment.game_day,
+            game_day=closed_tick // TICKS_PER_GAME_DAY,
+            close_reason=hit.reason if hit else "user",
         )
         return TradeReceipt(
             position_id=position.id,

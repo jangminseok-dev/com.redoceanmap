@@ -182,7 +182,7 @@ def test_창업하고_현황을_조회한다(client):
         json={
             "trdarCode": 1001,
             "serviceCode": "CS100010",
-            "budgetKrw": 500_000,
+            "budgetKrw": 700_000,
             "staffCount": 2,
             "priceFactor": 1.0,
         },
@@ -213,7 +213,7 @@ def test_없는_가게_조회는_404다(client):
 def test_창업_조건이_범위를_벗어나면_422다(client):
     body = client.post(
         "/game/stores",
-        json={"trdarCode": 1001, "serviceCode": "CS100010", "budgetKrw": 500_000,
+        json={"trdarCode": 1001, "serviceCode": "CS100010", "budgetKrw": 700_000,
               "staffCount": 99999, "priceFactor": 1.0},
     )
     assert body.status_code == 422

@@ -15,7 +15,7 @@ import {
   type Time,
   type UTCTimestamp,
 } from "lightweight-charts";
-import type { PriceBar, StockForecast, StockNewsItem } from "@/lib/types";
+import type { ChartPattern, PriceBar, StockForecast, StockNewsItem } from "@/lib/types";
 
 // 한국 관례: 상승 빨강 / 하락 파랑 (StockCard·방향 배지와 동일)
 const UP = "#DC2626";
@@ -33,7 +33,11 @@ type CandleChartProps = {
   rangeDays?: number | null; // 초기 표시 구간(달력일). null = 전체
   news?: StockNewsItem[]; // 감성 마커용 — 강한 기사만 캔들 위에 찍는다
   intraday?: boolean; // 5분봉 등 분 단위 — 시간축에 시각을 표시할지
+  pattern?: ChartPattern | null; // 강조할 형태 하나 — 여러 개를 겹치면 캔들이 보조선에 덮인다
 };
+
+// 형태 보조선 — 캔들·이평선과 구분되도록 회색 점선
+const PATTERN_COLOR = "#6B7280";
 
 // 감성 마커로 찍을 최소 강도·최대 개수 — 약한 기사까지 찍으면 캔들이 가려진다
 const MARKER_MIN_ABS_SENTIMENT = 0.3;
@@ -157,6 +161,7 @@ export default function CandleChart({
   rangeDays,
   news,
   intraday = false,
+  pattern,
 }: CandleChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<SVGSVGElement>(null);
@@ -430,6 +435,25 @@ export default function CandleChart({
       }
     }
 
+    // 형태 보조선 — 어깨·넥라인을 잇는다. 밴드와 같은 배열에 넣어 정리 경로를 공유한다.
+    if (pattern && bars.length > 0) {
+      const shape = pattern.points
+        .filter(([i]) => i >= 0 && i < bars.length)
+        .map(([i, price]) => ({ time: toTime(bars[i].ts), value: price }));
+      if (shape.length >= 2) {
+        const series = r.chart.addSeries(LineSeries, {
+          color: PATTERN_COLOR,
+          lineWidth: 2,
+          lineStyle: 2,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: false,
+        });
+        series.setData(shape);
+        r.bandLines.push(series);
+      }
+    }
+
     // setData가 봉을 원복하므로 quote를 재적용한다(임시 봉 추적은 리셋)
     provisionalRef.current = null;
     applyQuote(r);
@@ -443,7 +467,7 @@ export default function CandleChart({
     }
     drawCone(); // 가격축 자동 스케일이 바뀌었을 수 있다 — 구간 이동이 없어도 다시 그린다
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bars, support, resistance, forecast]);
+  }, [bars, support, resistance, forecast, pattern]);
 
   // 뉴스 감성 마커 — 봉/뉴스가 바뀔 때만 재계산
   useEffect(() => {

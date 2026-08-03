@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Info, TriangleAlert } from "lucide-react";
 import GameOrderForm from "@/components/game/GameOrderForm";
 import MarketNewsFeed from "@/components/game/MarketNewsFeed";
@@ -19,17 +19,28 @@ import { useUIStore } from "@/lib/uiStore";
 import type { GameSymbolPrices } from "@/lib/types";
 
 const CHART_TICKS = 120; // 게임 2일치 — 곡선 모양이 읽히는 최소 구간
+const CANDLE_DAYS = 7; // 봉 모드에서 볼 게임일 수(백엔드 상한 14)
+const ALL_SECTORS = "전체";
 
 const won = (v: number) => `${v.toLocaleString()}원`;
 const signed = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
 const toneOf = (v: number) => (v >= 0 ? "text-[#DC2626]" : "text-[#2563EB]");
 
 export default function InvestPanel() {
-  // 선택 종목 + 마지막 체결 안내. 나머지는 서버 응답이라 상태로 들 것이 없다
+  // 선택 종목 · 체결 안내 · 화면 필터. 나머지는 서버 응답이라 상태로 들 것이 없다
   // (REACT_RULES 패턴 B: 여러 값은 단일 객체로)
-  const [view, setView] = useState<{ selected: string | null; notice: string | null }>({
+  const [view, setView] = useState<{
+    selected: string | null;
+    notice: string | null;
+    sector: string;
+    chart: "line" | "candle";
+    pattern: string | null;
+  }>({
     selected: null,
     notice: null,
+    sector: ALL_SECTORS,
+    chart: "line",
+    pattern: null,
   });
   const openAuth = useUIStore((s) => s.openAuth);
   const queryClient = useQueryClient();
@@ -41,10 +52,13 @@ export default function InvestPanel() {
   });
 
   // 시세 — 결정론 계산이라 같은 틱을 다시 물어도 같은 값이다. 에러 시 5분 저속 재시도.
+  // 선택 종목의 일봉·종목정보를 함께 받는다(전 종목 봉은 응답 목표를 넘긴다).
+  // 종목을 바꾸면 키가 바뀌므로 이전 데이터를 유지해 차트가 깜빡이지 않게 한다.
   const pricesQ = useQuery({
-    queryKey: ["game-prices", CHART_TICKS],
-    queryFn: () => fetchGamePrices(CHART_TICKS),
+    queryKey: ["game-prices", CHART_TICKS, view.selected],
+    queryFn: () => fetchGamePrices(CHART_TICKS, view.selected ?? undefined, CANDLE_DAYS),
     refetchInterval: (query) => (query.state.status === "error" ? 300_000 : 30_000),
+    placeholderData: keepPreviousData,
   });
 
   // 지갑 — 평가손익이 시세를 따라 움직여야 하므로 같은 주기로 갱신한다
@@ -64,16 +78,21 @@ export default function InvestPanel() {
       symbol,
       side,
       quantity,
+      leverage,
     }: {
       symbol: string;
       side: "LONG" | "SHORT";
       quantity: number;
-    }) => openGameTrade(symbol, side, quantity),
+      leverage: number;
+    }) => openGameTrade(symbol, side, quantity, leverage),
     onSuccess: (r) => {
       refresh();
       setView((prev) => ({
         ...prev,
-        notice: `${r.name} ${r.side === "LONG" ? "롱" : "숏"} ${r.quantity.toLocaleString()}주 체결 · ${won(r.priceKrw)}`,
+        notice:
+          `${r.name} ${r.side === "LONG" ? "롱" : "숏"}${r.leverage > 1 ? ` ${r.leverage}배` : ""} ` +
+          `${r.quantity.toLocaleString()}주 체결 · ${won(r.priceKrw)}` +
+          (r.liquidationPriceKrw ? ` · 청산선 ${won(r.liquidationPriceKrw)}` : ""),
       }));
     },
     onError: (e) =>
@@ -103,10 +122,34 @@ export default function InvestPanel() {
   const data = pricesQ.data;
   const wallet = walletQ.data;
   const symbols = data?.symbols ?? [];
+  const candles = data?.candles ?? [];
+  const info = data?.symbolInfo ?? null;
+  const patterns = data?.patterns ?? [];
+  const activePattern =
+    patterns.find((p) => p.name === view.pattern) ?? patterns[0] ?? undefined;
   const current: GameSymbolPrices | undefined =
     symbols.find((s) => s.symbol === view.selected) ?? symbols[0];
+
+  // 섹터 그룹 4개 — 도메인이 정한 축이라 프론트가 목록을 지어내지 않는다
+  const sectorGroups = useMemo(
+    () => [ALL_SECTORS, ...Array.from(new Set(symbols.map((s) => s.sectorGroup)))],
+    [symbols],
+  );
+  const visibleSymbols =
+    view.sector === ALL_SECTORS ? symbols : symbols.filter((s) => s.sectorGroup === view.sector);
   const unauthorized =
     (pricesQ.error as ApiError)?.status === 401 || (walletQ.error as ApiError)?.status === 401;
+
+  // 지금 보고 있는 종목에 실제로 걸리는 뉴스만 차트에 찍는다 — 피드의 대부분은 남의 종목 뉴스다
+  const newsMarkers = useMemo(
+    () =>
+      current
+        ? (data?.events ?? [])
+            .filter((e) => e.affectedSymbols.includes(current.symbol))
+            .map((e) => ({ tick: e.tick, positive: e.positive }))
+        : [],
+    [data?.events, current],
+  );
 
   return (
     <div>
@@ -181,6 +224,30 @@ export default function InvestPanel() {
         </p>
       )}
 
+      {/* 미접속 중 마감된 포지션 — 복귀했을 때 무슨 일이 있었는지 알린다 */}
+      {(wallet?.recentlyClosed?.length ?? 0) > 0 && (
+        <section className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="text-xs font-semibold text-amber-900">자리를 비운 사이에</p>
+          <ul className="mt-1.5 space-y-1">
+            {wallet?.recentlyClosed?.map((c) => (
+              <li key={c.id} className="text-xs text-amber-900 tabular-nums">
+                {c.name} {c.side === "LONG" ? "롱" : "숏"}
+                {c.leverage > 1 && ` ${c.leverage}배`} {c.quantity.toLocaleString()}주 —{" "}
+                {c.closedGameDay}일차에{" "}
+                {c.reason === "liquidated"
+                  ? "강제청산"
+                  : c.reason === "expired"
+                    ? "만료 마감"
+                    : "만기 정산"}
+                <span className={`ml-1 font-semibold ${toneOf(c.realizedPnlKrw)}`}>
+                  {signed(c.realizedPnlKrw)}원
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {current && (
         <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_320px]">
           <section className="rounded-2xl border border-border bg-surface p-5">
@@ -195,12 +262,97 @@ export default function InvestPanel() {
               </span>
             </div>
 
-            <GamePriceLine points={current.series} className="mt-4 w-full h-56 sm:h-64" />
+            <div className="mt-3 flex gap-1 rounded-xl border border-border p-0.5 w-fit">
+              {(["line", "candle"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() =>
+                    setView((prev) => ({
+                      ...prev,
+                      chart: mode,
+                      // 봉은 선택 종목에만 계산된다 — 아직 고른 적이 없으면 지금 보는 종목으로 채운다
+                      selected: prev.selected ?? current.symbol,
+                    }))
+                  }
+                  className={`h-7 rounded-lg px-3 text-xs font-medium transition-colors ${
+                    view.chart === mode
+                      ? "bg-brand text-white"
+                      : "text-foreground-muted hover:text-foreground"
+                  }`}
+                >
+                  {mode === "line" ? "틱 차트" : "일봉"}
+                </button>
+              ))}
+            </div>
+
+            <GamePriceLine
+              points={current.series}
+              candles={view.chart === "candle" ? candles : undefined}
+              markers={newsMarkers}
+              pattern={view.chart === "line" ? activePattern : undefined}
+              className="mt-3 w-full h-56 sm:h-64"
+            />
 
             <p className="mt-3 text-xs text-foreground-muted">
-              최근 게임 {Math.round(current.series.length / 60)}일 · 등락률은 게임 1일(현실 1시간)
-              전 대비
+              {view.chart === "candle" && candles.length > 0
+                ? `일봉 ${candles.length}개 · 게임 1일(현실 1시간)이 1봉`
+                : `최근 게임 ${Math.round(current.series.length / 60)}일 · 등락률은 게임 1일(현실 1시간) 전 대비`}
+              {newsMarkers.length > 0 && " · 세로 눈금은 이 종목에 걸린 뉴스 시점"}
             </p>
+
+            {patterns.length > 0 && view.chart === "line" && (
+              <div className="mt-4 border-t border-border pt-4">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs font-semibold">보이는 형태</span>
+                  {patterns.map((p) => (
+                    <button
+                      key={p.name}
+                      type="button"
+                      onClick={() => setView((prev) => ({ ...prev, pattern: p.name }))}
+                      className={`h-7 rounded-lg px-2.5 text-[11px] font-medium transition-colors ${
+                        activePattern?.name === p.name
+                          ? "bg-foreground text-background"
+                          : "text-foreground-muted hover:bg-black/[0.04]"
+                      }`}
+                    >
+                      {p.label}
+                      <span className="ml-1 tabular-nums opacity-70">
+                        {Math.round(p.confidence * 100)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                {activePattern && (
+                  <p className="mt-2 text-[11px] leading-relaxed text-foreground-muted">
+                    {activePattern.note} 점선이 그 형태의 꼭짓점을 잇습니다.
+                    <br />
+                    형태를 알아본 것일 뿐 앞으로의 방향을 뜻하지 않습니다. 이 게임의 주가는
+                    난수와 뉴스 충격으로 만들어지므로 형태에 시장 심리가 담겨 있지 않습니다.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {info && info.symbol === current.symbol && (
+              <dl className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 border-t border-border pt-4">
+                {[
+                  { label: "시즌 시작가", value: won(info.basePriceKrw) },
+                  { label: "게임 1일 변동성", value: `${info.gameDailySigmaPct.toFixed(2)}%` },
+                  { label: `최근 ${info.recentDays}일 고가`, value: won(info.recentHighKrw) },
+                  { label: `최근 ${info.recentDays}일 저가`, value: won(info.recentLowKrw) },
+                ].map((item) => (
+                  <div key={item.label}>
+                    <dt className="text-[11px] text-foreground-muted">{item.label}</dt>
+                    <dd className="text-sm font-semibold tabular-nums">{item.value}</dd>
+                  </div>
+                ))}
+                <p className="col-span-2 sm:col-span-4 text-[11px] text-foreground-muted">
+                  {info.sectorGroup} · 실적 지표(PER·ROE 등)는 이 게임에 개념이 없어 표시하지
+                  않습니다.
+                </p>
+              </dl>
+            )}
           </section>
 
           <div className="space-y-4">
@@ -210,8 +362,8 @@ export default function InvestPanel() {
                 rules={rulebookQ.data}
                 investableKrw={wallet.investableKrw}
                 disabled={open.isPending || wallet.seasonOver}
-                onSubmit={(side, quantity) =>
-                  open.mutate({ symbol: current.symbol, side, quantity })
+                onSubmit={(side, quantity, leverage) =>
+                  open.mutate({ symbol: current.symbol, side, quantity, leverage })
                 }
               />
             )}
@@ -221,12 +373,30 @@ export default function InvestPanel() {
                 events={data.events}
                 currentTick={data.tick}
                 ticksPerGameDay={rulebookQ.data?.ticksPerGameDay ?? 60}
+                selectedSymbol={current.symbol}
               />
             )}
 
             <section className="rounded-2xl border border-border bg-surface p-2">
+              {/* 섹터 그룹 — 뉴스가 걸리는 단위와 같은 축이라 "업종 악재"가 어디에 닿는지 보인다 */}
+              <div className="flex flex-wrap gap-1 px-1 pt-1 pb-2">
+                {sectorGroups.map((group) => (
+                  <button
+                    key={group}
+                    type="button"
+                    onClick={() => setView((prev) => ({ ...prev, sector: group }))}
+                    className={`h-7 rounded-lg px-2.5 text-[11px] font-medium transition-colors ${
+                      view.sector === group
+                        ? "bg-brand text-white"
+                        : "text-foreground-muted hover:bg-black/[0.04]"
+                    }`}
+                  >
+                    {group}
+                  </button>
+                ))}
+              </div>
               <ul className="divide-y divide-border max-h-80 overflow-y-auto">
-                {symbols.map((s) => {
+                {visibleSymbols.map((s) => {
                   const active = s.symbol === current.symbol;
                   return (
                     <li key={s.symbol}>
