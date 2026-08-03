@@ -38,6 +38,15 @@ class CandleView:
     high_krw: int
     low_krw: int
     close_krw: int
+    simulated_volume: int  # 게임 규칙 산출값 — 실제 체결이 아니다
+
+
+@dataclass(frozen=True)
+class MovingAverageView:
+    """이동평균선 하나. 표본이 모자란 앞 구간은 `None`이라 차트가 그 구간을 건너뛴다."""
+
+    period: int              # 게임일
+    points: tuple[float | None, ...]  # 봉 배열과 같은 길이·같은 순서
 
 
 @dataclass(frozen=True)
@@ -115,3 +124,5 @@ class MarketPricesResponse:
     candles: tuple[CandleView, ...]   # candle_symbol을 지정했을 때만 채워진다
     symbol_info: SymbolInfo | None
     patterns: tuple[ChartPatternView, ...]  # 〃 — 선택 종목의 틱 곡선에서 관측된 형태
+    moving_averages: tuple[MovingAverageView, ...]  # 〃 — 봉 배열과 인덱스가 맞는다
+    rsi: tuple[float | None, ...]                   # 〃 — 〃

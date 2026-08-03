@@ -26,6 +26,15 @@ class CandleSchema(BaseModel):
     highKrw: int
     lowKrw: int
     closeKrw: int
+    simulatedVolume: int = Field(
+        description="게임 규칙 산출 거래량 — 실제 체결이 아니다(게임에 호가·체결이 없다)"
+    )
+
+
+class MovingAverageSchema(BaseModel):
+
+    period: int = Field(description="게임일")
+    points: list[float | None] = Field(description="봉 배열과 같은 길이·순서. 표본 부족 구간은 null")
 
 
 class ChartPatternSchema(BaseModel):
@@ -91,6 +100,12 @@ class MarketPricesResponseSchema(BaseModel):
     )
     symbolInfo: SymbolInfoSchema | None = Field(
         description="candle_symbol을 지정했을 때만. 실적 지표(PER 등)는 게임에 개념이 없어 넣지 않는다"
+    )
+    movingAverages: list[MovingAverageSchema] = Field(
+        default_factory=list, description="선택 종목의 이동평균선. 봉 배열과 인덱스가 맞는다"
+    )
+    rsi: list[float | None] = Field(
+        default_factory=list, description="선택 종목의 RSI(14). 봉 배열과 인덱스가 맞는다"
     )
     patterns: list[ChartPatternSchema] = Field(
         description=(

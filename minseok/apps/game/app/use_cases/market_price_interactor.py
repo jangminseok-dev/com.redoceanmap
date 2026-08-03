@@ -4,6 +4,7 @@ from core import chart_pattern
 from game.app.dtos.market_price_dto import (
     CandleView,
     ChartPatternView,
+    MovingAverageView,
     MarketEventView,
     MarketPricesResponse,
     MarketPriceQuery,
@@ -23,7 +24,7 @@ from game.domain.clock.game_epoch import (
     TICKS_PER_GAME_DAY,
     describe,
 )
-from game.domain.market import market_events, price_engine
+from game.domain.market import indicators, market_events, price_engine
 from game.domain.market.symbol_params import (
     CALIBRATED_AT,
     MEME_SIGMA_MULTIPLIER,
@@ -34,7 +35,9 @@ from game.domain.market.symbol_params import (
 MIN_TICKS = 2
 MAX_TICKS = 240  # 12종목 × 240틱이 응답 목표(p95 200ms) 안에 드는 상한
 MIN_CANDLE_DAYS = 1
-MAX_CANDLE_DAYS = 14  # 하루당 60회 평가(≈2.7ms) — 14일이 응답 목표 안에 드는 상한
+# 하루당 60회 평가라 120일이 82ms(실측) — 응답 목표(p95 200ms) 안에 드는 상한이다.
+# 14일에서 올렸다: 120일선을 그리려면 화면에 그만큼이 있어야 한다.
+MAX_CANDLE_DAYS = 120
 MIN_PATTERN_POINTS = 60  # 이보다 짧으면 극값이 형태를 이루지 못한다(게임 1일)
 MAX_PATTERNS = 3         # 신뢰도 상위만. 전부 그리면 차트가 선으로 덮인다
 
@@ -86,6 +89,7 @@ class MarketPriceInteractor(MarketPriceUseCase):
             for params in SYMBOLS
         )
         candles, symbol_info = self._candles_for(query, end_tick, extra)
+        moving_averages, rsi = self._indicators_for(query, end_tick, len(candles), extra)
         patterns = self._patterns_for(query, symbols)
         return MarketPricesResponse(
             events=tuple(
@@ -116,7 +120,42 @@ class MarketPriceInteractor(MarketPriceUseCase):
             candles=candles,
             symbol_info=symbol_info,
             patterns=patterns,
+            moving_averages=moving_averages,
+            rsi=rsi,
         )
+
+    def _indicators_for(
+        self,
+        query: MarketPriceQuery,
+        end_tick: int,
+        candle_count: int,
+        extra: tuple[market_events.MarketEvent, ...] = (),
+    ) -> tuple[tuple[MovingAverageView, ...], tuple[float | None, ...]]:
+        """선택 종목의 이동평균·RSI. 봉 배열과 **인덱스가 맞는다**.
+
+        가장 긴 기간(120일)만큼 화면 밖을 더 읽어야 첫 봉부터 선이 그려진다. 그 워밍업은
+        봉이 아니라 **종가만** 뽑아 계산한다 — 봉으로 하면 25배 비싸 예산을 넘긴다.
+        """
+        if query.candle_symbol is None or candle_count == 0:
+            return (), ()
+        params = next((s for s in SYMBOLS if s.symbol == query.candle_symbol), None)
+        if params is None:
+            return (), ()
+
+        warmup = max(*indicators.MA_PERIODS, indicators.RSI_PERIOD)
+        closes = price_engine.daily_closes(params, end_tick, candle_count + warmup, extra)
+        # 워밍업 구간을 잘라 봉과 길이를 맞춘다. 시즌 초반이라 워밍업이 모자라면
+        # 그만큼 앞이 None으로 남는다(0으로 채우지 않는다 — 가짜 선이 그려진다).
+        cut = len(closes) - candle_count
+
+        def trim(series: list[float | None]) -> tuple[float | None, ...]:
+            return tuple(series[cut:])
+
+        averages = tuple(
+            MovingAverageView(period=period, points=trim(indicators.moving_average(closes, period)))
+            for period in indicators.MA_PERIODS
+        )
+        return averages, trim(indicators.rsi(closes))
 
     def _patterns_for(
         self, query: MarketPriceQuery, symbols: tuple[SymbolPrices, ...]
@@ -178,6 +217,7 @@ class MarketPriceInteractor(MarketPriceUseCase):
                 high_krw=c.high_krw,
                 low_krw=c.low_krw,
                 close_krw=c.close_krw,
+                simulated_volume=c.simulated_volume,
             )
             for c in raw
         )

@@ -25,7 +25,7 @@
 | game 앱 코드 | **9단계 완료(전 단계).** 슬라이스 8개 + 도메인 12모듈. 테스트 204개 통과 | `PYTHONPATH=apps python3 -m pytest apps/game -q` |
 | 허브 포트 | `AreaDemandProfilePort` **1개**(메서드 1개) — market이 구현, game이 소비. `CommercialDataPort`는 **무변경** | `hub/app/ports/output/` |
 | 결정론·경계 검사 | **위반 0건** (100파일 AST 검사) | `python3 scripts/check_game_determinism.py` |
-| 응답 성능 | 36종목 × 240틱(최대) **77ms** — 목표 200ms. 브리지 노드·이벤트 슬롯 메모이제이션 전에는 12종목 × 240틱이 이미 318ms였다 | `price_series` 직접 측정 |
+| 응답 성능 | 36종목 × 240틱 **77ms** · 여기에 선택 종목 120일 봉+지표를 얹어 **180ms** — 목표 200ms. 브리지 노드·이벤트 슬롯 메모이제이션 전에는 12종목 × 240틱이 이미 318ms였다. 지표는 봉이 아니라 **종가 경로**로 계산한다(240일 봉 148ms vs 종가 5.7ms) | 인터랙터 직접 측정 |
 | DB | **테이블 6개** — 지갑·포지션·원장(`a2b3c4d5e6f7`), 가게·운영결정(`b3c4d5e6f7a8`), 분기결산(`c4d5e6f7a8b9`). ⏸ **적용은 미실행**(이 맥에 DB 없음) | ORM↔마이그레이션 일치 테스트 |
 | 프론트 | `/game` — **세그먼트 탭 2개**(모의 투자 · 상권 창업). 투자는 시세·자산·주문·청산, 창업은 지도 핀 선택→적합도 진단→창업→가게 현황. 수수료율·계수는 서버가 내려준다 | `www/app/(seoul)/game/` · `www/components/game/` |
 | ROADMAP 스포크 판정 | `game` 행 **추가됨**(0단계). 같은 표에 `soccer = 삭제됨 (2026-07-15)` | `minseok/_docs/ROADMAP.md` |

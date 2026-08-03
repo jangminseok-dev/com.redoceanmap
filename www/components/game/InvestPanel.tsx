@@ -6,6 +6,7 @@ import { Info, TriangleAlert } from "lucide-react";
 import GameOrderForm from "@/components/game/GameOrderForm";
 import MarketNewsFeed from "@/components/game/MarketNewsFeed";
 import GamePositionList from "@/components/game/GamePositionList";
+import GameChart, { MA_COLOR } from "@/components/game/GameChart";
 import GamePriceLine from "@/components/game/GamePriceLine";
 import {
   ApiError,
@@ -19,7 +20,13 @@ import { useUIStore } from "@/lib/uiStore";
 import type { GameSymbolPrices } from "@/lib/types";
 
 const CHART_TICKS = 120; // 게임 2일치 — 곡선 모양이 읽히는 최소 구간
-const CANDLE_DAYS = 7; // 봉 모드에서 볼 게임일 수(백엔드 상한 14)
+// 일봉 기간 탭. 백엔드 상한은 120일이고, 120일선을 그리려면 그만큼이 화면에 있어야 한다.
+// "년"은 두지 않는다 — 한 시즌이 720 게임일이라 해에 대응하는 단위가 없다.
+const CANDLE_RANGES = [
+  { days: 30, label: "1개월" },
+  { days: 60, label: "3개월" },
+  { days: 120, label: "전체" },
+] as const;
 const ALL_SECTORS = "전체";
 
 const won = (v: number) => `${v.toLocaleString()}원`;
@@ -35,12 +42,14 @@ export default function InvestPanel() {
     sector: string;
     chart: "line" | "candle";
     pattern: string | null;
+    candleDays: number;
   }>({
     selected: null,
     notice: null,
     sector: ALL_SECTORS,
     chart: "line",
     pattern: null,
+    candleDays: CANDLE_RANGES[0].days,
   });
   const openAuth = useUIStore((s) => s.openAuth);
   const queryClient = useQueryClient();
@@ -55,8 +64,8 @@ export default function InvestPanel() {
   // 선택 종목의 일봉·종목정보를 함께 받는다(전 종목 봉은 응답 목표를 넘긴다).
   // 종목을 바꾸면 키가 바뀌므로 이전 데이터를 유지해 차트가 깜빡이지 않게 한다.
   const pricesQ = useQuery({
-    queryKey: ["game-prices", CHART_TICKS, view.selected],
-    queryFn: () => fetchGamePrices(CHART_TICKS, view.selected ?? undefined, CANDLE_DAYS),
+    queryKey: ["game-prices", CHART_TICKS, view.selected, view.candleDays],
+    queryFn: () => fetchGamePrices(CHART_TICKS, view.selected ?? undefined, view.candleDays),
     refetchInterval: (query) => (query.state.status === "error" ? 300_000 : 30_000),
     placeholderData: keepPreviousData,
   });
@@ -295,20 +304,55 @@ export default function InvestPanel() {
               ))}
             </div>
 
-            <GamePriceLine
+            {/* 일봉일 때만 기간을 고른다 — 틱 차트는 구간이 하나다 */}
+            {view.chart === "candle" && (
+              <div className="mt-2 flex items-center gap-1.5">
+                {CANDLE_RANGES.map((r) => (
+                  <button
+                    key={r.days}
+                    type="button"
+                    onClick={() => setView((prev) => ({ ...prev, candleDays: r.days }))}
+                    className={`h-7 rounded-lg px-2.5 text-[11px] font-medium transition-colors ${
+                      view.candleDays === r.days
+                        ? "bg-foreground/10 text-foreground"
+                        : "text-foreground-muted hover:text-foreground"
+                    }`}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+                {/* 이동평균 범례 — 어느 색이 몇 일선인지 알아야 선이 의미를 갖는다 */}
+                <span className="ml-auto flex items-center gap-2 text-[10px] tabular-nums">
+                  {data?.movingAverages?.map((m) => (
+                    <span key={m.period} style={{ color: MA_COLOR[m.period] }}>
+                      {m.period}
+                    </span>
+                  ))}
+                </span>
+              </div>
+            )}
+
+            <GameChart
               points={current.series}
               candles={view.chart === "candle" ? candles : undefined}
+              movingAverages={view.chart === "candle" ? (data?.movingAverages ?? []) : []}
+              rsi={view.chart === "candle" ? (data?.rsi ?? []) : []}
               markers={newsMarkers}
               pattern={view.chart === "line" ? activePattern : undefined}
-              className="mt-3 w-full h-56 sm:h-64"
+              className="mt-3 w-full h-72 sm:h-96"
             />
 
             <p className="mt-3 text-xs text-foreground-muted">
               {view.chart === "candle" && candles.length > 0
-                ? `일봉 ${candles.length}개 · 게임 1일(현실 1시간)이 1봉`
+                ? `일봉 ${candles.length}개 · 게임 1일(현실 1시간)이 1봉 · 이동평균 5·20·60·120일 · RSI 14`
                 : `최근 게임 ${Math.round(current.series.length / 60)}일 · 등락률은 게임 1일(현실 1시간) 전 대비`}
               {newsMarkers.length > 0 && " · 세로 눈금은 이 종목에 걸린 뉴스 시점"}
             </p>
+            {view.chart === "candle" && (
+              <p className="mt-1 text-[11px] text-foreground-muted">
+                거래량은 게임에 호가·체결 개념이 없어 규칙으로 만든 가정치입니다.
+              </p>
+            )}
 
             {patterns.length > 0 && view.chart === "line" && (
               <div className="mt-4 border-t border-border pt-4">

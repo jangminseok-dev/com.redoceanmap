@@ -24,7 +24,7 @@ from game.domain.market.symbol_params import (
     SYMBOLS,
     SymbolParams,
 )
-from game.domain.rng.deterministic import normal
+from game.domain.rng.deterministic import normal, uniform
 
 # 2의 거듭제곱이라야 이분 분할이 정확히 떨어진다. SEASON_TICKS(43,200)를 덮는 최소값.
 _BRIDGE_SPAN = 1 << 16  # 65_536
@@ -161,6 +161,35 @@ def index_at(
     return max(1, round(INDEX_BASE_POINT * math.exp(log_total / len(SYMBOLS))))
 
 
+# --- 거래량 -------------------------------------------------------------------
+# 게임에는 호가·체결 개념이 없어 거래량이 **존재하지 않는다.** 차트가 요구하므로 규칙으로
+# 만든다(`simulated_*` 접두사로 가정치임을 표시, harness §5-1).
+#
+# 설계: 하루 거래대금을 기준으로 잡고 주가로 나눠 주수를 얻는다 — 기준가가 18,900원인
+# 종목과 214,000원인 종목의 거래량이 같으면 어색하다. 여기에 **그날 변동폭에 비례하는
+# 급증**과 결정론 잡음을 곱한다. "뉴스가 뜬 날 거래량이 터진다"가 눈으로 보이게 하려는 것이다.
+BASE_TURNOVER_KRW = 3_000_000_000  # 하루 기준 거래대금(가정치)
+VOLUME_SURGE_K = 2.5               # 변동폭 1σ당 거래량 배수 증가분
+MEME_VOLUME_MULTIPLIER = 3.0       # 밈 종목은 평소에도 훨씬 많이 돈다
+VOLUME_NOISE_RANGE = 0.45          # ±45% 결정론 잡음
+
+
+def daily_volume(params: SymbolParams, game_day: int, day_return: float) -> int:
+    """게임 1일 거래량(주). 같은 (종목, 날)이면 언제 물어도 같은 값이다.
+
+    `day_return`은 그날의 시가 대비 종가 수익률이다 — 호출자가 봉에서 넘긴다(가격을 다시
+    계산하지 않게).
+    """
+    sigma = params.sigma_daily * (MEME_SIGMA_MULTIPLIER if params.meme else 1.0)
+    sigma = max(sigma * SIGMA_GAME_MULTIPLIER, 1e-6)
+    surge = 1.0 + VOLUME_SURGE_K * min(4.0, abs(day_return) / sigma)
+    noise = 1.0 + (uniform("volume", f"{params.symbol}|{game_day}") * 2 - 1) * VOLUME_NOISE_RANGE
+    turnover = BASE_TURNOVER_KRW * surge * noise
+    if params.meme:
+        turnover *= MEME_VOLUME_MULTIPLIER
+    return max(1, round(turnover / max(1, params.base_price_krw)))
+
+
 @dataclass(frozen=True)
 class Candle:
     """게임 1일(60틱) OHLC 봉 하나. `game_day`는 에포크 기준 일차다."""
@@ -170,6 +199,7 @@ class Candle:
     high_krw: int
     low_krw: int
     close_krw: int
+    simulated_volume: int  # 게임 규칙 산출값 — 실제 체결이 아니다
 
 
 def daily_candles(
@@ -199,6 +229,7 @@ def daily_candles(
             price_at(params, t, nodes, extra_events)
             for t in range(start_tick, stop_tick + 1)
         ]
+        day_return = (prices[-1] - prices[0]) / prices[0] if prices[0] else 0.0
         out.append(
             Candle(
                 game_day=day,
@@ -206,9 +237,39 @@ def daily_candles(
                 high_krw=max(prices),
                 low_krw=min(prices),
                 close_krw=prices[-1],
+                simulated_volume=daily_volume(params, day, day_return),
             )
         )
     return tuple(out)
+
+
+def daily_closes(
+    params: SymbolParams,
+    end_tick: int,
+    days: int,
+    extra_events: tuple[market_events.MarketEvent, ...] = (),
+) -> list[int]:
+    """최근 `days` 게임일의 **종가만**. 오름차순.
+
+    이동평균·RSI 전용 경로다. 봉은 하루에 60회 평가지만 종가는 1회라 25배 싸다
+    (실측 240일: 봉 148ms · 종가 5.7ms). 120일선을 그리려면 화면 밖으로 120일을 더 봐야
+    하는데, 그 워밍업을 봉으로 하면 응답 예산을 넘긴다.
+
+    마지막 날은 진행 중일 수 있다 — 현재 틱까지만 본다(§1-6).
+    """
+    end = max(0, min(end_tick, SEASON_TICKS))
+    last_day = end // TICKS_PER_GAME_DAY
+    first_day = max(0, last_day - days + 1)
+    nodes: dict[tuple[int, int], float] = {}
+    return [
+        price_at(
+            params,
+            min(day * TICKS_PER_GAME_DAY + TICKS_PER_GAME_DAY - 1, end),
+            nodes,
+            extra_events,
+        )
+        for day in range(first_day, last_day + 1)
+    ]
 
 
 def change_pct(

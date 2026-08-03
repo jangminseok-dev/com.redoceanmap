@@ -848,6 +848,8 @@ export type GameMarketPrices = {
   candles: GameCandle[]; // candle_symbol 지정 시에만. 마지막 봉은 진행 중일 수 있다
   symbolInfo: GameSymbolInfo | null; // candle_symbol 지정 시에만
   patterns: GameChartPattern[]; // 〃 — 선택 종목의 틱 곡선에서 관측된 형태
+  movingAverages: GameMovingAverage[]; // 〃 — 봉 배열과 인덱스가 맞는다
+  rsi: (number | null)[]; // 〃 — RSI(14), 봉 배열과 인덱스가 맞는다
 };
 
 // 관측된 형태일 뿐 예측이 아니다. 게임 주가는 브라운 운동+이벤트로 생성되므로
@@ -868,6 +870,14 @@ export type GameCandle = {
   highKrw: number;
   lowKrw: number;
   closeKrw: number;
+  simulatedVolume: number; // 게임 규칙 산출값 — 게임에 호가·체결이 없어 실제 거래량이 아니다
+};
+
+// 이동평균선 하나. points는 봉 배열과 **같은 길이·같은 순서**이고,
+// 표본이 모자란 앞 구간은 null이다(0으로 채우면 바닥에서 치솟는 가짜 선이 그려진다).
+export type GameMovingAverage = {
+  period: number; // 게임일
+  points: (number | null)[];
 };
 
 // 실적 지표(PER·ROE 등)는 게임에 그 개념이 없어 백엔드가 내려주지 않는다 — 지어내지 않는다

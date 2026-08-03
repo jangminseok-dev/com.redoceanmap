@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from game.adapter.inbound.api.schemas.market_price_schema import (
     CandleSchema,
+    MovingAverageSchema,
     ChartPatternSchema,
     MarketEventSchema,
     MarketPricesResponseSchema,
@@ -88,9 +89,15 @@ async def list_prices(
                 highKrw=c.high_krw,
                 lowKrw=c.low_krw,
                 closeKrw=c.close_krw,
+                simulatedVolume=c.simulated_volume,
             )
             for c in result.candles
         ],
+        movingAverages=[
+            MovingAverageSchema(period=m.period, points=list(m.points))
+            for m in result.moving_averages
+        ],
+        rsi=list(result.rsi),
         symbolInfo=(
             SymbolInfoSchema(
                 symbol=result.symbol_info.symbol,
