@@ -21,7 +21,9 @@ class _IntroPageState extends State<IntroPage> {
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.asset('assets/intro.mp4')
+    // 캐스케이드로 이어 붙이면 setVolume이 _controller 할당 전에 _onTick을 깨운다.
+    _controller = VideoPlayerController.asset('assets/intro.mp4');
+    _controller
       ..addListener(_onTick)
       ..setVolume(0);
     _start();
