@@ -337,7 +337,7 @@ apps/auth/
 | --- | --- |
 | C2 앱 소유권 | `access_token_info`로 `app_id`+`id` 확인 후 `/v2/user/me`로 프로필 보강 |
 | C3 유저 테이블 | 컬럼 추가로 처리. `nickname`/`profile_image`는 기존 `name`으로 충당(중복 컬럼 없음) |
-| C7 저장 구조 | 리프레시를 JWT로 만들지 않는다 — 랜덤 문자열이 곧 `jti`. **denylist는 아직 없다**(갱신 미구현) |
+| C7 저장 구조 | 리프레시를 JWT로 만들지 않는다 — 랜덤 문자열이 곧 `jti`. denylist는 8.5에서 추가 |
 | C8 약관 | 카카오싱크 필수 3종 동의면 즉시 가입, 아니면 가입하지 않고 **403**(동의 절차 필요) |
 | 리프레시 토큰 형식 | `"{user_id}.{jti}"` — 저장 키가 `mobile:refresh:{user_id}:{jti}`라 갱신 때 user_id가 필요하다 |
 | JWT 클레임 | `sub`·`platform`·`exp`. 액세스 토큰 `jti`는 denylist 도입 시 추가한다(지금 넣지 않는다) |
@@ -354,10 +354,35 @@ apps/auth/
 
 ### 8.4 아직 없는 것
 
-- `POST /auth/mobile/refresh` · `/logout` — **앱 부팅 시 세션 복원이 404로 실패한다**(매 실행 재로그인).
-  회전·재사용 탐지(denylist)도 여기서 함께 만든다.
+- `POST /auth/mobile/logout` — 앱이 세션을 능동적으로 끊을 수단이 없다(현재는 만료를 기다린다).
 - `POST /auth/mobile/consent` — 카카오싱크 필수 태그가 콘솔에 없으면 신규 유저가 403에서 막힌다.
 - `require_platform` 가드(C5) — 모바일/웹 토큰 교차 사용 차단은 아직 걸려 있지 않다.
+
+### 8.5 구현 결과 — `POST /auth/mobile/refresh` (2026-08-03)
+
+앱 부팅 시 세션 복원 경로다(`flutter/app/lib/auth.dart`의 `Session.restore`가 이 경로를 부른다).
+요청 `{ "refreshToken": "…" }` → 응답 `{ "accessToken": "…", "refreshToken": "…" }`, 실패는 401.
+기존 슬라이스에 계층별로 얹었고 새 파일은 없다.
+
+**회전** — 갱신 때마다 새 `jti`를 발급하고 쓴 토큰은 즉시 지운다. 앱은 응답의 `refreshToken`으로
+저장값을 덮어써야 한다. `deviceId`는 요청에서 받지 않고 저장된 값을 물려준다(클라이언트가 갱신
+시점에 바꿔 보낼 수 있으면 기기 목록이 위조된다).
+
+**재사용 탐지** — 회전으로 폐기한 `jti`를 `mobile:denylist:{jti}`(원래 만료 시각까지)에 남긴다.
+denylist에 있는 토큰이 다시 오면 사본이 도는 것으로 보고 `revoke_all`로 **그 유저의 모바일 세션만**
+전량 폐기한다(웹 db 0은 건드리지 않는다 — 명세 4.4). 순서는 `deny` → `delete`다. 반대로 하면
+그 틈에 도착한 재사용을 "그냥 없는 토큰"으로 흘려보낸다.
+
+**거부 경로의 구분** — 형식 오류·저장에 없음·만료는 denylist를 건드리지 않고 401만 낸다.
+남의 `user_id`를 넣어 전량 폐기를 유발하는 공격이 성립하면 안 되기 때문이다. 정지 계정은 세션이
+살아 있어도 갱신되지 않는다(`ensure_active`). 실패 메시지는 사유와 무관하게 한 문장으로 고정한다.
+
+| 검증 (2026-08-03 실행) | 결과 |
+| --- | --- |
+| `pytest minseok/apps/auth` | 71 passed (모바일 인터랙터 +6: 회전·기기승계·재사용전량폐기·미존재·형식오류·정지계정) |
+| `pytest minseok/apps -m "not ollama and not network"` | 901 passed |
+| `lint-imports` | 5 contracts kept, 0 broken |
+| Redis 어댑터 실측 | 실제 Redis db15에서 save→find(TTL 승계)·deny→is_denied·delete(역인덱스 srem)·revoke_all 확인 |
 
 ---
 

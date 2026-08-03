@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 
 
 @dataclass(frozen=True)
@@ -22,6 +23,19 @@ class MobileLoginCommand:
     access_token: str
     device_id: str
     user_agent: str = ""
+
+
+@dataclass(frozen=True)
+class MobileRefreshSessionDto:
+    """저장된 리프레시 세션 — 갱신 때 기기 정보를 새 토큰에 그대로 물려주기 위해 읽는다.
+
+    expires_at은 남은 수명이다. 회전 후 denylist를 언제까지 유지할지가 여기서 정해진다 —
+    원래 만료 시각을 넘겨 붙들 이유가 없다(그 시점엔 토큰 자체가 무효다).
+    """
+
+    device_id: str
+    user_agent: str
+    expires_at: datetime
 
 
 @dataclass(frozen=True)

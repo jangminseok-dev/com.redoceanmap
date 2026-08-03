@@ -20,8 +20,12 @@ JWT 기반 인증 스포크. 회원 가입·로그인·토큰 발급을 담당�
   액세스 토큰을 서버가 카카오에 직접 확인(`access_token_info`로 **app_id 검증** → `/v2/user/me`)한 뒤
   자체 JWT(`platform=mobile`)를 발급한다. 식별자는 `users.kakao_id`(이메일 연동 아님 — 이메일은
   선택 동의라 NULL 가능). 리프레시는 **Redis db 1**(`mobile:refresh:{user_id}:{jti}`)에 저장하고
-  웹 세션(db 0)과 커넥션을 분리한다. 갱신·로그아웃·동의 엔드포인트는 아직 없다 →
-  [[minseok/_docs/flutter-kakao-oauth-harness|flutter kakao oauth harness]] 8.4.
+  웹 세션(db 0)과 커넥션을 분리한다.
+- **모바일 세션 갱신**: `POST /auth/mobile/refresh` — 리프레시를 본문으로 받고 본문으로 돌려준다
+  (쿠키 없음). **회전**(쓴 `jti` 즉시 폐기 + 새 쌍 발급, `deviceId`는 저장값 승계)과
+  **재사용 탐지**(`mobile:denylist:{jti}` 적중 시 그 유저의 **모바일 세션만** 전량 폐기, 웹은 유지).
+  로그아웃·동의 엔드포인트는 아직 없다 →
+  [[minseok/_docs/flutter-kakao-oauth-harness|flutter kakao oauth harness]] 8.4·8.5.
 
 ## 헥사고날 레이어
 

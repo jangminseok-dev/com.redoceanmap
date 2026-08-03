@@ -14,6 +14,16 @@ class MobileKakaoLoginRequest(BaseModel):
     deviceId: str = Field(min_length=1, max_length=128)
 
 
+class MobileRefreshRequest(BaseModel):
+    """갱신에 필요한 것은 리프레시 토큰뿐이다.
+
+    deviceId를 다시 받지 않는다 — 기기 정보는 발급 때 저장한 값을 그대로 물려준다.
+    클라이언트가 갱신 시점에 바꿔 보낼 수 있으면 기기 목록이 위조된다.
+    """
+
+    refreshToken: str = Field(min_length=1, max_length=256)
+
+
 class MobileSessionResponse(BaseModel):
     """모바일은 쿠키를 쓰지 않는다 — 토큰을 본문으로 내린다(웹 SessionResponse와 다른 이유)."""
 
