@@ -850,6 +850,32 @@ export type GameMarketPrices = {
   patterns: GameChartPattern[]; // 〃 — 선택 종목의 틱 곡선에서 관측된 형태
   movingAverages: GameMovingAverage[]; // 〃 — 봉 배열과 인덱스가 맞는다
   rsi: (number | null)[]; // 〃 — RSI(14), 봉 배열과 인덱스가 맞는다
+  analysis: GameSymbolAnalysis | null; // 〃 — 현재 상태 요약(예측 아님)
+};
+
+// 상태 분해 한 축. 부호 규약: **양수 = 뜨겁다**(많이 올랐다·과매수·거래 몰림·호재).
+export type GameSignalAxis = {
+  key: "trend" | "momentum" | "position" | "flow" | "news";
+  label: string;
+  value: number; // -1.0 ~ 1.0
+  weight: number;
+  note: string; // 해석 문장 — 예측이 아니다
+};
+
+// ⚠️ 예측이 아니다. 게임 주가는 브라운 운동 + 뉴스 충격이라 과거 형태에 미래 정보가 없다.
+// 점수가 높다고 오를 확률이 높다는 뜻이 아니며, 화면 문구도 이 구분을 지켜야 한다.
+export type GameSymbolAnalysis = {
+  score: number; // -1.0 ~ 1.0
+  label: string; // 과열 | 달아오름 | 잠잠 | 식는 중 | 침체
+  axes: GameSignalAxis[];
+  rsi: number | null;
+  percentB: number | null;
+  atrPct: number | null;
+  volumeRatio: number | null;
+  obvSlope: number | null;
+  newsImpactPct: number; // 창 안 뉴스가 지금 가격에 넣고 있는 값(%)
+  headlineCount: number;
+  dailyPatterns: GameChartPattern[]; // 일봉 축에서 관측된 형태(좌표는 봉 인덱스)
 };
 
 // 관측된 형태일 뿐 예측이 아니다. 게임 주가는 브라운 운동+이벤트로 생성되므로

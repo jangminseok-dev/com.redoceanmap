@@ -37,6 +37,37 @@ class MovingAverageSchema(BaseModel):
     points: list[float | None] = Field(description="봉 배열과 같은 길이·순서. 표본 부족 구간은 null")
 
 
+class SignalAxisSchema(BaseModel):
+
+    key: str = Field(description="trend | momentum | position | flow | news")
+    label: str
+    value: float = Field(description="-1.0~1.0 원신호")
+    weight: float
+    note: str = Field(description="해석 문장 — 예측이 아니다")
+
+
+class SymbolAnalysisSchema(BaseModel):
+    """선택 종목의 현재 상태 요약.
+
+    ⚠️ **예측이 아니다.** 게임 주가는 브라운 운동 + 뉴스 충격으로 만든 값이라 과거 형태에
+    미래 정보가 없다. 점수가 높다고 오를 확률이 높다는 뜻이 아니다.
+    """
+
+    score: float = Field(description="-1.0~1.0 가중 합")
+    label: str
+    axes: list[SignalAxisSchema]
+    rsi: float | None = None
+    percentB: float | None = Field(default=None, description="볼린저 밴드 내 위치 0~1")
+    atrPct: float | None = None
+    volumeRatio: float | None = Field(default=None, description="단기 평균 거래량 ÷ 장기 평균")
+    obvSlope: float | None = None
+    newsImpactPct: float = Field(description="창 안 뉴스가 지금 가격에 넣고 있는 값(%)")
+    headlineCount: int
+    dailyPatterns: list["ChartPatternSchema"] = Field(
+        default_factory=list, description="일봉 축에서 관측된 형태(좌표는 봉 인덱스)"
+    )
+
+
 class ChartPatternSchema(BaseModel):
 
     name: str = Field(description="head_and_shoulders 등 기계용 식별자")
@@ -106,6 +137,9 @@ class MarketPricesResponseSchema(BaseModel):
     )
     rsi: list[float | None] = Field(
         default_factory=list, description="선택 종목의 RSI(14). 봉 배열과 인덱스가 맞는다"
+    )
+    analysis: SymbolAnalysisSchema | None = Field(
+        default=None, description="선택 종목의 현재 상태 요약 — 예측이 아니다"
     )
     patterns: list[ChartPatternSchema] = Field(
         description=(

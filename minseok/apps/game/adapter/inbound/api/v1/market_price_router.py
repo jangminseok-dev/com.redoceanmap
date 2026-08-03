@@ -3,6 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from game.adapter.inbound.api.schemas.market_price_schema import (
     CandleSchema,
     MovingAverageSchema,
+    SignalAxisSchema,
+    SymbolAnalysisSchema,
     ChartPatternSchema,
     MarketEventSchema,
     MarketPricesResponseSchema,
@@ -20,6 +22,19 @@ from game.app.use_cases.market_price_interactor import (
     MIN_TICKS,
 )
 from game.dependencies.market_price_provider import get_market_price_use_case
+
+def _pattern_schema(p) -> ChartPatternSchema:
+    """탐지 형태 → 스키마. 틱·일봉 두 축이 같은 변환을 쓴다."""
+    return ChartPatternSchema(
+        name=p.name,
+        label=p.label,
+        startIndex=p.start_index,
+        endIndex=p.end_index,
+        confidence=p.confidence,
+        points=[(i, price) for i, price in p.points],
+        note=p.note,
+    )
+
 
 market_price_router = APIRouter(prefix="/game", tags=["game"])
 
@@ -98,6 +113,28 @@ async def list_prices(
             for m in result.moving_averages
         ],
         rsi=list(result.rsi),
+        analysis=(
+            SymbolAnalysisSchema(
+                score=result.analysis.score,
+                label=result.analysis.label,
+                axes=[
+                    SignalAxisSchema(
+                        key=a.key, label=a.label, value=a.value, weight=a.weight, note=a.note
+                    )
+                    for a in result.analysis.axes
+                ],
+                rsi=result.analysis.rsi,
+                percentB=result.analysis.percent_b,
+                atrPct=result.analysis.atr_pct,
+                volumeRatio=result.analysis.volume_ratio,
+                obvSlope=result.analysis.obv_slope,
+                newsImpactPct=result.analysis.news_impact_pct,
+                headlineCount=result.analysis.headline_count,
+                dailyPatterns=[_pattern_schema(p) for p in result.analysis.daily_patterns],
+            )
+            if result.analysis
+            else None
+        ),
         symbolInfo=(
             SymbolInfoSchema(
                 symbol=result.symbol_info.symbol,
@@ -114,16 +151,5 @@ async def list_prices(
             if result.symbol_info
             else None
         ),
-        patterns=[
-            ChartPatternSchema(
-                name=p.name,
-                label=p.label,
-                startIndex=p.start_index,
-                endIndex=p.end_index,
-                confidence=p.confidence,
-                points=[(i, price) for i, price in p.points],
-                note=p.note,
-            )
-            for p in result.patterns
-        ],
+        patterns=[_pattern_schema(p) for p in result.patterns],
     )

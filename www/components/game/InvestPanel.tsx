@@ -6,6 +6,7 @@ import { Info, TriangleAlert } from "lucide-react";
 import GameOrderForm from "@/components/game/GameOrderForm";
 import MarketNewsFeed from "@/components/game/MarketNewsFeed";
 import GamePositionList from "@/components/game/GamePositionList";
+import GameAnalysisCard from "@/components/game/GameAnalysisCard";
 import GameChart, { MA_COLOR } from "@/components/game/GameChart";
 import GamePriceLine from "@/components/game/GamePriceLine";
 import {
@@ -412,6 +413,11 @@ export default function InvestPanel() {
                   )}
                 </p>
               </dl>
+            )}
+
+            {/* 상태 요약 — 선택 종목에만 계산된다 */}
+            {data?.analysis && current.symbol === view.selected && (
+              <GameAnalysisCard analysis={data.analysis} className="mt-4" />
             )}
           </section>
 

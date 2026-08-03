@@ -5,6 +5,8 @@ from game.app.dtos.market_price_dto import (
     CandleView,
     ChartPatternView,
     MovingAverageView,
+    SignalAxisView,
+    SymbolAnalysisView,
     MarketEventView,
     MarketPricesResponse,
     MarketPriceQuery,
@@ -24,7 +26,7 @@ from game.domain.clock.game_epoch import (
     TICKS_PER_GAME_DAY,
     describe,
 )
-from game.domain.market import indicators, market_events, price_engine
+from game.domain.market import indicators, market_events, price_engine, signal
 from game.domain.market.symbol_params import (
     CALIBRATED_AT,
     MEME_SIGMA_MULTIPLIER,
@@ -39,6 +41,7 @@ MIN_CANDLE_DAYS = 1
 # 14일에서 올렸다: 120일선을 그리려면 화면에 그만큼이 있어야 한다.
 MAX_CANDLE_DAYS = 120
 MIN_PATTERN_POINTS = 60  # 이보다 짧으면 극값이 형태를 이루지 못한다(게임 1일)
+MIN_DAILY_PATTERN_BARS = 20  # 일봉은 한 봉이 하루라 20봉이면 형태가 선다
 MAX_PATTERNS = 3         # 신뢰도 상위만. 전부 그리면 차트가 선으로 덮인다
 
 
@@ -90,6 +93,7 @@ class MarketPriceInteractor(MarketPriceUseCase):
         )
         candles, symbol_info = self._candles_for(query, end_tick, extra)
         moving_averages, rsi = self._indicators_for(query, end_tick, len(candles), extra)
+        analysis = self._analysis_for(query, end_tick, candles, moving_averages, rsi, extra)
         patterns = self._patterns_for(query, symbols)
         return MarketPricesResponse(
             events=tuple(
@@ -122,6 +126,7 @@ class MarketPriceInteractor(MarketPriceUseCase):
             patterns=patterns,
             moving_averages=moving_averages,
             rsi=rsi,
+            analysis=analysis,
         )
 
     def _indicators_for(
@@ -157,6 +162,71 @@ class MarketPriceInteractor(MarketPriceUseCase):
         )
         return averages, trim(indicators.rsi(closes))
 
+    def _analysis_for(
+        self,
+        query: MarketPriceQuery,
+        end_tick: int,
+        candles: tuple[CandleView, ...],
+        moving_averages: tuple[MovingAverageView, ...],
+        rsi: tuple[float | None, ...],
+        extra: tuple[market_events.MarketEvent, ...] = (),
+    ) -> SymbolAnalysisView | None:
+        """선택 종목의 현재 상태 요약.
+
+        **이미 계산한 값을 다시 쓴다** — 봉·이동평균·RSI를 여기서 또 구하면 비용이 두 배가
+        되고, 무엇보다 화면에 그린 선과 요약이 갈라질 수 있다.
+        """
+        if query.candle_symbol is None or not candles:
+            return None
+        params = next((s for s in SYMBOLS if s.symbol == query.candle_symbol), None)
+        if params is None:
+            return None
+
+        closes = [c.close_krw for c in candles]
+        lows = [c.low_krw for c in candles]
+        highs = [c.high_krw for c in candles]
+        volumes = [c.simulated_volume for c in candles]
+
+        def last_ma(period: int) -> float | None:
+            found = next((m for m in moving_averages if m.period == period), None)
+            return found.points[-1] if found and found.points else None
+
+        # 뉴스 축 — 이 종목에 걸린 이벤트의 **실제 기여**를 그대로 합산한다(추정이 아니다)
+        window = market_events.events_in_window(end_tick, extra=extra)
+        mine = [e for e in window if params.symbol in market_events.affected_symbols(e)]
+        news_impact = market_events.impact(params, end_tick, extra)
+
+        percent_b = indicators.bollinger_percent_b(closes)
+        volume_ratio = indicators.volume_ratio(volumes)
+        obv = indicators.obv_slope(closes, volumes)
+        result = signal.evaluate(
+            price_krw=closes[-1],
+            ma_short=last_ma(5),
+            ma_long=last_ma(20),
+            rsi=rsi[-1] if rsi else None,
+            percent_b=percent_b,
+            volume_ratio=volume_ratio,
+            obv_slope=obv,
+            news_impact_log=news_impact,
+            headline_count=len(mine),
+        )
+        return SymbolAnalysisView(
+            score=result.score,
+            label=result.label,
+            axes=tuple(
+                SignalAxisView(key=a.key, label=a.label, value=a.value, weight=a.weight, note=a.note)
+                for a in result.axes
+            ),
+            rsi=rsi[-1] if rsi else None,
+            percent_b=percent_b,
+            atr_pct=indicators.atr_pct(closes, lows, highs),
+            volume_ratio=volume_ratio,
+            obv_slope=obv,
+            news_impact_pct=round(news_impact * 100.0, 2),
+            headline_count=len(mine),
+            daily_patterns=self._daily_patterns(closes),
+        )
+
     def _patterns_for(
         self, query: MarketPriceQuery, symbols: tuple[SymbolPrices, ...]
     ) -> tuple[ChartPatternView, ...]:
@@ -173,20 +243,19 @@ class MarketPriceInteractor(MarketPriceUseCase):
         target = next((s for s in symbols if s.symbol == query.candle_symbol), None)
         if target is None or len(target.series) < MIN_PATTERN_POINTS:
             return ()
+        return _to_pattern_views([float(p.price_krw) for p in target.series])
 
-        closes = [float(p.price_krw) for p in target.series]
-        return tuple(
-            ChartPatternView(
-                name=p.name,
-                label=p.label,
-                start_index=p.start_index,
-                end_index=p.end_index,
-                confidence=p.confidence,
-                points=tuple((i, round(price)) for i, price in p.points),
-                note=p.note,
-            )
-            for p in chart_pattern.detect(closes)[:MAX_PATTERNS]
-        )
+    @staticmethod
+    def _daily_patterns(closes: list[int]) -> tuple[ChartPatternView, ...]:
+        """일봉 종가에서 관측되는 형태. 좌표는 **봉 배열 인덱스**다.
+
+        틱 곡선과 따로 내는 이유: 축이 다르면 좌표가 달라 같은 배열에 섞을 수 없다.
+        실측상 일봉에서 더 잘 잡힌다(같은 시점 12종목 기준 일봉 12 · 틱 11) — 잡음이
+        하루 안에서 상쇄되기 때문이다.
+        """
+        if len(closes) < MIN_DAILY_PATTERN_BARS:
+            return ()
+        return _to_pattern_views([float(v) for v in closes])
 
     def _candles_for(
         self,
@@ -242,3 +311,19 @@ class MarketPriceInteractor(MarketPriceUseCase):
             recent_days=len(raw),
         )
         return candles, info
+
+
+def _to_pattern_views(closes: list[float]) -> tuple[ChartPatternView, ...]:
+    """탐지 결과를 응답 DTO로. 틱·일봉이 같은 변환을 쓴다."""
+    return tuple(
+        ChartPatternView(
+            name=p.name,
+            label=p.label,
+            start_index=p.start_index,
+            end_index=p.end_index,
+            confidence=p.confidence,
+            points=tuple((i, round(price)) for i, price in p.points),
+            note=p.note,
+        )
+        for p in chart_pattern.detect(closes)[:MAX_PATTERNS]
+    )

@@ -14,6 +14,11 @@ from __future__ import annotations
 # 화면에 그리는 이동평균 기간(게임일). 토스·키움 등 국내 증권 앱의 기본값과 같다.
 MA_PERIODS = (5, 20, 60, 120)
 RSI_PERIOD = 14
+BB_PERIOD = 20
+BB_STDDEV = 2.0
+ATR_PERIOD = 14
+VOLUME_SHORT = 5
+VOLUME_LONG = 20
 
 
 def moving_average(closes: list[int], period: int) -> list[float | None]:
@@ -69,3 +74,72 @@ def _rsi_value(avg_gain: float, avg_loss: float) -> float:
     if avg_loss == 0:
         return 100.0 if avg_gain > 0 else 50.0  # 무변동 구간은 중립
     return 100.0 - 100.0 / (1.0 + avg_gain / avg_loss)
+
+
+def bollinger_percent_b(closes: list[int], period: int = BB_PERIOD, k: float = BB_STDDEV) -> float | None:
+    """볼린저 밴드 안에서의 위치(0=하단, 1=상단). 표본이 모자라면 `None`.
+
+    밴드 폭이 0인 구간(완전 무변동)은 0.5로 둔다 — 0으로 나누지 않으면서 "중립"이 맞다.
+    """
+    if len(closes) < period:
+        return None
+    window = closes[-period:]
+    mean = sum(window) / period
+    variance = sum((v - mean) ** 2 for v in window) / period
+    sigma = variance**0.5
+    if sigma == 0:
+        return 0.5
+    lower = mean - k * sigma
+    upper = mean + k * sigma
+    return (closes[-1] - lower) / (upper - lower)
+
+
+def atr_pct(
+    closes: list[int], lows: list[int], highs: list[int], period: int = ATR_PERIOD
+) -> float | None:
+    """평균 실체범위 ÷ 현재가(%). 표본이 모자라면 `None`.
+
+    전일 종가를 쓰는 True Range 정의를 그대로 따른다 — 갭을 변동으로 세지 않으면
+    하루 안에서만 흔들린 종목과 갭으로 뛴 종목이 같아 보인다.
+    """
+    if len(closes) < period + 1 or len(lows) != len(closes) or len(highs) != len(closes):
+        return None
+    ranges = [
+        max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1]))
+        for i in range(len(closes) - period, len(closes))
+    ]
+    if closes[-1] <= 0:
+        return None
+    return sum(ranges) / period / closes[-1] * 100.0
+
+
+def volume_ratio(volumes: list[int], short: int = VOLUME_SHORT, long: int = VOLUME_LONG) -> float | None:
+    """최근 단기 평균 거래량 ÷ 장기 평균. 1.0이면 평소만큼 거래됐다는 뜻이다."""
+    if len(volumes) < long:
+        return None
+    long_avg = sum(volumes[-long:]) / long
+    if long_avg <= 0:
+        return None
+    return sum(volumes[-short:]) / short / long_avg
+
+
+def obv_slope(closes: list[int], volumes: list[int], window: int = VOLUME_LONG) -> float | None:
+    """OBV(누적 거래량)의 최근 기울기를 총거래량으로 정규화한 값(-1~1 부근).
+
+    "오르는 날 거래가 실렸는가"를 본다. 절대 OBV는 종목마다 자릿수가 달라 비교가 안 되므로
+    창 안 총거래량으로 나눈다.
+    """
+    if len(closes) != len(volumes) or len(closes) < window + 1:
+        return None
+    obv = 0.0
+    series = []
+    for i in range(len(closes) - window, len(closes)):
+        if closes[i] > closes[i - 1]:
+            obv += volumes[i]
+        elif closes[i] < closes[i - 1]:
+            obv -= volumes[i]
+        series.append(obv)
+    total = sum(volumes[-window:])
+    if total <= 0:
+        return None
+    return (series[-1] - series[0]) / total

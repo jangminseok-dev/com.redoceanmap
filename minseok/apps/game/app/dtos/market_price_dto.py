@@ -50,6 +50,35 @@ class MovingAverageView:
 
 
 @dataclass(frozen=True)
+class SignalAxisView:
+    """상태 분해 한 축. 점수만 주면 근거가 사라지므로 축과 기여도를 함께 낸다."""
+
+    key: str      # trend | momentum | position | flow | news
+    label: str
+    value: float  # -1.0 ~ 1.0
+    weight: float
+    note: str     # 해석 문장 — 예측이 아니다
+
+
+@dataclass(frozen=True)
+class SymbolAnalysisView:
+    """선택 종목의 현재 상태 요약. **예측이 아니다**(게임 주가는 브라운 운동+뉴스 충격)."""
+
+    score: float
+    label: str
+    axes: tuple[SignalAxisView, ...]
+    # 근거가 된 지표 원값 — 화면이 숫자를 그대로 보여줄 수 있게 함께 낸다
+    rsi: float | None
+    percent_b: float | None
+    atr_pct: float | None
+    volume_ratio: float | None
+    obv_slope: float | None
+    news_impact_pct: float  # 창 안 뉴스가 지금 가격에 넣고 있는 값(%)
+    headline_count: int
+    daily_patterns: tuple["ChartPatternView", ...]  # 일봉 축에서 관측된 형태
+
+
+@dataclass(frozen=True)
 class ChartPatternView:
     """틱 곡선에서 관측된 형태. **예측이 아니다.**
 
@@ -126,3 +155,4 @@ class MarketPricesResponse:
     patterns: tuple[ChartPatternView, ...]  # 〃 — 선택 종목의 틱 곡선에서 관측된 형태
     moving_averages: tuple[MovingAverageView, ...]  # 〃 — 봉 배열과 인덱스가 맞는다
     rsi: tuple[float | None, ...]                   # 〃 — 〃
+    analysis: SymbolAnalysisView | None             # 〃 — 현재 상태 요약(예측 아님)
