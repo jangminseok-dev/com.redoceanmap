@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Coins, TrendingUp } from "lucide-react";
 import BlockSkeleton from "@/components/admin/BlockSkeleton";
@@ -56,8 +57,10 @@ const EMPTY: Form = {
   notice: null,
 };
 
-export default function GameOpsPage() {
-  const [form, setForm] = useState<Form>(EMPTY);
+function GameOps() {
+  // 회원관리의 "게임 지갑" 버튼이 /admin/game?userId=16 으로 넘겨준다 — 사람이 ID를 옮겨 적지 않는다.
+  const initialUserId = useSearchParams()?.get("userId") ?? "";
+  const [form, setForm] = useState<Form>({ ...EMPTY, userId: initialUserId });
   const patch = (next: Partial<Form>) => setForm((prev) => ({ ...prev, ...next }));
   const queryClient = useQueryClient();
 
@@ -438,5 +441,14 @@ export default function GameOpsPage() {
         )}
       </section>
     </div>
+  );
+}
+
+export default function GameOpsPage() {
+  // useSearchParams는 Suspense 경계 안에서만 쓴다(market/page.tsx와 같은 형태).
+  return (
+    <Suspense>
+      <GameOps />
+    </Suspense>
   );
 }

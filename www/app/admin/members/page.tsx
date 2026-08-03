@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Ban, Download, KeyRound, LogOut, RotateCcw, Search, ShieldCheck, UserX } from "lucide-react";
+import Link from "next/link";
+import { Ban, Coins, Download, KeyRound, LogOut, RotateCcw, Search, ShieldCheck, UserX } from "lucide-react";
 import {
   downloadCsv,
   fetchAdminMembers,
@@ -248,7 +249,10 @@ export default function MembersPage() {
                             {m.name[0] ?? "?"}
                           </span>
                           <div>
-                            <p className="font-medium">{m.name}</p>
+                            <p className="font-medium flex items-center gap-1.5">
+                              {m.name}
+                              <IdChip id={m.id} />
+                            </p>
                             <p className="text-xs text-foreground-muted">{m.email ?? "카카오 로그인 (이메일 없음)"}</p>
                           </div>
                         </div>
@@ -297,7 +301,10 @@ export default function MembersPage() {
                       {m.name[0] ?? "?"}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium">{m.name}</p>
+                      <p className="font-medium flex items-center gap-1.5">
+                        {m.name}
+                        <IdChip id={m.id} />
+                      </p>
                       <p className="text-xs text-foreground-muted truncate">
                         {m.email ?? "카카오 로그인"} · {formatDate(m.joined_at)}
                       </p>
@@ -451,6 +458,15 @@ function MemberActions({
   if (member.deleted_at) return <span className="block text-right text-xs text-foreground-muted">—</span>;
   return (
     <div className="flex justify-end gap-1">
+      {/* 게임운영은 회원 ID로만 지갑을 찾는다 — 사람이 숫자를 옮겨 적지 않게 링크로 넘긴다. */}
+      <Link
+        href={`/admin/game?userId=${member.id}`}
+        title="게임 지갑 열기"
+        aria-label="게임 지갑 열기"
+        className="grid place-items-center w-8 h-8 rounded-full border border-border text-foreground-muted transition-colors hover:bg-black/5 hover:text-foreground"
+      >
+        <Coins size={15} />
+      </Link>
       {member.suspended_at ? (
         <ActionIcon title="정지 해제" onClick={onReinstate} disabled={disabled}>
           <RotateCcw size={15} />
@@ -467,6 +483,28 @@ function MemberActions({
         <UserX size={15} />
       </ActionIcon>
     </div>
+  );
+}
+
+/** 회원 ID — 게임운영 등 다른 화면이 이 숫자를 요구한다. 눌러서 복사한다. */
+function IdChip({ id }: { id: number }) {
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(String(id));
+      showToast(`ID ${id}를 복사했습니다.`);
+    } catch {
+      showToast("복사할 수 없습니다. 숫자를 직접 옮겨 적어 주세요.", "error");
+    }
+  };
+  return (
+    <button
+      type="button"
+      title="ID 복사"
+      onClick={copy}
+      className="text-xs font-normal tabular-nums text-foreground-muted hover:text-foreground transition-colors"
+    >
+      #{id}
+    </button>
   );
 }
 
