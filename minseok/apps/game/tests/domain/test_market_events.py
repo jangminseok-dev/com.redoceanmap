@@ -20,6 +20,13 @@ def _all_events(last_slot: int = 2_000):
 
 # --- 결정론 -----------------------------------------------------------------
 
+def test_틱_0에는_뉴스가_없다():
+    """시즌은 모든 종목이 기준가에서 시작해야 한다 — 화면의 "시즌 시작가"와 지수 기준점이
+    그 값에 걸려 있다. 틱 0에 이벤트가 뜨면 시작하자마자 기준가가 아니게 된다."""
+    assert events.event_at_slot(0) is None
+    assert all(e.tick > 0 for e in events.events_in_window(300))
+
+
 def test_같은_슬롯은_항상_같은_이벤트다():
     for slot in (0, 7, 123, 999):
         assert events.event_at_slot(slot) == events.event_at_slot(slot)
@@ -190,15 +197,15 @@ def test_이벤트_영향이_에포크_안에서_고정이다():
     `GAME_EPOCH_ID` 승격이 함께 와야 한다**(game-harness §1-4).
 
     갱신 이력:
-    - 에포크 1: `daaae8ff…` (12종목 · EVENT_PROBABILITY 0.25 · 범위 3종)
-    - 에포크 2: 아래 값 (36종목 · 0.40 · 밈 범위 추가) — 2026-08-03
+    - 규칙 v1: `daaae8ff…` (12종목 · EVENT_PROBABILITY 0.25 · 범위 3종)
+    - 규칙 v2: 아래 값 (36종목 · 0.40 · 밈 범위 · 슬롯 0 제외) — 2026-08-03 시즌 1 재초기화
     """
     snapshot = {
         params.symbol: [round(events.impact(params, t), 12) for t in range(0, 43_200, 211)]
         for params in SYMBOLS
     }
     digest = hashlib.sha256(json.dumps(snapshot, sort_keys=True).encode()).hexdigest()
-    assert digest == "8177f4beba6e32c9dd3b862b7bd04e247aa23ea064c9e8153b3ca3798cced0e0"
+    assert digest == "c30d04b87ef84bd763c6d1ec49a2d58ba128b7e8e706ed8a38692c4218f61355"
 
 
 def test_impact는_기여도의_단순_합이다():

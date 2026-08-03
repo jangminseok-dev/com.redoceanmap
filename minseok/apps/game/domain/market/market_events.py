@@ -172,7 +172,10 @@ def event_at_slot(slot: int) -> MarketEvent | None:
     것과 다르다, §4-2). 가격 1틱을 계산할 때마다 창 안의 20슬롯을 다시 굴리던 것이
     시리즈 240틱이면 4,800회가 된다. 시즌 전체 슬롯이 2,880개라 캐시가 무한히 늘지 않는다.
     """
-    if slot < 0:
+    # 슬롯 0(= 틱 0)에는 뉴스를 만들지 않는다. 시즌은 **모든 종목이 기준가에서** 시작해야
+    # 한다 — 화면의 "시즌 시작가"와 지수 기준점(1000)이 그 값에 걸려 있는데, 틱 0에 이벤트가
+    # 뜨면 시작하자마자 기준가가 아니게 된다. 첫 뉴스는 게임 6시간 뒤부터다.
+    if slot <= 0:
         return None
     key = str(slot)
     if uniform("evt-fire", key) >= EVENT_PROBABILITY:
@@ -230,7 +233,10 @@ def events_in_window(
     한번 섞이면 이후 경로(영향 계산·뉴스 피드·차트 마커)가 둘을 구분하지 않는다.
     """
     end = min(max(tick, 0), SEASON_TICKS)
-    first_slot = max(0, (end - window_ticks) // EVENT_SLOT_TICKS)
+    # **올림**이라야 창 밖이 새지 않는다. 내림이면 첫 슬롯의 틱이 `end - window`보다
+    # 최대 14틱 이르러 창보다 오래된 이벤트가 목록에 섞인다(기여는 테이퍼로 0이지만
+    # "창 안"이라는 계약이 깨진다). 확률을 0.25 → 0.40으로 올리자 실제로 드러났다.
+    first_slot = max(0, -(-(end - window_ticks) // EVENT_SLOT_TICKS))
     last_slot = end // EVENT_SLOT_TICKS
     out = []
     for slot in range(first_slot, last_slot + 1):
