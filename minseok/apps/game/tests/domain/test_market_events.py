@@ -198,14 +198,15 @@ def test_이벤트_영향이_에포크_안에서_고정이다():
 
     갱신 이력:
     - 규칙 v1: `daaae8ff…` (12종목 · EVENT_PROBABILITY 0.25 · 범위 3종)
-    - 규칙 v2: 아래 값 (36종목 · 0.40 · 밈 범위 · 슬롯 0 제외) — 2026-08-03 시즌 1 재초기화
+    - 규칙 v2: `c30d04b8…` (36종목 · 0.40 · 밈 범위 · 슬롯 0 제외)
+    - 규칙 v3: 아래 값 (어닝 이벤트가 가격 경로에 합류) — 2026-08-03 재초기화 2차
     """
     snapshot = {
         params.symbol: [round(events.impact(params, t), 12) for t in range(0, 43_200, 211)]
         for params in SYMBOLS
     }
     digest = hashlib.sha256(json.dumps(snapshot, sort_keys=True).encode()).hexdigest()
-    assert digest == "c30d04b87ef84bd763c6d1ec49a2d58ba128b7e8e706ed8a38692c4218f61355"
+    assert digest == "0fcc4d6d78c49c5d6f1957b1df4471751068673b4e67e72b05d1b0322b6c9f29"
 
 
 def test_impact는_기여도의_단순_합이다():

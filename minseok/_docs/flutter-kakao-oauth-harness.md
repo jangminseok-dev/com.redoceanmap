@@ -355,7 +355,6 @@ apps/auth/
 ### 8.4 아직 없는 것
 
 - `POST /auth/mobile/logout` — 앱이 세션을 능동적으로 끊을 수단이 없다(현재는 만료를 기다린다).
-- `POST /auth/mobile/consent` — 카카오싱크 필수 태그가 콘솔에 없으면 신규 유저가 403에서 막힌다.
 - `require_platform` 가드(C5) — 모바일/웹 토큰 교차 사용 차단은 아직 걸려 있지 않다.
 
 ### 8.5 구현 결과 — `POST /auth/mobile/refresh` (2026-08-03)
@@ -383,6 +382,43 @@ denylist에 있는 토큰이 다시 오면 사본이 도는 것으로 보고 `re
 | `pytest minseok/apps -m "not ollama and not network"` | 901 passed |
 | `lint-imports` | 5 contracts kept, 0 broken |
 | Redis 어댑터 실측 | 실제 Redis db15에서 save→find(TTL 승계)·deny→is_denied·delete(역인덱스 srem)·revoke_all 확인 |
+
+---
+
+### 8.6 구현 결과 — `POST /auth/mobile/consent` (2026-08-03)
+
+**왜 필요했나.** iOS 시뮬레이터 실측에서 `service_terms`가 `{"msg":"permission denied","code":-5}`를
+돌려줬다 — 카카오싱크는 **비즈니스 앱 전환**을 해야 열린다. 그래서 `_agreed_tags`가 항상 빈 집합이 되고
+신규 유저는 전원 동의 게이트에 막힌다. 카카오 심사에 일정을 걸지 않기 위해 **동의를 우리 앱 화면에서
+받는 경로**를 만들었다. 둘은 배타적이지 않다 — 나중에 카카오싱크가 열리면 `terms_agreed=True`로
+들어와 이 경로를 건너뛴다.
+
+**흐름.** `/kakao`(신규 + 동의 미확인) → `status="consent_required"` + `consentToken` →
+앱이 자체 동의 화면 → `/consent` → 가입 + 세션 발급.
+
+| 결정 | 내용 |
+| --- | --- |
+| 동의 필요를 **200**으로 | 실패가 아니라 절차의 한 단계다. 오류 본문(403 detail)에 다음 단계용 토큰을 싣는 형태를 피한다 |
+| 동의 토큰 | 웹과 같은 방식 — RS256 JWT에 신원을 서명해 보관(DB·Redis 안 씀), 수명 10분(`CONSENT_TOKEN_EXPIRE_MINUTES` 공유) |
+| `purpose="mobile_consent"` | 웹의 `social_consent`와 가른다. 안 그러면 웹 동의 토큰으로 모바일 계정을 만들 수 있다 |
+| 클레임 | `kakao_id`·`email`·`nickname` — 서버가 카카오에 직접 확인한 값만. 요청 본문으로 `kakao_id`를 받지 않는다(남의 회원번호로 가입 방지) |
+| 마케팅 동의 | 카카오가 아니라 **앱 동의 화면에서 받은 값**을 기록한다 |
+| 동의 시각 | `/consent` 요청이 도달한 시점 |
+
+**⚠️ `/kakao`의 응답 계약이 바뀌었다(파괴적).** `MobileSessionResponse`가
+`{status, accessToken?, refreshToken?, consentToken?}`로 바뀌어 토큰 필드가 옵셔널이다.
+`auth.dart:107`의 `_authenticate`는 `json['accessToken']`을 곧바로 String으로 캐스팅하므로
+**서버만 먼저 배포하면 앱이 널 캐스팅으로 죽는다.** 서버 배포와 Flutter 수정은 함께 나가야 한다.
+
+| 검증 (2026-08-03 실행) | 결과 |
+| --- | --- |
+| `pytest minseok/apps/auth` | 77 passed (+6: 가입·이름폴백·웹토큰투입·만료/위조·동시가입·정지계정) |
+| `lint-imports` | 5 contracts kept, 0 broken |
+
+### 8.7 남은 것
+
+- Flutter 동의 화면 + `auth.dart`의 `consent_required` 분기(맥 작업, iOS 실기기 검증 포함).
+- 카카오싱크(비즈니스 앱) 전환은 선택 사항이 됐다 — 하면 동의 화면을 건너뛴다.
 
 ---
 

@@ -15,9 +15,10 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from functools import lru_cache
 
 from game.domain.clock.game_epoch import SEASON_TICKS, TICKS_PER_GAME_DAY
-from game.domain.market import market_events
+from game.domain.market import fundamentals, market_events
 from game.domain.market.symbol_params import (
     MEME_SIGMA_MULTIPLIER,
     SIGMA_GAME_MULTIPLIER,
@@ -36,8 +37,59 @@ _BRIDGE_SPAN = 1 << 16  # 65_536
 # 왜 필요한가: 시즌이 720 게임일이라 σ가 커지면 누적 변동이 폭발한다. 실측(밴드 없음)에서
 # 밈 종목이 시즌 중 기준가의 **1,461배**까지 갔다 — 그 종목을 안 산 유저는 무엇을 해도
 # 따라잡을 수 없어 나머지 35종목이 의미를 잃는다. 반대쪽 꼬리는 -97%로 상장폐지가 된다.
-PRICE_BAND_LOG = 2.3       # 일반 종목 — 약 ×10 / ÷10
-PRICE_BAND_LOG_MEME = 3.0  # 밈 종목 — 약 ×20 / ÷20. 더 크게 열어두되 무한하지 않다
+# 일일 가격제한폭 — 한국거래소와 같은 ±30%. 시즌 누적 밴드(아래)와 축이 다르다:
+# 이쪽은 **그날 시가 대비** 하루 안의 변동을 막는다. 폭락·폭등이 하루에 끝나지 않고
+# 며칠에 걸쳐 이어지게 만드는 장치이고, 실제 시장의 가장 눈에 띄는 제도이기도 하다.
+DAILY_LIMIT_PCT = 0.30
+
+# 호가 단위(tick size) — 한국거래소 규칙 그대로. 가격대가 높을수록 단위가 커진다.
+# 이게 없으면 3,200원짜리 종목이 1원 단위로 움직여 실제 시장과 다르게 보인다
+# (실측에서 저가 밈 종목이 "계단형"으로 걸렸는데, 진짜 원인은 호가 단위가 없어서였다).
+_TICK_SIZE_TABLE = (
+    (2_000, 1),
+    (5_000, 5),
+    (20_000, 10),
+    (50_000, 50),
+    (200_000, 100),
+    (500_000, 500),
+)
+_TICK_SIZE_TOP = 1_000
+
+
+def tick_size(price_krw: int) -> int:
+    """그 가격대의 호가 단위(원). 주문·호가창·표시가 전부 이 격자 위에 선다."""
+    for ceiling, size in _TICK_SIZE_TABLE:
+        if price_krw < ceiling:
+            return size
+    return _TICK_SIZE_TOP
+
+
+def round_to_tick(price_krw: int) -> int:
+    """호가 단위로 맞춘다. 1원 미만으로는 내려가지 않는다."""
+    size = tick_size(price_krw)
+    return max(size, round(price_krw / size) * size)
+
+PRICE_BAND_LOG = 1.8       # 일반 종목 — 약 ×6 / ÷6
+PRICE_BAND_LOG_MEME = 2.5  # 밈 종목 — 약 ×12 / ÷12. 더 크게 열어두되 무한하지 않다
+
+# --- 확률적 변동성 (실시장 대조 후 도입, 2026-08-03) ---------------------------
+# σ가 상수이던 모델은 실시장의 가장 뚜렷한 성질 둘을 재현하지 못했다.
+# 실측(실데이터 68종목 vs 게임 36종목):
+#   |수익률| 자기상관(변동성 클러스터링)  실 +0.117  vs  게임 +0.012
+#   레버리지 효과(하락 뒤 변동성↑)      실 -0.008  vs  게임 +0.009 (부호가 반대)
+#
+# 해법은 **시간 변경(time change)**이다. 가격을 σ(t)의 적분으로 만들지 않고,
+# 브라운 운동을 "활동 시간" τ에서 평가한다 — logP = μt + σ̄·W(τ(t)).
+# 활동이 활발한 날은 τ가 빨리 흘러 같은 σ̄로도 크게 움직인다.
+#
+# τ는 일별 활동계수의 누적합이고, 활동계수는
+#   ① 로그공간 AR(1) — 어제 활발했으면 오늘도 활발하다(클러스터링)
+#   ② 전일 하락폭에 비례한 가산 — 떨어진 다음 날 더 흔들린다(레버리지 효과)
+# 로 만든다. ②가 전일 수익률을 보므로 **일별로는 순차 계산**이 된다.
+VOL_AR_PHI = 0.90          # 로그 변동성의 하루 지속성. 1에 가까울수록 클러스터가 길다
+VOL_OF_VOL = 0.35          # 로그 변동성의 하루 충격 크기
+LEVERAGE_K = 2.2           # 전일 하락 1% → 다음 날 활동 +2.2%
+MAX_DAILY_ACTIVITY = 6.0   # 활동계수 상한 — 폭주로 하루에 시즌이 끝나지 않게
 
 
 def _midpoint(symbol: str, lo: int, hi: int, w_lo: float, w_hi: float) -> float:
@@ -89,6 +141,65 @@ def _brownian(symbol: str, tick: int, nodes: dict[tuple[int, int], float] | None
     return w_lo if tick == lo else w_hi
 
 
+_SEASON_DAYS = SEASON_TICKS // TICKS_PER_GAME_DAY
+# 로그 변동성 AR(1)의 정상분산. exp(logv - var/2)로 평균을 1에 맞춘다 —
+# 맞추지 않으면 활동시간이 하루 1.4배씩 빨라져 시즌 전체 변동성이 통째로 커진다.
+_VOL_STATIONARY_VAR = VOL_OF_VOL**2 / (1.0 - VOL_AR_PHI**2)
+
+
+@lru_cache(maxsize=128)
+def _activity_time(symbol: str, sigma_tick: float, mu_daily: float) -> tuple[float, ...]:
+    """일별 **누적 활동시간** τ. `τ[d]`는 d일차가 끝난 시점의 값이고 길이는 시즌일+1이다.
+
+    왜 순차 계산인가: 레버리지 효과가 **전일 수익률**을 보기 때문이다. 오늘의 활동을 정하려면
+    어제 얼마나 떨어졌는지 알아야 하고, 그러려면 어제 가격이 필요하다. 되먹임이 있는 모델은
+    원래 이 구조다(GARCH도 같다).
+
+    **경과 시간과 무관한 비용이라는 약속은 지킨다**(§1-2). 시즌 길이가 고정(720일)이라 배열이
+    유한하고 종목당 한 번만 만들어 캐시한다 — 현실 10일 미접속 뒤 복귀해도 이 배열은 이미
+    있거나 한 번만 만들면 된다. 캐시는 순수 함수의 재계산 제거일 뿐 값을 바꾸지 않는다.
+
+    σ·μ를 인자로 받는 것은 캐시 키를 종목 파라미터에 묶기 위해서다 — 캘리브레이션이 바뀌면
+    키가 달라져 옛 배열이 재사용되지 않는다.
+    """
+    tau = [0.0]
+    log_vol = 0.0        # 로그 변동성 AR(1) 상태
+    prev_log = 0.0       # 전일 종가의 로그비
+    prev_return = 0.0    # 전일 로그수익률 — 레버리지 효과의 입력
+    nodes: dict[tuple[int, int], float] = {}
+
+    for day in range(1, _SEASON_DAYS + 1):
+        shock = uniform("vol-state", f"{symbol}|{day}") * 2 - 1
+        log_vol = VOL_AR_PHI * log_vol + VOL_OF_VOL * shock
+        # **하락분만** 활동을 키운다. 상승도 키우면 그냥 변동성이 커질 뿐이고,
+        # "떨어질 때 더 흔들린다"는 비대칭이 레버리지 효과의 정의다.
+        leverage = 1.0 + LEVERAGE_K * max(0.0, -prev_return)
+        activity = math.exp(log_vol - _VOL_STATIONARY_VAR / 2.0) * leverage
+        tau.append(tau[-1] + min(MAX_DAILY_ACTIVITY, activity))
+
+        log_price = mu_daily * day + sigma_tick * _brownian(
+            symbol, _bridge_tick(tau[-1]), nodes
+        )
+        prev_return = log_price - prev_log
+        prev_log = log_price
+    return tuple(tau)
+
+
+def _bridge_tick(tau_days: float) -> int:
+    """활동시간(일) → 브리지 좌표(틱). 브리지 구간을 넘지 않게 자른다."""
+    return min(_BRIDGE_SPAN, max(0, round(tau_days * TICKS_PER_GAME_DAY)))
+
+
+def _tau_at(params: SymbolParams, tick: int, sigma_tick: float) -> float:
+    """틱 시점의 활동시간. 하루 안에서는 그날의 활동 속도로 선형 보간한다."""
+    series = _activity_time(params.symbol, sigma_tick, params.mu_daily)
+    day = min(tick // TICKS_PER_GAME_DAY, len(series) - 1)
+    within = (tick % TICKS_PER_GAME_DAY) / TICKS_PER_GAME_DAY
+    start = series[day]
+    end = series[min(day + 1, len(series) - 1)]
+    return start + (end - start) * within
+
+
 def price_at(
     params: SymbolParams,
     tick: int,
@@ -108,15 +219,99 @@ def price_at(
     # "평소엔 잠잠하다 한 번에 몇 배"가 재현되지 않는다.
     sigma_daily = params.sigma_daily * (MEME_SIGMA_MULTIPLIER if params.meme else 1.0)
     sigma_tick = sigma_daily * SIGMA_GAME_MULTIPLIER / math.sqrt(TICKS_PER_GAME_DAY)
+    # **시간 변경**: 실제 틱이 아니라 활동시간 τ에서 브라운 운동을 평가한다.
+    # 활발한 날은 τ가 빨리 흘러 같은 σ̄로도 크게 움직인다 — 변동성 클러스터링과
+    # 레버리지 효과가 여기서 나온다.
     log_ratio = (
         params.mu_daily * days
-        + sigma_tick * _brownian(params.symbol, t, nodes)
+        + sigma_tick * _brownian(params.symbol, _bridge_tick(_tau_at(params, t, sigma_tick)), nodes)
         # 호재·악재 — 창 밖 이벤트는 계산에서 빠진다. 관리자 개입도 같은 항으로 들어간다
-        + market_events.impact(params, t, extra_events)
+        + market_events.impact(params, t, extra_events + _earnings(params))
     )
     band = PRICE_BAND_LOG_MEME if params.meme else PRICE_BAND_LOG
     log_price = math.log(params.base_price_krw) + band * math.tanh(log_ratio / band)
-    return max(1, round(math.exp(log_price)))
+    raw = max(1, round(math.exp(log_price)))
+    limited = _apply_daily_limit(params, t, raw, nodes, extra_events)
+    return round_to_tick(limited)
+
+
+def _apply_daily_limit(
+    params: SymbolParams,
+    tick: int,
+    raw_price: int,
+    nodes: dict[tuple[int, int], float] | None,
+    extra_events: tuple[market_events.MarketEvent, ...],
+) -> int:
+    """그날 시가 대비 ±`DAILY_LIMIT_PCT`로 자른다(상한가·하한가).
+
+    시가는 그날 첫 틱의 **제한 없는** 가격이다 — 시가에도 제한을 걸면 전일 종가를 알아야 하고
+    그러면 하루씩 거슬러 올라가는 재귀가 된다. 게임에는 동시호가가 없으므로 이 단순화가 맞다.
+
+    상한가에 붙으면 그날은 더 오르지 않는다. 실제 시장에서 폭등이 하루에 끝나지 않고
+    며칠에 걸쳐 이어지는 이유이고, 유저에게는 "오늘은 여기까지"라는 리듬을 만든다.
+    """
+    day_start = (tick // TICKS_PER_GAME_DAY) * TICKS_PER_GAME_DAY
+    if tick == day_start:
+        return raw_price
+    # 하루 60틱이 같은 시가를 60번 다시 계산하면 시리즈 조회가 두 배로 느려진다.
+    # 순수 함수라 캐시가 값을 바꾸지 않는다(개입도 키에 들어간다).
+    open_price = _day_open(params, day_start, extra_events)
+    ceiling = round(open_price * (1.0 + DAILY_LIMIT_PCT))
+    floor = round(open_price * (1.0 - DAILY_LIMIT_PCT))
+    return max(1, min(max(raw_price, floor), ceiling))
+
+
+@lru_cache(maxsize=4096)
+def _day_open(
+    params: SymbolParams,
+    day_start_tick: int,
+    extra_events: tuple[market_events.MarketEvent, ...],
+) -> int:
+    """그날 시가(제한 적용 전). 상하한가 판정의 기준선이다."""
+    return _unlimited_price(params, day_start_tick, None, extra_events)
+
+
+@lru_cache(maxsize=128)
+def _earnings(params: SymbolParams) -> tuple[market_events.MarketEvent, ...]:
+    """이 종목의 어닝 이벤트. **가격 경로 어디서든 자동으로 포함된다** —
+    호출자가 넘기게 두면 한 곳이라도 빠졌을 때 화면 가격과 체결가가 갈라진다."""
+    return fundamentals.earnings_events(params)
+
+
+def _unlimited_price(
+    params: SymbolParams,
+    tick: int,
+    nodes: dict[tuple[int, int], float] | None,
+    extra_events: tuple[market_events.MarketEvent, ...],
+) -> int:
+    """제한을 적용하기 **전**의 가격. 시가를 구할 때만 쓴다(재귀를 끊는 지점)."""
+    t = max(0, min(tick, SEASON_TICKS))
+    sigma_daily = params.sigma_daily * (MEME_SIGMA_MULTIPLIER if params.meme else 1.0)
+    sigma_tick = sigma_daily * SIGMA_GAME_MULTIPLIER / math.sqrt(TICKS_PER_GAME_DAY)
+    log_ratio = (
+        params.mu_daily * (t / TICKS_PER_GAME_DAY)
+        + sigma_tick * _brownian(params.symbol, _bridge_tick(_tau_at(params, t, sigma_tick)), nodes)
+        + market_events.impact(params, t, extra_events + _earnings(params))
+    )
+    band = PRICE_BAND_LOG_MEME if params.meme else PRICE_BAND_LOG
+    return max(1, round(math.exp(math.log(params.base_price_krw) + band * math.tanh(log_ratio / band))))
+
+
+def limit_state(params: SymbolParams, tick: int) -> str:
+    """지금 상한가·하한가에 붙어 있는가. `upper` | `lower` | `none`.
+
+    화면이 "상한가"를 표시하고 매매 경로가 그 방향 주문을 막는 근거다.
+    """
+    day_start = (tick // TICKS_PER_GAME_DAY) * TICKS_PER_GAME_DAY
+    if tick == day_start:
+        return "none"
+    open_price = _day_open(params, day_start, ())
+    raw = _unlimited_price(params, tick, None, ())
+    if raw >= round(open_price * (1.0 + DAILY_LIMIT_PCT)):
+        return "upper"
+    if raw <= round(open_price * (1.0 - DAILY_LIMIT_PCT)):
+        return "lower"
+    return "none"
 
 
 def price_series(
@@ -169,9 +364,11 @@ def index_at(
 # 종목과 214,000원인 종목의 거래량이 같으면 어색하다. 여기에 **그날 변동폭에 비례하는
 # 급증**과 결정론 잡음을 곱한다. "뉴스가 뜬 날 거래량이 터진다"가 눈으로 보이게 하려는 것이다.
 BASE_TURNOVER_KRW = 3_000_000_000  # 하루 기준 거래대금(가정치)
-VOLUME_SURGE_K = 2.5               # 변동폭 1σ당 거래량 배수 증가분
+# 2.5 → 1.4 (2026-08-03): |수익률|-거래량 상관이 0.855로 실시장(0.547)보다 훨씬 결정적이었다.
+# 거래량을 수익률에서만 만들면 "뉴스 없는 대량 거래"나 "조용한 급등"이 생기지 않는다.
+VOLUME_SURGE_K = 1.4               # 변동폭 1σ당 거래량 배수 증가분
 MEME_VOLUME_MULTIPLIER = 3.0       # 밈 종목은 평소에도 훨씬 많이 돈다
-VOLUME_NOISE_RANGE = 0.45          # ±45% 결정론 잡음
+VOLUME_NOISE_RANGE = 0.70          # ±70% 결정론 잡음 — 가격과 무관한 수급을 만든다
 
 
 def daily_volume(params: SymbolParams, game_day: int, day_return: float) -> int:

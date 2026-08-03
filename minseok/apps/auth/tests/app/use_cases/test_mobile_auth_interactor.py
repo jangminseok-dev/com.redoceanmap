@@ -4,6 +4,7 @@ import pytest
 
 from auth.app.dtos.mobile_auth_dto import (
     KakaoIdentityDto,
+    MobileConsentCommand,
     MobileLoginCommand,
     MobileRefreshSessionDto,
 )
@@ -201,6 +202,7 @@ async def test_필수_약관_미동의_신규_유저는_가입하지_않고_동�
 
     assert result.status == "consent_required"
     assert result.access_token is None
+    assert result.consent_token  # 계정 대신 동의 대기 토큰만 내준다
     assert repository.users == {}
 
 
@@ -229,6 +231,138 @@ async def test_정지된_계정은_모바일_로그인도_거부된다():
 
     with pytest.raises(ValueError):
         await interactor.login_with_kakao(_command())
+
+
+async def _consent_token(interactor, kakao_id=9003, nickname=None):
+    """`/kakao`가 동의 대기로 내주는 토큰을 그대로 얻는다(테스트가 직접 서명하지 않는다)."""
+    result = await interactor.login_with_kakao(_command())
+    assert result.status == "consent_required"
+    return result.consent_token
+
+
+def _consent(token, marketing=False):
+    return MobileConsentCommand(
+        consent_token=token, marketing_agreed=marketing, device_id="dev-1", user_agent="app/1.0"
+    )
+
+
+async def test_동의를_마치면_가입되고_세션이_발급된다():
+    repository = _StubUserRepository()
+    grades = _StubGradeRepository()
+    refresh = _StubMobileRefreshRepository()
+    interactor = _interactor(
+        _StubIdentityPort(KakaoIdentityDto(kakao_id=9003, nickname="홍길동", terms_agreed=False)),
+        repository,
+        refresh,
+        grades,
+    )
+    token = await _consent_token(interactor)
+
+    result = await interactor.complete_consent(_consent(token, marketing=True))
+
+    created = repository.users[1]
+    assert result.status == "ok"
+    assert result.access_token and result.refresh_token
+    assert created.kakao_id == 9003
+    assert created.name == "홍길동"
+    assert created.terms_agreed_at is not None  # 동의 시각은 이 요청 시점으로 기록된다
+    assert created.marketing_agreed is True  # 카카오가 아니라 앱 동의 화면에서 받은 값
+    assert grades.granted == [1]
+    assert refresh.saved[0]["device_id"] == "dev-1"
+
+
+async def test_닉네임_미동의면_카카오_회원번호로_이름을_만든다():
+    # 카카오싱크를 못 쓰는 동안은 프로필 동의도 없다 — 이름이 비어도 가입은 서야 한다.
+    repository = _StubUserRepository()
+    interactor = _interactor(
+        _StubIdentityPort(KakaoIdentityDto(kakao_id=9003, nickname=None)), repository
+    )
+    token = await _consent_token(interactor)
+
+    await interactor.complete_consent(_consent(token))
+
+    assert repository.users[1].name == "카카오9003"
+    assert repository.users[1].email is None
+
+
+async def test_웹_동의_토큰으로는_모바일_가입을_할_수_없다():
+    from datetime import timedelta
+
+    from jose import jwt
+
+    from core.config import jwt_private_key
+
+    repository = _StubUserRepository()
+    interactor = _interactor(_StubIdentityPort(KakaoIdentityDto(kakao_id=9003)), repository)
+    web_token = jwt.encode(
+        {
+            "purpose": "social_consent",  # 웹 경로의 purpose
+            "kakao_id": 9003,
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=10),
+        },
+        jwt_private_key(),
+        algorithm="RS256",
+    )
+
+    with pytest.raises(ValueError):
+        await interactor.complete_consent(_consent(web_token))
+
+    assert repository.users == {}
+
+
+async def test_만료되거나_위조된_동의_토큰은_거부된다():
+    from datetime import timedelta
+
+    from jose import jwt
+
+    from core.config import jwt_private_key
+
+    repository = _StubUserRepository()
+    interactor = _interactor(_StubIdentityPort(KakaoIdentityDto(kakao_id=9003)), repository)
+    expired = jwt.encode(
+        {
+            "purpose": "mobile_consent",
+            "kakao_id": 9003,
+            "exp": datetime.now(timezone.utc) - timedelta(minutes=1),
+        },
+        jwt_private_key(),
+        algorithm="RS256",
+    )
+    forged = (await _consent_token(interactor))[:-4] + "AAAA"  # 서명 훼손
+
+    for token in (expired, forged, "토큰아님"):
+        with pytest.raises(ValueError):
+            await interactor.complete_consent(_consent(token))
+
+    assert repository.users == {}
+
+
+async def test_동의_중_다른_기기에서_가입이_끝났으면_로그인으로_잇는다():
+    repository = _StubUserRepository()
+    grades = _StubGradeRepository()
+    interactor = _interactor(
+        _StubIdentityPort(KakaoIdentityDto(kakao_id=9003)), repository, grades=grades
+    )
+    token = await _consent_token(interactor)
+    repository.users[1] = _kakao_user(user_id=1, kakao_id=9003)  # 그 사이 다른 기기가 가입
+
+    result = await interactor.complete_consent(_consent(token))
+
+    assert result.status == "ok"
+    assert len(repository.users) == 1  # 같은 회원번호로 계정을 두 개 만들지 않는다
+    assert grades.granted == []
+
+
+async def test_정지된_계정은_동의_경로로도_들어오지_못한다():
+    repository = _StubUserRepository()
+    interactor = _interactor(_StubIdentityPort(KakaoIdentityDto(kakao_id=9003)), repository)
+    token = await _consent_token(interactor)
+    repository.users[1] = _kakao_user(
+        user_id=1, kakao_id=9003, suspended_at=datetime.now(timezone.utc)
+    )
+
+    with pytest.raises(ValueError):
+        await interactor.complete_consent(_consent(token))
 
 
 async def test_갱신하면_새_쌍이_나오고_쓴_토큰은_폐기된다():

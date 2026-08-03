@@ -20,7 +20,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from game.domain.clock.game_epoch import QUARTERS_PER_SEASON
+from game.domain.clock.game_epoch import (
+    GAME_DAYS_PER_QUARTER,
+    QUARTERS_PER_SEASON,
+    TICKS_PER_GAME_DAY,
+)
+from game.domain.market.market_events import MarketEvent
 from game.domain.market.symbol_params import SymbolParams
 from game.domain.rng.deterministic import uniform
 
@@ -161,3 +166,57 @@ def value_at(params: SymbolParams, price_krw: int, financials: Fundamentals) -> 
         per=round(per, 2) if per is not None else None,
         pbr=round(pbr, 2) if pbr is not None else None,
     )
+
+
+# --- 어닝이 가격을 움직인다 ----------------------------------------------------
+# 실측(2026-08-03)에서 분기 경계 전후 가격 변동과 EPS 변화의 상관이 **-0.028**이었다 —
+# 재무는 있는데 가격과 완전한 무관계였다. 실제 시장에서 어닝은 가장 큰 개별 종목
+# 이벤트이므로, 서프라이즈 크기에 비례하는 충격을 분기 경계에 넣는다.
+EARNINGS_SHOCK_MAX = 0.13   # 서프라이즈가 클 때의 즉시 충격 상한(±13%)
+EARNINGS_DRIFT = 0.0025     # 발표 후 표류(PEAD) — 실제 시장의 잘 알려진 성질이다
+EARNINGS_DURATION_DAYS = 3
+
+_HEADLINE = {
+    "beat": "{name} 분기 실적 시장 기대 상회",
+    "miss": "{name} 분기 실적 시장 기대 하회",
+    "inline": "{name} 분기 실적 시장 예상 부합",
+}
+
+
+def earnings_events(params: SymbolParams) -> tuple[MarketEvent, ...]:
+    """시즌 전체의 어닝 이벤트. 분기 경계(90 게임일)에 하나씩 선다.
+
+    충격 크기는 **직전 분기 대비 EPS 변화율**에 비례한다 — 균등난수로 뽑으면 화면의
+    "기대 상회"와 가격이 따로 논다. 부합(inline)이면 충격이 0에 가깝고, 그래도 발표
+    자체가 뉴스라 헤드라인은 남는다.
+
+    발표 후 며칠에 걸친 표류(drift)를 함께 넣는다 — 실제 시장의 PEAD(post-earnings
+    announcement drift)이고, 게임에서는 "실적 발표 뒤 며칠 더 간다"는 리듬이 된다.
+    """
+    out = []
+    for quarter in range(2, QUARTERS_PER_SEASON + 1):
+        now = _quarter_eps(params, quarter)
+        before = _quarter_eps(params, quarter - 1)
+        if before == 0:
+            continue
+        change = (now - before) / abs(before)
+        # ±50% 변화를 상한으로 본다. 그 이상은 이미 방향이 분명하다
+        magnitude = max(-1.0, min(1.0, change / 0.5))
+        surprise = _surprise(params, quarter)
+        tick = (quarter - 1) * GAME_DAYS_PER_QUARTER * TICKS_PER_GAME_DAY
+        out.append(
+            MarketEvent(
+                # 생성 이벤트(양수)·관리자 개입(음수)과 겹치지 않는 슬롯 공간
+                slot=-1_000_000 - quarter,
+                tick=tick,
+                scope="symbol",
+                target=params.symbol,
+                target_name=params.name,
+                positive=magnitude >= 0,
+                shock=EARNINGS_SHOCK_MAX * magnitude,
+                drift_per_day=EARNINGS_DRIFT * magnitude,
+                duration_days=EARNINGS_DURATION_DAYS,
+                headline=_HEADLINE[surprise].format(name=params.name),
+            )
+        )
+    return tuple(out)

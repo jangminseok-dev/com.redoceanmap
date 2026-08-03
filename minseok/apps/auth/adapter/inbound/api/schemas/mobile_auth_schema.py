@@ -24,8 +24,28 @@ class MobileRefreshRequest(BaseModel):
     refreshToken: str = Field(min_length=1, max_length=256)
 
 
-class MobileSessionResponse(BaseModel):
-    """모바일은 쿠키를 쓰지 않는다 — 토큰을 본문으로 내린다(웹 SessionResponse와 다른 이유)."""
+class MobileConsentRequest(BaseModel):
+    """앱 동의 화면에서 필수 약관을 받은 뒤 보내는 가입 완료 요청.
 
-    accessToken: str
-    refreshToken: str
+    카카오 회원번호를 받지 않는다 — 신원은 서버가 서명한 consentToken 안에만 있다.
+    """
+
+    consentToken: str = Field(min_length=1)
+    marketingAgreed: bool = False
+    deviceId: str = Field(min_length=1, max_length=128)
+
+
+class MobileSessionResponse(BaseModel):
+    """모바일은 쿠키를 쓰지 않는다 — 토큰을 본문으로 내린다(웹 SessionResponse와 다른 이유).
+
+    status == "ok"               → accessToken·refreshToken
+    status == "consent_required" → consentToken (아직 계정이 없다. 앱은 동의 화면으로 분기한다)
+
+    동의 필요를 오류(403)가 아니라 200으로 내리는 이유: 실패가 아니라 절차의 한 단계이고,
+    오류 본문에 다음 단계용 토큰을 실어 보내는 형태를 피하기 위해서다.
+    """
+
+    status: str
+    accessToken: str | None = None
+    refreshToken: str | None = None
+    consentToken: str | None = None

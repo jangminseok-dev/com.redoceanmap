@@ -77,14 +77,27 @@ def test_목표가를_충격으로_역산한다():
 
 
 def test_목표가_개입은_그_가격_근처로_옮긴다():
+    """일일 제한폭 안의 목표가는 그대로 닿는다."""
     tick = 2_000
     current = price_engine.price_at(SYMBOL, tick)
-    target = current * 2
+    target = round(current * 1.2)  # +20% — 상한가(+30%) 안쪽
     shock = pi.shock_pct_for_target_price(current, target)
     extra = pi.to_events((_intervention(from_tick=tick, shock_pct=shock),))
     moved = price_engine.price_at(SYMBOL, tick + events.EVENT_RAMP_TICKS, None, extra)
     # 램프 3틱 사이의 브라운 운동·테이퍼만큼은 어긋난다 — 방향과 크기가 맞으면 된다
     assert 0.9 < moved / target < 1.1
+
+
+def test_상한가를_넘는_개입은_그날_상한가에서_멈춘다():
+    """관리자가 목표가를 아무리 높게 잡아도 일일 제한폭을 뚫지 못한다.
+
+    실제 시장과 같은 성질이고, 운영자가 실수로 10배를 넣어도 하루에 다 반영되지 않는다.
+    """
+    tick = 2_000
+    day_open = price_engine._day_open(SYMBOL, (tick // 60) * 60, ())
+    extra = pi.to_events((_intervention(from_tick=tick, shock_pct=200.0),))
+    moved = price_engine.price_at(SYMBOL, tick + events.EVENT_RAMP_TICKS, None, extra)
+    assert moved <= round(day_open * (1 + price_engine.DAILY_LIMIT_PCT))
 
 
 def test_퍼센트가_로그_공간으로_옳게_넘어간다():

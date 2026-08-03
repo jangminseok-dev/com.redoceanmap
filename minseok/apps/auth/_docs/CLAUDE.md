@@ -24,8 +24,13 @@ JWT 기반 인증 스포크. 회원 가입·로그인·토큰 발급을 담당�
 - **모바일 세션 갱신**: `POST /auth/mobile/refresh` — 리프레시를 본문으로 받고 본문으로 돌려준다
   (쿠키 없음). **회전**(쓴 `jti` 즉시 폐기 + 새 쌍 발급, `deviceId`는 저장값 승계)과
   **재사용 탐지**(`mobile:denylist:{jti}` 적중 시 그 유저의 **모바일 세션만** 전량 폐기, 웹은 유지).
-  로그아웃·동의 엔드포인트는 아직 없다 →
+  로그아웃 엔드포인트는 아직 없다 →
   [[minseok/_docs/flutter-kakao-oauth-harness|flutter kakao oauth harness]] 8.4·8.5.
+- **모바일 동의 가입**: `POST /auth/mobile/consent` — 카카오싱크(비즈니스 앱) 미전환이라
+  `service_terms`가 막히는 동안, 필수 약관을 **앱 자체 동의 화면**에서 받는 경로.
+  `/kakao`가 신규+동의 미확인이면 403이 아니라 **200 + `consentToken`**(RS256 JWT,
+  `purpose="mobile_consent"`, 10분)을 내리고, 앱이 동의를 받아 이 경로로 가입을 마친다.
+  `kakao_id`는 요청으로 받지 않는다 — 토큰 서명 안에만 있다 → 같은 문서 8.6.
 
 ## 헥사고날 레이어
 
