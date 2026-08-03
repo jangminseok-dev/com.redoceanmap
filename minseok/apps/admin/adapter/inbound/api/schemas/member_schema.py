@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 class MemberSchema(BaseModel):
     id: int
-    email: str
+    email: str | None  # 카카오 모바일 가입 회원은 이메일이 없다(선택 동의)
     name: str
     joined_at: datetime | None
     marketing_agreed: bool

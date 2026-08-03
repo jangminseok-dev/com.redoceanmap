@@ -142,7 +142,7 @@ export default function MembersPage() {
         all.map((m) => [
           m.id,
           m.name,
-          m.email,
+          m.email ?? "",
           formatDate(m.joined_at),
           m.deleted_at ? "탈퇴" : m.suspended_at ? "정지" : "활성",
           m.marketing_agreed ? "동의" : "미동의",
@@ -249,7 +249,7 @@ export default function MembersPage() {
                           </span>
                           <div>
                             <p className="font-medium">{m.name}</p>
-                            <p className="text-xs text-foreground-muted">{m.email}</p>
+                            <p className="text-xs text-foreground-muted">{m.email ?? "카카오 로그인 (이메일 없음)"}</p>
                           </div>
                         </div>
                       </td>
@@ -299,7 +299,7 @@ export default function MembersPage() {
                     <div className="min-w-0 flex-1">
                       <p className="font-medium">{m.name}</p>
                       <p className="text-xs text-foreground-muted truncate">
-                        {m.email} · {formatDate(m.joined_at)}
+                        {m.email ?? "카카오 로그인"} · {formatDate(m.joined_at)}
                       </p>
                     </div>
                     <StatusBadge member={m} />
@@ -399,7 +399,7 @@ export default function MembersPage() {
       {ui.dialog && (
         <ConfirmDialog
           {...DIALOG_META[ui.dialog.action]}
-          message={`대상: ${ui.dialog.member.name} (${ui.dialog.member.email})\n\n${DIALOG_META[ui.dialog.action].message}`}
+          message={`대상: ${ui.dialog.member.name} (${ui.dialog.member.email ?? "이메일 없음"})\n\n${DIALOG_META[ui.dialog.action].message}`}
           onClose={closeDialog}
           onConfirm={(reason) => {
             moderate.mutate({ action: ui.dialog!.action, userId: ui.dialog!.member.id, reason });

@@ -13,6 +13,7 @@ from admin.app.dtos.member_dto import (
 )
 from admin.app.ports.input.member_use_case import MemberUseCase
 from admin.app.ports.output.audit_log_port import AuditLogPort
+from hub.app.dtos.member_directory_dto import MemberInfo
 from hub.app.ports.output.member_directory_port import MemberDirectoryPort
 
 MAX_LIMIT = 100
@@ -34,12 +35,17 @@ class MemberInteractor(MemberUseCase):
     async def list_roles(self) -> RoleListResponse:
         return RoleListResponse(roles=await self._members.list_roles())
 
+    @staticmethod
+    def _label(member: MemberInfo) -> str:
+        """감사 기록에 남길 회원 표기 — 이메일 없는 카카오 가입자는 이름으로 대신한다."""
+        return member.email or f"{member.name}(이메일 없음)"
+
     async def grant_role(self, command: RoleChangeCommand) -> RoleChangeResponse:
         member = await self._members.grant_role(command.user_id, command.role_code)
         await self._audit.write(
             actor_id=command.actor_id,
             action="role.grant",
-            detail=f"user={command.user_id}({member.email}) role={command.role_code}",
+            detail=f"user={command.user_id}({self._label(member)}) role={command.role_code}",
         )
         return RoleChangeResponse(member=member)
 
@@ -48,7 +54,7 @@ class MemberInteractor(MemberUseCase):
         await self._audit.write(
             actor_id=command.actor_id,
             action="role.revoke",
-            detail=f"user={command.user_id}({member.email}) role={command.role_code}",
+            detail=f"user={command.user_id}({self._label(member)}) role={command.role_code}",
         )
         return RoleChangeResponse(member=member)
 
@@ -59,7 +65,7 @@ class MemberInteractor(MemberUseCase):
         await self._audit.write(
             actor_id=command.actor_id,
             action="member.suspend",
-            detail=f"user={command.user_id}({member.email}) reason={command.reason or '-'}",
+            detail=f"user={command.user_id}({self._label(member)}) reason={command.reason or '-'}",
         )
         return MemberActionResponse(member=member)
 
@@ -68,7 +74,7 @@ class MemberInteractor(MemberUseCase):
         await self._audit.write(
             actor_id=command.actor_id,
             action="member.reinstate",
-            detail=f"user={command.user_id}({member.email})",
+            detail=f"user={command.user_id}({self._label(member)})",
         )
         return MemberActionResponse(member=member)
 

@@ -12,7 +12,9 @@ from datetime import datetime
 @dataclass(frozen=True)
 class MemberInfo:
     id: int
-    email: str
+    # 카카오 모바일 가입은 이메일이 선택 동의라 없을 수 있다(식별자는 users.kakao_id).
+    # 계약이 str이면 소비자가 직렬화에서 터진다 — 2026-08-03 어드민 회원목록 500의 원인.
+    email: str | None
     name: str
     joined_at: datetime | None  # terms_agreed_at 프록시 — 동의 이력 없는 구유저는 None
     marketing_agreed: bool

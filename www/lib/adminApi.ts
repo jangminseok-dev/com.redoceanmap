@@ -47,7 +47,7 @@ export type AdminAreaRow = {
 
 export type AdminMember = {
   id: number;
-  email: string;
+  email: string | null; // 카카오 모바일 가입 회원은 이메일이 없다(선택 동의)
   name: string;
   joined_at: string | null;
   marketing_agreed: boolean;
