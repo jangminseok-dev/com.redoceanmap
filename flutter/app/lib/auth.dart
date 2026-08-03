@@ -155,6 +155,8 @@ class _AuthPageState extends State<AuthPage> {
         MaterialPageRoute(builder: (_) => const HomePage()),
       );
     } catch (error) {
+      // 화면에는 사유를 세분해 노출하지 않는다(명세 7절) — 디버그 빌드 콘솔에만 남긴다.
+      if (kDebugMode) debugPrint('카카오 로그인 실패: $error');
       if (!mounted) return;
       setState(() {
         _busy = false;
