@@ -190,7 +190,8 @@ flutter/app/lib/
 ├── intro_page.dart  # ✅ 수정됨 — 최대 10초 재생 후(또는 건너뛰기) AuthPage로
 ├── api.dart         # ✅ 최소 수정 — `_throwFrom` → `throwFrom`(auth.dart가 오류 매핑 재사용)
 │                    #    미구현: Bearer 헤더 · 401 자동 갱신(4.5)
-└── consent_page.dart# 미구현 — 백엔드 C8이 정해진 뒤에만 만든다(스켈레톤 금지)
+└── consent_page.dart# ✅ 구현됨(2026-08-03) — 필수 3종(age·terms·privacy)+마케팅 선택 →
+                     #    POST /auth/mobile/consent. 실기기 검증은 아직(맥에서 flutter analyze/run)
 ```
 
 기존 파일 수정은 **위 4.5·4.2에 해당하는 줄만** 건드린다(주변 코드를 정리하지 않는다).

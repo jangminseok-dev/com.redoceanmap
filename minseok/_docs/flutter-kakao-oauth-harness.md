@@ -417,7 +417,10 @@ denylist에 있는 토큰이 다시 오면 사본이 도는 것으로 보고 `re
 
 ### 8.7 남은 것
 
-- Flutter 동의 화면 + `auth.dart`의 `consent_required` 분기(맥 작업, iOS 실기기 검증 포함).
+- ~~Flutter 동의 화면 + `auth.dart`의 `consent_required` 분기~~ → **코드 작성 완료(2026-08-03)**:
+  `SignInOutcome`(세션 / 동의 필요) + `Session.completeConsent` + `consent_page.dart`.
+  위 ⚠️의 널 캐스팅 사망이 이 분기 부재 때문이었다 — 에뮬레이터 신규 계정 로그인이 전부 실패했다.
+  **실기기·에뮬레이터 검증은 남아 있다**(맥에서 `flutter analyze` → 로그인 → 동의 → 홈 진입, iOS 포함).
 - 카카오싱크(비즈니스 앱) 전환은 선택 사항이 됐다 — 하면 동의 화면을 건너뛴다.
 
 ---

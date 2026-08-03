@@ -10,6 +10,7 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -17,6 +18,7 @@ import 'package:http/http.dart' as http;
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 
 import 'package:app/api.dart';
+import 'package:app/consent_page.dart';
 import 'package:app/home_page.dart';
 import 'package:app/theme.dart';
 
@@ -27,6 +29,20 @@ const authBase = 'https://auth.redoceanmap.com';
 const kakaoNativeAppKey = String.fromEnvironment('KAKAO_NATIVE_APP_KEY');
 
 const _timeout = Duration(seconds: 8);
+
+/// 인증 요청의 두 가지 결말 — 세션이 열렸거나, 약관 동의가 남았거나.
+///
+/// 서버는 필수 약관 미동의 신규 유저에게 **실패(4xx)가 아니라 200 + `consentToken`**을 내린다
+/// (가입 절차의 한 단계다). 이 구분이 없으면 `accessToken`이 null인 응답을 캐스팅하다 터진다.
+class SignInOutcome {
+  const SignInOutcome.signedIn() : consentToken = null;
+  const SignInOutcome.consentRequired(String token) : consentToken = token;
+
+  /// 동의 화면이 서버에 되돌려줄 신원 증표(RS256 JWT, 수명 10분).
+  final String? consentToken;
+
+  bool get needsConsent => consentToken != null;
+}
 
 /// 모바일 세션 — 액세스 토큰은 메모리에만, 리프레시 토큰만 보안 저장소에 남긴다.
 class Session {
@@ -46,10 +62,11 @@ class Session {
     final refreshToken = await _storage.read(key: _refreshKey);
     if (refreshToken == null) return false;
     try {
-      await _authenticate('/auth/mobile/refresh', {
+      final outcome = await _authenticate('/auth/mobile/refresh', {
         'refreshToken': refreshToken,
       });
-      return true;
+      // 갱신 경로는 이미 가입된 계정만 오므로 동의가 남아 있을 수 없다 — 그래도 세션은 아니다.
+      return !outcome.needsConsent;
     } on ApiException catch (error) {
       // 서버가 거절한 세션만 지운다 — 네트워크 실패면 토큰을 남겨 다음 실행에서 다시 시도한다.
       if (error.needsLogin) await _storage.delete(key: _refreshKey);
@@ -60,7 +77,9 @@ class Session {
   }
 
   /// 카카오 로그인 → 서버 신원 확인 → 자체 JWT 수령.
-  Future<void> signInWithKakao() async {
+  ///
+  /// 필수 약관에 동의한 적 없는 신규 유저면 세션 대신 [SignInOutcome.consentRequired]가 돌아온다.
+  Future<SignInOutcome> signInWithKakao() async {
     if (kakaoNativeAppKey.isEmpty) {
       throw const ApiException(
         0, // HTTP 응답 이전에 막힌 설정 오류 — 상태 코드가 없다.
@@ -69,7 +88,7 @@ class Session {
     }
     final kakaoToken = await _loginWithKakao();
     try {
-      await _authenticate('/auth/mobile/kakao', {
+      return await _authenticate('/auth/mobile/kakao', {
         'accessToken': kakaoToken.accessToken,
         'deviceId': await _deviceId(),
       });
@@ -94,7 +113,24 @@ class Session {
     return UserApi.instance.loginWithKakaoAccount();
   }
 
-  Future<void> _authenticate(String path, Map<String, Object?> body) async {
+  /// 앱 자체 동의 화면에서 받은 필수 약관으로 가입을 마치고 세션을 연다.
+  ///
+  /// 카카오 회원번호는 보내지 않는다 — 신원은 서버가 서명한 [consentToken] 안에만 있다.
+  Future<SignInOutcome> completeConsent({
+    required String consentToken,
+    required bool marketingAgreed,
+  }) async {
+    return _authenticate('/auth/mobile/consent', {
+      'consentToken': consentToken,
+      'marketingAgreed': marketingAgreed,
+      'deviceId': await _deviceId(),
+    });
+  }
+
+  Future<SignInOutcome> _authenticate(
+    String path,
+    Map<String, Object?> body,
+  ) async {
     final res = await http
         .post(
           Uri.parse('$authBase$path'),
@@ -104,11 +140,18 @@ class Session {
         .timeout(_timeout);
     if (res.statusCode != 200) throwFrom(res);
     final json = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+
+    // 동의가 남은 신규 유저 — 아직 계정도 세션도 없다. 토큰 필드는 비어 있는 게 정상이다.
+    if (json['status'] == 'consent_required') {
+      return SignInOutcome.consentRequired(json['consentToken'] as String);
+    }
+
     accessToken = json['accessToken'] as String;
     await _storage.write(
       key: _refreshKey,
       value: json['refreshToken'] as String,
     );
+    return const SignInOutcome.signedIn();
   }
 
   /// 기기 식별자 — 앱이 만든 난수다. 광고·하드웨어 식별자를 쓰지 않는다.
@@ -149,10 +192,14 @@ class _AuthPageState extends State<AuthPage> {
       _error = null;
     });
     try {
-      await Session.instance.signInWithKakao();
+      final outcome = await Session.instance.signInWithKakao();
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const HomePage()),
+        MaterialPageRoute(
+          builder: (_) => outcome.needsConsent
+              ? ConsentPage(consentToken: outcome.consentToken!)
+              : const HomePage(),
+        ),
       );
     } catch (error) {
       // 화면에는 사유를 세분해 노출하지 않는다(명세 7절) — 디버그 빌드 콘솔에만 남긴다.
