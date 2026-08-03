@@ -49,4 +49,7 @@ async def preview_fitness(
         diagnoses=[DiagnosisSchema(tone=d.tone, message=d.message) for d in result.diagnoses],
         hasSales=result.has_sales,
         hasStore=result.has_store,
+        openable=result.openable,
+        assumedMinimumCapitalKrw=result.assumed_minimum_capital_krw,
+        assumedViableCapitalKrw=result.assumed_viable_capital_krw,
     )

@@ -648,6 +648,9 @@ export type GameAreaFitness = {
   diagnoses: GameDiagnosis[];
   hasSales: boolean;
   hasStore: boolean;
+  openable: boolean; // 창업 가능 여부 — 매출 기록이 없으면 false
+  assumedMinimumCapitalKrw: number; // 창업이 거절되지 않는 최소 자본(0 = 창업 불가)
+  assumedViableCapitalKrw: number; // 손님이 하루 1명은 오는 자본 — 이보다 적으면 개점휴업
 };
 
 export type GameOpenStoreReceipt = {
@@ -813,6 +816,7 @@ export type GameSymbolPrices = {
   name: string; // 가상 회사명 — 실재 기업이 아니다
   sector: string; // 업종은 실제 시장에서 가져왔다
   sectorGroup: string; // 묶음 업종 — 섹터 이벤트가 걸리는 단위이자 화면 필터 축
+  meme: boolean; // 밈 종목 — 변동성이 크고 전용 뉴스가 붙는다
   priceKrw: number;
   changePct: number; // 게임 1일(현실 1시간) 전 대비
   series: GamePricePoint[];
@@ -872,6 +876,7 @@ export type GameSymbolInfo = {
   name: string;
   sector: string;
   sectorGroup: string;
+  meme: boolean;
   basePriceKrw: number; // 시즌 시작가
   gameDailySigmaPct: number; // 게임 1일 변동성(%) — 체감 배수 적용값
   recentHighKrw: number;

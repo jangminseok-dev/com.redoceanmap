@@ -45,21 +45,40 @@ def test_다른_프로세스에서도_같은_이벤트가_나온다():
 
 # --- 발생 빈도 --------------------------------------------------------------
 
-def test_평균_게임_1일에_한_건_안팎_발생한다():
-    """슬롯당 25% × 하루 4슬롯 = 하루 1건. 현실로는 1시간에 1건이다."""
+def test_평균_게임_1일에_한_건_반_안팎_발생한다():
+    """슬롯당 40% × 하루 4슬롯 = 하루 1.6건. 현실로는 1시간에 1.6건이다.
+
+    종목이 36개가 되면서 0.25(하루 1건)로는 한 종목이 뉴스를 만나는 주기가 3배로 늘었다.
+    """
     slots = 4_000
     fired = len(_all_events(slots))
     per_day = fired / (slots / 4)
-    assert 0.8 < per_day < 1.2
+    assert 1.4 < per_day < 1.8
 
 
 def test_범위_비중이_설계대로다():
     all_events = _all_events(4_000)
     scopes = [e.scope for e in all_events]
-    symbol_ratio = scopes.count("symbol") / len(scopes)
-    market_ratio = scopes.count("market") / len(scopes)
-    assert 0.6 < symbol_ratio < 0.8  # 설계 70%
-    assert 0.05 < market_ratio < 0.16  # 설계 10%
+    ratio = {s: scopes.count(s) / len(scopes) for s in ("symbol", "sector", "market", "meme")}
+    assert 0.50 < ratio["symbol"] < 0.66  # 설계 58%
+    assert 0.12 < ratio["sector"] < 0.24  # 설계 18%
+    assert 0.04 < ratio["market"] < 0.15  # 설계 9%
+    assert 0.10 < ratio["meme"] < 0.21    # 설계 15%
+
+
+def test_밈_이벤트는_밈_종목에만_걸리고_더_세다():
+    """밈주식의 성격은 σ만으로 안 나온다 — 한 방에 크게 튀는 뉴스가 있어야 한다."""
+    meme_names = {s.name for s in SYMBOLS if s.meme}
+    assert meme_names, "밈 종목이 없으면 이 규칙 자체가 성립하지 않는다"
+
+    all_events = _all_events(4_000)
+    meme_events = [e for e in all_events if e.scope == "meme"]
+    symbol_events = [e for e in all_events if e.scope == "symbol"]
+    assert meme_events
+
+    assert all(e.target_name in meme_names for e in meme_events)
+    # 최소 충격조차 일반 종목 이벤트의 최대 충격보다 크다
+    assert min(abs(e.shock) for e in meme_events) > max(abs(e.shock) for e in symbol_events)
 
 
 def test_호재와_악재가_균형을_이룬다():
@@ -95,11 +114,15 @@ def test_창_밖_이벤트는_영향을_주지_않는다():
 
 
 def test_즉시_충격은_여러_틱에_걸쳐_들어간다():
-    """한 틱에 다 넣으면 차트가 수직선이 된다."""
+    """한 틱에 다 넣으면 차트가 수직선이 된다.
+
+    `impact`가 아니라 `event_contribution`으로 본다 — impact는 그 시점 창 안의 **모든**
+    이벤트 합이라 다른 뉴스가 겹치면 한 건의 램프가 가려진다. 둘이 같은 값이라는 것은
+    `test_impact는_기여도의_단순_합이다`가 따로 지킨다.
+    """
     event = next(e for e in _all_events(2_000) if e.scope == "symbol")
-    params = next(s for s in SYMBOLS if s.symbol == event.target)
-    at_fire = events.impact(params, event.tick)
-    at_full = events.impact(params, event.tick + events.EVENT_RAMP_TICKS)
+    at_fire = events.event_contribution(event, event.tick)
+    at_full = events.event_contribution(event, event.tick + events.EVENT_RAMP_TICKS)
     assert abs(at_fire) < abs(at_full)
 
 
@@ -118,7 +141,7 @@ def test_해당하지_않는_종목에는_영향이_없다():
 def test_섹터_이벤트는_3종목_이상에_걸린다():
     """game-strategy §3-3 표는 '섹터 3~5종목'이다.
 
-    세부 업종(`sector`)은 12종목에 12개라 그걸로 판정하면 항상 1종목만 맞는다 —
+    세부 업종(`sector`)은 종목마다 하나씩이라 그걸로 판정하면 항상 1종목만 맞는다 —
     섹터 이벤트가 종목 이벤트의 약한 복제본이 되어 유형이 하나 사라진다.
     """
     sector_events = [e for e in _all_events(2_000) if e.scope == "sector"]
@@ -140,10 +163,9 @@ def test_이벤트_영향은_창_경계에서_0으로_수렴한다():
     유저에게는 아무 뉴스도 없이 차트가 최대 6% 꺾이는 것으로 보인다.
     """
     event = next(e for e in _all_events(2_000) if e.scope == "symbol")
-    params = next(s for s in SYMBOLS if s.symbol == event.target)
     edge = event.tick + events.EVENT_WINDOW_TICKS
-    just_inside = abs(events.impact(params, edge - 1))
-    peak = abs(events.impact(params, event.tick + events.EVENT_RAMP_TICKS))
+    just_inside = abs(events.event_contribution(event, edge - 1))
+    peak = abs(events.event_contribution(event, event.tick + events.EVENT_RAMP_TICKS))
     assert just_inside < peak * 0.05
 
 
@@ -161,19 +183,22 @@ def test_이벤트를_넣어도_가격은_여전히_결정론이다():
     assert len({price_engine.price_at(params, 1_234) for _ in range(50)}) == 1
 
 
-def test_기여도_추출_전후_가격_영향이_동일하다():
-    """`event_contribution()` 추출은 값 불변 리팩터링이었다.
+def test_이벤트_영향이_에포크_안에서_고정이다():
+    """뉴스가 가격에 미치는 영향의 전 구간 지문(36종목 × 205틱 = 7,380 샘플).
 
-    아래 해시는 추출 **전** 코드로 뽑은 것이다(12종목 × 205틱 = 2,460 샘플).
-    이 값이 바뀌면 뉴스가 가격에 미치는 영향이 달라진 것이고, 진행 중인 시즌의 과거가
-    소급 변조된다 — 그때는 `GAME_EPOCH_ID` 승격이 따라와야 한다(game-harness §1-4).
+    이 값이 바뀌면 진행 중인 시즌의 과거가 소급 변조된다 — **해시를 고칠 때는 반드시
+    `GAME_EPOCH_ID` 승격이 함께 와야 한다**(game-harness §1-4).
+
+    갱신 이력:
+    - 에포크 1: `daaae8ff…` (12종목 · EVENT_PROBABILITY 0.25 · 범위 3종)
+    - 에포크 2: 아래 값 (36종목 · 0.40 · 밈 범위 추가) — 2026-08-03
     """
     snapshot = {
         params.symbol: [round(events.impact(params, t), 12) for t in range(0, 43_200, 211)]
         for params in SYMBOLS
     }
     digest = hashlib.sha256(json.dumps(snapshot, sort_keys=True).encode()).hexdigest()
-    assert digest == "daaae8ff3a82463f03edc82d66c2c1e85fa49654b1b85f7ab34dfdc2a0afbf7d"
+    assert digest == "8177f4beba6e32c9dd3b862b7bd04e247aa23ea064c9e8153b3ca3798cced0e0"
 
 
 def test_impact는_기여도의_단순_합이다():
@@ -196,7 +221,7 @@ def test_영향_종목_목록이_범위와_일치한다():
     """
     for event in _all_events(3_000):
         affected = events.affected_symbols(event)
-        if event.scope == "symbol":
+        if event.scope in ("symbol", "meme"):
             assert affected == (event.target,)
         elif event.scope == "sector":
             assert len(affected) >= 3  # 섹터 그룹은 3종목 이상(§3-3)

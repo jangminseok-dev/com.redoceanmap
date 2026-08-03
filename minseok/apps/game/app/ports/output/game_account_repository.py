@@ -26,6 +26,27 @@ class GameAccountRepository(ABC):
         ...
 
     @abstractmethod
+    async def adjust_cash(
+        self,
+        user_id: int,
+        epoch_id: int,
+        amount_krw: int,
+        game_day: int,
+        source: str,
+        ref_type: str | None = None,
+        ref_id: int | None = None,
+    ) -> int:
+        """지갑 증감 + 원장 한 줄을 한 트랜잭션으로. 반영 후 잔고를 돌려준다.
+
+        운영 자본 지급이 쓴다. 매매·창업처럼 다른 테이블을 함께 건드리지 않는 순수 현금
+        이동이라 전용 메서드가 하나 필요하다 — 지갑만 고치고 원장을 빠뜨리면 불변식
+        `SUM(ledger) == cash`가 깨진다.
+
+        지갑이 없거나 잔고가 음수가 되면 `ValueError`.
+        """
+        ...
+
+    @abstractmethod
     async def open_position(
         self,
         user_id: int,

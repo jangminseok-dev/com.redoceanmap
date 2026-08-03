@@ -19,26 +19,41 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from functools import lru_cache
 
 from game.domain.clock.game_epoch import SEASON_TICKS, TICKS_PER_GAME_DAY
 from game.domain.market.symbol_params import SYMBOLS, SymbolParams
 from game.domain.rng.deterministic import uniform
 
 EVENT_SLOT_TICKS = 15  # 게임 6시간마다 1슬롯 = 하루 4슬롯
-EVENT_PROBABILITY = 0.25  # 슬롯당 발생 확률 → 평균 게임 1일 1건 = 현실 1시간 1건
+# 슬롯당 발생 확률 → 평균 게임 1일 1.6건. 0.25(하루 1건)에서 올렸다 —
+# 종목이 12개일 때는 개별 종목에 뉴스가 자주 걸렸지만 36개가 되면서 같은 확률로는
+# 한 종목이 뉴스를 만나는 주기가 3배로 늘어난다("뉴스가 안 뜬다"로 읽힌다).
+EVENT_PROBABILITY = 0.40
 EVENT_RAMP_TICKS = 3  # 즉시 충격을 이 틱에 나눠 반영
 EVENT_WINDOW_TICKS = 300  # 게임 5일 — 이보다 오래된 이벤트는 계산에서 뺀다.
 #                           가장 긴 지속(섹터 5일)을 담아야 드리프트가 정점 전에 잘리지 않는다
 
-# 범위별 비중·강도. 시장 전체 이벤트가 가장 세고 가장 짧다.
+# 범위별 비중·강도. 밈 이벤트가 가장 세고, 시장 전체 이벤트가 가장 넓다.
 _SCOPE_SYMBOL, _SCOPE_SECTOR, _SCOPE_MARKET = "symbol", "sector", "market"
-_SCOPE_WEIGHTS = ((_SCOPE_SYMBOL, 0.70), (_SCOPE_SECTOR, 0.20), (_SCOPE_MARKET, 0.10))
+_SCOPE_MEME = "meme"
+_SCOPE_WEIGHTS = (
+    (_SCOPE_SYMBOL, 0.58),
+    (_SCOPE_SECTOR, 0.18),
+    (_SCOPE_MARKET, 0.09),
+    (_SCOPE_MEME, 0.15),
+)
 _SCOPE_SPEC = {
     # scope: (충격 최소, 충격 최대, 일간 드리프트, 지속 게임일)
     _SCOPE_SYMBOL: (0.015, 0.060, 0.0030, 3),
     _SCOPE_SECTOR: (0.010, 0.030, 0.0020, 5),
     _SCOPE_MARKET: (0.020, 0.050, 0.0040, 2),
+    # 밈은 한 방이 크고 빨리 식는다 — 스퀴즈가 며칠씩 이어지면 그냥 우상향 종목이 된다.
+    _SCOPE_MEME: (0.080, 0.280, 0.0060, 2),
 }
+
+# 밈 이벤트가 걸릴 종목. 없으면 밈 범위는 뽑히지 않는다(전부 일반 종목이어도 안전).
+_MEME_SYMBOLS = tuple(s for s in SYMBOLS if s.meme)
 
 _HEADLINES: dict[tuple[str, bool], tuple[str, ...]] = {
     (_SCOPE_SYMBOL, True): (
@@ -101,6 +116,27 @@ _HEADLINES: dict[tuple[str, bool], tuple[str, ...]] = {
         "유동성 축소 우려",
         "무역 마찰 재점화",
     ),
+    # 밈 — 실적이 아니라 **수급과 화제성**이 값을 만든다. 문구도 그 축으로 쓴다.
+    (_SCOPE_MEME, True): (
+        "{name} 개인 매수 폭주, 숏스퀴즈 조짐",
+        "{name} 커뮤니티발 매수 열풍",
+        "{name} 공매도 잔고 급감…환매수 관측",
+        "{name} 실시간 검색어 1위 등극",
+        "{name} 유명 투자자 보유 인증에 급등",
+        "{name} 거래량 평소의 40배",
+        "{name} 밈 계정 언급 폭증",
+        "{name} 대차잔고 소진 경고",
+    ),
+    (_SCOPE_MEME, False): (
+        "{name} 차익 실현 물량 쏟아져",
+        "{name} 유상증자로 희석 우려",
+        "{name} 거래소 변동성 완화장치 발동",
+        "{name} 공매도 세력 재진입 관측",
+        "{name} 커뮤니티 열기 급랭",
+        "{name} 신용 반대매매 경고",
+        "{name} 내부자 매도 공시",
+        "{name} 테마 소멸 우려 확산",
+    ),
 }
 
 
@@ -127,8 +163,15 @@ def _pick_scope(roll: float) -> str:
     return _SCOPE_MARKET
 
 
+@lru_cache(maxsize=8192)
 def event_at_slot(slot: int) -> MarketEvent | None:
-    """슬롯 하나의 이벤트. 발생하지 않으면 None. 같은 슬롯은 언제 물어도 같은 결과다."""
+    """슬롯 하나의 이벤트. 발생하지 않으면 None. 같은 슬롯은 언제 물어도 같은 결과다.
+
+    **메모이제이션은 값을 바꾸지 않는다.** 이 함수는 `slot` 하나만 받는 순수 함수이고
+    입력이 같으면 결과가 같다 — 캐시는 같은 계산을 반복하지 않을 뿐이다(가격을 저장하는
+    것과 다르다, §4-2). 가격 1틱을 계산할 때마다 창 안의 20슬롯을 다시 굴리던 것이
+    시리즈 240틱이면 4,800회가 된다. 시즌 전체 슬롯이 2,880개라 캐시가 무한히 늘지 않는다.
+    """
     if slot < 0:
         return None
     key = str(slot)
@@ -136,11 +179,17 @@ def event_at_slot(slot: int) -> MarketEvent | None:
         return None
 
     scope = _pick_scope(uniform("evt-scope", key))
+    if scope == _SCOPE_MEME and not _MEME_SYMBOLS:
+        scope = _SCOPE_SYMBOL  # 밈 종목이 없으면 일반 종목 이벤트로 떨어진다
     positive = uniform("evt-sign", key) < 0.5
     low, high, drift, duration = _SCOPE_SPEC[scope]
     magnitude = low + (high - low) * uniform("evt-size", key)
 
-    if scope == _SCOPE_SYMBOL:
+    if scope == _SCOPE_MEME:
+        pool = _MEME_SYMBOLS
+        params = pool[int(uniform("evt-target", key) * len(pool)) % len(pool)]
+        target, target_name = params.symbol, params.name
+    elif scope == _SCOPE_SYMBOL:
         params = SYMBOLS[int(uniform("evt-target", key) * len(SYMBOLS)) % len(SYMBOLS)]
         target, target_name = params.symbol, params.name
     elif scope == _SCOPE_SECTOR:
@@ -167,10 +216,18 @@ def event_at_slot(slot: int) -> MarketEvent | None:
     )
 
 
-def events_in_window(tick: int, window_ticks: int = EVENT_WINDOW_TICKS) -> tuple[MarketEvent, ...]:
+def events_in_window(
+    tick: int,
+    window_ticks: int = EVENT_WINDOW_TICKS,
+    extra: tuple[MarketEvent, ...] = (),
+) -> tuple[MarketEvent, ...]:
     """`tick` 시점에 아직 영향이 남아 있는 이벤트들(발생 순).
 
     창 밖은 계산에서 뺀다 — 그래서 경과 시간과 무관하게 비용이 일정하다.
+
+    `extra`는 **유도되지 않는 이벤트**다(관리자 개입). 슬롯 난수에서 나올 수 없으므로
+    호출자가 저장소에서 읽어 넘긴다. 창 필터·정렬은 생성 이벤트와 똑같이 적용한다 —
+    한번 섞이면 이후 경로(영향 계산·뉴스 피드·차트 마커)가 둘을 구분하지 않는다.
     """
     end = min(max(tick, 0), SEASON_TICKS)
     first_slot = max(0, (end - window_ticks) // EVENT_SLOT_TICKS)
@@ -180,17 +237,21 @@ def events_in_window(tick: int, window_ticks: int = EVENT_WINDOW_TICKS) -> tuple
         event = event_at_slot(slot)
         if event is not None and event.tick <= end:
             out.append(event)
+    out.extend(e for e in extra if end - window_ticks <= e.tick <= end)
+    out.sort(key=lambda e: e.tick)
     return tuple(out)
 
 
-def recent_headlines(tick: int, limit: int = 8) -> tuple[MarketEvent, ...]:
+def recent_headlines(
+    tick: int, limit: int = 8, extra: tuple[MarketEvent, ...] = ()
+) -> tuple[MarketEvent, ...]:
     """화면용 최근 뉴스. 최신 순으로 자른다.
 
     테이퍼로 기여가 사라진 뉴스도 그대로 내려보낸다 — 걸러내는 대신 `event_contribution()`을
     함께 실어 화면이 "영향 소멸"로 표시하게 한다. 여기서 거르면 유저는 뉴스가 있었다는
     사실 자체를 못 본다. (창 `EVENT_WINDOW_TICKS`를 줄이는 건 별개 문제다 — 그건 가격 변조다.)
     """
-    return tuple(reversed(events_in_window(tick)))[:limit]
+    return tuple(reversed(events_in_window(tick, extra=extra)))[:limit]
 
 
 def _applies_to(event: MarketEvent, params: SymbolParams) -> bool:
@@ -198,7 +259,7 @@ def _applies_to(event: MarketEvent, params: SymbolParams) -> bool:
         return True
     if event.scope == _SCOPE_SECTOR:
         return params.sector_group == event.target
-    return params.symbol == event.target
+    return params.symbol == event.target  # symbol · meme 모두 종목 1개에만 걸린다
 
 
 def affected_symbols(event: MarketEvent) -> tuple[str, ...]:
@@ -233,13 +294,16 @@ def event_contribution(event: MarketEvent, tick: int) -> float:
     return (event.shock * ramp + drift) * taper
 
 
-def impact(params: SymbolParams, tick: int) -> float:
+def impact(
+    params: SymbolParams, tick: int, extra: tuple[MarketEvent, ...] = ()
+) -> float:
     """이 종목의 `tick` 시점 이벤트 영향 합(로그 공간).
 
     가격 엔진이 `logP`에 더하는 항이다(game-harness §1-2의 `J`).
+    `extra`(관리자 개입)도 생성 이벤트와 똑같이 더해진다.
     """
     total = 0.0
-    for event in events_in_window(tick):
+    for event in events_in_window(tick, extra=extra):
         if not _applies_to(event, params):
             continue
         total += event_contribution(event, tick)

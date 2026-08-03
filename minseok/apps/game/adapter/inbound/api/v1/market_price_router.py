@@ -58,6 +58,7 @@ async def list_prices(
                 name=s.name,
                 sector=s.sector,
                 sectorGroup=s.sector_group,
+                meme=s.meme,
                 priceKrw=s.price_krw,
                 changePct=s.change_pct,
                 series=[
@@ -96,6 +97,7 @@ async def list_prices(
                 name=result.symbol_info.name,
                 sector=result.symbol_info.sector,
                 sectorGroup=result.symbol_info.sector_group,
+                meme=result.symbol_info.meme,
                 basePriceKrw=result.symbol_info.base_price_krw,
                 gameDailySigmaPct=result.symbol_info.game_daily_sigma_pct,
                 recentHighKrw=result.symbol_info.recent_high_krw,

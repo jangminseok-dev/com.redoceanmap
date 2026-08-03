@@ -5,6 +5,8 @@ from game.app.dtos.wallet_dto import ClosedNotice, PositionView, WalletQuery, Wa
 from game.app.ports.input.wallet_use_case import WalletUseCase
 from game.app.ports.output.game_account_repository import GameAccountRepository
 from game.app.ports.output.game_clock_port import GameClockPort
+from game.app.ports.output.game_intervention_repository import GameInterventionRepository
+from game.app.use_cases.active_interventions import load_active
 from game.domain.clock.game_epoch import (
     GAME_EPOCH_ID,
     RULES_VERSION,
@@ -12,7 +14,7 @@ from game.domain.clock.game_epoch import (
     TICKS_PER_GAME_DAY,
     describe,
 )
-from game.domain.market import futures_contract, price_engine
+from game.domain.market import futures_contract, market_events, price_engine
 from game.domain.market.symbol_params import find as find_symbol
 from game.domain.trading.liquidation import CloseHit, resolve_close
 from game.domain.trading.trading_rules import (
@@ -32,13 +34,21 @@ class WalletInteractor(WalletUseCase):
     보수적이지만, 유저가 실제로 손에 쥘 금액과 화면 숫자가 어긋나지 않는다.
     """
 
-    def __init__(self, repository: GameAccountRepository, clock: GameClockPort) -> None:
+    def __init__(
+        self,
+        repository: GameAccountRepository,
+        clock: GameClockPort,
+        interventions: GameInterventionRepository | None = None,
+    ) -> None:
         self._repository = repository
         self._clock = clock
+        self._interventions = interventions
 
     async def get_wallet(self, query: WalletQuery) -> WalletView:
         moment = describe(self._clock.now_tick())
         price_tick = min(moment.tick, SEASON_TICKS)
+        # 관리자 개입 — 평가·강제청산이 시세 화면과 같은 가격을 보게 한다
+        extra = await load_active(self._interventions, price_tick)
 
         account = await self._repository.load(query.user_id, GAME_EPOCH_ID)
         if account is None:
@@ -52,10 +62,10 @@ class WalletInteractor(WalletUseCase):
 
         # 조회가 곧 마감 시점이다 — 미접속 중 청산됐어야 할 포지션을 여기서 확정한다.
         # 확정이 있었으면 지갑·포지션이 바뀌므로 다시 읽는다.
-        if await self._settle_due_positions(account, price_tick):
+        if await self._settle_due_positions(account, price_tick, extra):
             account = await self._repository.load(query.user_id, GAME_EPOCH_ID) or account
 
-        positions = tuple(self._evaluate(account, price_tick))
+        positions = tuple(self._evaluate(account, price_tick, extra))
         position_value = sum(p.market_value_krw for p in positions)
         total = account.cash_krw + position_value
         notices = await self._recent_notices(query.user_id)
@@ -100,7 +110,12 @@ class WalletInteractor(WalletUseCase):
             )
         return tuple(out)
 
-    async def _settle_due_positions(self, account: Account, price_tick: int) -> bool:
+    async def _settle_due_positions(
+        self,
+        account: Account,
+        price_tick: int,
+        extra: tuple[market_events.MarketEvent, ...] = (),
+    ) -> bool:
         """강제청산·만료를 확정한다. 하나라도 마감했으면 True.
 
         **멱등해야 한다.** 지갑은 30초마다 폴링되므로 같은 포지션을 두 번 마감하면 원장이
@@ -121,7 +136,7 @@ class WalletInteractor(WalletUseCase):
                 hit = CloseHit(
                     tick=position.expires_tick,
                     price_krw=futures_contract.contract_value_krw(
-                        futures_contract.settlement_price(position.expires_tick)
+                        futures_contract.settlement_price(position.expires_tick, extra)
                     ),
                     reason="settled",
                 )
@@ -130,7 +145,7 @@ class WalletInteractor(WalletUseCase):
                 if params is None:
                     continue
                 hit = resolve_close(
-                    lambda tick: price_engine.price_at(params, tick),
+                    lambda tick: price_engine.price_at(params, tick, None, extra),
                     side=Side(position.side),
                     entry_price_krw=position.entry_price_krw,
                     leverage=position.leverage,
@@ -170,20 +185,25 @@ class WalletInteractor(WalletUseCase):
             settled = True
         return settled
 
-    def _evaluate(self, account: Account, price_tick: int):
+    def _evaluate(
+        self,
+        account: Account,
+        price_tick: int,
+        extra: tuple[market_events.MarketEvent, ...] = (),
+    ):
         for position in account.open_positions:
             if position.instrument == "FUTURES":
                 name, sector = "지수 선물", futures_contract.INDEX_CODE
                 expiry = position.expires_tick or price_tick
                 current = futures_contract.contract_value_krw(
-                    futures_contract.futures_price(expiry, min(price_tick, expiry))
+                    futures_contract.futures_price(expiry, min(price_tick, expiry), extra)
                 )
             else:
                 params = find_symbol(position.symbol)
                 if params is None:
                     continue  # 시즌 교체로 종목이 사라진 경우 — 조용히 건너뛴다
                 name, sector = params.name, params.sector
-                current = price_engine.price_at(params, price_tick)
+                current = price_engine.price_at(params, price_tick, None, extra)
             held_days = max(0.0, (price_tick - position.entry_tick) / TICKS_PER_GAME_DAY)
             result = close_result(
                 side=Side(position.side),

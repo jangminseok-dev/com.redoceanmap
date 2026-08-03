@@ -45,6 +45,14 @@ export default function StoreFitnessCard({ fitness }: { fitness: GameAreaFitness
         </span>
       </div>
 
+      {/* 적합도가 높아도 열 수 없는 자리가 있다 — 등급만 보고 오해하지 않게 먼저 말한다 */}
+      {!fitness.openable && (
+        <p className="mt-3 rounded-xl bg-[#DC2626]/[0.06] border border-[#DC2626]/20 px-3 py-2 text-xs text-[#DC2626]">
+          이 상권엔 {fitness.serviceName} 매출 기록이 없어 창업 기준(점포당 월매출)을 세울 수
+          없습니다.
+        </p>
+      )}
+
       {/* 4축 분해 */}
       <ul className="mt-4 space-y-2">
         {fitness.components.map((c) => (
@@ -107,6 +115,23 @@ export default function StoreFitnessCard({ fitness }: { fitness: GameAreaFitness
             {(fitness.observedOperatingMonthsAvg / 12).toFixed(1)}년
           </dd>
         </div>
+        {/* 자리마다 다르다 — 점포당 매출이 클수록(=임대료가 비쌀수록) 최소 자본도 커진다 */}
+        {fitness.openable && (
+          <>
+            <div>
+              <dt className="text-foreground-muted">최소 창업 자본</dt>
+              <dd className="tabular-nums font-medium">
+                {won(fitness.assumedMinimumCapitalKrw)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-foreground-muted">장사가 되는 자본</dt>
+              <dd className="tabular-nums font-medium">
+                {won(fitness.assumedViableCapitalKrw)}
+              </dd>
+            </div>
+          </>
+        )}
       </dl>
 
       <p className="mt-3 text-[11px] text-foreground-muted">

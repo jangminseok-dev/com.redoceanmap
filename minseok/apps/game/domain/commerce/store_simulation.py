@@ -124,6 +124,17 @@ def weekday_factor(setup: StoreSetup, game_day: int) -> float:
     return shares[game_day % 7] * 7.0
 
 
+def rent_location(saturation_percentile: float) -> float:
+    """임대료 입지계수 — 유동인구가 많은(포화도가 높은) 상권일수록 비싸다(가정치).
+
+    창업 시점(store_open)과 미리보기(area_fitness)가 같은 값을 써야 화면의 최소 자본과
+    실제 청구액이 어긋나지 않는다.
+    """
+    lo = rules.RENT_LOCATION_MIN.value
+    hi = rules.RENT_LOCATION_MAX.value
+    return lo + (hi - lo) * min(1.0, max(0.0, saturation_percentile))
+
+
 def monthly_rent(setup: StoreSetup) -> int:
     """월임대료 — 실데이터가 없어 매출에 비례시킨 **가정치**다."""
     return round(
@@ -247,6 +258,86 @@ def plan_opening(
                 lo = mid + 1
         best = lo
     return scale_at(best), best
+
+
+def minimum_capital(
+    observed_sales_per_store: int,
+    observed_ticket_price: int,
+    fitness: float,
+    rent_location_factor: float,
+    service_code: str,
+) -> int:
+    """**창업이 거절되지 않는** 최소 자본.
+
+    규모는 하한(`MIN_STORE_SCALE`) 아래로 못 내려가므로, 자본이 그 최소 가게값에 못 미치면
+    `plan_opening`이 더 줄일 수 없어 청구액이 투입 자본을 넘는다. 그 경계값을 미리 계산해
+    화면이 **거절될 금액을 제안하지 않게** 한다.
+
+    "열리기는 하는데 장사가 되는가"는 별개다 → `viable_capital`.
+    """
+    def cost_at(scale: float, facility_score: int) -> int:
+        setup = StoreSetup(
+            store_id=0,
+            service_code=service_code,
+            opened_game_day=0,
+            store_scale=scale,
+            observed_sales_per_store=observed_sales_per_store,
+            observed_ticket_price=observed_ticket_price,
+            fitness=fitness,
+            rent_location_factor=rent_location_factor,
+            area_weekday_share=(),
+        )
+        deposit, interior = opening_cost(setup, facility_score)
+        return deposit + interior
+
+    # ① 자본 1원으로 계획을 세우면 규모가 반드시 하한에 걸린다 — 그 지점의 비용
+    floor_scale, floor_facility = plan_opening(
+        observed_sales_per_store=observed_sales_per_store,
+        observed_ticket_price=observed_ticket_price,
+        fitness=fitness,
+        rent_location_factor=rent_location_factor,
+        service_code=service_code,
+        budget_krw=1,
+    )
+    return cost_at(floor_scale, floor_facility)
+
+
+def viable_capital(
+    observed_sales_per_store: int,
+    observed_ticket_price: int,
+    fitness: float,
+    rent_location_factor: float,
+    service_code: str,
+) -> int:
+    """**손님이 하루 한 명은 오는** 최소 자본. 창업 가능선(`minimum_capital`)보다 높다.
+
+    규모 하한만 보면 "열리기는 하는데 손님이 0명"인 가게가 만들어진다(실측: 점포당
+    2,754만원 상권에 10만원을 넣으면 90일 −138%). 그 자리를 **막지는 않는다** — 자본에
+    비례해 벌고 잃는 게임이니 작게 들어가는 것도 선택이다. 다만 화면이 먼저 말해야 한다.
+
+    매출은 `점포당월매출 ÷ 30 × 규모 × 적합도`이고 손님 수는 그것을 객단가로 나눈 값이라,
+    하루 1명이 되는 규모는 `객단가 × 30 ÷ (점포당월매출 × 적합도)`다. 점포당 매출이
+    약분돼 **객단가가 이 경계를 정한다** — 객단가가 큰 업종일수록 더 큰 자본이 필요하다.
+    """
+    daily_base = observed_sales_per_store / rules.DAYS_PER_MONTH.value * max(fitness, 1e-9)
+    if daily_base <= 0:
+        return 0
+    scale = min(rules.MAX_STORE_SCALE.value, max(1, observed_ticket_price) / daily_base)
+    takeout = rules.takeout_ratio(service_code).value
+    facility_score = facility_for_demand(1.0, takeout)
+    setup = StoreSetup(
+        store_id=0,
+        service_code=service_code,
+        opened_game_day=0,
+        store_scale=scale,
+        observed_sales_per_store=observed_sales_per_store,
+        observed_ticket_price=observed_ticket_price,
+        fitness=fitness,
+        rent_location_factor=rent_location_factor,
+        area_weekday_share=(),
+    )
+    deposit, interior = opening_cost(setup, facility_score)
+    return deposit + interior
 
 
 def simulate_day(setup: StoreSetup, decision: StoreDecision, game_day: int) -> DailyResult:

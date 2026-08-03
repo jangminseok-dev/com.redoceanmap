@@ -170,6 +170,15 @@ export default function InvestPanel() {
         </p>
       )}
 
+      {/* 시즌 시작 전·직후에는 전 종목이 기준가에 멈춰 있다 — 화면이 고장 난 것처럼 보이지 않게 말한다 */}
+      {data && data.tick === 0 && (
+        <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-foreground-muted">
+          <TriangleAlert size={13} strokeWidth={2} className="text-amber-600" />
+          시즌이 아직 시작되지 않았습니다 — 지금 보이는 값은 전 종목의 시즌 시작가입니다.
+          시작되면 1분마다 게임 1일이 흐릅니다.
+        </p>
+      )}
+
       {unauthorized && (
         <div className="mt-8 rounded-2xl border border-border bg-surface p-8 text-center">
           <p className="text-sm text-foreground-muted">
@@ -350,6 +359,13 @@ export default function InvestPanel() {
                 <p className="col-span-2 sm:col-span-4 text-[11px] text-foreground-muted">
                   {info.sectorGroup} · 실적 지표(PER·ROE 등)는 이 게임에 개념이 없어 표시하지
                   않습니다.
+                  {info.meme && (
+                    <span className="text-[#DC2626]">
+                      {" "}
+                      밈 종목입니다 — 실적이 아니라 수급·화제성이 값을 만듭니다. 변동성이 크고
+                      전용 뉴스(스퀴즈·반대매매)가 한 번에 8~28%를 밀어냅니다.
+                    </span>
+                  )}
                 </p>
               </dl>
             )}
@@ -409,7 +425,15 @@ export default function InvestPanel() {
                         }`}
                       >
                         <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-medium truncate">{s.name}</span>
+                          <span className="flex items-center gap-1.5">
+                            <span className="text-sm font-medium truncate">{s.name}</span>
+                            {/* 밈 종목은 변동성이 다른 종목의 2배 이상이다 — 목록에서 바로 보이게 */}
+                            {s.meme && (
+                              <span className="shrink-0 rounded px-1 py-px text-[10px] font-bold bg-[#DC2626]/10 text-[#DC2626]">
+                                밈
+                              </span>
+                            )}
+                          </span>
                           <span className="block text-[11px] text-foreground-muted truncate">
                             {s.sector}
                           </span>

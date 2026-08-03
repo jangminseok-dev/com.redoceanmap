@@ -56,3 +56,6 @@ class AreaFitnessView:
     diagnoses: tuple[DiagnosisView, ...]
     has_sales: bool
     has_store: bool
+    openable: bool  # 창업 가능 여부 — store_open의 거절 조건과 같은 판정
+    assumed_minimum_capital_krw: int  # 창업이 거절되지 않는 최소 자본(0 = 창업 불가)
+    assumed_viable_capital_krw: int   # 손님이 하루 1명은 오는 자본 — 이보다 적으면 개점휴업

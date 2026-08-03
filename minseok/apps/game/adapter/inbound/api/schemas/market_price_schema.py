@@ -13,6 +13,7 @@ class SymbolPricesSchema(BaseModel):
     name: str = Field(description="가상 회사명 — 실재 기업이 아니다")
     sector: str = Field(description="업종은 실제 시장에서 가져왔다")
     sectorGroup: str = Field(description="묶음 업종 — 섹터 이벤트가 걸리는 단위")
+    meme: bool = Field(description="밈 종목 — 변동성이 크고 전용 뉴스가 붙는다")
     priceKrw: int
     changePct: float = Field(description="게임 1일(현실 1시간) 전 대비 등락률")
     series: list[PricePointSchema]
@@ -46,6 +47,7 @@ class SymbolInfoSchema(BaseModel):
     name: str
     sector: str
     sectorGroup: str
+    meme: bool = Field(description="밈 종목 — σ 배수가 적용된 변동성이다")
     basePriceKrw: int = Field(description="시즌 시작가")
     gameDailySigmaPct: float = Field(description="게임 1일 변동성(%) — 체감 배수 적용값")
     recentHighKrw: int

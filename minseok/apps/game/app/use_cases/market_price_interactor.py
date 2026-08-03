@@ -14,6 +14,8 @@ from game.app.dtos.market_price_dto import (
 from game.app.exceptions import InvalidTickRange, UnknownSymbol
 from game.app.ports.input.market_price_use_case import MarketPriceUseCase
 from game.app.ports.output.game_clock_port import GameClockPort
+from game.app.ports.output.game_intervention_repository import GameInterventionRepository
+from game.app.use_cases.active_interventions import load_active
 from game.domain.clock.game_epoch import (
     GAME_EPOCH_ID,
     RULES_VERSION,
@@ -24,6 +26,7 @@ from game.domain.clock.game_epoch import (
 from game.domain.market import market_events, price_engine
 from game.domain.market.symbol_params import (
     CALIBRATED_AT,
+    MEME_SIGMA_MULTIPLIER,
     SIGMA_GAME_MULTIPLIER,
     SYMBOLS,
 )
@@ -42,8 +45,13 @@ class MarketPriceInteractor(MarketPriceUseCase):
     가격을 저장하지도, 캐시하지도 않는다. 계산이 정본이다(game-harness §4-2).
     """
 
-    def __init__(self, clock: GameClockPort) -> None:
+    def __init__(
+        self,
+        clock: GameClockPort,
+        interventions: GameInterventionRepository | None = None,
+    ) -> None:
         self._clock = clock
+        self._interventions = interventions
 
     async def list_prices(self, query: MarketPriceQuery) -> MarketPricesResponse:
         if not MIN_TICKS <= query.ticks <= MAX_TICKS:
@@ -54,6 +62,8 @@ class MarketPriceInteractor(MarketPriceUseCase):
         now_tick = self._clock.now_tick()
         moment = describe(now_tick)
         end_tick = min(now_tick, SEASON_TICKS)
+        # 관리자 개입 — 아래 모든 가격·뉴스가 같은 목록을 본다
+        extra = await load_active(self._interventions, end_tick)
 
         symbols = tuple(
             SymbolPrices(
@@ -61,18 +71,21 @@ class MarketPriceInteractor(MarketPriceUseCase):
                 name=params.name,
                 sector=params.sector,
                 sector_group=params.sector_group,
-                price_krw=price_engine.price_at(params, end_tick),
+                meme=params.meme,
+                price_krw=price_engine.price_at(params, end_tick, None, extra),
                 change_pct=round(
-                    price_engine.change_pct(params, end_tick, TICKS_PER_GAME_DAY), 2
+                    price_engine.change_pct(params, end_tick, TICKS_PER_GAME_DAY, extra), 2
                 ),
                 series=tuple(
                     PricePoint(tick=t, price_krw=p)
-                    for t, p in price_engine.price_series(params, end_tick, query.ticks)
+                    for t, p in price_engine.price_series(
+                        params, end_tick, query.ticks, extra
+                    )
                 ),
             )
             for params in SYMBOLS
         )
-        candles, symbol_info = self._candles_for(query, end_tick)
+        candles, symbol_info = self._candles_for(query, end_tick, extra)
         patterns = self._patterns_for(query, symbols)
         return MarketPricesResponse(
             events=tuple(
@@ -89,7 +102,7 @@ class MarketPriceInteractor(MarketPriceUseCase):
                         market_events.event_contribution(e, end_tick) * 100.0, 2
                     ),
                 )
-                for e in market_events.recent_headlines(end_tick)
+                for e in market_events.recent_headlines(end_tick, extra=extra)
             ),
             virtual=True,
             calibrated=CALIBRATED_AT is not None,
@@ -137,11 +150,14 @@ class MarketPriceInteractor(MarketPriceUseCase):
         )
 
     def _candles_for(
-        self, query: MarketPriceQuery, end_tick: int
+        self,
+        query: MarketPriceQuery,
+        end_tick: int,
+        extra: tuple[market_events.MarketEvent, ...] = (),
     ) -> tuple[tuple[CandleView, ...], SymbolInfo | None]:
         """선택 종목 하나의 일봉과 종목 카드. 지정하지 않으면 계산하지 않는다.
 
-        전 종목에 돌리지 않는 이유는 비용이다 — 하루당 60회 평가라 12종목 × 7일이면
+        전 종목에 돌리지 않는 이유는 비용이다 — 하루당 60회 평가라 전 종목 × 7일이면
         응답 목표(p95 200ms)를 넘긴다.
         """
         if query.candle_symbol is None:
@@ -154,7 +170,7 @@ class MarketPriceInteractor(MarketPriceUseCase):
                 f"candle_days는 {MIN_CANDLE_DAYS}~{MAX_CANDLE_DAYS} 범위여야 합니다"
             )
 
-        raw = price_engine.daily_candles(params, end_tick, query.candle_days)
+        raw = price_engine.daily_candles(params, end_tick, query.candle_days, extra)
         candles = tuple(
             CandleView(
                 game_day=c.game_day,
@@ -170,9 +186,17 @@ class MarketPriceInteractor(MarketPriceUseCase):
             name=params.name,
             sector=params.sector,
             sector_group=params.sector_group,
+            meme=params.meme,
             base_price_krw=params.base_price_krw,
             # 시즌 고저가는 43,200틱 순회라 넣지 않는다 — 봉에서 나오는 최근 구간으로 대신한다
-            game_daily_sigma_pct=round(params.sigma_daily * SIGMA_GAME_MULTIPLIER * 100.0, 2),
+            # 밈 배수까지 반영한 **체감** 변동성이다 — 화면 숫자와 실제 곡선이 갈라지지 않게
+            game_daily_sigma_pct=round(
+                params.sigma_daily
+                * (MEME_SIGMA_MULTIPLIER if params.meme else 1.0)
+                * SIGMA_GAME_MULTIPLIER
+                * 100.0,
+                2,
+            ),
             recent_high_krw=max(c.high_krw for c in raw),
             recent_low_krw=min(c.low_krw for c in raw),
             recent_days=len(raw),

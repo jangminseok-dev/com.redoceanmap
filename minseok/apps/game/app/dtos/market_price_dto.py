@@ -23,6 +23,7 @@ class SymbolPrices:
     name: str
     sector: str
     sector_group: str       # 묶음 업종 — 섹터 이벤트가 걸리는 단위이자 화면 필터 축
+    meme: bool              # 밈 종목 — 변동성이 크고 전용 뉴스가 붙는다
     price_krw: int
     change_pct: float       # 게임 1일 전 대비
     series: tuple[PricePoint, ...]
@@ -67,6 +68,7 @@ class SymbolInfo:
     name: str
     sector: str
     sector_group: str
+    meme: bool                     # 밈 종목 — σ 배수가 적용된 상태다
     base_price_krw: int            # 시즌 시작가
     game_daily_sigma_pct: float    # 게임 1일 변동성(%) — 배수를 적용한 체감값
     recent_high_krw: int           # 최근 `recent_days` 게임일 고가

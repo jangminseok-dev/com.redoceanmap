@@ -42,3 +42,10 @@ class AreaFitnessResponseSchema(BaseModel):
     diagnoses: list[DiagnosisSchema]
     hasSales: bool
     hasStore: bool
+    openable: bool = Field(description="창업 가능 여부 — 매출 기록이 없으면 false")
+    assumedMinimumCapitalKrw: int = Field(
+        description="창업이 거절되지 않는 최소 자본(게임 규칙 산출값, 0 = 창업 불가)"
+    )
+    assumedViableCapitalKrw: int = Field(
+        description="손님이 하루 1명은 오는 자본 — 이보다 적으면 열려도 개점휴업이다"
+    )

@@ -2,6 +2,7 @@ from game.app.dtos.trade_dto import OpenTradeCommand
 from game.app.dtos.wallet_dto import WalletQuery
 from game.app.use_cases.trade_interactor import TradeInteractor
 from game.app.use_cases.wallet_interactor import WalletInteractor
+from game.domain.clock.game_epoch import GAME_EPOCH_ID, RULES_VERSION
 from game.domain.market import price_engine
 from game.domain.market.symbol_params import SYMBOLS
 from game.domain.trading.trading_rules import (
@@ -100,11 +101,11 @@ async def test_레버리지_포지션은_조회_시점에_마감된다():
     """미접속 중 청산됐어야 하는 포지션을 지갑 조회가 확정한다(지연 실행)."""
     repo = StubAccountRepository()
     clock = StubClock(1_000)
-    await repo.create(user_id=USER, epoch_id=1, rule_version="v1", initial_cash_krw=1_000_000, game_day=16)
+    await repo.create(user_id=USER, epoch_id=GAME_EPOCH_ID, rule_version=RULES_VERSION, initial_cash_krw=1_000_000, game_day=16)
     price = price_engine.price_at(SYMBOLS[0], 1_000)
     await repo.open_position(
         user_id=USER,
-        epoch_id=1,
+        epoch_id=GAME_EPOCH_ID,
         symbol=SYMBOLS[0].symbol,
         side="LONG",
         quantity=1,
@@ -130,10 +131,10 @@ async def test_지연_마감은_멱등이다():
     """지갑은 30초마다 폴링된다 — 두 번 마감하면 원장이 어긋난다."""
     repo = StubAccountRepository()
     clock = StubClock(1_000)
-    await repo.create(user_id=USER, epoch_id=1, rule_version="v1", initial_cash_krw=1_000_000, game_day=16)
+    await repo.create(user_id=USER, epoch_id=GAME_EPOCH_ID, rule_version=RULES_VERSION, initial_cash_krw=1_000_000, game_day=16)
     price = price_engine.price_at(SYMBOLS[0], 1_000)
     await repo.open_position(
-        user_id=USER, epoch_id=1, symbol=SYMBOLS[0].symbol, side="LONG", quantity=1,
+        user_id=USER, epoch_id=GAME_EPOCH_ID, symbol=SYMBOLS[0].symbol, side="LONG", quantity=1,
         entry_tick=1_000, entry_price_krw=price, entry_fee_krw=0, cash_delta_krw=-(price // 4),
         game_day=16, leverage=4, expires_tick=1_000 + LEVERAGED_EXPIRY_TICKS,
     )
@@ -151,10 +152,10 @@ async def test_1배_포지션은_마감되지_않는다():
     """도입 전과 같은 동작 — 만료도 청산도 없다."""
     repo = StubAccountRepository()
     clock = StubClock(1_000)
-    await repo.create(user_id=USER, epoch_id=1, rule_version="v1", initial_cash_krw=1_000_000, game_day=16)
+    await repo.create(user_id=USER, epoch_id=GAME_EPOCH_ID, rule_version=RULES_VERSION, initial_cash_krw=1_000_000, game_day=16)
     price = price_engine.price_at(SYMBOLS[0], 1_000)
     await repo.open_position(
-        user_id=USER, epoch_id=1, symbol=SYMBOLS[0].symbol, side="LONG", quantity=1,
+        user_id=USER, epoch_id=GAME_EPOCH_ID, symbol=SYMBOLS[0].symbol, side="LONG", quantity=1,
         entry_tick=1_000, entry_price_krw=price, entry_fee_krw=0, cash_delta_krw=-price, game_day=16,
     )
     clock.tick = 40_000  # 한참 뒤

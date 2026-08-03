@@ -116,6 +116,42 @@ async def test_안_맞는_입지는_기대매출이_낮다():
     assert any(d.tone == "bad" for d in bad.diagnoses)
 
 
+async def test_매출_기록이_없으면_창업_불가로_알려준다():
+    """상권·업종 조합은 있으나 매출 행이 없는 자리 — 서울 실데이터에 흔하다.
+
+    미리보기가 이걸 숨기면 화면은 창업 버튼을 열어주고 유저는 누른 뒤에야 거절당한다.
+    """
+    interactor = AreaFitnessInteractor(
+        profiles=_StubProfiles(
+            _profile(
+                observed_monthly_sales_amount=0,
+                observed_monthly_sales_count=0,
+                observed_store_count=0,
+                has_sales=False,
+                has_store=False,
+            )
+        )
+    )
+    result = await interactor.preview(AreaFitnessQuery(trdar_code=1001, service_code="CS100010"))
+
+    assert result.openable is False
+    assert result.assumed_minimum_capital_krw == 0
+    assert result.assumed_viable_capital_krw == 0
+    # 자료 없음이 "경쟁자가 없다"로 둔갑해 만점을 받지 않는다
+    assert {c.key: c.score for c in result.components}["saturation"] == 0.5
+
+
+async def test_창업_가능한_자리는_두_경계를_함께_알려준다():
+    """창업이 되는 금액과 손님이 오기 시작하는 금액은 다르다 — 둘을 구분해 보여준다."""
+    interactor = AreaFitnessInteractor(profiles=_StubProfiles(_profile()))
+    result = await interactor.preview(AreaFitnessQuery(trdar_code=1001, service_code="CS100010"))
+
+    assert result.openable is True
+    assert result.assumed_minimum_capital_krw > 0
+    # 장사 성립선은 창업 가능선보다 높다 — 반대면 경고가 영원히 뜨지 않는다
+    assert result.assumed_viable_capital_krw > result.assumed_minimum_capital_krw
+
+
 async def test_자료가_없으면_404용_예외를_낸다():
     interactor = AreaFitnessInteractor(profiles=_StubProfiles(None))
     with pytest.raises(AreaProfileUnavailable):

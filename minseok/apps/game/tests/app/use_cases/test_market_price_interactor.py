@@ -126,4 +126,5 @@ async def test_섹터_그룹이_전_종목에_노출된다():
     )
     groups = {s.sector_group for s in result.symbols}
     assert groups == {s.sector_group for s in SYMBOLS}
-    assert len(groups) == 4  # 4그룹 × 3종목(§3-3)
+    # 그룹마다 4종목이어야 섹터 이벤트가 §3-3의 "3~5종목"에 든다
+    assert all(sum(1 for s in SYMBOLS if s.sector_group == g) == 4 for g in groups)

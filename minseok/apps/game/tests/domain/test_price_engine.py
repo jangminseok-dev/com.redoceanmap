@@ -86,6 +86,42 @@ def test_일간_변동성이_목표치_부근이다():
         assert math.isclose(statistics.pstdev(returns), target, rel_tol=0.30)
 
 
+def test_밈_종목이_일반_종목보다_확실히_더_흔들린다():
+    """밈주식의 성격은 σ 배수로 준다 — 배수가 빠지면 그냥 이름만 밈인 종목이 된다."""
+    def daily_sigma(params):
+        prices = [price_engine.price_at(params, d * TICKS_PER_GAME_DAY) for d in range(400)]
+        return statistics.pstdev(
+            (prices[i] - prices[i - 1]) / prices[i - 1] for i in range(1, len(prices))
+        )
+
+    meme = [daily_sigma(p) for p in SYMBOLS if p.meme]
+    plain = [daily_sigma(p) for p in SYMBOLS if not p.meme]
+    assert meme, "밈 종목이 하나도 없다"
+    assert min(meme) > statistics.fmean(plain) * 1.5
+
+
+def test_가격은_밴드를_벗어나지_않는다():
+    """시즌 720일 누적으로 한 종목이 1,000배가 되면 나머지 35종목이 의미를 잃는다.
+
+    밴드가 없던 실측에서 밈 종목이 기준가의 1,461배까지 갔다. tanh 압축은 꼬리만 누른다 —
+    작은 변동은 왜곡하지 않는지도 함께 본다.
+    """
+    for params in SYMBOLS:
+        band = (
+            price_engine.PRICE_BAND_LOG_MEME if params.meme else price_engine.PRICE_BAND_LOG
+        )
+        ceiling = params.base_price_krw * math.exp(band)
+        floor = params.base_price_krw * math.exp(-band)
+        for day in range(0, 720, 7):
+            price = price_engine.price_at(params, day * TICKS_PER_GAME_DAY)
+            assert floor <= price <= ceiling
+
+    # 밴드 안쪽(±30%)에서는 사실상 항등이어야 한다 — 일상 곡선이 눌리면 안 된다
+    for ratio in (-0.3, -0.1, 0.1, 0.3):
+        band = price_engine.PRICE_BAND_LOG
+        assert math.isclose(band * math.tanh(ratio / band), ratio, rel_tol=0.02)
+
+
 # --- 분포 회귀 (harness §8-2) -----------------------------------------------
 
 def test_분포회귀_종목별_수익률이_한_값에_몰리지_않는다():

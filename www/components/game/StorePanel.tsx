@@ -10,6 +10,7 @@ import StoreFitnessCard from "@/components/game/StoreFitnessCard";
 import {
   fetchAreaRanking,
   fetchGameAreaFitness,
+  fetchGameSettlements,
   fetchGameStores,
   fetchGameWallet,
   openGameStore,
@@ -21,6 +22,33 @@ const MapView = dynamic(() => import("@/components/seoul/MapView"), { ssr: false
 
 const won = (v: number) => `${v.toLocaleString()}원`;
 const MAX_PINS = 120; // 1,650개를 다 찍으면 지도가 버틴다는 보장이 없다 — 구 선택으로 좁힌다
+// 백엔드 rule_coefficients.MAX_CONCURRENT_STORES와 같은 값 — 누르면 거절될 버튼을 열지 않는다
+const MAX_STORES = 3;
+
+/**
+ * 지금 창업을 누르면 거절될 이유. `null`이면 버튼은 **반드시 성공한다**.
+ *
+ * 백엔드 `store_open_interactor`의 거절 조건을 화면 쪽에서 미리 답하는 것이다 —
+ * 순서도 그쪽과 같게 둔다(시즌 → 자료 → 가게 수 → 흑자 조건 → 자본).
+ */
+function blockedBecause(s: {
+  seasonOver: boolean;
+  openable: boolean;
+  openStoreCount: number;
+  profitableQuarters: number;
+  payment: number;
+  investable: number;
+}): string | null {
+  if (s.seasonOver) return "시즌이 종료되어 새로 창업할 수 없습니다";
+  if (!s.openable) return "이 상권엔 이 업종의 매출 기록이 없어 창업할 수 없습니다";
+  if (s.openStoreCount >= MAX_STORES)
+    return `가게는 동시에 ${MAX_STORES}곳까지만 운영할 수 있습니다`;
+  if (s.openStoreCount > s.profitableQuarters)
+    return `${s.openStoreCount + 1}호점은 흑자 분기 결산 ${s.openStoreCount}회가 필요합니다 (현재 ${s.profitableQuarters}회)`;
+  if (s.payment > s.investable)
+    return `이 자리는 최소 ${won(s.payment)}이 필요합니다 (가능 ${won(s.investable)})`;
+  return null;
+}
 
 type Draft = {
   district: string;
@@ -52,6 +80,14 @@ export default function StorePanel() {
     queryFn: () => fetchAreaRanking({}),
     staleTime: 30 * 60_000,
   });
+  // 업종을 고르면 그 업종 기준으로 한 번 더 받는다 — 매출 실적이 있는 상권만 핀으로 남기려면
+  // 업종별 집계가 필요하다. 자치구·업종 목록은 위 쿼리가 계속 들고 있어 화면이 깜빡이지 않는다.
+  const serviceRankingQ = useQuery({
+    queryKey: ["game-area-ranking", draft.serviceCode],
+    queryFn: () => fetchAreaRanking({ serviceCode: draft.serviceCode }),
+    enabled: !!draft.serviceCode,
+    staleTime: 30 * 60_000,
+  });
   const walletQ = useQuery({ queryKey: ["game-wallet"], queryFn: fetchGameWallet });
   const storesQ = useQuery({ queryKey: ["game-stores"], queryFn: fetchGameStores });
 
@@ -61,12 +97,60 @@ export default function StorePanel() {
     enabled: !!draft.trdarCode && !!draft.serviceCode,
   });
 
+  const rows = rankingQ.data?.rows ?? [];
+  const services = rankingQ.data?.services ?? [];
+  const districts = [...new Set(rows.map((r) => r.districtName))].sort();
+  // 업종을 골랐으면 **그 업종의 매출 실적이 있는 상권만** 남긴다. 실적이 없는 자리는
+  // 창업 기준(점포당 월매출)을 세울 수 없어 백엔드가 거절한다 — 애초에 고를 수 없게 한다.
+  const openableRows = draft.serviceCode
+    ? (serviceRankingQ.data?.rows ?? []).filter(
+        (r) => r.monthlySales !== null && r.monthlySales > 0,
+      )
+    : rows;
+  const filtered: AreaRankingRow[] = (
+    draft.district
+      ? openableRows.filter((r) => r.districtName === draft.district)
+      : openableRows
+  ).slice(0, MAX_PINS);
+  const selected = rows.find((r) => r.trdarCode === draft.trdarCode);
+  const stores = storesQ.data ?? [];
+  const openStoreCount = stores.filter((s) => s.status === "open").length;
+  const investable = walletQ.data?.investableKrw ?? 0;
+  // 기본값이 잔액을 넘으면 폼이 열리자마자 비활성 상태가 된다 — 가능액으로 눌러 둔다
+  const budget = Math.min(draft.budgetKrw, Math.max(10_000, investable));
+
+  // n+1호점은 흑자 분기 결산 n회가 필요하다(백엔드 store_open_interactor와 같은 규칙).
+  // 1호점은 조건이 없으므로 가게가 있을 때만 결산을 본다. 키는 SettlementCard와 공유한다.
+  const settlementsQ = useQuery({
+    queryKey: ["game-settlements"],
+    queryFn: fetchGameSettlements,
+    enabled: openStoreCount > 0,
+  });
+  const profitableQuarters = (settlementsQ.data?.settlements ?? []).filter(
+    (s) => s.profitKrw > 0,
+  ).length;
+
+  const fitness = fitnessQ.data;
+  // 화면이 제시하는 금액은 **반드시 통과하는 금액**이어야 한다 — 자리마다 최소 자본이
+  // 다르므로(점포당 매출 × 임대료 입지계수) 모자라면 그 경계값으로 올려 보낸다.
+  const payment = Math.max(budget, fitness?.assumedMinimumCapitalKrw ?? 0);
+  const blockedReason = !fitness
+    ? null
+    : blockedBecause({
+        seasonOver: walletQ.data?.seasonOver ?? false,
+        openable: fitness.openable,
+        openStoreCount,
+        profitableQuarters,
+        payment,
+        investable,
+      });
+
   const open = useMutation({
     mutationFn: () =>
       openGameStore({
         trdarCode: draft.trdarCode!,
         serviceCode: draft.serviceCode,
-        budgetKrw: budget,
+        budgetKrw: payment,
         staffCount: draft.staffCount,
         priceFactor: 1.0,
       }),
@@ -84,18 +168,6 @@ export default function StorePanel() {
     onError: (e) =>
       patch({ notice: e instanceof Error ? e.message : "창업에 실패했습니다." }),
   });
-
-  const rows = rankingQ.data?.rows ?? [];
-  const services = rankingQ.data?.services ?? [];
-  const districts = [...new Set(rows.map((r) => r.districtName))].sort();
-  const filtered: AreaRankingRow[] = (
-    draft.district ? rows.filter((r) => r.districtName === draft.district) : rows
-  ).slice(0, MAX_PINS);
-  const selected = rows.find((r) => r.trdarCode === draft.trdarCode);
-  const stores = storesQ.data ?? [];
-  const investable = walletQ.data?.investableKrw ?? 0;
-  // 기본값이 잔액을 넘으면 폼이 열리자마자 비활성 상태가 된다 — 가능액으로 눌러 둔다
-  const budget = Math.min(draft.budgetKrw, Math.max(10_000, investable));
 
   return (
     <div className="space-y-5">
@@ -185,7 +257,9 @@ export default function StorePanel() {
             업종
             <select
               value={draft.serviceCode}
-              onChange={(e) => patch({ serviceCode: e.target.value })}
+              // 업종이 바뀌면 핀 목록 자체가 바뀐다 — 이전 선택을 들고 있으면
+              // 새 업종으로는 열 수 없는 자리가 선택된 채로 남는다
+              onChange={(e) => patch({ serviceCode: e.target.value, trdarCode: null })}
               className="mt-1 w-full h-10 px-2 rounded-xl border border-border bg-background text-sm text-foreground"
             >
               <option value="">선택하세요</option>
@@ -254,8 +328,15 @@ export default function StorePanel() {
             )}
             {!draft.trdarCode && (
               <p className="text-sm text-foreground-muted">
-                지도에서 상권을 고르세요. 자치구를 선택하면 핀이 좁혀집니다
-                {rows.length > MAX_PINS && ` (전체 ${rows.length.toLocaleString()}곳 중 ${MAX_PINS}곳 표시)`}.
+                {!draft.serviceCode
+                  ? "업종을 고르면 그 업종으로 창업할 수 있는 상권만 핀으로 남습니다."
+                  : serviceRankingQ.isLoading
+                    ? "이 업종으로 창업할 수 있는 상권을 찾는 중…"
+                    : `지도에 남은 핀은 ${services.find((s) => s.code === draft.serviceCode)?.name ?? "이 업종"} 매출 기록이 있는 ${openableRows.length.toLocaleString()}곳입니다.`}{" "}
+                자치구를 선택하면 더 좁혀집니다
+                {openableRows.length > MAX_PINS &&
+                  ` (${openableRows.length.toLocaleString()}곳 중 ${MAX_PINS}곳 표시)`}
+                .
               </p>
             )}
             {draft.trdarCode && !draft.serviceCode && (
@@ -269,21 +350,35 @@ export default function StorePanel() {
                 이 상권·업종 조합은 실데이터가 없어 창업할 수 없습니다.
               </p>
             )}
-            {fitnessQ.data && <StoreFitnessCard fitness={fitnessQ.data} />}
+            {fitness && <StoreFitnessCard fitness={fitness} />}
 
-            {fitnessQ.data && (
-              <button
-                type="button"
-                onClick={() => open.mutate()}
-                disabled={open.isPending || budget > investable}
-                className="w-full h-11 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-40 transition-colors"
-              >
-                {budget > investable
-                  ? "투자 가능 금액을 넘습니다"
-                  : open.isPending
-                    ? "개업 중…"
-                    : `${won(budget)}으로 창업하기`}
-              </button>
+            {fitness && (
+              <>
+                {/* 입력한 자본이 이 자리의 최소치에 못 미치면 실제로 나갈 금액을 먼저 알린다 */}
+                {!blockedReason && payment > budget && (
+                  <p className="text-xs text-foreground-muted">
+                    이 자리는 최소 {won(payment)}이 필요합니다 — 입력한 {won(budget)} 대신 이
+                    금액으로 창업합니다.
+                  </p>
+                )}
+                {/* 자본에 비례해 규모가 정해진다 — 너무 작으면 열려도 손님이 오지 않는다.
+                    막지는 않는다. 작게 들어가는 것도 선택이므로 결과만 먼저 알린다 */}
+                {!blockedReason && payment < fitness.assumedViableCapitalKrw && (
+                  <p className="text-xs text-[#DC2626]">
+                    이 자본으로는 가게 규모가 너무 작아 하루 손님이 1명에 못 미칩니다 —
+                    이 자리에서 장사가 되려면 {won(fitness.assumedViableCapitalKrw)}부터입니다.
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => open.mutate()}
+                  disabled={open.isPending || blockedReason !== null}
+                  className="w-full h-11 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-40 transition-colors"
+                >
+                  {blockedReason ??
+                    (open.isPending ? "개업 중…" : `${won(payment)}으로 창업하기`)}
+                </button>
+              </>
             )}
           </div>
         </div>

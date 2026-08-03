@@ -160,9 +160,12 @@ export default function GamePriceLine({
   }, [points, candles, compact, markers, pattern, minRangePct]);
 
   if (!shape) {
+    // 목록 안의 48×24 미니 차트에 문구를 넣으면 글자가 칸을 넘어 줄줄이 흘러내린다.
+    // 시즌 시작 직후에는 전 종목이 이 상태라 목록 전체가 문구로 뒤덮였다 — 자리만 비운다.
+    if (compact) return <span className={className} aria-hidden />;
     return (
       <div className={`grid place-items-center text-xs text-foreground-muted ${className ?? ""}`}>
-        데이터가 부족합니다
+        아직 시세 기록이 없습니다 — 1분마다 게임 1일이 흐릅니다
       </div>
     );
   }

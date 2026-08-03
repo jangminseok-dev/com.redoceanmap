@@ -180,6 +180,59 @@ export type AdminMarketBacktestReport = {
 
 /* ── 요청 헬퍼 — lib/api.ts의 getJson 패턴 + 쓰기 메서드 ── */
 
+
+// ── 게임 운영 (/admin/game) ──
+// 주가 개입은 **지금부터 앞으로만** 적용된다 — 과거 주가는 바뀌지 않는다.
+export type AdminGameWallet = {
+  user_id: number;
+  email: string;
+  exists: boolean;
+  cash_krw: number;
+  epoch_id: number;
+  rule_version: string;
+  open_position_count: number;
+  ledger_total_krw: number;
+  ledger_matches: boolean;
+};
+
+export type AdminGameGrant = {
+  user_id: number;
+  amount_krw: number;
+  cash_krw: number;
+  game_day: number;
+};
+
+export type AdminGameSymbol = {
+  symbol: string;
+  name: string;
+  sector_group: string;
+  price_krw: number;
+  meme: boolean;
+};
+
+export type AdminGameIntervention = {
+  id: number;
+  scope: "symbol" | "sector" | "market";
+  target: string;
+  target_name: string;
+  from_game_day: number;
+  shock_pct: number;
+  drift_pct_per_day: number;
+  duration_days: number;
+  headline: string;
+  note: string | null;
+  in_effect: boolean;
+};
+
+export type AdminGameBoard = {
+  symbols: AdminGameSymbol[];
+  sector_groups: string[];
+  interventions: AdminGameIntervention[];
+  max_shock_pct: number;
+  max_drift_pct_per_day: number;
+  max_duration_days: number;
+};
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api/backend${path}`, {
     ...init,
@@ -315,6 +368,33 @@ export const fetchAllAdminMembers = async (search: string): Promise<AdminMember[
     if (all.length >= page.total || page.items.length === 0) return all;
   }
 };
+
+
+export const fetchAdminGameWallet = (userId: number): Promise<AdminGameWallet> =>
+  request(`/admin/game/wallets/${userId}`);
+
+export const grantAdminGameCapital = (
+  userId: number,
+  body: { amount_krw: number; reason: string },
+): Promise<AdminGameGrant> =>
+  request(`/admin/game/wallets/${userId}/grants`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const fetchAdminGameBoard = (): Promise<AdminGameBoard> => request("/admin/game/market");
+
+export const interveneAdminGamePrice = (body: {
+  scope: string;
+  target: string;
+  shock_pct: number;
+  drift_pct_per_day: number;
+  duration_days: number;
+  headline: string;
+  note: string | null;
+  target_price_krw: number | null;
+}): Promise<AdminGameIntervention> =>
+  request("/admin/game/interventions", { method: "POST", body: JSON.stringify(body) });
 
 // BOM 포함 CSV 다운로드 (엑셀 한글 호환)
 export const downloadCsv = (filename: string, header: string[], rows: (string | number)[][]) => {

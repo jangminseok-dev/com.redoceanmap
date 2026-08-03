@@ -110,9 +110,10 @@ def _center(mus: list[float]) -> list[float]:
 def _render(slots: list[tuple[float, float]], mus: list[float]) -> str:
     lines = []
     for params, (sigma, _), mu in zip(SYMBOLS, slots, mus, strict=True):
+        meme = ", meme=True" if params.meme else ""
         lines.append(
             f'    SymbolParams("{params.symbol}", "{params.name}", "{params.sector}", '
-            f'"{params.sector_group}", {params.base_price_krw:_}, {sigma:.4f}, {mu:+.5f}),'
+            f'"{params.sector_group}", {params.base_price_krw:_}, {sigma:.4f}, {mu:+.5f}{meme}),'
         )
     return "\n".join(lines)
 

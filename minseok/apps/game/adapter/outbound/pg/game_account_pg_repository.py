@@ -91,6 +91,42 @@ class GameAccountPgRepository(GameAccountRepository):
             open_positions=(),
         )
 
+    async def adjust_cash(
+        self,
+        user_id: int,
+        epoch_id: int,
+        amount_krw: int,
+        game_day: int,
+        source: str,
+        ref_type: str | None = None,
+        ref_id: int | None = None,
+    ) -> int:
+        wallet = await self._session.scalar(
+            select(GameWalletOrm).where(
+                GameWalletOrm.user_id == user_id, GameWalletOrm.epoch_id == epoch_id
+            )
+        )
+        if wallet is None:
+            raise ValueError("현재 시즌 지갑이 없습니다")
+        if wallet.cash_krw + amount_krw < 0:
+            raise ValueError(
+                f"잔고가 음수가 됩니다 (현재 {wallet.cash_krw:,}원 · 요청 {amount_krw:,}원)"
+            )
+        wallet.cash_krw += amount_krw
+        self._session.add(
+            GameLedgerOrm(
+                user_id=user_id,
+                game_day=game_day,
+                source=source,
+                amount_krw=amount_krw,
+                ref_type=ref_type,
+                ref_id=ref_id,
+                epoch_id=epoch_id,
+            )
+        )
+        await self._session.commit()
+        return wallet.cash_krw
+
     async def open_position(
         self,
         user_id: int,

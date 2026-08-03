@@ -11,6 +11,8 @@ from game.app.exceptions import (
 from game.app.ports.input.trade_use_case import TradeUseCase
 from game.app.ports.output.game_account_repository import GameAccountRepository
 from game.app.ports.output.game_clock_port import GameClockPort
+from game.app.ports.output.game_intervention_repository import GameInterventionRepository
+from game.app.use_cases.active_interventions import load_active
 from game.domain.clock.game_epoch import (
     GAME_EPOCH_ID,
     RULES_VERSION,
@@ -42,9 +44,15 @@ class TradeInteractor(TradeUseCase):
     "다음 틱에 체결"이라는 개념 자체가 성립하지 않는다.
     """
 
-    def __init__(self, repository: GameAccountRepository, clock: GameClockPort) -> None:
+    def __init__(
+        self,
+        repository: GameAccountRepository,
+        clock: GameClockPort,
+        interventions: GameInterventionRepository | None = None,
+    ) -> None:
         self._repository = repository
         self._clock = clock
+        self._interventions = interventions
 
     async def open(self, command: OpenTradeCommand) -> TradeReceipt:
         moment = describe(self._clock.now_tick())
@@ -84,7 +92,8 @@ class TradeInteractor(TradeUseCase):
                     f"레버리지 포지션은 동시에 {MAX_LEVERAGED_POSITIONS}개까지만 보유할 수 있습니다"
                 )
 
-        price = price_engine.price_at(params, moment.tick)
+        extra = await load_active(self._interventions, moment.tick)
+        price = price_engine.price_at(params, moment.tick, None, extra)
         cost = entry_cost(price, command.quantity, command.leverage)
         budget = investable_cash(account.cash_krw)
         if cost.total_krw > budget:
@@ -144,11 +153,13 @@ class TradeInteractor(TradeUseCase):
         if params is None:
             raise UnknownSymbol(f"게임에 없는 종목입니다: {position.symbol}")
 
+        extra = await load_active(self._interventions, moment.tick)
+
         # **이미 청산됐어야 하는 포지션인지 먼저 본다.** 지갑을 거치지 않고 바로 청산 버튼을
         # 누르면 미접속 중 터진 포지션을 현재가로 닫게 되어 결정론이 깨진다 — 같은 상황을
         # 두 경로가 다르게 판정하면 안 된다.
         hit = resolve_close(
-            lambda tick: price_engine.price_at(params, tick),
+            lambda tick: price_engine.price_at(params, tick, None, extra),
             side=Side(position.side),
             entry_price_krw=position.entry_price_krw,
             leverage=position.leverage,
@@ -159,7 +170,7 @@ class TradeInteractor(TradeUseCase):
         # 시즌이 끝난 뒤 청산은 허용한다 — 막으면 마지막 포지션이 영원히 잠긴다.
         # 다만 가격은 시즌 마지막 틱에 멈춘다(price_engine이 클램프).
         closed_tick = hit.tick if hit else moment.tick
-        price = hit.price_krw if hit else price_engine.price_at(params, moment.tick)
+        price = hit.price_krw if hit else price_engine.price_at(params, moment.tick, None, extra)
         held_days = max(0.0, (closed_tick - position.entry_tick) / TICKS_PER_GAME_DAY)
         result = close_result(
             side=Side(position.side),

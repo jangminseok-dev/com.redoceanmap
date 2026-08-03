@@ -18,6 +18,8 @@ from game.app.exceptions import (
 from game.app.ports.input.futures_use_case import FuturesUseCase
 from game.app.ports.output.game_account_repository import GameAccountRepository
 from game.app.ports.output.game_clock_port import GameClockPort
+from game.app.ports.output.game_intervention_repository import GameInterventionRepository
+from game.app.use_cases.active_interventions import load_active
 from game.domain.clock.game_epoch import (
     GAME_EPOCH_ID,
     RULES_VERSION,
@@ -51,9 +53,15 @@ class FuturesInteractor(FuturesUseCase):
     만기 정산은 **조회 시점에 확정된다** — 지갑 조회의 지연 마감 루프와 같은 경로다.
     """
 
-    def __init__(self, repository: GameAccountRepository, clock: GameClockPort) -> None:
+    def __init__(
+        self,
+        repository: GameAccountRepository,
+        clock: GameClockPort,
+        interventions: GameInterventionRepository | None = None,
+    ) -> None:
         self._repository = repository
         self._clock = clock
+        self._interventions = interventions
 
     async def get_market(self, query: FuturesQuery) -> FuturesView:
         if not MIN_TICKS <= query.ticks <= MAX_TICKS:
@@ -64,15 +72,16 @@ class FuturesInteractor(FuturesUseCase):
         contract = fut.front_contract(tick)
         account = await self._load_or_create(query.user_id, moment.game_day)
 
-        spot = price_engine.index_at(tick)
-        futures_point = fut.futures_price(contract.expiry_tick, tick)
+        extra = await load_active(self._interventions, tick)
+        spot = price_engine.index_at(tick, extra)
+        futures_point = fut.futures_price(contract.expiry_tick, tick, extra)
         contract_value = fut.contract_value_krw(futures_point)
         margin = round(contract_value * contract.margin_ratio)
         investable = investable_cash(account.cash_krw)
 
         start = max(0, tick - query.ticks + 1)
         series = tuple(
-            IndexPoint(tick=t, point=price_engine.index_at(t))
+            IndexPoint(tick=t, point=price_engine.index_at(t, extra))
             for t in range(start, tick + 1, INDEX_SERIES_STEP)
         )
         return FuturesView(
@@ -89,7 +98,7 @@ class FuturesInteractor(FuturesUseCase):
             margin_ratio=contract.margin_ratio,
             max_contracts=investable // margin if margin else 0,
             series=series,
-            positions=tuple(self._positions(account, tick)),
+            positions=tuple(self._positions(account, tick, extra)),
             investable_krw=investable,
             tick=moment.tick,
             game_day=moment.game_day,
@@ -116,7 +125,8 @@ class FuturesInteractor(FuturesUseCase):
             )
 
         account = await self._load_or_create(command.user_id, moment.game_day)
-        futures_point = fut.futures_price(contract.expiry_tick, moment.tick)
+        extra = await load_active(self._interventions, moment.tick)
+        futures_point = fut.futures_price(contract.expiry_tick, moment.tick, extra)
         price = fut.contract_value_krw(futures_point)  # 1계약 명목
         cost = entry_cost(price, command.contracts, fut.FUTURES_LEVERAGE)
         budget = investable_cash(account.cash_krw)
@@ -173,13 +183,14 @@ class FuturesInteractor(FuturesUseCase):
             raise PositionNotFound("선물 포지션을 찾을 수 없거나 이미 마감됐습니다")
 
         expiry = position.expires_tick or moment.tick
+        extra = await load_active(self._interventions, moment.tick)
         # 만기가 지났으면 그 시점의 **현물 정산가**로 확정한다(중도 청산이 아니라 만기 정산).
         settled = moment.tick >= expiry
         closed_tick = expiry if settled else moment.tick
         point = (
-            fut.settlement_price(expiry)
+            fut.settlement_price(expiry, extra)
             if settled
-            else fut.futures_price(expiry, moment.tick)
+            else fut.futures_price(expiry, moment.tick, extra)
         )
         price = fut.contract_value_krw(point)
         held_days = max(0.0, (closed_tick - position.entry_tick) / TICKS_PER_GAME_DAY)
@@ -234,12 +245,12 @@ class FuturesInteractor(FuturesUseCase):
             )
         return account
 
-    def _positions(self, account, tick: int):
+    def _positions(self, account, tick: int, extra=()):
         for position in account.open_positions:
             if position.instrument != "FUTURES":
                 continue
             expiry = position.expires_tick or tick
-            point = fut.futures_price(expiry, min(tick, expiry))
+            point = fut.futures_price(expiry, min(tick, expiry), extra)
             current = fut.contract_value_krw(point)
             held_days = max(0.0, (min(tick, expiry) - position.entry_tick) / TICKS_PER_GAME_DAY)
             result = close_result(

@@ -1,5 +1,6 @@
 import pytest
 
+from game.app.dtos.area_fitness_dto import AreaFitnessQuery
 from game.app.dtos.store_daily_dto import StoreDailyQuery
 from game.app.dtos.store_open_dto import OpenStoreCommand
 from game.app.exceptions import (
@@ -9,10 +10,16 @@ from game.app.exceptions import (
     SeasonClosed,
     StoreNotFound,
 )
+from game.app.use_cases.area_fitness_interactor import AreaFitnessInteractor
 from game.app.use_cases.store_daily_interactor import StoreDailyInteractor
 from game.app.use_cases.store_open_interactor import StoreOpenInteractor
-from game.domain.clock.game_epoch import DATA_QUARTER, SEASON_TICKS
-from game.domain.trading.trading_rules import INITIAL_CASH_KRW
+from game.domain.clock.game_epoch import (
+    DATA_QUARTER,
+    GAME_EPOCH_ID,
+    RULES_VERSION,
+    SEASON_TICKS,
+)
+from game.domain.trading.trading_rules import INITIAL_CASH_KRW, RESERVED_CASH_KRW
 from game.tests.app.use_cases.stub_account_repository import StubAccountRepository, StubClock
 from game.tests.app.use_cases.stub_store_repository import StubStoreRepository
 from game.tests.app.use_cases.test_area_fitness_interactor import _StubProfiles, _profile
@@ -31,6 +38,16 @@ def _build(tick: int = 600, profile=None):
         accounts,
         clock,
     )
+
+
+def _seed_cash(accounts: StubAccountRepository, cash_krw: int) -> None:
+    """지갑을 원하는 잔고로 미리 연다 — 초기자본으로는 닿지 않는 비싼 상권을 재현한다."""
+    accounts.wallets[USER] = {
+        "cash_krw": cash_krw,
+        "epoch_id": GAME_EPOCH_ID,
+        "rule_version": RULES_VERSION,
+    }
+    accounts.ledger.append({"user_id": USER, "source": "initial", "amount_krw": cash_krw})
 
 
 def _command(**overrides):
@@ -116,6 +133,45 @@ async def test_매출_기록이_없는_조합은_창업_기준을_세울_수_없
     open_uc, _, _, _ = _build(profile=_profile(observed_monthly_sales_amount=0))
     with pytest.raises(AreaProfileUnavailable):
         await open_uc.open_store(_command())
+
+
+@pytest.mark.parametrize(
+    "sales,stores,saturation",
+    [
+        (600_000_000, 20, 0.4),  # 점포당 3천만 — 중앙값 근처
+        (4_000_000_000, 20, 0.95),  # 점포당 2억 — 임대료 입지계수도 최고치
+        (60_000_000, 30, 0.05),  # 점포당 200만 — 하위 상권
+    ],
+)
+async def test_미리보기가_알려준_최소_자본으로_창업하면_성공한다(sales, stores, saturation):
+    """화면이 제시하는 금액은 **반드시 통과하는 금액**이어야 한다.
+
+    미리보기와 창업이 각자 비용을 계산하면 1원 차이로 거절이 나고, 유저에게는
+    "버튼을 눌렀는데 안 된다"로만 보인다.
+    """
+    profile = _profile(
+        observed_monthly_sales_amount=sales,
+        observed_store_count=stores,
+        observed_monthly_sales_count=120_000,
+        saturation_percentile=saturation,
+    )
+    preview = await AreaFitnessInteractor(profiles=_StubProfiles(profile)).preview(
+        AreaFitnessQuery(trdar_code=1001, service_code="CS100010")
+    )
+    assert preview.openable
+
+    minimum = preview.assumed_minimum_capital_krw
+    open_uc, _, accounts, _ = _build(profile=profile)
+    _seed_cash(accounts, minimum + RESERVED_CASH_KRW)  # 투자가능액 = 최소 자본 (딱 경계)
+    receipt = await open_uc.open_store(_command(budget_krw=minimum))
+    assert -receipt.cash_delta_krw <= minimum
+    accounts.assert_invariant(USER)
+
+    # 1원이라도 모자라면 거절된다 — 경계값이 실제로 경계다
+    short_uc, _, short_accounts, _ = _build(profile=profile)
+    _seed_cash(short_accounts, minimum + RESERVED_CASH_KRW - 1)
+    with pytest.raises(InsufficientCash):
+        await short_uc.open_store(_command(budget_krw=minimum))
 
 
 async def test_시즌이_끝나면_창업할_수_없다():

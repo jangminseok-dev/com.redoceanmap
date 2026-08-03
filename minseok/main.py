@@ -23,6 +23,7 @@ from admin.adapter.inbound.api.v1.pdf_loader_router import (
 from admin.adapter.inbound.api.v1.recommendation_log_router import (
     recommendation_log_router as admin_recommendation_log_router,
 )
+from admin.adapter.inbound.api.v1.game_ops_router import game_ops_router as admin_game_ops_router
 from admin.adapter.inbound.api.v1.steward_router import steward_router
 from auth.dependencies.grade_policy_provider import get_grade_policy_gateway
 from auth.dependencies.member_directory_provider import get_member_directory_gateway
@@ -69,6 +70,7 @@ from mail.dependencies.watcher_provider import get_mail_storage_gateway
 from hub.dependencies.area_demand_profile_provider import get_area_demand_profile_port
 from hub.dependencies.commercial_data_provider import get_commercial_data_port
 from hub.dependencies.grade_policy_provider import get_grade_policy_port
+from hub.dependencies.game_ops_provider import get_game_ops_port
 from hub.dependencies.member_directory_provider import get_member_directory_port
 from hub.dependencies.news_search_provider import get_news_search_port
 from hub.dependencies.recommendation_directory_provider import get_recommendation_directory_port
@@ -105,6 +107,7 @@ from game.adapter.inbound.api.v1.store_action_router import store_action_router
 from game.adapter.inbound.api.v1.store_daily_router import store_daily_router
 from game.adapter.inbound.api.v1.store_open_router import store_open_router
 from game.adapter.inbound.api.v1.trade_router import trade_router
+from game.dependencies.game_ops_provider import get_game_ops_gateway
 from game.adapter.inbound.api.v1.wallet_router import wallet_router
 from stock.adapter.inbound.api.v1.analyst_router import analyst_router
 from stock.adapter.inbound.api.v1.stock_board_router import stock_board_router
@@ -229,6 +232,7 @@ app.include_router(admin_recommendation_log_router, dependencies=_authenticated)
 app.include_router(admin_data_source_router, dependencies=_authenticated)
 app.include_router(admin_analytics_router, dependencies=_authenticated)
 app.include_router(admin_pdf_loader_router, dependencies=_authenticated)
+app.include_router(admin_game_ops_router, dependencies=_authenticated)
 app.include_router(audit_router, dependencies=_authenticated)
 app.include_router(gemini_router, dependencies=_authenticated)  # 허브 — 외부 Gemini 답변
 app.include_router(semantic_router, dependencies=_authenticated)  # 허브 — 시멘틱 게이트웨이(PoC)
@@ -256,6 +260,7 @@ app.dependency_overrides[get_grade_policy_port] = get_grade_policy_gateway
 app.dependency_overrides[get_recommendation_directory_port] = get_recommendation_directory_gateway
 app.dependency_overrides[get_mail_storage_port] = get_mail_storage_gateway
 app.dependency_overrides[get_stock_demand_port] = get_stock_demand_gateway
+app.dependency_overrides[get_game_ops_port] = get_game_ops_gateway
 app.dependency_overrides[get_stock_dataset_stats_port] = get_stock_dataset_stats_gateway
 app.dependency_overrides[get_forecast_snapshot_port] = get_forecast_snapshot_gateway
 app.dependency_overrides[get_area_backtest_report_port] = get_area_backtest_report_gateway

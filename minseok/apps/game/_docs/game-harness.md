@@ -25,7 +25,7 @@
 | game 앱 코드 | **9단계 완료(전 단계).** 슬라이스 8개 + 도메인 12모듈. 테스트 204개 통과 | `PYTHONPATH=apps python3 -m pytest apps/game -q` |
 | 허브 포트 | `AreaDemandProfilePort` **1개**(메서드 1개) — market이 구현, game이 소비. `CommercialDataPort`는 **무변경** | `hub/app/ports/output/` |
 | 결정론·경계 검사 | **위반 0건** (100파일 AST 검사) | `python3 scripts/check_game_determinism.py` |
-| 응답 성능 | 12종목 × 60틱 **p95 13.8ms** / × 240틱(최대) **p95 54.5ms** — 목표 200ms | 인터랙터 직접 호출 30회 |
+| 응답 성능 | 36종목 × 240틱(최대) **77ms** — 목표 200ms. 브리지 노드·이벤트 슬롯 메모이제이션 전에는 12종목 × 240틱이 이미 318ms였다 | `price_series` 직접 측정 |
 | DB | **테이블 6개** — 지갑·포지션·원장(`a2b3c4d5e6f7`), 가게·운영결정(`b3c4d5e6f7a8`), 분기결산(`c4d5e6f7a8b9`). ⏸ **적용은 미실행**(이 맥에 DB 없음) | ORM↔마이그레이션 일치 테스트 |
 | 프론트 | `/game` — **세그먼트 탭 2개**(모의 투자 · 상권 창업). 투자는 시세·자산·주문·청산, 창업은 지도 핀 선택→적합도 진단→창업→가게 현황. 수수료율·계수는 서버가 내려준다 | `www/app/(seoul)/game/` · `www/components/game/` |
 | ROADMAP 스포크 판정 | `game` 행 **추가됨**(0단계). 같은 표에 `soccer = 삭제됨 (2026-07-15)` | `minseok/_docs/ROADMAP.md` |
@@ -532,7 +532,7 @@ docstring이었다.
 | 파일 위치 | **`www/app/(seoul)/game/page.tsx`** | Next.js route group은 URL에 나타나지 않는다 — `(seoul)/market/page.tsx`가 `/market`인 것과 같다. **`layout.tsx`는 없다**(아래 `TabGuard` 항목) |
 | `WorkspaceShell` 3패널 | **쓰지 않는다** | 게임은 자료\|스테이지\|채팅 구조가 아니다. 채팅 패널이 붙을 자리가 없다 |
 | `TabGuard` | **쓰지 않는다** | `TabKey` 타입을 요구하는데 game은 `TAB_KEYS`에 없다(§10-1). 게이팅할 것이 없으면 가드도 없다 |
-| 차트 | **SVG 폴리라인**(`components/game/GamePriceLine.tsx`) | lightweight-charts는 캔들·거래량·지표용이다. 게임 시세는 틱 단위 종가 하나뿐이고 종목 12개에 인스턴스 12개를 만들 이유가 없다. 한 컴포넌트가 큰 차트와 스파크라인을 겸한다 |
+| 차트 | **SVG 폴리라인**(`components/game/GamePriceLine.tsx`) | lightweight-charts는 캔들·거래량·지표용이다. 게임 시세는 틱 단위 종가 하나뿐이고 종목 36개에 인스턴스 36개를 만들 이유가 없다. 한 컴포넌트가 큰 차트와 스파크라인을 겸한다 |
 | `MapView` | **재사용한다** | 상권 창업의 입지 선택(7단계). 단 마커 선택만 — 임의 좌표는 §9 범위 밖 |
 | 실시간 갱신 | **폴링만** — 30초, 에러 시 5분 저속 | WS·SSE는 §2 금지. 결정론이라 같은 틱을 다시 물어도 같은 값이다 |
 | 상태 | `useState` **1개**(선택 종목) | 나머지는 서버 응답이라 상태로 들 것이 없다(`REACT_RULES`) |

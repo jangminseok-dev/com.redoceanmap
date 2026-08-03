@@ -15,11 +15,11 @@
 
 | 규칙 | 내용 |
 |---|---|
-| **상태 = 시각의 함수** | 주가·이벤트·손님 분포를 **저장하지 않는다.** `f(EPOCH, tick, 대상)`으로 계산하며 같은 입력은 언제·누가·몇 번 물어도 같은 값이다(harness §1-A) |
+| **상태 = 시각의 함수** | 주가·이벤트·손님 분포를 **저장하지 않는다.** `f(EPOCH, tick, 대상)`으로 계산하며 같은 입력은 언제·누가·몇 번 물어도 같은 값이다(harness §1-A). **유일한 예외가 관리자 주가 개입**(`game_price_interventions`) — 관리자의 의도는 난수에서 유도할 수 없다. `from_tick` 이후에만 효력이 있어 과거는 바뀌지 않는다 |
 | **결정론 난수만** | `random`·내장 `hash()`·`uuid4`·`time.time()` **전부 금지.** blake2b 시드 유도 하나뿐(`domain/rng/deterministic.py`) |
 | **현재 시각은 1파일** | `adapter/outbound/system_game_clock_adapter.py`만 `datetime.now()`를 부른다. 도메인·유스케이스는 `tick: int`을 받는다 |
 | **cron 0개** | 인프로세스 스케줄러·배치가 없다. 서버가 꺼져 있어도 게임 시간은 밀리지 않는다 |
-| **가상 주가** | 실시세를 쓰지 않는다. 모든 시세 응답이 `virtual: true`를 싣는다. 종목명도 가상 회사(업종만 실제) |
+| **가상 주가** | 실시세를 쓰지 않는다. 모든 시세 응답이 `virtual: true`를 싣는다. 종목명도 가상 회사(업종만 실제). **36종목 = 묶음 업종 9 × 4**, 그중 4개는 밈 종목(σ 배수 + 전용 뉴스) |
 | **상권 데이터는 읽기 전용** | market 전용 DB(:5434)에 붙지 않는다. 허브 `AreaDemandProfilePort` 경유(5단계) |
 | **가정치 표기 강제** | 금액 필드는 `observed_*`(실데이터) / `assumed_*`(게임 규칙) / `simulated_*` 접두사를 붙인다(harness §5-1) |
 
@@ -31,9 +31,10 @@
 | market_price | `GET /game/market/prices?ticks=` | 전 종목 현재가·등락률·최근 곡선 + **최근 호재·악재**. `ticks` 2~240 |
 | wallet | `GET /game/wallet` | 현금·투자가능액·보유 포지션(현재 시세 평가)·총자산. 계정이 없으면 초기자본 100만원으로 자동 생성 |
 | trade | `POST /game/trades` · `POST /game/trades/{id}/close` | 롱/숏 진입·청산. **레버리지 1~4배**(2배 이상은 만료 180틱 + 강제청산), 손실 상한은 증거금, 체결가는 요청 도착 틱 |
-| area_fitness | `GET /game/areas/{trdar_code}/fitness?service_code=` | 창업 전 입지 미리보기 — 적합도 4축(수요·시간대·경쟁·생존) + 실데이터 근거 진단 문장. 허브 `AreaDemandProfilePort` 소비 |
+| area_fitness | `GET /game/areas/{trdar_code}/fitness?service_code=` | 창업 전 입지 미리보기 — 적합도 4축(수요·시간대·경쟁·생존) + 실데이터 근거 진단 문장 + **창업 가능 여부(`openable`)와 최소 자본**(store_open의 거절 조건을 미리 답한다). 허브 `AreaDemandProfilePort` 소비 |
 | store_open | `POST /game/stores` | 창업 — 투입 자본이 가게 규모를 정한다. 보증금(회수 가능)·인테리어(회수 불가) 지불 |
 | store_daily | `GET /game/stores` · `GET /game/stores/{id}?days=` | 가게 목록·현황. 일별 매출·비용·반려율과 오늘 온 손님 구성. **일별 매출은 저장하지 않고 재계산한다** |
+| (운영) | `GET·POST /admin/game/*` | 어드민 전용 — 자본 지급·주가 개입. admin은 스포크라 직접 못 부르고 허브 `GameOpsPort`를 `adapter/outbound/gateways/game_ops_gateway.py`가 구현한다 |
 | settlement | `GET /game/settlements` | 분기 결산 — **조회가 곧 정산 시점**(지연 실행, cron 0개). 밀린 분기를 확정하고 손익을 지갑에 반영한다. 멱등 |
 
 ## 레이어
@@ -44,9 +45,10 @@ apps/game/
 │   ├── clock/game_epoch.py                  # 에포크 상수 단일 소유 + 틱↔게임달력
 │   ├── rng/deterministic.py                 # blake2b u64/uniform/normal
 │   ├── market/
-│   │   ├── symbol_params.py                 # 종목 12개 σ·μ (캘리브레이션 산출물)
+│   │   ├── symbol_params.py                 # 종목 36개 σ·μ (캘리브레이션 산출물) + 밈 배수
 │   │   ├── price_engine.py                  # 브라운 브리지 — price_at / price_series
-│   │   └── market_events.py                 # 호재·악재 — 결정론 생성, 저장하지 않는다
+│   │   ├── market_events.py                 # 호재·악재 — 결정론 생성, 저장하지 않는다
+│   │   └── price_intervention.py            # 관리자 개입 → MarketEvent 변환 (저장되는 유일한 사건)
 │   ├── trading/trading_rules.py             # 수수료·증거금·손실상한·최소생활자금
 │   ├── economy/rule_coefficients.py         # 임대료·인건비·원가 계수 — 이 파일이 유일 소유자
 │   └── commerce/
@@ -92,10 +94,19 @@ apps/game/
 **다른 기기에서 이어받는다면 game-strategy §14를 먼저 읽는다** — 맥에서 되는 검증과
 안 되는 것(마이그레이션 적용·σ 캘리브레이션·배포)이 갈린다.
 
-> ✅ **시즌 1을 재시작했다(20단계, 2026-08-03 배포 완료).** 11~19단계에서 규칙이 바뀌어
-> `game_*` 6개 테이블을 비우고(16행) `GAME_EPOCH_START_UTC`를 **2026-08-03 13:00 KST**로 옮겨
-> 다시 열었다. 데이터를 전부 지워 소급될 과거가 없으므로 `GAME_EPOCH_ID`는 1로 뒀다.
-> **이제부터는** σ·계수를 바꿀 때 에포크 승격이 다시 따라온다(harness §1-4). 절차 → §15.
+> ⚠️ **시즌 2로 넘긴다(21단계, 2026-08-03 작업 · 배포 대기).** 계수를 크게 바꿔
+> `GAME_EPOCH_ID`를 **1 → 2**, `RULES_VERSION`을 `v2`로 올렸다(harness §1-4).
+> `GAME_EPOCH_START_UTC`는 **2026-08-04 09:00 KST**다 — 배포가 늦어지면 이 값을 다시 민다.
+>
+> | 바뀐 것 | 전 | 후 |
+> |---|---|---|
+> | 종목 수 | 12 (묶음 4 × 3) | **36** (묶음 9 × 4, 밈 4) |
+> | 밈 종목 | 없음 | σ ×1.5 + 전용 이벤트(즉시 8~28%) |
+> | 이벤트 확률 | 0.25 (게임 1일 1건) | **0.40** (1.6건) |
+> | 가격 밴드 | 없음 | tanh 압축 ×10 / 밈 ×20 |
+> | `MIN_STORE_SCALE` | 0.02 | **0.0005** (창업 가능 조합 61% → 99.7%) |
+>
+> 에포크 1의 지갑·원장은 지우지 않는다 — `epoch_id`가 다르면 과거 시즌으로 동결된다.
 
 ## 검증
 

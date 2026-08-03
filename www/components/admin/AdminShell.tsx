@@ -14,6 +14,7 @@ import {
   Target,
   FlaskConical,
   Newspaper,
+  Gamepad2,
   ScrollText,
   Search,
   Bell,
@@ -30,6 +31,7 @@ const nav = [
   { icon: Target, label: "예측 채점", href: "/admin/forecasts" },
   { icon: FlaskConical, label: "상권 검증", href: "/admin/market-backtest" },
   { icon: Newspaper, label: "뉴스 이벤트 연구", href: "/admin/news-events" },
+  { icon: Gamepad2, label: "게임 운영", href: "/admin/game" },
   { icon: ScrollText, label: "감사 로그", href: "/admin/audit" },
 ];
 

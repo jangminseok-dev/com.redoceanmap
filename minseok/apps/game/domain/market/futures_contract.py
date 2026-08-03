@@ -16,6 +16,7 @@ import math
 from dataclasses import dataclass
 
 from game.domain.clock.game_epoch import SEASON_TICKS, TICKS_PER_GAME_DAY
+from game.domain.market.market_events import MarketEvent
 from game.domain.market.price_engine import index_at
 from game.domain.rng.deterministic import normal
 
@@ -78,15 +79,17 @@ def basis_ratio(expiry_tick: int, tick: int) -> float:
     return math.exp(exponent) - 1.0
 
 
-def futures_price(expiry_tick: int, tick: int) -> int:
+def futures_price(
+    expiry_tick: int, tick: int, extra_events: tuple[MarketEvent, ...] = ()
+) -> int:
     """선물 가격(지수 포인트). 만기에는 정산가와 같다."""
-    spot = index_at(min(tick, expiry_tick))
+    spot = index_at(min(tick, expiry_tick), extra_events)
     return max(1, round(spot * (1.0 + basis_ratio(expiry_tick, tick))))
 
 
-def settlement_price(expiry_tick: int) -> int:
+def settlement_price(expiry_tick: int, extra_events: tuple[MarketEvent, ...] = ()) -> int:
     """만기 정산가 — 그 시점의 **현물 지수**다(선물가가 아니다)."""
-    return index_at(expiry_tick)
+    return index_at(expiry_tick, extra_events)
 
 
 def contract_value_krw(index_point: int) -> int:

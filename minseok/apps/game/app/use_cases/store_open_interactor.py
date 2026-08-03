@@ -23,6 +23,7 @@ from hub.app.ports.output.area_demand_profile_port import AreaDemandProfilePort
 MAX_STAFF = 20
 MIN_PRICE_FACTOR = 0.6
 MAX_PRICE_FACTOR = 1.3
+SHRINK_ATTEMPTS = 4  # 반올림 잔차를 흡수하는 규모 축소 재시도 횟수
 
 
 class StoreOpenInteractor(StoreOpenUseCase):
@@ -126,11 +127,11 @@ class StoreOpenInteractor(StoreOpenUseCase):
             saturation_percentile=profile.saturation_percentile,
             closure_rate_percentile=profile.closure_rate_percentile,
             operating_months_percentile=profile.operating_months_percentile,
+            has_store=profile.has_store,
         )
-        # 임대료 입지계수 — 유동인구가 많은 상권일수록 비싸다(가정치)
-        rent_location = rules.RENT_LOCATION_MIN.value + (
-            rules.RENT_LOCATION_MAX.value - rules.RENT_LOCATION_MIN.value
-        ) * min(1.0, profile.saturation_percentile)
+        # 임대료 입지계수 — 미리보기(area_fitness)와 같은 함수를 쓴다. 갈라지면 화면이
+        # 알려준 최소 자본으로 창업을 눌렀을 때 청구액이 어긋난다.
+        rent_location = sim.rent_location(profile.saturation_percentile)
 
         # 시설 점수는 유저가 넣지 않는다 — 투입 자본과 예상 수요에서 함께 역산한다.
         # 직접 입력이면 자본을 전부 보증금에 넣어 규모만 키운 "좌석 1석짜리 역세권 카페"가
@@ -158,7 +159,12 @@ class StoreOpenInteractor(StoreOpenUseCase):
         deposit, interior = sim.opening_cost(setup, facility_score)
         total_cost = deposit + interior
         # 규모 → 비용 경로에 반올림이 두 번 끼어 예산을 원 단위로 넘길 수 있다. 그만큼 줄인다.
-        if total_cost > budget and scale > rules.MIN_STORE_SCALE.value:
+        # 한 번 줄인 뒤에도 반올림이 다시 1원을 밀어올릴 수 있어 몇 번 더 시도한다 —
+        # 화면이 제시한 금액으로 눌렀는데 1원 때문에 거절되는 경로를 남기지 않는다.
+        # 비용은 규모에 비례하므로 몇 회 안에 수렴한다(하한에 닿으면 즉시 멈춘다).
+        for _ in range(SHRINK_ATTEMPTS):
+            if total_cost <= budget or scale <= rules.MIN_STORE_SCALE.value:
+                break
             scale = max(rules.MIN_STORE_SCALE.value, scale * budget / total_cost)
             setup = replace(setup, store_scale=scale)
             deposit, interior = sim.opening_cost(setup, facility_score)

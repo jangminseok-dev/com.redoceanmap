@@ -19,7 +19,9 @@ NIGHT_STREET = (0.20, 0.05, 0.06, 0.09, 0.25, 0.35)
 BALANCED_GENDER = (0.5, 0.5)
 
 
-def _evaluate(age_street, hour_street, saturation=0.5, closure=0.5, operating=0.5):
+def _evaluate(
+    age_street, hour_street, saturation=0.5, closure=0.5, operating=0.5, has_store=True
+):
     return evaluate(
         industry_age_share=YOUNG_INDUSTRY,
         industry_gender_share=BALANCED_GENDER,
@@ -30,6 +32,7 @@ def _evaluate(age_street, hour_street, saturation=0.5, closure=0.5, operating=0.
         saturation_percentile=saturation,
         closure_rate_percentile=closure,
         operating_months_percentile=operating,
+        has_store=has_store,
     )
 
 
@@ -91,6 +94,21 @@ def test_네_축이_모두_보고된다():
     ]
     assert sum(c.weight for c in result.components) == pytest.approx(1.0)
     assert all(0.0 <= c.score <= 1.0 for c in result.components)
+
+
+def test_점포_자료가_없으면_경쟁_여유를_만점으로_주지_않는다():
+    """자료 없음(백분위 전부 0)이 '경쟁자가 없다'로 읽히면 기록 없는 상권이 1등이 된다."""
+    unknown = _evaluate(
+        YOUNG_STREET, LUNCH_STREET, saturation=0.0, closure=0.0, operating=0.0, has_store=False
+    )
+    scores = {c.key: c.score for c in unknown.components}
+    assert scores["saturation"] == 0.5  # 판단 보류 — cosine의 빈 분포와 같은 규칙
+    assert scores["survival"] == 0.5
+
+    empty_area = _evaluate(
+        YOUNG_STREET, LUNCH_STREET, saturation=0.05, closure=0.05, operating=0.95
+    )
+    assert empty_area.fitness > unknown.fitness  # 실제로 한산한 상권이 더 높아야 한다
 
 
 def test_백분위가_범위를_벗어나도_안전하다():

@@ -64,8 +64,14 @@ def evaluate(
     saturation_percentile: float,
     closure_rate_percentile: float,
     operating_months_percentile: float,
+    has_store: bool,
 ) -> FitnessResult:
-    """네 축을 재서 적합도 계수를 낸다."""
+    """네 축을 재서 적합도 계수를 낸다.
+
+    `has_store=False`면 포화도·생존 백분위가 **자료 없음으로 전부 0**이 들어온다. 그대로 쓰면
+    경쟁 여유가 만점(1.0)이 되어, 아무 기록도 없는 상권이 가장 좋은 자리로 올라온다.
+    분포와 같은 규칙으로 **판단을 보류**한다(`cosine`의 0.5와 같은 처리).
+    """
     # ① 수요 정합 — 연령이 성별보다 업종을 더 가른다(카페와 술집을 가르는 건 나이지 성별이 아니다)
     demand = 0.7 * cosine(industry_age_share, floating_age_share) + 0.3 * cosine(
         industry_gender_share, floating_gender_share
@@ -73,10 +79,13 @@ def evaluate(
     # ② 시간대 정합
     hour = cosine(industry_hour_share, floating_hour_share)
     # ③ 포화도 — 백분위가 높을수록 빽빽하다
-    saturation = 1.0 - _clamp(saturation_percentile)
+    saturation = 1.0 - _clamp(saturation_percentile) if has_store else 0.5
     # ④ 생존 신호 — 잘 닫는 곳은 감점, 오래 버티는 곳은 가점
-    survival = 0.5 * (1.0 - _clamp(closure_rate_percentile)) + 0.5 * _clamp(
-        operating_months_percentile
+    survival = (
+        0.5 * (1.0 - _clamp(closure_rate_percentile))
+        + 0.5 * _clamp(operating_months_percentile)
+        if has_store
+        else 0.5
     )
 
     components = (
