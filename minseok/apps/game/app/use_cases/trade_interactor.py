@@ -19,7 +19,7 @@ from game.domain.clock.game_epoch import (
     TICKS_PER_GAME_DAY,
     describe,
 )
-from game.domain.market import price_engine
+from game.domain.market import orderbook, price_engine
 from game.domain.market.symbol_params import find as find_symbol
 from game.domain.trading.liquidation import resolve_close
 from game.domain.trading.trading_rules import (
@@ -94,6 +94,11 @@ class TradeInteractor(TradeUseCase):
 
         extra = await load_active(self._interventions, moment.tick)
         price = price_engine.price_at(params, moment.tick, None, extra)
+        _guard_halt(params, moment.tick, price, extra)
+        # **호가를 걷어올리며 체결된다.** 현재가에 전량 체결하면 "10억을 한 번에 사도
+        # 현재가"라는 비현실이 남는다 — 유동성 비용이 슬리피지로 드러나야 한다.
+        filled = _market_fill(params, moment.tick, price, side.value, command.quantity, extra)
+        price = filled.avg_price_krw
         cost = entry_cost(price, command.quantity, command.leverage)
         budget = investable_cash(account.cash_krw)
         if cost.total_krw > budget:
@@ -154,6 +159,7 @@ class TradeInteractor(TradeUseCase):
             raise UnknownSymbol(f"게임에 없는 종목입니다: {position.symbol}")
 
         extra = await load_active(self._interventions, moment.tick)
+        _guard_halt(params, moment.tick, price_engine.price_at(params, moment.tick, None, extra), extra)
 
         # **이미 청산됐어야 하는 포지션인지 먼저 본다.** 지갑을 거치지 않고 바로 청산 버튼을
         # 누르면 미접속 중 터진 포지션을 현재가로 닫게 되어 결정론이 깨진다 — 같은 상황을
@@ -170,7 +176,16 @@ class TradeInteractor(TradeUseCase):
         # 시즌이 끝난 뒤 청산은 허용한다 — 막으면 마지막 포지션이 영원히 잠긴다.
         # 다만 가격은 시즌 마지막 틱에 멈춘다(price_engine이 클램프).
         closed_tick = hit.tick if hit else moment.tick
-        price = hit.price_krw if hit else price_engine.price_at(params, moment.tick, None, extra)
+        if hit:
+            # 강제청산·만료는 그 시점 가격으로 이미 확정됐다 — 호가를 다시 태우지 않는다
+            price = hit.price_krw
+        else:
+            spot = price_engine.price_at(params, moment.tick, None, extra)
+            # 청산은 진입의 반대 방향으로 호가를 소진한다
+            exit_side = "SHORT" if position.side == "LONG" else "LONG"
+            price = _market_fill(
+                params, moment.tick, spot, exit_side, position.quantity, extra
+            ).avg_price_krw
         held_days = max(0.0, (closed_tick - position.entry_tick) / TICKS_PER_GAME_DAY)
         result = close_result(
             side=Side(position.side),
@@ -208,4 +223,36 @@ class TradeInteractor(TradeUseCase):
             realized_pnl_krw=result.realized_pnl_krw,
             cash_krw=account.cash_krw + result.proceeds_krw,
             tick=moment.tick,
+        )
+
+
+def _market_fill(
+    params,
+    tick: int,
+    spot_krw: int,
+    side: str,
+    quantity: int,
+    extra,
+):
+    """시장가 체결가. 호가창을 만들어 걷어올린다."""
+    candles = price_engine.daily_candles(params, tick, 1, extra)
+    volume = candles[-1].simulated_volume if candles else 1
+    book = orderbook.build(
+        params, spot_krw, tick, volume, price_engine.tick_size(spot_krw)
+    )
+    return orderbook.fill(book, side, quantity, spot_krw)
+
+
+def _guard_halt(params, tick: int, price_krw: int, extra) -> None:
+    """변동성 완화 장치(VI)가 걸려 있으면 주문을 막는다.
+
+    실제 거래소가 급변 구간에 매매를 멈추는 장치이고, 게임에서는 "폭등하는 순간 다 사버리는"
+    경로를 끊는다.
+    """
+    day_start = (tick // TICKS_PER_GAME_DAY) * TICKS_PER_GAME_DAY
+    day_open = price_engine._day_open(params, day_start, tuple(extra))
+    if orderbook.vi_triggered(day_open, price_krw):
+        raise InvalidOrder(
+            f"변동성 완화장치(VI)가 발동해 잠시 매매할 수 없습니다 "
+            f"(시가 대비 {abs(price_krw - day_open) / day_open * 100:.1f}% 변동)"
         )

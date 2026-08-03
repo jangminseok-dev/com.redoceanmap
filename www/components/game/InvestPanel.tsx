@@ -8,6 +8,7 @@ import MarketNewsFeed from "@/components/game/MarketNewsFeed";
 import GamePositionList from "@/components/game/GamePositionList";
 import GameAnalysisCard from "@/components/game/GameAnalysisCard";
 import GameChart, { MA_COLOR } from "@/components/game/GameChart";
+import GameOrderBook from "@/components/game/GameOrderBook";
 import GamePriceLine from "@/components/game/GamePriceLine";
 import {
   ApiError,
@@ -438,6 +439,12 @@ export default function InvestPanel() {
             )}
 
             {/* 상태 요약 — 선택 종목에만 계산된다 */}
+            {data?.orderBook && current.symbol === view.selected && (
+              <div className="mt-4">
+                <GameOrderBook book={data.orderBook} />
+              </div>
+            )}
+
             {data?.analysis && current.symbol === view.selected && (
               <GameAnalysisCard analysis={data.analysis} className="mt-4" />
             )}

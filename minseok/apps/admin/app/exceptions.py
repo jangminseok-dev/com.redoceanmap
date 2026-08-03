@@ -19,3 +19,11 @@ class PdfTextEmptyError(ValueError):
 
 class PdfDocumentNotFoundError(ValueError):
     """요청한 PDF 문서 부재 — 404."""
+
+
+class ImageUploadRejectedError(ValueError):
+    """이미지 업로드 정책 위반(형식·크기) — 400. 판정처는 domain/services/image_upload_policy."""
+
+
+class ImageStorageUnavailableError(RuntimeError):
+    """객체 저장소 접근 실패(자격 증명·버킷·네트워크) — 502. 사용자 입력 잘못이 아니다."""

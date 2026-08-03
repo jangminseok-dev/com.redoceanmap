@@ -31,6 +31,24 @@ class CandleSchema(BaseModel):
     )
 
 
+class QuoteSchema(BaseModel):
+
+    priceKrw: int
+    assumedQuantity: int = Field(description="게임 규칙 산출 잔량 — 실제 주문이 아니다")
+
+
+class OrderBookSchema(BaseModel):
+    """선택 종목의 호가창. 주문장을 저장하지 않고 시각의 함수로 만든다."""
+
+    bids: list[QuoteSchema] = Field(description="매수 호가, 높은 가격부터")
+    asks: list[QuoteSchema] = Field(description="매도 호가, 낮은 가격부터")
+    spreadKrw: int
+    tickSizeKrw: int = Field(description="호가 단위 — 한국거래소 규칙")
+    halted: bool = Field(description="변동성 완화장치(VI) 발동 중 — 매매가 잠긴다")
+    limitState: str = Field(description="upper | lower | none — 상한가·하한가")
+    shortInterestPct: float = Field(description="공매도 잔고(발행주식 대비 %)")
+
+
 class MovingAverageSchema(BaseModel):
 
     period: int = Field(description="게임일")
@@ -152,6 +170,9 @@ class MarketPricesResponseSchema(BaseModel):
     )
     analysis: SymbolAnalysisSchema | None = Field(
         default=None, description="선택 종목의 현재 상태 요약 — 예측이 아니다"
+    )
+    orderBook: OrderBookSchema | None = Field(
+        default=None, description="선택 종목의 호가창·VI·공매도 잔고"
     )
     patterns: list[ChartPatternSchema] = Field(
         description=(

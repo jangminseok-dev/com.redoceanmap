@@ -9,7 +9,7 @@ from game.app.exceptions import (
     UnknownSymbol,
 )
 from game.app.use_cases.trade_interactor import TradeInteractor
-from game.domain.clock.game_epoch import SEASON_TICKS
+from game.domain.clock.game_epoch import GAME_EPOCH_ID, RULES_VERSION, SEASON_TICKS
 from game.domain.market import price_engine
 from game.domain.market.symbol_params import SYMBOLS
 from game.domain.trading.trading_rules import (
@@ -49,14 +49,41 @@ async def test_진입은_현금을_줄이고_원장에_음수로_남는다():
     repo.assert_invariant(USER)
 
 
-async def test_체결가는_요청_도착_틱의_가격이다():
-    """지연 체결이 없다 — 미래 틱을 조회할 수 없으므로 개념 자체가 성립하지 않는다."""
+async def test_체결가는_요청_도착_틱의_호가에서_나온다():
+    """지연 체결이 없다 — 미래 틱을 조회할 수 없으므로 개념 자체가 성립하지 않는다.
+
+    다만 **현재가와 정확히 같지는 않다.** 시장가 매수는 최우선 매도호가에 체결되므로
+    한 주를 사도 스프레드(호가 1틱)를 문다 — 실제 시장이 그렇다.
+    """
     interactor, _ = _interactor(tick=2_500)
     receipt = await interactor.open(
         OpenTradeCommand(user_id=USER, symbol=SYMBOL, side="LONG", quantity=1)
     )
+    spot = price_engine.price_at(SYMBOLS[0], 2_500)
+    step = price_engine.tick_size(spot)
     assert receipt.tick == 2_500
-    assert receipt.price_krw == price_engine.price_at(SYMBOLS[0], 2_500)
+    assert spot < receipt.price_krw <= spot + step * 2  # 도착 틱 호가창 안쪽
+
+
+async def test_주문이_클수록_체결가가_불리해진다():
+    """유동성 비용. 현재가에 전량 체결하면 "10억을 한 번에 사도 현재가"가 된다."""
+    small, _ = _interactor(tick=2_500)
+    tiny = await small.open(
+        OpenTradeCommand(user_id=USER, symbol=SYMBOL, side="LONG", quantity=1)
+    )
+    big_uc, accounts = _interactor(tick=2_500)
+    accounts.wallets[USER] = {
+        "cash_krw": 50_000_000_000,
+        "epoch_id": GAME_EPOCH_ID,
+        "rule_version": RULES_VERSION,
+    }
+    accounts.ledger.append(
+        {"user_id": USER, "source": "initial", "amount_krw": 50_000_000_000}
+    )
+    huge = await big_uc.open(
+        OpenTradeCommand(user_id=USER, symbol=SYMBOL, side="LONG", quantity=500_000)
+    )
+    assert huge.price_krw > tiny.price_krw
 
 
 async def test_청산하면_현금이_돌아오고_불변식이_유지된다():

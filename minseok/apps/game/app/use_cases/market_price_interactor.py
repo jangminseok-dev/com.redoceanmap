@@ -5,6 +5,8 @@ from game.app.dtos.market_price_dto import (
     CandleView,
     ChartPatternView,
     MovingAverageView,
+    OrderBookView,
+    QuoteView,
     SignalAxisView,
     SymbolAnalysisView,
     MarketEventView,
@@ -26,7 +28,14 @@ from game.domain.clock.game_epoch import (
     TICKS_PER_GAME_DAY,
     describe,
 )
-from game.domain.market import fundamentals, indicators, market_events, price_engine, signal
+from game.domain.market import (
+    fundamentals,
+    indicators,
+    market_events,
+    orderbook,
+    price_engine,
+    signal,
+)
 from game.domain.market.symbol_params import (
     CALIBRATED_AT,
     MEME_SIGMA_MULTIPLIER,
@@ -94,6 +103,7 @@ class MarketPriceInteractor(MarketPriceUseCase):
         candles, symbol_info = self._candles_for(query, end_tick, extra)
         moving_averages, rsi = self._indicators_for(query, end_tick, len(candles), extra)
         analysis = self._analysis_for(query, end_tick, candles, moving_averages, rsi, extra)
+        order_book = self._order_book_for(query, end_tick, candles, extra)
         patterns = self._patterns_for(query, symbols)
         return MarketPricesResponse(
             events=tuple(
@@ -127,6 +137,7 @@ class MarketPriceInteractor(MarketPriceUseCase):
             moving_averages=moving_averages,
             rsi=rsi,
             analysis=analysis,
+            order_book=order_book,
         )
 
     def _indicators_for(
@@ -225,6 +236,41 @@ class MarketPriceInteractor(MarketPriceUseCase):
             news_impact_pct=round(news_impact * 100.0, 2),
             headline_count=len(mine),
             daily_patterns=self._daily_patterns(closes),
+        )
+
+    def _order_book_for(
+        self,
+        query: MarketPriceQuery,
+        end_tick: int,
+        candles: tuple[CandleView, ...],
+        extra: tuple[market_events.MarketEvent, ...] = (),
+    ) -> OrderBookView | None:
+        """선택 종목의 호가창·거래정지·공매도 잔고.
+
+        매매 경로(`trade_interactor`)와 **같은 함수로 만든다** — 화면에 보이는 호가와
+        실제 체결가가 다른 호가창에서 나오면 유저가 속았다고 느낀다.
+        """
+        if query.candle_symbol is None or not candles:
+            return None
+        params = next((s for s in SYMBOLS if s.symbol == query.candle_symbol), None)
+        if params is None:
+            return None
+
+        price = price_engine.price_at(params, end_tick, None, extra)
+        step = price_engine.tick_size(price)
+        book = orderbook.build(
+            params, price, end_tick, candles[-1].simulated_volume, step
+        )
+        day_start = (end_tick // TICKS_PER_GAME_DAY) * TICKS_PER_GAME_DAY
+        day_open = price_engine._day_open(params, day_start, extra)
+        return OrderBookView(
+            bids=tuple(QuoteView(q.price_krw, q.assumed_quantity) for q in book.bids),
+            asks=tuple(QuoteView(q.price_krw, q.assumed_quantity) for q in book.asks),
+            spread_krw=book.spread_krw,
+            tick_size_krw=step,
+            halted=orderbook.vi_triggered(day_open, price),
+            limit_state=price_engine.limit_state(params, end_tick),
+            short_interest_pct=orderbook.short_interest_pct(params, end_tick),
         )
 
     def _patterns_for(

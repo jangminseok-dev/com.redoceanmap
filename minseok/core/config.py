@@ -75,6 +75,10 @@ ALERT_EMAIL = _secrets.get("ALERT_EMAIL")
 VISION_S3_BUCKET = _secrets.get("VISION_S3_BUCKET")
 AWS_DEFAULT_REGION = _secrets.get("AWS_DEFAULT_REGION", "ap-northeast-2")
 
+# 어드민 업로드 이미지를 저장할 S3 버킷 (admin image_upload 슬라이스).
+# 비어 있으면 업로드 엔드포인트만 503 — 기동은 막지 않는다.
+ADMIN_IMAGE_S3_BUCKET = _secrets.get("ADMIN_IMAGE_S3_BUCKET")
+
 # 비전 / ConvNeXt 이미지 분류 (hub — 신뢰도 게이팅 임계값).
 CONVNEXT_DEVICE = _secrets.get("CONVNEXT_DEVICE", "auto")  # "auto" | "cuda" | "cpu"
 CONVNEXT_HIGH_CONFIDENCE = float(_secrets.get("CONVNEXT_HIGH_CONFIDENCE", "0.85"))  # 이상이면 자동 확정

@@ -23,6 +23,9 @@ from admin.adapter.inbound.api.v1.pdf_loader_router import (
 from admin.adapter.inbound.api.v1.recommendation_log_router import (
     recommendation_log_router as admin_recommendation_log_router,
 )
+from admin.adapter.inbound.api.v1.s3_image_upload_router import (
+    s3_image_upload_router as admin_s3_image_upload_router,
+)
 from admin.adapter.inbound.api.v1.game_ops_router import game_ops_router as admin_game_ops_router
 from admin.adapter.inbound.api.v1.steward_router import steward_router
 from auth.dependencies.grade_policy_provider import get_grade_policy_gateway
@@ -232,6 +235,7 @@ app.include_router(admin_recommendation_log_router, dependencies=_authenticated)
 app.include_router(admin_data_source_router, dependencies=_authenticated)
 app.include_router(admin_analytics_router, dependencies=_authenticated)
 app.include_router(admin_pdf_loader_router, dependencies=_authenticated)
+app.include_router(admin_s3_image_upload_router, dependencies=_authenticated)
 app.include_router(admin_game_ops_router, dependencies=_authenticated)
 app.include_router(audit_router, dependencies=_authenticated)
 app.include_router(gemini_router, dependencies=_authenticated)  # 허브 — 외부 Gemini 답변

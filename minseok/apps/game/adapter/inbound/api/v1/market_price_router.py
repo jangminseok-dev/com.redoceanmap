@@ -3,6 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from game.adapter.inbound.api.schemas.market_price_schema import (
     CandleSchema,
     MovingAverageSchema,
+    OrderBookSchema,
+    QuoteSchema,
     SignalAxisSchema,
     SymbolAnalysisSchema,
     ChartPatternSchema,
@@ -133,6 +135,21 @@ async def list_prices(
                 dailyPatterns=[_pattern_schema(p) for p in result.analysis.daily_patterns],
             )
             if result.analysis
+            else None
+        ),
+        orderBook=(
+            OrderBookSchema(
+                bids=[QuoteSchema(priceKrw=q.price_krw, assumedQuantity=q.assumed_quantity)
+                      for q in result.order_book.bids],
+                asks=[QuoteSchema(priceKrw=q.price_krw, assumedQuantity=q.assumed_quantity)
+                      for q in result.order_book.asks],
+                spreadKrw=result.order_book.spread_krw,
+                tickSizeKrw=result.order_book.tick_size_krw,
+                halted=result.order_book.halted,
+                limitState=result.order_book.limit_state,
+                shortInterestPct=result.order_book.short_interest_pct,
+            )
+            if result.order_book
             else None
         ),
         symbolInfo=(

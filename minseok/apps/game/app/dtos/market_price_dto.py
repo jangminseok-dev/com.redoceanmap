@@ -42,6 +42,25 @@ class CandleView:
 
 
 @dataclass(frozen=True)
+class QuoteView:
+    price_krw: int
+    assumed_quantity: int  # 게임 규칙 산출 잔량 — 실제 주문이 아니다
+
+
+@dataclass(frozen=True)
+class OrderBookView:
+    """선택 종목의 호가창. 주문장을 저장하지 않고 시각의 함수로 만든다."""
+
+    bids: tuple[QuoteView, ...]
+    asks: tuple[QuoteView, ...]
+    spread_krw: int
+    tick_size_krw: int
+    halted: bool                    # 변동성 완화장치(VI) 발동 중
+    limit_state: str                # upper | lower | none — 상한가·하한가
+    short_interest_pct: float       # 공매도 잔고(발행주식 대비 %)
+
+
+@dataclass(frozen=True)
 class MovingAverageView:
     """이동평균선 하나. 표본이 모자란 앞 구간은 `None`이라 차트가 그 구간을 건너뛴다."""
 
@@ -169,3 +188,4 @@ class MarketPricesResponse:
     moving_averages: tuple[MovingAverageView, ...]  # 〃 — 봉 배열과 인덱스가 맞는다
     rsi: tuple[float | None, ...]                   # 〃 — 〃
     analysis: SymbolAnalysisView | None             # 〃 — 현재 상태 요약(예측 아님)
+    order_book: OrderBookView | None                # 〃 — 호가창·VI·공매도 잔고

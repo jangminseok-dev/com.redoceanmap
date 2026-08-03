@@ -46,6 +46,7 @@
 | data_source | GET /admin/data-sources | CommercialData (get_dataset_stats) + RecommendationDirectory + **StockDatasetStats** (get_dataset_stats) — 상권 5 + 추천 + 주식 5 = 11장. 각 카드에 순수 도메인 `dataset_freshness.evaluate`로 신선도(정상/지연/정지/불명/정적) 판정을 붙인다 |
 | audit | GET /admin/audit | 자체 AuditLogPort (member 슬라이스가 write, audit 슬라이스가 열람) |
 | pdf_loader | POST /admin/pdf-documents(업로드·요약, documents:write) · GET /admin/pdf-documents[/{id}](documents:read) — PDF 텍스트 추출(neo4j-graphrag `PdfLoader`) → EXAONE 요약 → `admin_pdf_documents` 저장, 감사 `pdf.summarize`. 원본 PDF는 미보관(임시파일 즉시 삭제), 요약 입력은 앞 6000자 단발 | 자체 PdfDocumentRepository + PdfTextExtractorPort + PdfSummarizerPort + AuditLogPort |
+| image_upload | POST /admin/images(멀티파트 업로드, documents:write) — 바이트 매직 넘버로 형식 판정(jpeg/png/webp/gif, 10MB) → `admin/images/YYYY/MM/<uuid>.<ext>` 키로 S3 저장 → 사전서명 조회 URL(15분) 반환, 감사 `image.upload`. DB 영속 없음(객체 + 감사 기록만), 원본 파일명은 키에 쓰지 않는다. 버킷 env `ADMIN_IMAGE_S3_BUCKET` 미설정 시 이 엔드포인트만 503 | 자체 ImageStoragePort(S3) + AuditLogPort |
 | analytics | GET /admin/forecasts · GET /admin/market-backtest · GET /admin/news-event-study — 예측 스냅샷 채점 현황(적중률·신호별 일치율·최근 목록) + 상권 점수 백테스트 최신 리포트. 권한 analytics:read 공용 | ForecastSnapshotPort (accuracy_report) + AreaBacktestReportPort (latest) + NewsEventStudyPort (latest) |
 
 인터랙터는 허브 포트를 생성자 주입받고, 프로바이더는 허브 스텁 프로바이더를 `Depends`로 받는다
@@ -56,6 +57,7 @@
 ```
 apps/admin/
 ├── domain/services/dataset_freshness.py         # 수집 신선도 판정(순수) — 기대 주기 표 + evaluate
+├── domain/services/image_upload_policy.py       # 이미지 허용 형식·크기·객체 키 규칙(순수) — inspect/build_object_key
 ├── app/
 │   ├── dtos/{steward,dashboard,member,area,recommendation_log,data_source,audit}_dto.py
 │   ├── ports/input/{...}_use_case.py            # 슬라이스별 UseCase ABC
@@ -63,6 +65,7 @@ apps/admin/
 │   ├── ports/output/audit_log_port.py           # 감사 로그(PG 영속 — 변경 행위만)
 │   ├── ports/output/pdf_{text_extractor,summarizer}_port.py  # PDF 추출 · LLM 요약
 │   ├── ports/output/pdf_document_repository.py  # 요약 문서 영속
+│   ├── ports/output/image_storage_port.py       # 이미지 객체 저장(구현은 S3 — 계약은 스토리지 중립)
 │   └── use_cases/{...}_interactor.py
 ├── adapter/
 │   ├── inbound/api/{schemas,v1}/{...}_{schema,router}.py
@@ -70,6 +73,7 @@ apps/admin/
 │       ├── log_steward_record_adapter.py        # 임시 로그 구현
 │       ├── pdf_loader_extractor_adapter.py      # neo4j-graphrag PdfLoader (to_thread)
 │       ├── exaone_pdf_summarizer_adapter.py     # LLM 오케스트레이터 경유 요약
+│       ├── s3_image_storage_adapter.py          # boto3 put_object + 사전서명 URL (to_thread, 클라이언트 지연 생성)
 │       ├── orm/{audit_log,pdf_document}_orm.py  # admin_audit_logs · admin_pdf_documents
 │       └── pg/{audit_log,pdf_document}_pg_adapter.py
 ├── dependencies/{...}_provider.py

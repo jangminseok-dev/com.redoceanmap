@@ -851,6 +851,20 @@ export type GameMarketPrices = {
   movingAverages: GameMovingAverage[]; // 〃 — 봉 배열과 인덱스가 맞는다
   rsi: (number | null)[]; // 〃 — RSI(14), 봉 배열과 인덱스가 맞는다
   analysis: GameSymbolAnalysis | null; // 〃 — 현재 상태 요약(예측 아님)
+  orderBook: GameOrderBook | null; // 〃 — 호가창·VI·공매도 잔고
+};
+
+export type GameQuote = { priceKrw: number; assumedQuantity: number };
+
+// 주문장을 저장하지 않고 시각의 함수로 만든다 — 잔량은 유동성 모형이 낸 가정치다.
+export type GameOrderBook = {
+  bids: GameQuote[]; // 높은 가격부터
+  asks: GameQuote[]; // 낮은 가격부터
+  spreadKrw: number;
+  tickSizeKrw: number;
+  halted: boolean; // 변동성 완화장치(VI) 발동 중 — 매매가 잠긴다
+  limitState: "upper" | "lower" | "none";
+  shortInterestPct: number;
 };
 
 // 상태 분해 한 축. 부호 규약: **양수 = 뜨겁다**(많이 올랐다·과매수·거래 몰림·호재).
