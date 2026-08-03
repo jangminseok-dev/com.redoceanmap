@@ -93,6 +93,18 @@ class SymbolInfoSchema(BaseModel):
     recentHighKrw: int
     recentLowKrw: int
     recentDays: int = Field(description="고저가를 잰 게임일 수")
+    # --- 어닝(§13-3) — 전부 가정치이며 실재 기업의 재무가 아니다 ---
+    gameQuarter: int = Field(description="이 재무가 공시된 분기(1~8)")
+    assumedSharesOutstanding: int
+    assumedEpsKrw: int = Field(description="연환산 주당순이익. 음수면 적자")
+    assumedBpsKrw: int
+    assumedRoe: float
+    assumedDebtRatio: float
+    assumedNetIncomeKrw: int
+    assumedMarketCapKrw: int
+    per: float | None = Field(default=None, description="적자면 null — 음수 PER을 만들지 않는다")
+    pbr: float | None = None
+    earningsSurprise: str = Field(description="beat | miss | inline — 직전 분기 대비")
 
 
 class MarketEventSchema(BaseModel):

@@ -26,7 +26,7 @@ from game.domain.clock.game_epoch import (
     TICKS_PER_GAME_DAY,
     describe,
 )
-from game.domain.market import indicators, market_events, price_engine, signal
+from game.domain.market import fundamentals, indicators, market_events, price_engine, signal
 from game.domain.market.symbol_params import (
     CALIBRATED_AT,
     MEME_SIGMA_MULTIPLIER,
@@ -290,6 +290,10 @@ class MarketPriceInteractor(MarketPriceUseCase):
             )
             for c in raw
         )
+        # 어닝 — 분기마다 갱신된다. 가격과 독립으로 만들어야 PER이 의미를 갖는다(§13-3)
+        financials = fundamentals.at_quarter(params, describe(end_tick).game_quarter)
+        valuation = fundamentals.value_at(params, candles[-1].close_krw, financials)
+
         info = SymbolInfo(
             symbol=params.symbol,
             name=params.name,
@@ -309,6 +313,17 @@ class MarketPriceInteractor(MarketPriceUseCase):
             recent_high_krw=max(c.high_krw for c in raw),
             recent_low_krw=min(c.low_krw for c in raw),
             recent_days=len(raw),
+            game_quarter=financials.game_quarter,
+            assumed_shares_outstanding=financials.assumed_shares_outstanding,
+            assumed_eps_krw=financials.assumed_eps_krw,
+            assumed_bps_krw=financials.assumed_bps_krw,
+            assumed_roe=financials.assumed_roe,
+            assumed_debt_ratio=financials.assumed_debt_ratio,
+            assumed_net_income_krw=financials.assumed_net_income_krw,
+            assumed_market_cap_krw=valuation.market_cap_krw,
+            per=valuation.per,
+            pbr=valuation.pbr,
+            earnings_surprise=financials.surprise,
         )
         return candles, info
 

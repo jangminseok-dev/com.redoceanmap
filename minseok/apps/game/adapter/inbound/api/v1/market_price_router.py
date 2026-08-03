@@ -147,6 +147,17 @@ async def list_prices(
                 recentHighKrw=result.symbol_info.recent_high_krw,
                 recentLowKrw=result.symbol_info.recent_low_krw,
                 recentDays=result.symbol_info.recent_days,
+                gameQuarter=result.symbol_info.game_quarter,
+                assumedSharesOutstanding=result.symbol_info.assumed_shares_outstanding,
+                assumedEpsKrw=result.symbol_info.assumed_eps_krw,
+                assumedBpsKrw=result.symbol_info.assumed_bps_krw,
+                assumedRoe=result.symbol_info.assumed_roe,
+                assumedDebtRatio=result.symbol_info.assumed_debt_ratio,
+                assumedNetIncomeKrw=result.symbol_info.assumed_net_income_krw,
+                assumedMarketCapKrw=result.symbol_info.assumed_market_cap_krw,
+                per=result.symbol_info.per,
+                pbr=result.symbol_info.pbr,
+                earningsSurprise=result.symbol_info.earnings_surprise,
             )
             if result.symbol_info
             else None

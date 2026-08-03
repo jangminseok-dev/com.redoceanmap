@@ -49,6 +49,7 @@ apps/game/
 │   │   ├── price_engine.py                  # 브라운 브리지 — price_at / price_series / 일봉 · 거래량
 │   │   ├── indicators.py                    # 이동평균·RSI·볼린저·ATR·거래량비·OBV
 │   │   ├── signal.py                        # 상태 분해 5축 — **예측 아님**(양수=뜨겁다)
+│   │   ├── fundamentals.py                  # 어닝 캘린더 — 분기 재무·PER·PBR·ROE(가정치)
 │   │   ├── market_events.py                 # 호재·악재 — 결정론 생성, 저장하지 않는다
 │   │   └── price_intervention.py            # 관리자 개입 → MarketEvent 변환 (저장되는 유일한 사건)
 │   ├── trading/trading_rules.py             # 수수료·증거금·손실상한·최소생활자금
@@ -88,7 +89,7 @@ apps/game/
 | 남은 단계 | 내용 | 정본 |
 |---|---|---|
 | 12 | 지정가 주문 (새 테이블 1개 · 지연 체결 판정) | game-strategy §7-12 |
-| 이후 | SLM 빌드타임 코퍼스 → 가상 인물·국가 → 어닝 캘린더 → 종목 간 상관 | game-strategy §13 |
+| 이후 | SLM 빌드타임 코퍼스 → 가상 인물·국가 → 종목 간 상관 | game-strategy §13 |
 
 **11·13~20단계는 완료됐다**(2026-08-03) — 뉴스 UX·주식 화면 고도화·차트 패턴 분석·상권 화면/
 밸런스/운영 액션·레버리지 1~4배·지수 선물, 그리고 시즌 1 재시작 배포.

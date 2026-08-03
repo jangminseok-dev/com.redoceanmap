@@ -32,6 +32,15 @@ const ALL_SECTORS = "전체";
 
 const won = (v: number) => `${v.toLocaleString()}원`;
 const signed = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
+// 시가총액은 원 단위로 쓰면 자릿수를 셀 수 없다 — 증권 앱처럼 조·억으로 접는다
+const eok = (v: number) =>
+  v >= 1e12 ? `${(v / 1e12).toFixed(2)}조원` : `${Math.round(v / 1e8).toLocaleString()}억원`;
+
+const SURPRISE: Record<string, { label: string; tone: string }> = {
+  beat: { label: "기대 상회", tone: "text-[#DC2626] font-medium" },
+  miss: { label: "기대 하회", tone: "text-[#2563EB] font-medium" },
+  inline: { label: "기대 부합", tone: "text-foreground-muted" },
+};
 const toneOf = (v: number) => (v >= 0 ? "text-[#DC2626]" : "text-[#2563EB]");
 
 export default function InvestPanel() {
@@ -391,6 +400,15 @@ export default function InvestPanel() {
             {info && info.symbol === current.symbol && (
               <dl className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 border-t border-border pt-4">
                 {[
+                  { label: "시가총액", value: eok(info.assumedMarketCapKrw) },
+                  // 적자면 PER 칸을 비운다 — 음수 PER은 "싸다"로 오독된다
+                  { label: "PER", value: info.per === null ? "적자" : `${info.per.toFixed(1)}배` },
+                  { label: "PBR", value: info.pbr === null ? "—" : `${info.pbr.toFixed(2)}배` },
+                  { label: "ROE", value: `${(info.assumedRoe * 100).toFixed(1)}%` },
+                  { label: "EPS (연환산)", value: won(info.assumedEpsKrw) },
+                  { label: "BPS", value: won(info.assumedBpsKrw) },
+                  { label: "부채비율", value: `${(info.assumedDebtRatio * 100).toFixed(0)}%` },
+                  { label: "발행주식수", value: `${(info.assumedSharesOutstanding / 10_000).toLocaleString()}만주` },
                   { label: "시즌 시작가", value: won(info.basePriceKrw) },
                   { label: "게임 1일 변동성", value: `${info.gameDailySigmaPct.toFixed(2)}%` },
                   { label: `최근 ${info.recentDays}일 고가`, value: won(info.recentHighKrw) },
@@ -401,14 +419,18 @@ export default function InvestPanel() {
                     <dd className="text-sm font-semibold tabular-nums">{item.value}</dd>
                   </div>
                 ))}
-                <p className="col-span-2 sm:col-span-4 text-[11px] text-foreground-muted">
-                  {info.sectorGroup} · 실적 지표(PER·ROE 등)는 이 게임에 개념이 없어 표시하지
-                  않습니다.
+                <p className="col-span-2 sm:col-span-4 text-[11px] text-foreground-muted leading-relaxed">
+                  {info.sectorGroup} · {info.gameQuarter}분기 공시{" "}
+                  <span className={SURPRISE[info.earningsSurprise].tone}>
+                    {SURPRISE[info.earningsSurprise].label}
+                  </span>{" "}
+                  · 실적은 <b>가상 기업의 가정치</b>입니다(실재 기업의 재무가 아닙니다). 분기마다
+                  새로 공시되며, 주가와 독립으로 만들어지므로 많이 오르면 PER이 올라갑니다.
                   {info.meme && (
                     <span className="text-[#DC2626]">
                       {" "}
-                      밈 종목입니다 — 실적이 아니라 수급·화제성이 값을 만듭니다. 변동성이 크고
-                      전용 뉴스(스퀴즈·반대매매)가 한 번에 8~28%를 밀어냅니다.
+                      밈 종목입니다 — <b>적자 상태</b>라 PER이 없습니다. 실적이 아니라 수급·화제성이
+                      값을 만들고, 전용 뉴스(스퀴즈·반대매매)가 한 번에 8~28%를 밀어냅니다.
                     </span>
                   )}
                 </p>

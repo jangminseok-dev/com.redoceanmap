@@ -918,6 +918,19 @@ export type GameSymbolInfo = {
   recentHighKrw: number;
   recentLowKrw: number;
   recentDays: number;
+  // 어닝(§13-3) — 전부 가정치이며 실재 기업의 재무가 아니다.
+  // 실적은 가격과 **독립으로** 생성되고 PER·PBR은 둘의 비율이라, 많이 오르면 PER이 오른다.
+  gameQuarter: number;
+  assumedSharesOutstanding: number;
+  assumedEpsKrw: number; // 연환산 주당순이익. 음수면 적자
+  assumedBpsKrw: number;
+  assumedRoe: number;
+  assumedDebtRatio: number;
+  assumedNetIncomeKrw: number;
+  assumedMarketCapKrw: number;
+  per: number | null; // 적자면 null — 음수 PER을 만들지 않는다
+  pbr: number | null;
+  earningsSurprise: "beat" | "miss" | "inline";
 };
 
 // ── GET /game/futures · POST /game/futures ──

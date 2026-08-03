@@ -97,9 +97,10 @@ class ChartPatternView:
 
 @dataclass(frozen=True)
 class SymbolInfo:
-    """종목 카드. **지어낸 값을 넣지 않는다** — 게임에 실적 개념이 없어 PER·ROE는 전부 허구가 된다.
+    """종목 카드.
 
-    여기 있는 값은 전부 가격 생성 파라미터이거나 그것에서 직접 계산된 것이다.
+    PER·ROE는 11단계에서 "게임에 실적 개념이 없다"며 보류했던 값이다. §13-3 어닝 캘린더가
+    들어오면서 근거가 생겼다 — 분기마다 발표되는 가상 재무에서 파생한다(`assumed_*`).
     """
 
     symbol: str
@@ -112,6 +113,18 @@ class SymbolInfo:
     recent_high_krw: int           # 최근 `recent_days` 게임일 고가
     recent_low_krw: int
     recent_days: int
+    # --- 어닝(§13-3) — 전부 가정치이며 실재 기업의 재무가 아니다 ---
+    game_quarter: int                    # 이 재무가 공시된 분기
+    assumed_shares_outstanding: int
+    assumed_eps_krw: int                 # 연환산 주당순이익. 음수면 적자
+    assumed_bps_krw: int
+    assumed_roe: float
+    assumed_debt_ratio: float
+    assumed_net_income_krw: int
+    assumed_market_cap_krw: int
+    per: float | None                    # 적자면 None — 음수 PER을 만들지 않는다
+    pbr: float | None
+    earnings_surprise: str               # beat | miss | inline
 
 
 @dataclass(frozen=True)
