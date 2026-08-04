@@ -41,7 +41,7 @@ class StockBoardPgRepository(StockBoardRepositoryPort):
         if not snapshots:
             return []
 
-        closes, price_dates = await self._recent_closes(
+        closes, price_dates, volumes = await self._recent_closes(
             [s.ticker for s in snapshots], sparkline_bars
         )
         return [
@@ -56,24 +56,29 @@ class StockBoardPgRepository(StockBoardRepositoryPort):
                 ready=s.ready,
                 closes=tuple(closes.get(s.ticker, ())),
                 price_as_of=price_dates.get(s.ticker),
+                volume=volumes.get(s.ticker),
             )
             for s in snapshots
         ]
 
     async def _recent_closes(
         self, tickers: list[str], limit: int
-    ) -> tuple[dict[str, list[float]], dict[str, datetime]]:
-        """티커별 (최근 일봉 종가 과거→최신, 마지막 봉의 세션일).
+    ) -> tuple[dict[str, list[float]], dict[str, datetime], dict[str, int]]:
+        """티커별 (최근 일봉 종가 과거→최신, 마지막 봉의 세션일, 마지막 봉의 거래량).
 
         마지막 봉 세션일을 함께 돌려주는 이유: 스냅샷 as_of는 그날 스냅샷이 쓴 봉 기준이고
         여기 종가는 그 뒤에 더 쌓인 봉일 수 있어, 화면이 한 날짜로 뭉뚱그리면 안 된다.
         티커마다 조회하지 않도록 윈도우 함수로 한 번에 받는다.
+
+        거래량은 **마지막 봉만** 쓴다(스파크라인처럼 배열로 두지 않는다) — 화면이 쓰는 것은
+        "최근 하루 얼마나 거래됐나" 한 값뿐이고, 30봉치를 실어 보내면 응답만 커진다.
         """
         ranked = (
             select(
                 PriceBarOrm.ticker,
                 PriceBarOrm.ts,
                 PriceBarOrm.close,
+                PriceBarOrm.volume,
                 func.row_number()
                 .over(partition_by=PriceBarOrm.ticker, order_by=PriceBarOrm.ts.desc())
                 .label("rn"),
@@ -82,14 +87,17 @@ class StockBoardPgRepository(StockBoardRepositoryPort):
             .subquery()
         )
         rows = (await self._session.execute(
-            select(ranked.c.ticker, ranked.c.ts, ranked.c.close)
+            select(ranked.c.ticker, ranked.c.ts, ranked.c.close, ranked.c.volume)
             .where(ranked.c.rn <= limit)
             .order_by(ranked.c.ticker, ranked.c.ts.asc())
         )).all()
 
         out: dict[str, list[float]] = defaultdict(list)
         last_ts: dict[str, datetime] = {}
-        for ticker, ts, close in rows:
+        last_volume: dict[str, int] = {}
+        for ticker, ts, close, volume in rows:
             out[ticker].append(float(close))
-            last_ts[ticker] = ts  # ts 오름차순이라 마지막 대입이 최신 봉
-        return out, last_ts
+            # ts 오름차순이라 마지막 대입이 최신 봉
+            last_ts[ticker] = ts
+            last_volume[ticker] = int(volume)
+        return out, last_ts, last_volume

@@ -19,6 +19,8 @@ class BoardRowSchema(BaseModel):
     ready: bool                     # n≥100 + Wilson 하한 > 기준선
     sparkline: list[float]          # 최근 종가(과거 → 최신)
     price_as_of: datetime | None    # 가격 기준일 — 신호 기준일(as_of)과 다를 수 있다
+    volume: int | None              # 마지막 봉 거래량(주)
+    turnover: float | None          # 거래대금 = 종가 × 거래량. 통화는 종목을 따른다(원/달러 혼재)
 
 
 class StockBoardResponse(BaseModel):

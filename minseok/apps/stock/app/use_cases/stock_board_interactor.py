@@ -51,4 +51,8 @@ class StockBoardInteractor(StockBoardUseCase):
             ready=row.ready,
             sparkline=row.closes,
             price_as_of=row.price_as_of,
+            volume=row.volume,
+            # 거래대금은 마지막 봉의 종가 × 거래량이다. 정확한 체결 합계가 아니라 근사치이며,
+            # 통화가 종목마다 다르므로 화면이 심볼로 단위를 붙인다.
+            turnover=price * row.volume if row.volume is not None else None,
         )
