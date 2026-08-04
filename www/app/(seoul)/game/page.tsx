@@ -21,7 +21,7 @@ type TabKey = (typeof TABS)[number]["key"];
  *
  * 예전에는 페이지가 세로로 흐르고 안내·자산·알림 카드가 위쪽 절반을 먹어서
  * 정작 종목 표는 스크롤해야 나왔다. 표가 주인공인 화면에서 표가 접혀 있으면 안 된다.
- * 상권 창업은 읽기 중심이라 예전처럼 세로로 흐른다.
+ * 상권 창업도 같은 골격이다 — 상권 표가 주인공이고 우측이 상세·창업 컬럼.
  */
 export default function GamePage() {
   const [tab, setTab] = useState<TabKey>("invest"); // 상태는 이 하나뿐이다
@@ -67,10 +67,9 @@ export default function GamePage() {
       <div className={`flex-1 min-h-0 ${tab === "invest" ? "flex flex-col" : "hidden"}`}>
         <InvestPanel />
       </div>
-      <div className={`flex-1 min-h-0 overflow-y-auto ${tab === "store" ? "" : "hidden"}`}>
-        <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 pb-8">
-          <StorePanel />
-        </div>
+      {/* 상권 창업도 투자와 같은 전체 높이 골격 — 표가 내부에서 스크롤한다 */}
+      <div className={`flex-1 min-h-0 ${tab === "store" ? "flex flex-col" : "hidden"}`}>
+        <StorePanel />
       </div>
     </div>
   );
