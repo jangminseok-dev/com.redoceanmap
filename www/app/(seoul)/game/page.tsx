@@ -7,8 +7,7 @@ import InvestPanel from "@/components/game/InvestPanel";
 import StorePanel from "@/components/game/StorePanel";
 import { fetchGameRulebook } from "@/lib/api";
 
-// 모의 투자와 지수 선물을 하나로 합쳤다 — 지갑이 하나이고 지수가 그 종목들로 만들어지므로,
-// 페이지를 가르는 대신 투자 탭 안에서 [주식 | 지수 선물] 세그먼트로 오간다.
+// 지수 선물 게임은 2026-08-04 폐지 — 투자(주식)와 상권 창업 두 게임만 남았다.
 const TABS = [
   { key: "invest", label: "투자", icon: CandlestickChart },
   { key: "store", label: "상권 창업", icon: Store },

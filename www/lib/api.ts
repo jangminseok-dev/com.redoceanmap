@@ -13,8 +13,6 @@ import type {
   GameRulebook,
   GameSettlementList,
   GameCloseStoreReceipt,
-  GameFuturesMarket,
-  GameFuturesReceipt,
   GameStoreDaily,
   GameStoreDecisionReceipt,
   GameStoreSummary,
@@ -159,18 +157,6 @@ export const fetchGamePrices = (
 };
 
 export const fetchGameWallet = (): Promise<GameWallet> => getJson(`/game/wallet`);
-
-// 지수 선물 — 근월물 하나. 만기 도달분은 이 조회가 정산한다(지연 실행).
-export const fetchGameFutures = (ticks = 120): Promise<GameFuturesMarket> =>
-  getJson(`/game/futures?ticks=${ticks}`);
-
-export const openGameFutures = (
-  side: "LONG" | "SHORT",
-  contracts: number,
-): Promise<GameFuturesReceipt> => postGame(`/game/futures`, { side, contracts });
-
-export const closeGameFutures = (positionId: number): Promise<GameFuturesReceipt> =>
-  postGame(`/game/futures/${positionId}/close`);
 
 // 매매 — 체결가는 요청이 도착한 틱의 가격이다(예약 주문·지연 체결 없음).
 async function postGame<T>(path: string, body?: unknown): Promise<T> {

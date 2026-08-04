@@ -7,12 +7,9 @@ import GameOrderForm from "@/components/game/GameOrderForm";
 import GamePositionList from "@/components/game/GamePositionList";
 import GameSymbolTable from "@/components/game/GameSymbolTable";
 import GameSymbolDetail from "@/components/game/GameSymbolDetail";
-import GameMarketSummary from "@/components/game/GameMarketSummary";
-import FuturesPanel from "@/components/game/FuturesPanel";
 import {
   ApiError,
   closeGameTrade,
-  fetchGameFutures,
   fetchGamePrices,
   fetchGameRulebook,
   fetchGameWallet,
@@ -25,9 +22,6 @@ import { Button } from "@/components/ui/button";
 import CountUp from "@/components/common/CountUp";
 
 const CHART_TICKS = 120; // 게임 2일치 — 곡선 모양이 읽히는 최소 구간
-// 지수는 완만해서 주식보다 긴 구간을 봐야 모양이 읽힌다. FuturesPanel과 같은 값이어야
-// 쿼리 키가 맞아 캐시를 공유한다.
-const FUTURES_TICKS = 240;
 const DEFAULT_CANDLE_DAYS = 30;
 
 const won = (v: number) => `${v.toLocaleString()}원`;
@@ -52,13 +46,12 @@ const SHELL = "mx-auto w-full max-w-[1720px] px-4 sm:px-6";
  * 먹고 정작 표가 접혀 있던 이전 구조를 버렸다.
  */
 export default function InvestPanel() {
-  // 선택 종목 · 체결 안내 · 봉 기간 · 시장 세그먼트(REACT_RULES 패턴 B: 단일 객체)
+  // 선택 종목 · 체결 안내 · 봉 기간(REACT_RULES 패턴 B: 단일 객체)
   const [view, setView] = useState<{
-    market: "stock" | "futures";
     selected: string | null;
     notice: string | null;
     candleDays: number;
-  }>({ market: "stock", selected: null, notice: null, candleDays: DEFAULT_CANDLE_DAYS });
+  }>({ selected: null, notice: null, candleDays: DEFAULT_CANDLE_DAYS });
 
   const openAuth = useUIStore((s) => s.openAuth);
   const queryClient = useQueryClient();
@@ -85,14 +78,6 @@ export default function InvestPanel() {
     queryKey: ["game-wallet"],
     queryFn: fetchGameWallet,
     refetchInterval: (query) => (query.state.status === "error" ? 300_000 : 30_000),
-  });
-
-  // 지수·선물 — 마켓 요약·티커 바가 쓴다. FuturesPanel과 같은 쿼리 키라 캐시를 공유한다.
-  const futuresQ = useQuery({
-    queryKey: ["game-futures", FUTURES_TICKS],
-    queryFn: () => fetchGameFutures(FUTURES_TICKS),
-    refetchInterval: (query) => (query.state.status === "error" ? 300_000 : 30_000),
-    placeholderData: keepPreviousData,
   });
 
   const refresh = () => {
@@ -219,36 +204,10 @@ export default function InvestPanel() {
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
-      {/* 세그먼트 + 지갑 한 줄 — 토스의 전체/국내/해외 자리 + 계좌는 문장이 아니라 숫자 세 개.
-          페이지 탭(투자/상권창업)이 이미 알약이라 여기는 **밑줄 탭**으로 층을 가른다 —
-          같은 모양의 알약이 두 줄 겹치면 위계 없이 어수선하다(실화면 지적). */}
-      <div className={`${SHELL} shrink-0 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border`}>
-        <div className="flex items-center gap-1" role="tablist" aria-label="시장 선택">
-          {(
-            [
-              ["stock", "주식"],
-              ["futures", "지수 선물"],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              role="tab"
-              aria-selected={view.market === key}
-              onClick={() => setView((p) => ({ ...p, market: key }))}
-              className={`h-9 px-3 -mb-px border-b-2 text-sm font-semibold transition-colors duration-150 ${
-                view.market === key
-                  ? "border-brand text-foreground"
-                  : "border-transparent text-foreground-muted hover:text-foreground"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
+      {/* 지갑 한 줄 — 계좌는 문장이 아니라 숫자 세 개. 카드로 쌓으면 표가 밀린다 */}
+      <div className={`${SHELL} shrink-0 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border pb-2`}>
         {wallet && (
-          <dl className="ml-auto flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm tabular-nums">
+          <dl className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm tabular-nums">
             <div className="flex items-baseline gap-1.5">
               <dt className="text-xs text-foreground-muted">총자산</dt>
               <dd className="font-semibold">
@@ -306,15 +265,13 @@ export default function InvestPanel() {
         )}
       </div>
 
-      {view.market === "stock" ? (
-        <>
-          {pricesQ.isLoading && (
-            <div className="flex-1 grid place-items-center text-sm text-foreground-muted">
-              시세를 불러오는 중…
-            </div>
-          )}
+      {pricesQ.isLoading && (
+        <div className="flex-1 grid place-items-center text-sm text-foreground-muted">
+          시세를 불러오는 중…
+        </div>
+      )}
 
-          {current && (
+      {current && (
             <div
               className={`${SHELL} flex-1 min-h-0 mt-3 overflow-y-auto lg:overflow-hidden lg:grid lg:grid-cols-[minmax(0,1fr)_400px] 2xl:grid-cols-[minmax(0,1fr)_420px_320px] lg:gap-4`}
             >
@@ -353,40 +310,12 @@ export default function InvestPanel() {
             </div>
           )}
 
-          {/* 마켓 요약은 표 아래가 아니라 모바일 스크롤 최하단으로 밀지 않도록 티커 바 위에 두지
-              않는다 — 데스크탑에서는 표가 이미 주인공이므로 요약은 접근 부담이 없는 하단 티커와
-              지수 카드(GameMarketSummary)를 상세 컬럼 위에 두는 대신 티커 바가 대신한다. */}
-        </>
-      ) : (
-        <div className={`${SHELL} flex-1 min-h-0 overflow-y-auto mt-3 pb-4`}>
-          <div className="mb-3">
-            <GameMarketSummary futures={futuresQ.data} symbols={symbols} />
-          </div>
-          <FuturesPanel />
-        </div>
-      )}
-
-      {/* 하단 고정 티커 바 — 레퍼런스(토스증권)의 지수 스트립. 흐르지 않고 서 있다 */}
+      {/* 하단 고정 티커 바 — 레퍼런스(토스증권)의 지수 스트립. 흐르지 않고 서 있다.
+          섹터별 평균 등락만 흐른다 — 지수 선물 게임은 폐지되어 GXI·베이시스가 없다. */}
       <div className="shrink-0 border-t border-border bg-surface">
         <div
           className={`${SHELL} flex items-center gap-5 py-1.5 overflow-x-auto whitespace-nowrap text-xs [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}
         >
-          {futuresQ.data && (
-            <>
-              <Tick label="GXI" value={futuresQ.data.indexPoint.toLocaleString()} />
-              <Tick label="선물" value={futuresQ.data.futuresPoint.toLocaleString()} />
-              <Tick
-                label="베이시스"
-                value={signed(futuresQ.data.basisPct)}
-                tone={toneOf(futuresQ.data.basisPct)}
-              />
-              <Tick
-                label="만기"
-                value={`D-${Math.max(0, Math.ceil(futuresQ.data.ticksToExpiry / 60))}`}
-              />
-              <span className="h-3.5 w-px bg-border shrink-0" aria-hidden />
-            </>
-          )}
           {sectorMoves.map((s) => (
             <Tick key={s.group} label={s.group} value={signed(s.changePct)} tone={toneOf(s.changePct)} />
           ))}
