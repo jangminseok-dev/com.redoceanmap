@@ -12,10 +12,10 @@
 
 | # | 마일스톤 | 위치 | 기간 | 검증 |
 |---|---------|------|------|------|
-| M1 | **인증 가드 전면 적용 + 리프레시 토큰** — 전 라우터 JWT Depends(공개 화이트리스트 방식), 검증 의존성은 core/허브 포트 경유(스포크→auth import 금지) | auth 확장 + main.py 주입 | 2-3일 | 미인증 401 전수, 갱신 플로우 테스트 |
+| M1 | ~~인증 가드 전면 적용 + 리프레시 토큰~~ — **완료(2026-07-13, 4921c4e)**. 전 라우터 JWT Depends(공개 화이트리스트), 리프레시 회전 | auth 확장 + main.py 주입 | - | ✅ 백엔드 PC 배포·E2E — 미인증 401 전수, 가입→Bearer 200→회전→재사용 401 |
 | M2 | ~~stock 피처 확장 + 백테스트 재채점~~ — **완료(2026-07-13~14)**. 2차(ATR·%B·거래량비·OBV) + 3차(12-1 모멘텀·거래량 확인 필터) 재채점. RSI+BB+MOM ±0.35 UP이 최우수 검증 신호(인샘플 하한 +3.5%p·홀드아웃 +0.9%p). 확률 제시는 계속 보류 → [[minseok/apps/stock/_docs/BACKTEST_RESCORE_2026-07\|RESCORE]] | stock 내부 | - | ✅ 성적표 문서화 |
 | M3 | ~~market 시계열·스코어링 v1~~ — **완료(2026-07-15)**. `area_score` 수직 슬라이스: `GET /market/trdar/{code}/score` = 분기 추이(전 업종 합계 매출·유동인구 QoQ) + 시도 벤치마크 대비 종합점수(매출 성장·유동인구 성장·개폐업 건강도·영업 지속성 4컴포넌트, 순수 도메인 서비스 `area_scorer.py`) → [[minseok/apps/market/_docs/CLAUDE\|market CLAUDE]] | market 내부 (새 스포크 아님) | - | ✅ 스코어러 단위 테스트 18종 + 인터랙터 5종 (market 30 passed) + 실 DB 검증 |
-| M4 | **뉴스 수집 상시화** — `scripts/collect_news.py`를 우분투 PC cron/systemd timer 등록, 실패 로그 | scripts/ + 운영 설정 | 2-3일 | 7일 연속 무중단 수집 |
+| M4 | ~~뉴스 수집 상시화~~ — **완료(2026-07-13, 51eba10)**. ticker 조인 키 + (url,ticker) 유니크, 1,182건 백필, 백엔드 PC cron 등록·가동 확인 후 상시 운영 중 | scripts/ + 운영 설정 | - | ✅ 가동 확인(2026-07-13) 후 3주+ 운영 |
 | M5 | ~~chat 실데이터 결합 (핵심 가치)~~ — **완료(종목 2026-07-14 · 상권 2026-07-15)**. 종목: 지표 9종 의미 해석 + 검증 참고 신호 + 뉴스 RAG(bge-m3·pgvector, 허브 NewsSearchPort) 주입, phase0 3분류(stock/market_news/market). 상권: 허브 `get_area_scores`(M3 스코어링 재사용)로 phase2에 서울 평균 대비 종합점수 근거 주입 | chat 확장 | - | ✅ 테스트 15종+ / E2E 3/3, 상권 근거는 스텁 검증 + 게이트웨이 실 DB 검증 |
 | M6 | ~~프론트-백엔드 정합~~ — **구현 완료(2026-07-15)**. ① vision `faces`로 통일(프론트 페이지·BFF·내비를 백엔드 도메인어에 맞춤, 실체가 얼굴 인식이므로), ② `fetchMarketAreas` dead code 삭제 + M3 스코어 API 프론트 연결(`AreaScoreCard`, 자료 패널), ③ 채팅 종목 카드에 신규 6필드 지표 그리드·검증 신호 배지·감성 노출, ④ market_news 뉴스 근거 카드 신설(백엔드 `AskResponse.news`+payload 저장 → 프론트 렌더·히스토리 복원) | www + 라우터 | - | ✅ 백엔드 159 테스트(신규 2)·계약 5 KEPT·tsc 0 에러·페이지 컴파일 전수 200. **배포 후 로그인→대화→지도→종목분석 수동 전 구간 통과 남음** |
 
@@ -25,8 +25,8 @@
 |---|---------|------|------|
 | M1 | ~~GitHub Actions CI~~ — **취소(사용자 결정, 2026-07-13)**. 구축·첫 실행 통과까지 확인 후 제거. 검증은 로컬 수동(pytest + lint-imports) 유지 | - | - |
 | M2 | **프로덕션 compose + deploy.sh** — --reload 제거, 비밀 .env 분리, healthcheck, DB 비노출. **n8n·neo4j prod 제외**(미사용). 배포=`git pull origin window && compose up -d --build` | 2-3일 | 우분투 PC 1커맨드 기동, 재부팅 자동 복구 |
-| M3 | **백업** — pg_dump 일간(7세대) + rclone→Google Drive 15GB 무료(주간 4세대) + models/ 포함 | 1일 | 복원 리허설 1회 성공 |
-| M4 | **RBAC + admin 스포크 실구현(최소)** — role 2종(free/admin)만, 실데이터 있는 화면만(회원/역할, 자동화 로그, 수집 현황). 목데이터 admin 페이지는 삭제. 데이터 접근은 허브 포트+DTO 경유 | 5-7일 | 역할별 접근 매트릭스 테스트 |
+| M3 | **백업 — 부분 완료**. 일간 pg_dump 7세대 + 무결성 검증 + market 덤프 계층(`scripts/backup_db.sh`, 04:00 cron) 완료. **잔여**: rclone→Google Drive 오프사이트(스크립트 주석에 "후속 계층"으로 명시) + 복원 리허설 | 잔여 반나절 | 복원 리허설 1회 성공 |
+| M4 | ~~RBAC + admin 스포크 실구현~~ — **완료(2026-07-21)**. RBAC 4테이블(auth 소유) + `require_permission`, admin 스포크는 허브 포트 소비, `grant_admin.py` 부트스트랩 | - | ✅ `tests/test_admin_access_matrix.py` — 가드 누락·코드 오타·read권한 쓰기 고정 |
 | M5 | ~~n8n 완전 탈피 + 프론트 ESLint~~ — **취소(사용자 결정, 2026-08-04)**. n8n·이메일 경로 현행 유지, 재제안 금지 | - | - |
 | M6 | ~~문서 정합~~ — **취소(사용자 결정, 2026-08-04)**. 루트 README는 2026-08-04 신규 작성됨, 나머지 항목(judge 스켈레톤 삭제 포함) 보류 | - | - |
 
