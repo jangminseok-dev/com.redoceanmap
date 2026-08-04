@@ -55,7 +55,9 @@ export default function GamePage() {
         창업하고, 가게 수익이 다시 투자금이 됩니다.
       </p>
 
-      <nav className="mt-5 inline-flex rounded-xl border border-border p-1 bg-surface">
+      {/* 탭 3개가 좁은 폭에서 넘치므로 가로 스크롤을 허용한다 — inline-flex는 콘텐츠 폭을
+          그대로 잡아 스크롤이 걸리지 않으니 flex + max-w-full로 바꾼다. */}
+      <nav className="mt-5 flex w-fit max-w-full overflow-x-auto rounded-xl border border-border p-1 bg-surface">
         {TABS.map(({ key, label, icon: Icon }) => {
           const active = tab === key;
           return (
@@ -64,7 +66,7 @@ export default function GamePage() {
               type="button"
               onClick={() => setTab(key)}
               aria-current={active}
-              className={`inline-flex items-center gap-1.5 px-4 h-9 rounded-lg text-sm font-medium transition-colors ${
+              className={`shrink-0 inline-flex items-center gap-1.5 px-4 h-9 rounded-lg text-sm font-medium transition-colors ${
                 active ? "bg-brand text-white" : "text-foreground-muted hover:text-foreground"
               }`}
             >
