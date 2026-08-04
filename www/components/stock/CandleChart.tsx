@@ -16,6 +16,7 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import type { ChartPattern, PriceBar, StockForecast, StockNewsItem } from "@/lib/types";
+import { computeVolumeProfile } from "@/lib/volumeProfile";
 
 // 한국 관례: 상승 빨강 / 하락 파랑 (StockCard·방향 배지와 동일)
 const UP = "#DC2626";
@@ -172,6 +173,7 @@ export default function CandleChart({
 }: CandleChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<SVGSVGElement>(null);
+  const profileRef = useRef<SVGSVGElement>(null); // 매물대 — 콘의 display 토글과 독립
   const refs = useRef<ChartRefs | null>(null);
   // 예측 밴드가 미래로 뻗은 끝점 — 표시 구간을 밴드까지 포함시켜야 밴드가 화면에 들어온다
   const bandEndRef = useRef<UTCTimestamp | null>(null);
@@ -278,6 +280,54 @@ export default function CandleChart({
     }
   };
 
+  // 매물대 — 표시 구간의 봉만 집계해 오른쪽 가장자리에 가로 막대로 그린다.
+  // 구간을 바꾸면 분포도 함께 바뀐다(보는 기간의 거래 밀집이 곧 그 기간의 매물대).
+  // 팬·줌·리사이즈마다 다시 그려야 해서 콘과 같은 DOM 직접 갱신이다.
+  const drawProfile = () => {
+    const svg = profileRef.current;
+    const r = refs.current;
+    if (!svg || !r) return;
+    const group = svg.querySelector("#vp-bins");
+    if (!group) return;
+    while (group.firstChild) group.removeChild(group.firstChild);
+
+    const range = r.chart.timeScale().getVisibleRange();
+    const visible = range
+      ? bars.filter((b) => {
+          const t = toTime(b.ts);
+          return t >= (range.from as number) && t <= (range.to as number);
+        })
+      : bars;
+    const profile = computeVolumeProfile(visible);
+    if (!profile) return;
+
+    const paneWidth = r.chart.timeScale().width();
+    const paneHeight = r.chart.panes()[0]?.getHeight() ?? svg.clientHeight;
+    const maxBarWidth = paneWidth * 0.16; // 캔들을 가리지 않는 상한
+    for (let i = 0; i < profile.bins.length; i++) {
+      const bin = profile.bins[i];
+      if (bin.volume <= 0) continue;
+      const yHigh = r.candles.priceToCoordinate(bin.high);
+      const yLow = r.candles.priceToCoordinate(bin.low);
+      if (yHigh === null || yLow === null) continue;
+      const top = Math.max(0, Math.min(yHigh, yLow));
+      const bottom = Math.min(paneHeight, Math.max(yHigh, yLow));
+      if (bottom - top < 1) continue; // 가격축 밖으로 밀린 구간
+      const width = (bin.volume / profile.maxVolume) * maxBarWidth;
+      const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      rect.setAttribute("x", String(paneWidth - width));
+      rect.setAttribute("y", String(top + 0.5));
+      rect.setAttribute("width", String(width));
+      rect.setAttribute("height", String(Math.max(1, bottom - top - 1)));
+      rect.setAttribute(
+        "fill",
+        // 최다 거래 구간만 강조 — "여기서 가장 많이 거래됐다"는 팩트 표시
+        i === profile.pocIndex ? "rgba(153, 27, 27, 0.30)" : "rgba(107, 114, 128, 0.16)",
+      );
+      group.appendChild(rect);
+    }
+  };
+
   // 표시 구간 적용 — 전체(fitContent)로 두면 5거래일 예측 밴드가 오른쪽 끝 실오라기가 된다.
   const applyRange = (r: ChartRefs) => {
     const scale = r.chart.timeScale();
@@ -348,8 +398,11 @@ export default function CandleChart({
       bandLines: [], priceLines: [], markers: createSeriesMarkers(candles),
     };
 
-    // 팬·줌·리사이즈마다 예측 콘을 차트 좌표에 다시 맞춘다
-    const redraw = () => drawCone();
+    // 팬·줌·리사이즈마다 예측 콘·매물대를 차트 좌표에 다시 맞춘다
+    const redraw = () => {
+      drawCone();
+      drawProfile();
+    };
     chart.timeScale().subscribeVisibleTimeRangeChange(redraw);
     const observer = new ResizeObserver(redraw);
     observer.observe(el);
@@ -480,6 +533,7 @@ export default function CandleChart({
       prevBandEndRef.current = bandEndRef.current;
     }
     drawCone(); // 가격축 자동 스케일이 바뀌었을 수 있다 — 구간 이동이 없어도 다시 그린다
+    drawProfile();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bars, support, resistance, forecast, pattern]);
 
@@ -525,6 +579,14 @@ export default function CandleChart({
         <rect id="fc-label-box" height={17} rx={4} fill="#991B1B" />
         <text id="fc-label-text" fill="#FFFFFF" fontSize={10.5} fontWeight={600} />
       </svg>
+      {/* 매물대 — drawProfile()이 표시 구간 봉을 집계해 rect를 직접 채운다 */}
+      <svg
+        ref={profileRef}
+        className="absolute inset-0 w-full h-full z-0 pointer-events-none"
+        aria-hidden
+      >
+        <g id="vp-bins" />
+      </svg>
       <div className="absolute left-3 top-2 z-10 flex items-center gap-3 text-xs text-foreground-muted pointer-events-none">
         <span className="flex items-center gap-1">
           <span className="inline-block w-3 h-0.5" style={{ background: MA20_COLOR }} /> MA20
@@ -534,6 +596,10 @@ export default function CandleChart({
         </span>
         <span className="flex items-center gap-1">
           <span className="inline-block w-3 h-0.5" style={{ background: RSI_COLOR }} /> RSI(14)
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-2 h-2.5" style={{ background: "rgba(107, 114, 128, 0.35)" }} />
+          매물대(표시 구간 거래 밀집)
         </span>
         {/* 범위 숫자는 차트 위 알약이 이미 말한다 — 여기는 산출 방식만 (중복 표기 방지) */}
         {forecast?.band && (

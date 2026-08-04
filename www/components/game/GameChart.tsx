@@ -7,6 +7,7 @@ import type {
   GameMovingAverage,
   GamePricePoint,
 } from "@/lib/types";
+import { computeVolumeProfile } from "@/lib/volumeProfile";
 
 // 한국 관례: 상승 빨강 / 하락 파랑
 const UP = "#DC2626";
@@ -204,6 +205,18 @@ function Plot({
   // --- RSI 축 (0~100 고정) ---
   const yRsi = (v: number) => rsiTop + rsiH * (1 - v / 100);
 
+  // --- 매물대 — 표시된 봉 전체의 가격대별 거래량 분포 (stock CandleChart와 공용 계산) ---
+  const profile = candleMode
+    ? computeVolumeProfile(
+        candles!.map((c) => ({
+          high: c.highKrw,
+          low: c.lowKrw,
+          close: c.closeKrw,
+          volume: c.simulatedVolume,
+        })),
+      )
+    : null;
+
   // 봉 폭 — 봉 사이 간격의 62%
   const gap = count > 1 ? plotW / (count - 1) : plotW * 0.5;
   const bodyW = Math.max(1, Math.min(gap * 0.62, 14));
@@ -287,6 +300,30 @@ function Plot({
         strokeDasharray="2 5"
         opacity={0.3}
       />
+
+      {/* 매물대 — 어느 가격대에서 거래가 밀집했나(팩트 표시). 캔들 뒤에 깔린다 */}
+      {profile &&
+        profile.bins.map((bin, i) => {
+          if (bin.volume <= 0) return null;
+          const top = Math.max(priceTop, yPrice(bin.high));
+          const bottom = Math.min(priceTop + priceH, yPrice(bin.low));
+          if (bottom - top < 1) return null; // 축 최소 범위 보정으로 밀려난 구간
+          const barW = (bin.volume / profile.maxVolume) * plotW * 0.16;
+          return (
+            <rect
+              key={`vp-${i}`}
+              x={PAD.left + plotW - barW}
+              y={top + 0.5}
+              width={barW}
+              height={Math.max(1, bottom - top - 1)}
+              fill={
+                i === profile.pocIndex
+                  ? "rgba(153, 27, 27, 0.30)" // 최다 거래 구간만 강조
+                  : "rgba(107, 114, 128, 0.16)"
+              }
+            />
+          );
+        })}
 
       {/* 가격 — 봉 또는 라인 */}
       {candleMode ? (

@@ -70,10 +70,17 @@ export default function GameSymbolDetail({
   /** 봉·호가·분석은 선택 종목에만 계산된다 — 목록의 첫 종목을 보고 있을 때는 아직 없다 */
   isSelected: boolean;
 }) {
-  const [view, setView] = useState<{ tab: TabKey; chart: "line" | "candle"; pattern: string | null }>({
+  const [view, setView] = useState<{
+    tab: TabKey;
+    chart: "line" | "candle";
+    pattern: string | null;
+    ma: number[]; // 표시할 이동평균 — 기본 20/60만. 상관 높은 선 4개를 다 켜면
+    // 같은 신호를 네 번 보고 네 개의 근거로 착각한다(선이 많다고 정확해지지 않는다)
+  }>({
     tab: "chart",
     chart: "line",
     pattern: null,
+    ma: [20, 60],
   });
 
   const info = isSelected ? (data?.symbolInfo ?? null) : null;
@@ -179,13 +186,30 @@ export default function GameSymbolDetail({
                       {r.label}
                     </SmallChip>
                   ))}
-                  {/* 이동평균 범례 — 어느 색이 몇 일선인지 알아야 선이 의미를 갖는다 */}
+                  {/* 이동평균 범례 겸 토글 — 기본 20/60만 켠다. 원하는 선만 추가로 */}
                   <span className="ml-auto flex items-center gap-2 text-xs tabular-nums">
-                    {data?.movingAverages?.map((m) => (
-                      <span key={m.period} style={{ color: MA_COLOR[m.period] }}>
-                        {m.period}
-                      </span>
-                    ))}
+                    {data?.movingAverages?.map((m) => {
+                      const active = view.ma.includes(m.period);
+                      return (
+                        <button
+                          key={m.period}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() =>
+                            setView((p) => ({
+                              ...p,
+                              ma: active
+                                ? p.ma.filter((d) => d !== m.period)
+                                : [...p.ma, m.period],
+                            }))
+                          }
+                          style={{ color: MA_COLOR[m.period] }}
+                          className={active ? "font-semibold" : "opacity-35"}
+                        >
+                          {m.period}
+                        </button>
+                      );
+                    })}
                   </span>
                 </>
               )}
@@ -194,7 +218,11 @@ export default function GameSymbolDetail({
             <GameChart
               points={current.series}
               candles={view.chart === "candle" ? candles : undefined}
-              movingAverages={view.chart === "candle" ? (data?.movingAverages ?? []) : []}
+              movingAverages={
+                view.chart === "candle"
+                  ? (data?.movingAverages ?? []).filter((m) => view.ma.includes(m.period))
+                  : []
+              }
               rsi={view.chart === "candle" ? (data?.rsi ?? []) : []}
               markers={newsMarkers}
               pattern={view.chart === "line" ? activePattern : undefined}
@@ -203,7 +231,7 @@ export default function GameSymbolDetail({
 
             <p className="mt-2.5 text-xs text-foreground-muted leading-relaxed">
               {view.chart === "candle" && candles.length > 0
-                ? `일봉 ${candles.length}개 · 게임 1일(현실 1시간)이 1봉 · 이동평균 5·20·60·120일 · RSI 14. 거래량은 게임에 호가·체결 개념이 없어 규칙으로 만든 가정치입니다.`
+                ? `일봉 ${candles.length}개 · 게임 1일(현실 1시간)이 1봉 · 이동평균은 범례에서 켠 선만(기본 20·60) · RSI 14 · 우측 음영은 매물대(가격대별 거래 밀집 — 진한 칸이 최다 거래 구간). 거래량은 게임에 호가·체결 개념이 없어 규칙으로 만든 가정치입니다.`
                 : `최근 게임 ${Math.round(current.series.length / 60)}일 · 등락률은 게임 1일(현실 1시간) 전 대비`}
               {newsMarkers.length > 0 && " · 세로 눈금은 이 종목에 걸린 뉴스 시점"}
             </p>

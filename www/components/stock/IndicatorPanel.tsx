@@ -16,6 +16,9 @@ const BB_LOW = 0.2;
 const BB_HIGH = 0.8;
 const VOLUME_SURGE = 1.5;
 const VOLUME_QUIET = 0.7;
+// 추세 × 거래량 교차 검증 임계값 — 게임 signal.py의 같은 판정과 맞춘 값
+const VOLUME_CONFIRM = 1.1;
+const VOLUME_DOUBT = 0.8;
 const MOMENTUM_MIN = 0.15;
 const ATR_HIGH = 4.0;
 // 이 이상은 "추세"가 아니라 상장 초기 구간이 기준에 잡힌 것 — 숫자를 그대로 믿게 두지 않는다
@@ -76,12 +79,22 @@ function buildStats(a: StockAnalyzeResult, symbol: string): Stat[] {
     {
       label: "거래량비 (5/20일)",
       value: `${fmt(a.volume_ratio)}x`,
+      // 가격 방향 + 거래량 증가 = 신뢰, 방향은 있는데 거래량 감소 = 의심.
+      // 방향(정/역배열)이 없으면 판정하지 않는다 — 방향 없는 신뢰도는 무의미하다.
       hint:
-        a.volume_ratio >= VOLUME_SURGE
+        (a.volume_ratio >= VOLUME_SURGE
           ? "평소보다 급증"
           : a.volume_ratio <= VOLUME_QUIET
             ? "평소보다 한산"
-            : "평소 수준",
+            : "평소 수준") +
+        (() => {
+          const trending =
+            (a.price > a.ma20 && a.ma20 > a.ma50) || (a.price < a.ma20 && a.ma20 < a.ma50);
+          if (!trending) return "";
+          if (a.volume_ratio >= VOLUME_CONFIRM) return " · 추세 방향에 거래량 동반(신뢰)";
+          if (a.volume_ratio <= VOLUME_DOUBT) return " · 추세 대비 거래량 감소(의심)";
+          return "";
+        })(),
       tone: a.volume_ratio >= VOLUME_SURGE ? "up" : a.volume_ratio <= VOLUME_QUIET ? "down" : "flat",
       // 1.0(평소)이 한가운데 오도록 0~2배 구간에 놓는다
       gauge: { position: clamp01(a.volume_ratio / 2), marks: [VOLUME_QUIET / 2, VOLUME_SURGE / 2] },
