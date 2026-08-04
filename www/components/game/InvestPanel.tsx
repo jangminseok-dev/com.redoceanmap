@@ -31,7 +31,11 @@ const FUTURES_TICKS = 240;
 const DEFAULT_CANDLE_DAYS = 30;
 
 const won = (v: number) => `${v.toLocaleString()}원`;
-const signed = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
+// signed는 **퍼센트 전용**이다. 원화 손익에 쓰면 "-243328848.00%원"이 된다(실사고) — 금액은 signedWon.
+// 수익률이 네 자리를 넘는 값이 실제로 나오므로(레버리지 시즌) 콤마를 넣는다: +11,716.48%
+const signed = (v: number) =>
+  `${v >= 0 ? "+" : ""}${v.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+const signedWon = (v: number) => `${v >= 0 ? "+" : ""}${v.toLocaleString()}원`;
 const toneOf = (v: number) => (v >= 0 ? "text-up" : "text-down");
 
 // 폭 상한 — 대시보드 예외 폭(DESIGN.md §5)
@@ -164,6 +168,40 @@ export default function InvestPanel() {
     })).sort((a, b) => b.changePct - a.changePct);
   }, [symbols]);
 
+  // 주문 + 보유 — lg(2열)에서는 상세 컬럼 아래에, 2xl(3열)에서는 전용 컬럼에 들어간다.
+  // JSX 변수로 둔다: 렌더 안에서 컴포넌트로 정의하면 매 렌더마다 리마운트되어 폼 상태가 날아간다.
+  const orderColumn =
+    current && wallet ? (
+      <>
+        <GameOrderForm
+          symbol={current}
+          rules={rulebookQ.data}
+          investableKrw={wallet.investableKrw}
+          disabled={open.isPending || wallet.seasonOver}
+          onSubmit={(side, quantity, leverage) =>
+            open.mutate({ symbol: current.symbol, side, quantity, leverage })
+          }
+        />
+        <section>
+          <h2 className="text-sm font-bold tracking-tight mb-2">
+            보유 포지션
+            {wallet.positions.length > 0 && (
+              <span className="ml-1.5 text-foreground-muted font-normal">
+                {wallet.positions.length}건 · 평가 {won(wallet.positionValueKrw)}
+              </span>
+            )}
+          </h2>
+          <GamePositionList
+            positions={wallet.positions}
+            ticksPerGameDay={rulebookQ.data?.ticksPerGameDay ?? 60}
+            currentTick={wallet.tick}
+            closingId={close.isPending ? (close.variables ?? null) : null}
+            onClose={(id) => close.mutate(id)}
+          />
+        </section>
+      </>
+    ) : null;
+
   if (unauthorized) {
     return (
       <div className={`${SHELL} mt-8`}>
@@ -181,9 +219,11 @@ export default function InvestPanel() {
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
-      {/* 세그먼트 + 지갑 한 줄 — 토스의 전체/국내/해외 자리 + 계좌는 문장이 아니라 숫자 세 개 */}
-      <div className={`${SHELL} shrink-0 flex flex-wrap items-center gap-x-4 gap-y-2`}>
-        <div className="flex items-center gap-1.5" role="tablist" aria-label="시장 선택">
+      {/* 세그먼트 + 지갑 한 줄 — 토스의 전체/국내/해외 자리 + 계좌는 문장이 아니라 숫자 세 개.
+          페이지 탭(투자/상권창업)이 이미 알약이라 여기는 **밑줄 탭**으로 층을 가른다 —
+          같은 모양의 알약이 두 줄 겹치면 위계 없이 어수선하다(실화면 지적). */}
+      <div className={`${SHELL} shrink-0 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border`}>
+        <div className="flex items-center gap-1" role="tablist" aria-label="시장 선택">
           {(
             [
               ["stock", "주식"],
@@ -196,10 +236,10 @@ export default function InvestPanel() {
               role="tab"
               aria-selected={view.market === key}
               onClick={() => setView((p) => ({ ...p, market: key }))}
-              className={`h-8 px-3.5 rounded-full text-sm font-medium transition-colors duration-150 ${
+              className={`h-9 px-3 -mb-px border-b-2 text-sm font-semibold transition-colors duration-150 ${
                 view.market === key
-                  ? "bg-brand text-white"
-                  : "border border-border text-foreground-muted hover:bg-accent hover:text-foreground"
+                  ? "border-brand text-foreground"
+                  : "border-transparent text-foreground-muted hover:text-foreground"
               }`}
             >
               {label}
@@ -258,7 +298,7 @@ export default function InvestPanel() {
                 {i > 0 && " · "}
                 {c.name}{" "}
                 {c.reason === "liquidated" ? "강제청산" : c.reason === "expired" ? "만료 마감" : "만기 정산"}
-                <b className={`ml-0.5 ${toneOf(c.realizedPnlKrw)}`}>{signed(c.realizedPnlKrw)}원</b>
+                <b className={`ml-0.5 ${toneOf(c.realizedPnlKrw)}`}>{signedWon(c.realizedPnlKrw)}</b>
               </span>
             ))}
             {(wallet?.recentlyClosed?.length ?? 0) > 2 && ` 외 ${wallet!.recentlyClosed!.length - 2}건`}
@@ -276,7 +316,7 @@ export default function InvestPanel() {
 
           {current && (
             <div
-              className={`${SHELL} flex-1 min-h-0 mt-3 overflow-y-auto lg:overflow-hidden lg:grid lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-4`}
+              className={`${SHELL} flex-1 min-h-0 mt-3 overflow-y-auto lg:overflow-hidden lg:grid lg:grid-cols-[minmax(0,1fr)_400px] 2xl:grid-cols-[minmax(0,1fr)_420px_320px] lg:gap-4`}
             >
               {/* 주인공 — 표. 데스크탑은 컬럼 내부에서만 스크롤한다 */}
               <div className="lg:h-full lg:min-h-0">
@@ -289,7 +329,7 @@ export default function InvestPanel() {
                 />
               </div>
 
-              {/* 조연 — 선택 종목 상세 + 주문 + 보유(레퍼런스의 우측 미니 패널 자리) */}
+              {/* 선택 종목 상세 — 토스의 종목 미니 패널 자리 */}
               <aside className="mt-4 lg:mt-0 lg:h-full lg:min-h-0 lg:overflow-y-auto flex flex-col gap-4 pb-4">
                 <GameSymbolDetail
                   current={current}
@@ -300,38 +340,15 @@ export default function InvestPanel() {
                   onCandleDaysChange={(days) => setView((prev) => ({ ...prev, candleDays: days }))}
                   isSelected={current.symbol === view.selected}
                 />
+                {/* lg(2열)에서는 주문·보유가 이 컬럼에 이어진다 — 2xl에서는 세 번째 컬럼이 가져간다.
+                    두 자리 모두 마운트되는 대신 CSS로 한쪽만 보인다(1536px 경계에서 입력 중이던
+                    수량은 초기화될 수 있다 — 감수). */}
+                <div className="2xl:hidden flex flex-col gap-4">{orderColumn}</div>
+              </aside>
 
-                {wallet && (
-                  <GameOrderForm
-                    symbol={current}
-                    rules={rulebookQ.data}
-                    investableKrw={wallet.investableKrw}
-                    disabled={open.isPending || wallet.seasonOver}
-                    onSubmit={(side, quantity, leverage) =>
-                      open.mutate({ symbol: current.symbol, side, quantity, leverage })
-                    }
-                  />
-                )}
-
-                {wallet && (
-                  <section>
-                    <h2 className="text-sm font-bold tracking-tight mb-2">
-                      보유 포지션
-                      {wallet.positions.length > 0 && (
-                        <span className="ml-1.5 text-foreground-muted font-normal">
-                          {wallet.positions.length}건 · 평가 {won(wallet.positionValueKrw)}
-                        </span>
-                      )}
-                    </h2>
-                    <GamePositionList
-                      positions={wallet.positions}
-                      ticksPerGameDay={rulebookQ.data?.ticksPerGameDay ?? 60}
-                      currentTick={wallet.tick}
-                      closingId={close.isPending ? (close.variables ?? null) : null}
-                      onClose={(id) => close.mutate(id)}
-                    />
-                  </section>
-                )}
+              {/* 주문 컬럼 — 토스는 주문 패널이 항상 보인다. 차트 아래로 밀지 않는다(실화면 지적) */}
+              <aside className="hidden 2xl:flex 2xl:h-full 2xl:min-h-0 2xl:overflow-y-auto flex-col gap-4 pb-4">
+                {orderColumn}
               </aside>
             </div>
           )}
