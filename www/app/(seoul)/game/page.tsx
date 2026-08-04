@@ -34,7 +34,9 @@ export default function GamePage() {
   const clock = rulebookQ.data;
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-6 sm:py-8">
+    // max-w-6xl(1152px)로는 3열([목록|상세|주문])이 서지 않는다 — 대시보드 화면이라 폭을 연다.
+    // 읽기 중심 페이지(약관·홈)는 여전히 max-w-6xl이 상한이다(DESIGN.md §5).
+    <div className="mx-auto w-full max-w-[1720px] px-4 sm:px-6 py-6 sm:py-8">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <span className="grid place-items-center w-10 h-10 rounded-xl bg-brand/10 text-brand">
           <Gamepad2 size={19} strokeWidth={1.9} />
