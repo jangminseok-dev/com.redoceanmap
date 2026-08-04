@@ -80,7 +80,7 @@ function TrendStrip({ trend }: { trend: AreaScoreDetail["trend"] }) {
             <button
               key={b}
               onClick={() => setBasis(b)}
-              className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+              className={`px-1.5 py-0.5 rounded-md text-[10px] font-medium ${
                 basis === b ? "bg-brand/10 text-brand" : "text-foreground-muted"
               }`}
             >

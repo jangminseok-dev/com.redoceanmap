@@ -6,6 +6,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Coins, TrendingUp } from "lucide-react";
 import BlockSkeleton from "@/components/admin/BlockSkeleton";
 import Empty from "@/components/admin/Empty";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
   fetchAdminGameBoard,
   fetchAdminGameWallet,
@@ -163,7 +165,7 @@ function GameOps() {
           <div className="mt-4 space-y-3">
             <label className="block text-xs text-foreground-muted">
               유저 ID
-              <input
+              <Input
                 type="number"
                 value={form.userId}
                 onChange={(e) => patch({ userId: e.target.value })}
@@ -202,7 +204,7 @@ function GameOps() {
 
             <label className="block text-xs text-foreground-muted">
               금액 (음수 = 회수)
-              <input
+              <Input
                 type="number"
                 step={100000}
                 value={form.amount}
@@ -213,7 +215,7 @@ function GameOps() {
 
             <label className="block text-xs text-foreground-muted">
               사유 (원장·감사에 남습니다)
-              <input
+              <Input
                 value={form.reason}
                 onChange={(e) => patch({ reason: e.target.value })}
                 maxLength={200}
@@ -222,18 +224,19 @@ function GameOps() {
               />
             </label>
 
-            <button
+            <Button
               type="button"
               onClick={() => grant.mutate()}
               disabled={!grantReady || grant.isPending}
-              className="w-full h-11 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-40 transition-colors"
+              size="lg"
+              className="w-full"
             >
               {grant.isPending
                 ? "반영 중…"
                 : Number(form.amount) < 0
                   ? `${won(Math.abs(Number(form.amount)))} 회수`
                   : `${won(Number(form.amount) || 0)} 지급`}
-            </button>
+            </Button>
           </div>
         </section>
 
@@ -298,7 +301,7 @@ function GameOps() {
                     className={`h-8 px-3 rounded-lg text-xs font-medium transition-colors ${
                       form.mode === m
                         ? "bg-brand text-white"
-                        : "text-foreground-muted hover:bg-black/[0.04]"
+                        : "text-foreground-muted hover:bg-accent"
                     }`}
                   >
                     {m === "pct" ? "퍼센트로" : "목표가로"}
@@ -311,7 +314,7 @@ function GameOps() {
               {form.mode === "price" && form.scope === "symbol" ? (
                 <label className="col-span-3 block text-xs text-foreground-muted">
                   목표가 {selected && `(현재 ${won(selected.price_krw)})`}
-                  <input
+                  <Input
                     type="number"
                     value={form.targetPrice}
                     onChange={(e) => patch({ targetPrice: e.target.value })}
@@ -321,7 +324,7 @@ function GameOps() {
               ) : (
                 <label className="block text-xs text-foreground-muted">
                   즉시 충격 %
-                  <input
+                  <Input
                     type="number"
                     step={1}
                     value={form.shockPct}
@@ -332,7 +335,7 @@ function GameOps() {
               )}
               <label className="block text-xs text-foreground-muted">
                 드리프트 %/일
-                <input
+                <Input
                   type="number"
                   step={0.5}
                   value={form.driftPct}
@@ -342,7 +345,7 @@ function GameOps() {
               </label>
               <label className="block text-xs text-foreground-muted">
                 지속 게임일
-                <input
+                <Input
                   type="number"
                   min={1}
                   max={board?.max_duration_days ?? 5}
@@ -355,7 +358,7 @@ function GameOps() {
 
             <label className="block text-xs text-foreground-muted">
               유저에게 보일 뉴스 문구
-              <input
+              <Input
                 value={form.headline}
                 onChange={(e) => patch({ headline: e.target.value })}
                 maxLength={120}
@@ -366,7 +369,7 @@ function GameOps() {
 
             <label className="block text-xs text-foreground-muted">
               관리자 메모 (유저에게 보이지 않습니다)
-              <input
+              <Input
                 value={form.note}
                 onChange={(e) => patch({ note: e.target.value })}
                 maxLength={200}
@@ -374,14 +377,15 @@ function GameOps() {
               />
             </label>
 
-            <button
+            <Button
               type="button"
               onClick={() => intervene.mutate()}
               disabled={!interveneReady || intervene.isPending}
-              className="w-full h-11 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-40 transition-colors"
+              size="lg"
+              className="w-full"
             >
               {intervene.isPending ? "반영 중…" : "지금부터 적용"}
-            </button>
+            </Button>
           </div>
         </section>
       </div>

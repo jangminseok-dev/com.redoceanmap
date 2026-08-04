@@ -267,7 +267,7 @@ function StockWorkspace() {
             className={`px-3 h-7 rounded-md text-xs font-medium transition-colors ${
               timeframe === tf
                 ? "bg-brand text-white"
-                : "text-foreground-muted hover:bg-black/5"
+                : "text-foreground-muted hover:bg-accent"
             }`}
           >
             {tf === "1d" ? "일봉" : "5분봉"}
@@ -283,7 +283,7 @@ function StockWorkspace() {
             className={`px-2.5 h-7 rounded-md text-xs font-medium transition-colors ${
               rangeDays === preset.days
                 ? "border border-brand text-brand"
-                : "text-foreground-muted hover:bg-black/5"
+                : "text-foreground-muted hover:bg-accent"
             }`}
           >
             {preset.label}
@@ -319,7 +319,7 @@ function StockWorkspace() {
                 className={`px-2.5 h-7 rounded-md text-xs font-medium transition-colors ${
                   activePattern?.name === p.name
                     ? "bg-foreground text-background"
-                    : "text-foreground-muted hover:bg-black/5"
+                    : "text-foreground-muted hover:bg-accent"
                 }`}
               >
                 {p.label}

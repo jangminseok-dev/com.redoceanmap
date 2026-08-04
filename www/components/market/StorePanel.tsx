@@ -50,7 +50,7 @@ export default function StorePanel({
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-foreground-muted">상권 변화</span>
             {latest.changeIndicator && (
-              <span className="text-[11px] font-medium px-1.5 py-0.5 rounded border border-brand/30 bg-brand/5 text-brand">
+              <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-md border border-brand/30 bg-brand/5 text-brand">
                 {latest.changeIndicator}
               </span>
             )}

@@ -7,6 +7,8 @@ import { ArrowDown, ArrowUp, MapPin, Search } from "lucide-react";
 import { ApiError, fetchAreaRanking } from "@/lib/api";
 import { useUIStore } from "@/lib/uiStore";
 import type { AreaRankingRow } from "@/lib/types";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 type SortKey =
   | "salesPerStore"
@@ -180,12 +182,12 @@ export default function AreasDirectoryPage() {
           <p className="mt-2 text-sm text-foreground-muted leading-relaxed">
             자치구·업종으로 좁혀 보고, 최대 3곳까지 나란히 비교할 수 있어요.
           </p>
-          <button
+          <Button
             onClick={() => openAuth("login")}
-            className="mt-6 inline-flex items-center px-5 h-10 rounded-full bg-brand text-white text-sm font-medium hover:bg-brand-deep transition-colors"
+            className="mt-6"
           >
             로그인하기
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -207,7 +209,7 @@ export default function AreasDirectoryPage() {
             size={16}
             className="absolute left-3 top-1/2 -translate-y-1/2 text-foreground-muted"
           />
-          <input
+          <Input
             value={q.text}
             onChange={(e) => setQ((p) => ({ ...p, text: e.target.value }))}
             placeholder="상권명·동 이름으로 찾기"
@@ -358,7 +360,7 @@ function AreaCard({
       <button
         onClick={onCompare}
         title="비교에 담기 (최대 3곳)"
-        className={`absolute right-3 top-3 z-10 w-5 h-5 rounded border text-[10px] font-bold transition-colors ${
+        className={`absolute right-3 top-3 z-10 w-5 h-5 rounded-md border text-[10px] font-bold transition-colors ${
           selected ? "bg-brand text-white border-brand" : "bg-surface border-border text-transparent"
         }`}
       >
@@ -369,7 +371,7 @@ function AreaCard({
       className="block rounded-2xl bg-surface border border-border p-4 hover:border-brand/40 transition-colors"
     >
       <div className="flex items-start gap-2">
-        <span className="grid place-items-center w-9 h-9 rounded-xl bg-brand/10 text-brand shrink-0">
+        <span className="grid place-items-center w-10 h-10 rounded-xl bg-brand/10 text-brand shrink-0">
           <MapPin size={16} strokeWidth={1.9} />
         </span>
         <div className="min-w-0 flex-1">

@@ -7,6 +7,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useChatStore, type Message } from "@/lib/store";
 import RobotAvatar from "@/components/rom/RobotAvatar";
+import { Textarea } from "@/components/ui/textarea";
 
 const SUGGESTIONS = [
   "성수동 상권 요즘 어때?",
@@ -48,7 +49,7 @@ export default function RomChatPage() {
         <Link
           href="/"
           aria-label="홈으로"
-          className="w-9 h-9 grid place-items-center rounded-full text-foreground-muted hover:bg-black/5 transition-colors"
+          className="w-10 h-10 grid place-items-center rounded-full text-foreground-muted hover:bg-accent transition-colors"
         >
           <ArrowLeft size={18} />
         </Link>
@@ -60,7 +61,7 @@ export default function RomChatPage() {
           type="button"
           onClick={reset}
           aria-label="새 대화"
-          className="w-9 h-9 grid place-items-center rounded-full text-foreground-muted hover:bg-black/5 transition-colors"
+          className="w-10 h-10 grid place-items-center rounded-full text-foreground-muted hover:bg-accent transition-colors"
         >
           <RotateCcw size={17} />
         </button>
@@ -128,11 +129,11 @@ export default function RomChatPage() {
           <button
             type="button"
             aria-label="첨부"
-            className="shrink-0 w-11 h-11 grid place-items-center rounded-full bg-surface border border-border text-foreground-muted hover:bg-black/5 transition-colors"
+            className="shrink-0 w-10 h-10 grid place-items-center rounded-full bg-surface border border-border text-foreground-muted hover:bg-accent transition-colors"
           >
             <Plus size={19} />
           </button>
-          <textarea
+          <Textarea
             aria-label="메시지 입력"
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -144,13 +145,13 @@ export default function RomChatPage() {
             }}
             rows={1}
             placeholder="ROM에게 메시지 보내기…"
-            className="flex-1 resize-none bg-surface border border-border rounded-3xl px-5 py-3 text-[15px] outline-none placeholder:text-foreground-muted focus:border-brand/40 transition-colors max-h-32"
+            className="flex-1 resize-none bg-surface border border-border rounded-2xl px-5 py-3 text-[15px] outline-none placeholder:text-foreground-muted focus:border-brand/40 transition-colors max-h-32"
           />
           <button
             type="submit"
             aria-label="보내기"
             disabled={!text.trim() || isLoading}
-            className="shrink-0 w-11 h-11 grid place-items-center rounded-full bg-brand text-white hover:bg-brand-deep transition-colors disabled:bg-border disabled:text-foreground-muted"
+            className="shrink-0 w-10 h-10 grid place-items-center rounded-full bg-brand text-white hover:bg-brand-deep transition-colors disabled:bg-border disabled:text-foreground-muted"
           >
             <ArrowUp size={19} strokeWidth={2.5} />
           </button>
@@ -206,7 +207,7 @@ function MarkdownBody({ text }: { text: string }) {
           h2: ({ children }) => <p className="mt-3 font-semibold">{children}</p>,
           h3: ({ children }) => <p className="mt-3 font-semibold">{children}</p>,
           code: ({ children }) => (
-            <code className="px-1.5 py-0.5 rounded bg-black/5 text-[13px]">{children}</code>
+            <code className="px-1.5 py-0.5 rounded-md bg-black/5 text-[13px]">{children}</code>
           ),
           a: ({ href, children }) => (
             <a

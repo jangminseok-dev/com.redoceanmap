@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { TrendingDown, TrendingUp } from "lucide-react";
 import type { GameRulebook, GameSymbolPrices } from "@/lib/types";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 type Props = {
   symbol: GameSymbolPrices;
@@ -87,7 +89,7 @@ export default function GameOrderForm({
                   ? isLong
                     ? "bg-[#DC2626] text-white border-transparent"
                     : "bg-[#2563EB] text-white border-transparent"
-                  : "border-border text-foreground-muted hover:bg-black/[0.03]"
+                  : "border-border text-foreground-muted hover:bg-accent"
               }`}
             >
               {isLong ? <TrendingUp size={15} /> : <TrendingDown size={15} />}
@@ -107,10 +109,10 @@ export default function GameOrderForm({
                 type="button"
                 onClick={() => setOrder((prev) => ({ ...prev, leverage: tier }))}
                 aria-pressed={order.leverage === tier}
-                className={`h-9 rounded-xl text-sm font-medium border transition-colors ${
+                className={`h-10 rounded-xl text-sm font-medium border transition-colors ${
                   order.leverage === tier
                     ? "bg-foreground text-background border-transparent"
-                    : "border-border text-foreground-muted hover:bg-black/[0.03]"
+                    : "border-border text-foreground-muted hover:bg-accent"
                 }`}
               >
                 {tier}배
@@ -124,7 +126,7 @@ export default function GameOrderForm({
         수량
       </label>
       <div className="mt-1 flex gap-2">
-        <input
+        <Input
           id="game-quantity"
           type="number"
           min={1}
@@ -136,7 +138,7 @@ export default function GameOrderForm({
           type="button"
           onClick={() => setQuantity(maxQuantity)}
           disabled={maxQuantity < 1}
-          className="px-3 h-10 rounded-xl border border-border text-xs font-medium text-foreground-muted hover:bg-black/[0.03] disabled:opacity-40"
+          className="px-3 h-10 rounded-xl border border-border text-xs font-medium text-foreground-muted hover:bg-accent disabled:opacity-40"
         >
           최대 {maxQuantity.toLocaleString()}
         </button>
@@ -182,16 +184,17 @@ export default function GameOrderForm({
         </p>
       )}
 
-      <button
+      <Button
         type="button"
         onClick={() => onSubmit(order.side, order.quantity, order.leverage)}
         disabled={disabled || overBudget || order.quantity < 1}
-        className="mt-4 w-full h-11 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-40 disabled:hover:bg-brand transition-colors"
+        size="lg"
+              className="mt-4 w-full"
       >
         {overBudget
           ? "투자 가능 금액을 넘습니다"
           : `${order.quantity.toLocaleString()}주 주문${order.leverage > 1 ? ` · ${order.leverage}배` : ""}`}
-      </button>
+      </Button>
     </div>
   );
 }

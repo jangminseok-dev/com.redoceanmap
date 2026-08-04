@@ -20,6 +20,8 @@ import {
 } from "@/lib/api";
 import { useUIStore } from "@/lib/uiStore";
 import type { GameSymbolPrices } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import CountUp from "@/components/common/CountUp";
 
 const CHART_TICKS = 120; // 게임 2일치 — 곡선 모양이 읽히는 최소 구간
 // 일봉 기간 탭. 백엔드 상한은 120일이고, 120일선을 그리려면 그만큼이 화면에 있어야 한다.
@@ -204,13 +206,13 @@ export default function InvestPanel() {
           <p className="text-sm text-foreground-muted">
             게임은 누구나 이용할 수 있지만, 자산을 저장하려면 로그인이 필요합니다.
           </p>
-          <button
+          <Button
             type="button"
             onClick={() => openAuth("login")}
-            className="mt-5 inline-flex items-center px-5 h-10 rounded-full bg-brand text-white text-sm font-medium hover:bg-brand-deep transition-colors"
+            className="mt-5"
           >
             로그인하고 시작하기
-          </button>
+          </Button>
         </div>
       )}
 
@@ -223,20 +225,28 @@ export default function InvestPanel() {
       {/* 자산 요약 */}
       {wallet && (
         <section className="mt-6 rounded-2xl border border-border bg-surface p-5 grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {/* 금액은 체결·정산으로 계속 바뀌므로 굴러가게 둔다. 수익률은 소수라
+              중간값이 튀어 읽기 나빠지므로 그대로 찍는다. */}
           {[
-            { label: "총자산", value: won(wallet.totalAssetKrw), tone: "" },
+            { label: "총자산", raw: wallet.totalAssetKrw, format: won, animate: true, tone: "" },
             {
               label: "수익률",
-              value: signed(wallet.totalReturnPct),
+              raw: wallet.totalReturnPct,
+              format: signed,
+              animate: false,
               tone: toneOf(wallet.totalReturnPct),
             },
-            { label: "현금", value: won(wallet.cashKrw), tone: "" },
-            { label: "투자 가능", value: won(wallet.investableKrw), tone: "" },
+            { label: "현금", raw: wallet.cashKrw, format: won, animate: true, tone: "" },
+            { label: "투자 가능", raw: wallet.investableKrw, format: won, animate: true, tone: "" },
           ].map((item) => (
             <div key={item.label}>
               <dt className="text-xs text-foreground-muted">{item.label}</dt>
               <dd className={`mt-0.5 text-lg font-bold tabular-nums ${item.tone}`}>
-                {item.value}
+                {item.animate ? (
+                  <CountUp value={item.raw} format={item.format} />
+                ) : (
+                  item.format(item.raw)
+                )}
               </dd>
             </div>
           ))}
@@ -377,7 +387,7 @@ export default function InvestPanel() {
                       className={`h-7 rounded-lg px-2.5 text-[11px] font-medium transition-colors ${
                         activePattern?.name === p.name
                           ? "bg-foreground text-background"
-                          : "text-foreground-muted hover:bg-black/[0.04]"
+                          : "text-foreground-muted hover:bg-accent"
                       }`}
                     >
                       {p.label}
@@ -483,7 +493,7 @@ export default function InvestPanel() {
                     className={`h-7 rounded-lg px-2.5 text-[11px] font-medium transition-colors ${
                       view.sector === group
                         ? "bg-brand text-white"
-                        : "text-foreground-muted hover:bg-black/[0.04]"
+                        : "text-foreground-muted hover:bg-accent"
                     }`}
                   >
                     {group}
@@ -500,7 +510,7 @@ export default function InvestPanel() {
                         onClick={() => setView((prev) => ({ ...prev, selected: s.symbol }))}
                         aria-current={active}
                         className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors ${
-                          active ? "bg-brand/8" : "hover:bg-black/[0.03]"
+                          active ? "bg-brand/8" : "hover:bg-accent"
                         }`}
                       >
                         <span className="min-w-0 flex-1">
@@ -508,7 +518,7 @@ export default function InvestPanel() {
                             <span className="text-sm font-medium truncate">{s.name}</span>
                             {/* 밈 종목은 변동성이 다른 종목의 2배 이상이다 — 목록에서 바로 보이게 */}
                             {s.meme && (
-                              <span className="shrink-0 rounded px-1 py-px text-[10px] font-bold bg-[#DC2626]/10 text-[#DC2626]">
+                              <span className="shrink-0 rounded-md px-1 py-px text-[10px] font-bold bg-[#DC2626]/10 text-[#DC2626]">
                                 밈
                               </span>
                             )}

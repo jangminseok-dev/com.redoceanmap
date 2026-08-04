@@ -1,7 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, ArrowLeft, Eye, EyeOff, Info } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Info } from "lucide-react";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useUIStore, type AuthMode } from "@/lib/uiStore";
 import { apiLogin, apiRegister } from "@/lib/authApi";
 import { startSocialLogin, type SocialProvider } from "@/lib/socialAuth";
@@ -72,7 +75,7 @@ function SnsButtons({ label }: { label: string }) {
           type="button"
           aria-label="카카오로 시작"
           onClick={() => handleClick("kakao")}
-          className="w-11 h-11 rounded-full bg-[#FEE500] grid place-items-center hover:opacity-90 transition-opacity"
+          className="w-10 h-10 rounded-full bg-[#FEE500] grid place-items-center hover:opacity-90 transition-opacity"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="#000">
             <path d="M12 3C6.477 3 2 6.582 2 11c0 2.84 1.86 5.336 4.667 6.74l-1.18 4.293a.5.5 0 00.76.553L11.5 19.34a13.8 13.8 0 00.5.011c5.523 0 10-3.582 10-8.001S17.523 3 12 3z" />
@@ -82,7 +85,7 @@ function SnsButtons({ label }: { label: string }) {
           type="button"
           aria-label="네이버로 시작"
           onClick={() => handleClick("naver")}
-          className="w-11 h-11 rounded-full bg-[#03C75A] grid place-items-center text-white font-bold text-base hover:opacity-90 transition-opacity"
+          className="w-10 h-10 rounded-full bg-[#03C75A] grid place-items-center text-white font-bold text-base hover:opacity-90 transition-opacity"
         >
           N
         </button>
@@ -90,7 +93,7 @@ function SnsButtons({ label }: { label: string }) {
           type="button"
           aria-label="구글로 시작"
           onClick={() => handleClick("google")}
-          className="w-11 h-11 rounded-full bg-white border border-border grid place-items-center hover:bg-black/[0.03] transition-colors"
+          className="w-10 h-10 rounded-full bg-white border border-border grid place-items-center hover:bg-accent transition-colors"
         >
           <svg width="18" height="18" viewBox="0 0 24 24">
             <path
@@ -200,46 +203,26 @@ export default function AuthModal() {
     }
   };
 
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [open, close]);
-
-  if (!open) return null;
-
   const isSignupForm = mode === "signup" && ui.signupStep === "form";
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm grid place-items-center px-4"
-      onClick={close}
+    // Escape·오버레이 클릭·포커스 트랩·스크롤 락은 Radix Dialog가 맡는다
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) close();
+      }}
     >
-      <div
-        className="relative w-full max-w-md bg-surface rounded-2xl shadow-xl p-8 max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label={mode === "login" ? "로그인" : "회원가입"}
-      >
-        <button
-          type="button"
-          onClick={close}
-          aria-label="닫기"
-          className="absolute top-4 right-4 w-8 h-8 grid place-items-center rounded-full text-foreground-muted hover:bg-black/5"
-        >
-          <X size={18} />
-        </button>
+      <DialogContent className="sm:max-w-md rounded-2xl bg-surface p-8 max-h-[90vh] overflow-y-auto block">
+        {/* 시각적 제목은 워드마크가 대신하므로 접근성용으로만 둔다 */}
+        <DialogTitle className="sr-only">{mode === "login" ? "로그인" : "회원가입"}</DialogTitle>
 
         {isSignupForm && (
           <button
             type="button"
             onClick={() => setUI((prev) => ({ ...prev, signupStep: "options" }))}
             aria-label="뒤로"
-            className="absolute top-4 left-4 w-8 h-8 grid place-items-center rounded-full text-foreground-muted hover:bg-black/5"
+            className="absolute top-4 left-4 w-8 h-8 grid place-items-center rounded-full text-foreground-muted hover:bg-accent"
           >
             <ArrowLeft size={18} />
           </button>
@@ -263,23 +246,23 @@ export default function AuthModal() {
             <label htmlFor="login-email" className="sr-only">
               이메일
             </label>
-            <input
+            <Input
               id="login-email"
               name="email"
               type="email"
               placeholder="이메일을 입력해주세요"
-              className="w-full bg-transparent border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-brand placeholder:text-foreground-muted"
+              className="h-12"
             />
             <div className="relative">
               <label htmlFor="login-password" className="sr-only">
                 비밀번호
               </label>
-              <input
+              <Input
                 id="login-password"
                 name="password"
                 type={ui.showPwd ? "text" : "password"}
                 placeholder="비밀번호를 입력해주세요"
-                className="w-full bg-transparent border border-border rounded-xl px-4 py-3 pr-10 text-sm outline-none focus:border-brand placeholder:text-foreground-muted"
+                className="h-12 pr-10"
               />
               <button
                 type="button"
@@ -308,13 +291,14 @@ export default function AuthModal() {
             {ui.error && mode === "login" && (
               <p className="text-sm text-red-500 text-center">{ui.error}</p>
             )}
-            <button
+            <Button
               type="submit"
               disabled={ui.loading}
-              className="mt-4 w-full bg-brand text-white py-3 rounded-xl font-medium hover:bg-brand-deep transition-colors disabled:opacity-60"
+              size="xl"
+              className="mt-4 w-full"
             >
               {ui.loading ? "로그인 중..." : "로그인"}
-            </button>
+            </Button>
 
             <SnsButtons label="SNS 간편 로그인" />
           </form>
@@ -322,13 +306,14 @@ export default function AuthModal() {
 
         {mode === "signup" && ui.signupStep === "options" && (
           <div>
-            <button
+            <Button variant="outline"
               type="button"
               onClick={() => setUI((prev) => ({ ...prev, signupStep: "form" }))}
-              className="w-full border-2 border-brand text-brand font-medium py-3 rounded-xl hover:bg-brand/5 transition-colors"
+              size="xl"
+              className="w-full border-2 border-brand text-brand hover:bg-brand/5 hover:text-brand"
             >
               이메일로 회원가입
-            </button>
+            </Button>
             <SnsButtons label="SNS 간편 가입" />
           </div>
         )}
@@ -342,13 +327,13 @@ export default function AuthModal() {
               >
                 이름
               </label>
-              <input
+              <Input
                 id="signup-name"
                 type="text"
                 name="name"
                 placeholder="이름을 입력해주세요"
                 required
-                className="w-full bg-transparent border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-brand placeholder:text-foreground-muted"
+                className="h-12"
               />
             </div>
             <div>
@@ -358,12 +343,12 @@ export default function AuthModal() {
               >
                 이메일
               </label>
-              <input
+              <Input
                 id="signup-email"
                 name="email"
                 type="email"
                 placeholder="이메일을 입력해주세요"
-                className="w-full bg-transparent border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-brand placeholder:text-foreground-muted"
+                className="h-12"
               />
             </div>
             <div>
@@ -374,12 +359,12 @@ export default function AuthModal() {
                 비밀번호
               </label>
               <div className="relative mb-2">
-                <input
+                <Input
                   id="signup-password"
                   name="password"
                   type={ui.showPwd ? "text" : "password"}
                   placeholder={`비밀번호 (${MIN_PASSWORD_LENGTH}자 이상)`}
-                  className="w-full bg-transparent border border-border rounded-xl px-4 py-3 pr-10 text-sm outline-none focus:border-brand placeholder:text-foreground-muted"
+                  className="h-12 pr-10"
                 />
                 <button
                   type="button"
@@ -395,12 +380,12 @@ export default function AuthModal() {
                 <label htmlFor="signup-password-confirm" className="sr-only">
                   비밀번호 확인
                 </label>
-                <input
+                <Input
                   id="signup-password-confirm"
                   name="passwordConfirm"
                   type={ui.showPwd2 ? "text" : "password"}
                   placeholder="비밀번호를 다시 입력해주세요"
-                  className="w-full bg-transparent border border-border rounded-xl px-4 py-3 pr-10 text-sm outline-none focus:border-brand placeholder:text-foreground-muted"
+                  className="h-12 pr-10"
                 />
                 <button
                   type="button"
@@ -468,16 +453,17 @@ export default function AuthModal() {
             {ui.error && mode === "signup" && (
               <p className="text-sm text-red-500 text-center">{ui.error}</p>
             )}
-            <button
+            <Button
               type="submit"
               disabled={ui.loading}
-              className="mt-4 w-full bg-brand text-white py-3 rounded-xl font-medium hover:bg-brand-deep transition-colors disabled:opacity-60"
+              size="xl"
+              className="mt-4 w-full"
             >
               {ui.loading ? "가입 중..." : "가입하기"}
-            </button>
+            </Button>
           </form>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

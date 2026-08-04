@@ -1,5 +1,12 @@
 @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css');
-@import "tailwindcss";
+/* source("../") — 스캔·감시 범위를 www/로 못박는다. 지우지 말 것.
+   Tailwind 4는 소스를 자동 감지하는데 기준이 `.git`이 있는 디렉토리다. 이 저장소는
+   www/ 위에 .git이 있어 지정이 없으면 루트 전체(venv/ 2.2GB · minseok/data 107M · runs/)를
+   순회하고 dev 모드에서는 거기에 파일 감시까지 건다 → next dev CPU 폭주 + fseventsd 동반.
+   빌드는 watch가 없어 멀쩡하고 페이지를 여는 순간에만 터져서 원인을 찾기 어렵다. */
+@import "tailwindcss" source("../");
+/* shadcn 컴포넌트가 쓰는 animate-in/zoom-in-95 유틸 — Tailwind 4에는 내장돼 있지 않다 */
+@import "tw-animate-css";
 
 :root {
   --background: #FDFAF2;
@@ -9,6 +16,32 @@
   --border: #EBE8DF;
   --brand: #991B1B;
   --brand-deep: #7A1515;
+
+  /* shadcn 표준 토큰 — 위 색을 그대로 가리키는 별칭이다. 색을 새로 정하지 않는다.
+     기존 토큰(brand·surface·foreground-muted)은 87개 화면이 직접 쓰고 있어 그대로 둔다. */
+  --card: var(--surface);
+  --card-foreground: var(--foreground);
+  --popover: var(--surface);
+  --popover-foreground: var(--foreground);
+  --primary: var(--brand);
+  --primary-foreground: #FFFFFF;
+  --secondary: #F5F1E8;
+  --secondary-foreground: var(--foreground);
+  --muted: var(--background);
+  --muted-foreground: var(--foreground-muted);
+  /* hover:bg-black/5를 크림 배경 위에서 계산한 값 — 기존 hover 톤과 맞춘다 */
+  --accent: #F0EDE6;
+  --accent-foreground: var(--foreground);
+  --destructive: #DC2626;
+  --destructive-foreground: #FFFFFF;
+  --input: var(--border);
+  --ring: var(--brand);
+
+  /* 모션 — DESIGN.md §15의 local extension. 세 단계 밖의 duration을 새로 만들지 않는다. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-state: 150ms; /* hover·pressed 같은 상태 전환 */
+  --duration-enter: 200ms; /* 요소 진입·퇴장 */
+  --duration-overlay: 280ms; /* 모달·시트 */
 }
 
 @theme inline {
@@ -20,7 +53,28 @@
   --color-brand: var(--brand);
   --color-brand-deep: var(--brand-deep);
   --font-sans: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 }
+
+/* radius는 Tailwind 기본 스케일을 그대로 쓴다 — 재정의하지 않는다.
+   유틸 이름(rounded-lg = 8px)과 실제 값이 어긋나면 코드를 읽고 크기를 짐작할 수 없고,
+   DESIGN.md 대조 훅도 기본 스케일 기준으로 판정한다. DESIGN.md §5 참조. */
 
 body {
   background: var(--background);
@@ -45,7 +99,7 @@ body {
 }
 
 @theme inline {
-  --animate-fade-in-up: fade-in-up 0.28s ease-out both;
+  --animate-fade-in-up: fade-in-up var(--duration-overlay) var(--ease-out) both;
 }
 
 .skeleton {
@@ -57,4 +111,17 @@ body {
   );
   background-size: 200% 100%;
   animation: shimmer 1.6s infinite linear;
+}
+
+/* 동작 줄이기 — DESIGN.md §15. 선택이 아니라 기본값이다.
+   스켈레톤 shimmer도 함께 멈춘다(로딩 표시는 색 대비로 남는다). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

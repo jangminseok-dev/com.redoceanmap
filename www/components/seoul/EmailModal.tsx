@@ -1,7 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Send, CheckCircle2 } from "lucide-react";
+import { Send, CheckCircle2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 // 브라우저 직접 호출 — same-origin /api/backend(rewrites) 경유 (authApi와 동일 이유)
 const API_BASE = "/api/backend";
@@ -20,15 +29,6 @@ export default function EmailModal({ open, onClose }: Props) {
   useEffect(() => {
     if (open) setUI({ status: "idle", error: "" });
   }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [open, onClose]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -53,36 +53,24 @@ export default function EmailModal({ open, onClose }: Props) {
     }
   };
 
-  if (!open) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm grid place-items-center px-4"
-      onClick={onClose}
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
     >
-      <div
-        className="relative w-full max-w-md bg-surface rounded-2xl shadow-xl p-8"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label="이메일 보내기"
-      >
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="닫기"
-          className="absolute top-4 right-4 w-8 h-8 grid place-items-center rounded-full text-foreground-muted hover:bg-black/5"
-        >
-          <X size={18} />
-        </button>
-
-        <div className="flex items-center gap-2 mb-1">
-          <Send size={18} strokeWidth={1.75} className="text-brand" />
-          <h2 className="text-lg font-semibold tracking-tight">이메일 보내기</h2>
-        </div>
-        <p className="text-sm text-foreground-muted mb-6">
-          내용을 적으면 AI가 정중한 이메일로 작성해 회원님 가입 메일로 보내드려요.
-        </p>
+      {/* 닫기 X·Escape·오버레이 클릭은 DialogContent가 기본 제공한다 */}
+      <DialogContent className="sm:max-w-md rounded-2xl bg-surface p-8">
+        <DialogHeader className="text-left gap-1">
+          <DialogTitle className="flex items-center gap-2 tracking-tight">
+            <Send size={18} strokeWidth={1.75} className="text-brand" />
+            이메일 보내기
+          </DialogTitle>
+          <DialogDescription>
+            내용을 적으면 AI가 정중한 이메일로 작성해 회원님 가입 메일로 보내드려요.
+          </DialogDescription>
+        </DialogHeader>
 
         {ui.status === "sent" ? (
           <div className="flex flex-col items-center py-8 gap-3">
@@ -91,40 +79,32 @@ export default function EmailModal({ open, onClose }: Props) {
             <p className="text-sm text-foreground-muted">
               AI가 작성한 이메일을 회원님 가입 메일로 보냈어요.
             </p>
-            <button
-              type="button"
-              onClick={onClose}
-              className="mt-2 px-6 py-2 rounded-full bg-brand text-white text-sm font-medium hover:bg-brand-deep transition-colors"
-            >
+            <Button type="button" onClick={onClose} className="mt-2">
               닫기
-            </button>
+            </Button>
           </div>
         ) : (
           <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
             <label htmlFor="email-content" className="sr-only">
               보낼 내용
             </label>
-            <textarea
+            <Textarea
               id="email-content"
               name="content"
               rows={5}
               placeholder="전하고 싶은 내용을 편하게 적어주세요 (예: 성수동 상권 리포트가 준비됐다고 안내해줘)"
-              className="w-full bg-transparent border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-brand placeholder:text-foreground-muted resize-none"
+              className="resize-none"
             />
 
-            {ui.error && (
-              <p className="text-sm text-red-500 text-center">{ui.error}</p>
-            )}
-            <button
-              type="submit"
-              disabled={ui.status === "sending"}
-              className="mt-2 w-full bg-brand text-white py-3 rounded-xl font-medium hover:bg-brand-deep transition-colors disabled:opacity-60"
-            >
+            {ui.error && <p className="text-sm text-destructive text-center">{ui.error}</p>}
+            {/* 폭이 w-full로 고정이라 라벨이 길어져도 버튼이 흔들리지 않는다 —
+                진행 문구를 그대로 보여주는 편이 스피너보다 정보가 많다 */}
+            <Button type="submit" size="xl" disabled={ui.status === "sending"} className="mt-2 w-full">
               {ui.status === "sending" ? "AI가 작성해서 보내는 중..." : "보내기"}
-            </button>
+            </Button>
           </form>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

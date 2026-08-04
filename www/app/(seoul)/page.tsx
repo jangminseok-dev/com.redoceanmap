@@ -20,6 +20,7 @@ import { useChatStore } from "@/lib/store";
 import { useUIStore } from "@/lib/uiStore";
 import ChatInput from "@/components/seoul/ChatInput";
 import { formatMoney } from "@/components/market/overlay/format";
+import { Button } from "@/components/ui/button";
 
 function getGreeting(hour: number) {
   if (hour < 12) return "좋은 아침이에요";
@@ -145,15 +146,17 @@ export default function HomePage() {
 
         <div className="mt-4 flex flex-wrap gap-2">
           {quickChips.map(({ icon: Icon, label, prompt }) => (
-            <button
+            <Button
               key={label}
+              variant="outline"
+              size="sm"
               onClick={() => handleSend(prompt)}
               disabled={isLoading}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-full border border-border bg-surface/60 text-sm text-foreground hover:bg-surface hover:border-foreground-muted/40 transition-colors disabled:opacity-50"
+              className="bg-surface/60 hover:border-foreground-muted/40"
             >
-              <Icon size={15} strokeWidth={1.75} className="text-brand" />
+              <Icon strokeWidth={1.75} className="text-brand" />
               {label}
-            </button>
+            </Button>
           ))}
         </div>
 
@@ -162,7 +165,7 @@ export default function HomePage() {
             <Link
               key={href}
               href={href}
-              className="group flex items-center gap-4 bg-surface border border-border rounded-xl p-4 hover:border-brand/40 hover:shadow-sm transition-all"
+              className="group flex items-center gap-4 bg-surface border border-border rounded-xl p-4 hover:border-brand/40 transition-all"
             >
               <div className="w-10 h-10 grid place-items-center rounded-lg bg-brand/10 text-brand shrink-0">
                 <Icon size={20} strokeWidth={1.75} />
@@ -211,7 +214,7 @@ export default function HomePage() {
                 <Link
                   key={area.id}
                   href={`/market?trdar=${area.trdar_code}&c=${area.conversation_id}`}
-                  className="text-left bg-surface border border-border rounded-xl p-4 hover:border-brand/40 hover:shadow-sm transition-all"
+                  className="text-left bg-surface border border-border rounded-xl p-4 hover:border-brand/40 transition-all"
                 >
                   <div className="text-base font-semibold mb-1.5 truncate">{area.trdar_name}</div>
                   <p className="text-xs text-foreground-muted mb-2">
@@ -232,7 +235,7 @@ export default function HomePage() {
                     // 비로그인이면 채팅이 401을 받아 로그인 창을 띄운다 — 전환 퍼널을 한 갈래로 유지한다
                     onClick={() => handleSend(`${area.trdarName} 상권 어때요?`)}
                     disabled={isLoading}
-                    className="text-left bg-surface border border-border rounded-xl p-4 hover:border-brand/40 hover:shadow-sm transition-all disabled:opacity-50"
+                    className="text-left bg-surface border border-border rounded-xl p-4 hover:border-brand/40 transition-all disabled:opacity-50"
                   >
                     <div className="text-base font-semibold mb-1.5 truncate">{area.trdarName}</div>
                     <p className="text-xs text-foreground-muted mb-2 truncate">

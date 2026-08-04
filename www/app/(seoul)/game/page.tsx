@@ -36,7 +36,7 @@ export default function GamePage() {
   return (
     <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-6 sm:py-8">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span className="grid place-items-center w-9 h-9 rounded-xl bg-brand/10 text-brand">
+        <span className="grid place-items-center w-10 h-10 rounded-xl bg-brand/10 text-brand">
           <Gamepad2 size={19} strokeWidth={1.9} />
         </span>
         <h1 className="text-xl font-bold tracking-tight">게임</h1>
@@ -66,7 +66,7 @@ export default function GamePage() {
               type="button"
               onClick={() => setTab(key)}
               aria-current={active}
-              className={`shrink-0 inline-flex items-center gap-1.5 px-4 h-9 rounded-lg text-sm font-medium transition-colors ${
+              className={`shrink-0 inline-flex items-center gap-1.5 px-4 h-10 rounded-lg text-sm font-medium transition-colors ${
                 active ? "bg-brand text-white" : "text-foreground-muted hover:text-foreground"
               }`}
             >

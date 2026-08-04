@@ -41,7 +41,7 @@ export default function FundamentalsPanel({ symbol }: { symbol: string }) {
     return (
       <div className="p-4 flex flex-col gap-2">
         {Array.from({ length: 6 }, (_, i) => (
-          <div key={i} className="skeleton h-9 rounded-lg" />
+          <div key={i} className="skeleton h-10 rounded-lg" />
         ))}
       </div>
     );

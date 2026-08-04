@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, closeGameStore, decideGameStore, fetchGameStoreDaily } from "@/lib/api";
 import type { GameCustomerBucket } from "@/lib/types";
+import { Input } from "@/components/ui/input";
 
 const won = (v: number) => `${v.toLocaleString()}원`;
 const toneOf = (v: number) => (v >= 0 ? "text-[#DC2626]" : "text-[#2563EB]");
@@ -161,7 +162,7 @@ export default function StoreDetailCard({ storeId }: { storeId: number }) {
           <div className="mt-2 flex flex-wrap items-end gap-3">
             <label className="text-[11px] text-foreground-muted">
               가격 계수 (0.6~1.3)
-              <input
+              <Input
                 name="priceFactor"
                 type="number"
                 step="0.05"
@@ -173,7 +174,7 @@ export default function StoreDetailCard({ storeId }: { storeId: number }) {
             </label>
             <label className="text-[11px] text-foreground-muted">
               직원 수 (0~20)
-              <input
+              <Input
                 name="staffCount"
                 type="number"
                 min={0}
@@ -184,7 +185,7 @@ export default function StoreDetailCard({ storeId }: { storeId: number }) {
             </label>
             <label className="text-[11px] text-foreground-muted">
               시설 추가 (현재 {data.facilityScore}점)
-              <input
+              <Input
                 name="facilityAdd"
                 type="number"
                 min={0}
@@ -213,7 +214,7 @@ export default function StoreDetailCard({ storeId }: { storeId: number }) {
                 }
               }}
               disabled={decide.isPending || close.isPending}
-              className="h-10 px-4 rounded-xl border border-border text-sm font-medium hover:bg-black/[0.03] disabled:opacity-40 transition-colors"
+              className="h-10 px-4 rounded-xl border border-border text-sm font-medium hover:bg-accent disabled:opacity-40 transition-colors"
             >
               {close.isPending ? "폐업 중…" : "폐업"}
             </button>

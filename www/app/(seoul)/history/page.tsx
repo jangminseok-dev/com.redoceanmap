@@ -7,6 +7,7 @@ import { MessageSquare, ChevronRight } from "lucide-react";
 import { fetchConversations } from "@/lib/api";
 import { useChatStore } from "@/lib/store";
 import { useUIStore } from "@/lib/uiStore";
+import { Button } from "@/components/ui/button";
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("ko-KR", {
@@ -56,13 +57,13 @@ export default function HistoryPage() {
         <p className="text-sm text-foreground-muted">
           지난 대화를 보려면 로그인이 필요해요.
         </p>
-        <button
+        <Button
           type="button"
           onClick={() => openAuth("login")}
-          className="px-4 py-2 rounded-full bg-brand text-white text-sm font-medium hover:bg-brand-deep transition-colors"
+          
         >
           로그인
-        </button>
+        </Button>
       </div>
     );
   }

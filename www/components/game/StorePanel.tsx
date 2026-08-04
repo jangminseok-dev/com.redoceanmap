@@ -16,6 +16,8 @@ import {
   openGameStore,
 } from "@/lib/api";
 import type { AreaRankingRow } from "@/lib/types";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 // 지도는 카카오 SDK를 런타임에 주입한다 — SSR에서 window에 닿으면 터진다
 const MapView = dynamic(() => import("@/components/seoul/MapView"), { ssr: false });
@@ -195,7 +197,7 @@ export default function StorePanel() {
                     onClick={() => patch({ storeId: active ? null : s.storeId })}
                     aria-pressed={active}
                     className={`px-3 py-2 rounded-xl border text-left transition-colors ${
-                      active ? "border-brand bg-brand/8" : "border-border hover:bg-black/[0.03]"
+                      active ? "border-brand bg-brand/8" : "border-border hover:bg-accent"
                     }`}
                   >
                     <span className="block text-sm font-medium">{s.trdarName}</span>
@@ -273,7 +275,7 @@ export default function StorePanel() {
 
           <label className="text-xs text-foreground-muted">
             투입 자본 (가능 {won(investable)})
-            <input
+            <Input
               type="number"
               min={10_000}
               step={100_000}
@@ -285,7 +287,7 @@ export default function StorePanel() {
 
           <label className="text-xs text-foreground-muted">
             직원 수
-            <input
+            <Input
               type="number"
               min={0}
               max={20}
@@ -369,15 +371,16 @@ export default function StorePanel() {
                     이 자리에서 장사가 되려면 {won(fitness.assumedViableCapitalKrw)}부터입니다.
                   </p>
                 )}
-                <button
+                <Button
                   type="button"
                   onClick={() => open.mutate()}
                   disabled={open.isPending || blockedReason !== null}
-                  className="w-full h-11 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-40 transition-colors"
+                  size="lg"
+              className="w-full"
                 >
                   {blockedReason ??
                     (open.isPending ? "개업 중…" : `${won(payment)}으로 창업하기`)}
-                </button>
+                </Button>
               </>
             )}
           </div>

@@ -157,7 +157,7 @@ export default function ForecastsPage() {
                 type="button"
                 onClick={() => exportCsv(data.recent)}
                 disabled={data.recent.length === 0}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-border text-foreground-muted hover:text-foreground hover:bg-black/5 transition-colors disabled:opacity-40"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-border text-foreground-muted hover:text-foreground hover:bg-accent transition-colors disabled:opacity-40"
               >
                 <Download size={13} /> CSV
               </button>

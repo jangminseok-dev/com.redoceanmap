@@ -8,6 +8,7 @@ import { downloadCsv, fetchAdminAreas, formatSalesMan, type AdminAreaRow } from 
 import BlockSkeleton from "@/components/admin/BlockSkeleton";
 import Empty from "@/components/admin/Empty";
 import Kpi from "@/components/admin/Kpi";
+import { Button } from "@/components/ui/button";
 
 // 폐업률이 이 값 이상이면 "주의" 배지 — 어드민 목록 표시용 임계값
 const CLOSURE_WARN = 7;
@@ -94,14 +95,14 @@ export default function AreasPage() {
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight">상권 관리</h1>
           <p className="mt-1 text-sm text-foreground-muted">서울시 등록 상권 데이터 (최신 분기 집계)</p>
         </div>
-        <button
+        <Button
           type="button"
           onClick={exportCsv}
           disabled={rows.length === 0}
-          className="inline-flex items-center gap-1.5 px-4 h-10 rounded-full border border-border bg-surface text-sm font-medium hover:bg-black/5 transition-colors disabled:opacity-40"
+          variant="outline"
         >
           <Download size={15} /> CSV 내보내기
-        </button>
+        </Button>
       </div>
 
       {/* 요약 */}

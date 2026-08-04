@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Plus, MessageSquare, MapPin, CandlestickChart, Zap, ScanEye, Gamepad2, LogOut, Menu, type LucideIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import Wordmark from "./Wordmark";
 import EmailModal from "./EmailModal";
 import { useUIStore } from "@/lib/uiStore";
@@ -75,7 +76,7 @@ export default function TopNav() {
           <div key={label} className="relative group">
             <Link
               href={href}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-foreground/80 hover:bg-black/5 hover:text-foreground transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-foreground/80 hover:bg-accent hover:text-foreground transition-colors"
             >
               <Icon size={15} strokeWidth={1.75} className="text-brand" />
               {label}
@@ -87,7 +88,7 @@ export default function TopNav() {
                     <Link
                       key={child.label}
                       href={child.href}
-                      className="block px-4 py-2 text-sm text-foreground/80 hover:bg-black/5 hover:text-foreground transition-colors"
+                      className="block px-4 py-2 text-sm text-foreground/80 hover:bg-accent hover:text-foreground transition-colors"
                     >
                       {child.label}
                     </Link>
@@ -101,7 +102,7 @@ export default function TopNav() {
           <button
             type="button"
             onClick={() => setOverlay("email")}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-foreground/80 hover:bg-black/5 hover:text-foreground transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-foreground/80 hover:bg-accent hover:text-foreground transition-colors"
           >
             <Zap size={15} strokeWidth={1.75} className="text-brand" />
             자동화
@@ -119,7 +120,7 @@ export default function TopNav() {
             key={label}
             href={href}
             aria-label={label}
-            className="w-9 h-9 grid place-items-center rounded-lg text-brand hover:bg-black/5 transition-colors"
+            className="w-8 h-8 grid place-items-center rounded-lg text-brand hover:bg-accent transition-colors"
           >
             <Icon size={18} strokeWidth={1.75} />
           </Link>
@@ -129,7 +130,7 @@ export default function TopNav() {
           onClick={() => setOverlay((prev) => (prev === "menu" ? null : "menu"))}
           aria-label="전체 메뉴"
           aria-expanded={overlay === "menu"}
-          className="w-9 h-9 grid place-items-center rounded-lg text-brand hover:bg-black/5 transition-colors"
+          className="w-8 h-8 grid place-items-center rounded-lg text-brand hover:bg-accent transition-colors"
         >
           <Menu size={18} strokeWidth={1.75} />
         </button>
@@ -153,7 +154,7 @@ export default function TopNav() {
                 <Link
                   href={href}
                   onClick={() => setOverlay(null)}
-                  className="flex items-center gap-2.5 px-5 py-2.5 text-sm text-foreground/80 hover:bg-black/5 transition-colors"
+                  className="flex items-center gap-2.5 px-5 py-2.5 text-sm text-foreground/80 hover:bg-accent transition-colors"
                 >
                   <Icon size={16} strokeWidth={1.75} className="text-brand" />
                   {label}
@@ -163,7 +164,7 @@ export default function TopNav() {
                     key={child.label}
                     href={child.href}
                     onClick={() => setOverlay(null)}
-                    className="block pl-12 pr-5 py-2 text-sm text-foreground-muted hover:bg-black/5 transition-colors"
+                    className="block pl-12 pr-5 py-2 text-sm text-foreground-muted hover:bg-accent transition-colors"
                   >
                     {child.label}
                   </Link>
@@ -174,7 +175,7 @@ export default function TopNav() {
               <button
                 type="button"
                 onClick={() => setOverlay("email")}
-                className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-foreground/80 hover:bg-black/5 transition-colors"
+                className="w-full flex items-center gap-2.5 px-5 py-2.5 text-sm text-foreground/80 hover:bg-accent transition-colors"
               >
                 <Zap size={16} strokeWidth={1.75} className="text-brand" />
                 자동화
@@ -189,24 +190,21 @@ export default function TopNav() {
           <>
             <span className="hidden sm:inline text-sm text-foreground/80">{user.name}님</span>
             {/* 모바일은 아이콘만 — 이름과 텍스트 버튼을 함께 두면 헤더가 넘친다(어드민 셸과 같은 처리) */}
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={logout}
               aria-label="로그아웃"
-              className="grid place-items-center w-9 h-9 rounded-full text-foreground-muted hover:text-foreground hover:bg-black/5 transition-colors sm:w-auto sm:h-auto sm:block sm:text-sm sm:font-medium sm:px-3 sm:py-1.5"
+              className="px-2 sm:px-3 text-foreground-muted hover:text-foreground"
             >
-              <LogOut size={18} strokeWidth={1.75} className="sm:hidden" />
+              <LogOut className="sm:hidden" />
               <span className="hidden sm:inline">로그아웃</span>
-            </button>
+            </Button>
           </>
         ) : (
-          <button
-            type="button"
-            onClick={() => openAuth("login")}
-            className="text-sm font-medium bg-brand text-white px-3 sm:px-4 py-1.5 rounded-full hover:bg-brand-deep transition-colors"
-          >
+          <Button size="sm" onClick={() => openAuth("login")}>
             로그인
-          </button>
+          </Button>
         )}
       </div>
     </header>

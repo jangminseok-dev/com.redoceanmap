@@ -15,6 +15,8 @@ import ConfirmDialog from "@/components/admin/ConfirmDialog";
 import Empty from "@/components/admin/Empty";
 import Kpi from "@/components/admin/Kpi";
 import { showToast } from "@/components/admin/toast";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 // 탭 키 → 라벨 (백엔드 hub tab_ontology.TAB_KEYS와 동일한 5종)
 const TAB_LABELS: Record<string, string> = {
@@ -116,7 +118,7 @@ export default function GradesPage() {
         onSubmit={handleCreate}
         className="flex flex-wrap items-center gap-2 rounded-2xl bg-surface border border-border p-4"
       >
-        <input
+        <Input
           name="code"
           placeholder="코드 (예: premium)"
           pattern="[a-z][a-z0-9_\-]{0,49}"
@@ -124,20 +126,20 @@ export default function GradesPage() {
           required
           className="px-3.5 h-10 rounded-full bg-background border border-border text-sm outline-none font-mono flex-1 min-w-36"
         />
-        <input
+        <Input
           name="name"
           placeholder="이름 (예: 프리미엄)"
           required
           maxLength={100}
           className="px-3.5 h-10 rounded-full bg-background border border-border text-sm outline-none flex-1 min-w-36"
         />
-        <button
+        <Button
           type="submit"
           disabled={mutating}
-          className="inline-flex items-center gap-1.5 px-4 h-10 rounded-full bg-brand text-white text-sm font-medium hover:bg-brand-deep transition-colors disabled:opacity-40"
+          
         >
           <Plus size={15} /> 등급 추가
-        </button>
+        </Button>
       </form>
 
       {/* 등급 × 탭 매트릭스 */}
@@ -172,14 +174,14 @@ export default function GradesPage() {
                           </span>
                           <div className="min-w-0">
                             <form onSubmit={handleRename(g)}>
-                              <input
+                              <Input
                                 name="name"
                                 key={`${g.code}-${g.name}`}
                                 defaultValue={g.name}
                                 disabled={isAdmin || mutating}
                                 maxLength={100}
                                 title={isAdmin ? "admin 역할은 이름을 변경할 수 없습니다" : "이름 수정 후 Enter"}
-                                className="font-medium bg-transparent outline-none rounded px-1 -mx-1 focus:bg-background border border-transparent focus:border-border w-28 disabled:opacity-100"
+                                className="font-medium bg-transparent outline-none rounded-md px-1 -mx-1 focus:bg-background border border-transparent focus:border-border w-28 disabled:opacity-100"
                               />
                             </form>
                             <p className="text-xs text-foreground-muted font-mono">{g.code}</p>

@@ -6,6 +6,8 @@ import { Info, TrendingDown, TrendingUp } from "lucide-react";
 import GamePriceLine from "@/components/game/GamePriceLine";
 import { ApiError, closeGameFutures, fetchGameFutures, openGameFutures } from "@/lib/api";
 import { useUIStore } from "@/lib/uiStore";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 const CHART_TICKS = 240; // 지수는 완만해서 주식보다 긴 구간을 봐야 모양이 읽힌다
 
@@ -187,7 +189,7 @@ export default function FuturesPanel() {
                         ? isLong
                           ? "bg-[#DC2626] text-white border-transparent"
                           : "bg-[#2563EB] text-white border-transparent"
-                        : "border-border text-foreground-muted hover:bg-black/[0.03]"
+                        : "border-border text-foreground-muted hover:bg-accent"
                     }`}
                   >
                     {isLong ? <TrendingUp size={15} /> : <TrendingDown size={15} />}
@@ -201,7 +203,7 @@ export default function FuturesPanel() {
               계약 수
             </label>
             <div className="mt-1 flex gap-2">
-              <input
+              <Input
                 id="futures-contracts"
                 type="number"
                 min={1}
@@ -220,7 +222,7 @@ export default function FuturesPanel() {
                   setOrder((prev) => ({ ...prev, contracts: Math.max(1, data.maxContracts) }))
                 }
                 disabled={data.maxContracts < 1}
-                className="px-3 h-10 rounded-xl border border-border text-xs font-medium text-foreground-muted hover:bg-black/[0.03] disabled:opacity-40"
+                className="px-3 h-10 rounded-xl border border-border text-xs font-medium text-foreground-muted hover:bg-accent disabled:opacity-40"
               >
                 최대 {data.maxContracts}
               </button>
@@ -244,11 +246,12 @@ export default function FuturesPanel() {
               지나면 접속하지 않아도 현물 지수로 자동 정산됩니다.
             </p>
 
-            <button
+            <Button
               type="button"
               onClick={() => open.mutate()}
               disabled={open.isPending || overBudget || data.seasonOver || data.ticksToExpiry < 5}
-              className="mt-4 w-full h-11 rounded-xl bg-brand text-white text-sm font-semibold hover:bg-brand-deep disabled:opacity-40 disabled:hover:bg-brand transition-colors"
+              size="lg"
+              className="mt-4 w-full"
             >
               {data.seasonOver
                 ? "시즌이 끝났습니다"
@@ -257,7 +260,7 @@ export default function FuturesPanel() {
                   : overBudget
                     ? "증거금이 부족합니다"
                     : `${order.contracts}계약 ${order.side === "LONG" ? "매수" : "매도"}`}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -303,7 +306,7 @@ export default function FuturesPanel() {
                   type="button"
                   onClick={() => close.mutate(p.id)}
                   disabled={close.isPending}
-                  className="px-3 h-9 rounded-xl border border-border text-xs font-medium hover:bg-black/[0.03] disabled:opacity-40 transition-colors"
+                  className="px-3 h-10 rounded-xl border border-border text-xs font-medium hover:bg-accent disabled:opacity-40 transition-colors"
                 >
                   {close.isPending ? "청산 중…" : "청산"}
                 </button>

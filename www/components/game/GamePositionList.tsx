@@ -78,7 +78,7 @@ export default function GamePositionList({
               type="button"
               onClick={() => onClose(p.id)}
               disabled={closingId !== null}
-              className="px-3 h-9 rounded-xl border border-border text-xs font-medium hover:bg-black/[0.03] disabled:opacity-40 transition-colors"
+              className="px-3 h-10 rounded-xl border border-border text-xs font-medium hover:bg-accent disabled:opacity-40 transition-colors"
             >
               {closingId === p.id ? "청산 중…" : "청산"}
             </button>

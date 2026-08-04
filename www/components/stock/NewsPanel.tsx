@@ -62,12 +62,12 @@ export default function NewsPanel({ symbol }: { symbol: string }) {
                 <span>{item.source}</span>
                 {item.publishedAt && <span>· {formatDate(item.publishedAt)}</span>}
                 {chip && (
-                  <span className={`inline-flex px-1.5 py-0.5 rounded border font-medium ${chip.className}`}>
+                  <span className={`inline-flex px-1.5 py-0.5 rounded-md border font-medium ${chip.className}`}>
                     {chip.label}
                   </span>
                 )}
                 {item.eventType && (
-                  <span className="inline-flex px-1.5 py-0.5 rounded border border-border bg-background">
+                  <span className="inline-flex px-1.5 py-0.5 rounded-md border border-border bg-background">
                     {item.eventType}
                   </span>
                 )}

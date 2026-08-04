@@ -3,6 +3,7 @@
 import { useState, type FormEvent, type KeyboardEvent } from "react";
 import { Plus, ChevronDown, ArrowRight, Check } from "lucide-react";
 import { useChatStore, type ChatEngine } from "@/lib/store";
+import { Textarea } from "@/components/ui/textarea";
 
 type Props = {
   onSubmit: (text: string) => void;
@@ -52,7 +53,7 @@ export default function ChatInput({
       onSubmit={handleFormSubmit}
       className="bg-surface border border-border rounded-2xl shadow-sm"
     >
-      <textarea
+      <Textarea
         aria-label="질문 입력"
         value={ui.text}
         onChange={(e) => setUi((prev) => ({ ...prev, text: e.target.value }))}
@@ -65,7 +66,7 @@ export default function ChatInput({
         <button
           type="button"
           aria-label="첨부"
-          className="w-9 h-9 grid place-items-center rounded-full text-foreground-muted hover:bg-black/5"
+          className="w-10 h-10 grid place-items-center rounded-full text-foreground-muted hover:bg-accent"
         >
           <Plus size={18} strokeWidth={1.75} />
         </button>
@@ -76,7 +77,7 @@ export default function ChatInput({
               aria-haspopup="listbox"
               aria-expanded={ui.menuOpen}
               onClick={() => setUi((prev) => ({ ...prev, menuOpen: !prev.menuOpen }))}
-              className="flex items-center gap-1 px-2 py-1 rounded-md hover:bg-black/5"
+              className="flex items-center gap-1 px-2 py-1 rounded-md hover:bg-accent"
             >
               {current.label} <ChevronDown size={14} />
             </button>
@@ -101,7 +102,7 @@ export default function ChatInput({
                           setEngine(item.id);
                           setUi((prev) => ({ ...prev, menuOpen: false }));
                         }}
-                        className="w-full flex items-start gap-2 px-3 py-2 rounded-lg text-left hover:bg-black/5"
+                        className="w-full flex items-start gap-2 px-3 py-2 rounded-lg text-left hover:bg-accent"
                       >
                         <Check
                           size={14}
@@ -128,7 +129,7 @@ export default function ChatInput({
             type="submit"
             aria-label="보내기"
             disabled={!canSend}
-            className="ml-1 w-9 h-9 grid place-items-center rounded-full bg-brand text-white hover:bg-brand-deep transition-colors disabled:bg-border disabled:text-foreground-muted disabled:cursor-not-allowed"
+            className="ml-1 w-10 h-10 grid place-items-center rounded-full bg-brand text-white hover:bg-brand-deep transition-colors disabled:bg-border disabled:text-foreground-muted disabled:cursor-not-allowed"
           >
             <ArrowRight size={16} strokeWidth={2.25} />
           </button>

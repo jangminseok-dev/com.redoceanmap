@@ -23,6 +23,8 @@ import ConfirmDialog from "@/components/admin/ConfirmDialog";
 import Empty from "@/components/admin/Empty";
 import Kpi from "@/components/admin/Kpi";
 import { showToast } from "@/components/admin/toast";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 const PAGE_SIZE = 20;
 
@@ -194,14 +196,14 @@ export default function MembersPage() {
             회원 조회 · 역할(RBAC) 부여 · 정지/탈퇴 처리
           </p>
         </div>
-        <button
+        <Button
           type="button"
           onClick={exportCsv}
           disabled={total === 0}
-          className="inline-flex items-center gap-1.5 px-4 h-10 rounded-full border border-border bg-surface text-sm font-medium hover:bg-black/5 transition-colors disabled:opacity-40"
+          variant="outline"
         >
           <Download size={15} /> CSV 내보내기
-        </button>
+        </Button>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 max-w-md">
@@ -212,7 +214,7 @@ export default function MembersPage() {
       <form onSubmit={handleSearch}>
         <label className="flex items-center gap-2 px-3.5 h-10 rounded-full bg-surface border border-border text-sm">
           <Search size={16} className="text-foreground-muted shrink-0" />
-          <input
+          <Input
             name="q"
             defaultValue={ui.search}
             placeholder="이름 또는 이메일 검색 (Enter)"
@@ -297,7 +299,7 @@ export default function MembersPage() {
               {data!.items.map((m) => (
                 <div key={m.id} className="px-4 py-3">
                   <div className="flex items-center gap-3">
-                    <span className="grid place-items-center w-9 h-9 rounded-full bg-brand/10 text-brand text-sm font-semibold shrink-0">
+                    <span className="grid place-items-center w-10 h-10 rounded-full bg-brand/10 text-brand text-sm font-semibold shrink-0">
                       {m.name[0] ?? "?"}
                     </span>
                     <div className="min-w-0 flex-1">
@@ -344,25 +346,25 @@ export default function MembersPage() {
       {/* 페이지네이션 */}
       {total > PAGE_SIZE && (
         <div className="flex items-center justify-center gap-3 text-sm">
-          <button
+          <Button
             type="button"
             disabled={ui.page === 0}
             onClick={() => setUi((prev) => ({ ...prev, page: prev.page - 1 }))}
-            className="px-4 h-9 rounded-full border border-border disabled:opacity-40 hover:bg-black/5 transition-colors"
+            variant="outline"
           >
             이전
-          </button>
+          </Button>
           <span className="text-foreground-muted tabular-nums">
             {ui.page + 1} / {lastPage + 1}
           </span>
-          <button
+          <Button
             type="button"
             disabled={ui.page >= lastPage}
             onClick={() => setUi((prev) => ({ ...prev, page: prev.page + 1 }))}
-            className="px-4 h-9 rounded-full border border-border disabled:opacity-40 hover:bg-black/5 transition-colors"
+            variant="outline"
           >
             다음
-          </button>
+          </Button>
         </div>
       )}
 
@@ -377,7 +379,7 @@ export default function MembersPage() {
         {roles.map((role) => (
           <div key={role.code} className="rounded-2xl bg-surface border border-border p-5">
             <div className="flex items-center gap-2.5">
-              <span className="grid place-items-center w-9 h-9 rounded-xl bg-brand/10 text-brand">
+              <span className="grid place-items-center w-10 h-10 rounded-xl bg-brand/10 text-brand">
                 <ShieldCheck size={17} strokeWidth={1.9} />
               </span>
               <div>
@@ -463,7 +465,7 @@ function MemberActions({
         href={`/admin/game?userId=${member.id}`}
         title="게임 지갑 열기"
         aria-label="게임 지갑 열기"
-        className="grid place-items-center w-8 h-8 rounded-full border border-border text-foreground-muted transition-colors hover:bg-black/5 hover:text-foreground"
+        className="grid place-items-center w-8 h-8 rounded-full border border-border text-foreground-muted transition-colors hover:bg-accent hover:text-foreground"
       >
         <Coins size={15} />
       </Link>
@@ -531,7 +533,7 @@ function ActionIcon({
       className={`grid place-items-center w-8 h-8 rounded-full border border-border transition-colors disabled:opacity-40 ${
         danger
           ? "text-red-500 hover:bg-red-50 hover:text-red-700"
-          : "text-foreground-muted hover:bg-black/5 hover:text-foreground"
+          : "text-foreground-muted hover:bg-accent hover:text-foreground"
       }`}
     >
       {children}

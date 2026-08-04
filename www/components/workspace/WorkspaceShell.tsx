@@ -35,7 +35,7 @@ export default function WorkspaceShell({ stageLabel, stage, panel, chat }: Works
             type="button"
             onClick={() => setTab(t.key)}
             aria-pressed={tab === t.key}
-            className={`flex-1 h-9 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex-1 h-10 rounded-lg text-sm font-medium transition-colors ${
               tab === t.key
                 ? "bg-brand text-white"
                 : "bg-surface border border-border text-foreground-muted"

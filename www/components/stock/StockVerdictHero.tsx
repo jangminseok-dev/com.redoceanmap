@@ -75,7 +75,7 @@ export default function StockVerdictHero({
         <button
           type="button"
           onClick={onToggleExpert}
-          className="shrink-0 inline-flex items-center gap-1 px-2 h-6 rounded-md border border-border text-[10px] text-foreground-muted hover:bg-black/5 transition-colors"
+          className="shrink-0 inline-flex items-center gap-1 px-2 h-6 rounded-md border border-border text-[10px] text-foreground-muted hover:bg-accent transition-colors"
           aria-pressed={expert}
         >
           <Eye size={11} strokeWidth={2} />

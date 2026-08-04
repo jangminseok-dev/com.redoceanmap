@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useUIStore } from "@/lib/uiStore";
 import { apiLogout } from "@/lib/authApi";
+import { Input } from "@/components/ui/input";
 import {
   LayoutDashboard,
   Store,
@@ -70,7 +71,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors ${
                 isActive(href)
                   ? "bg-brand text-white shadow-sm"
-                  : "text-foreground/70 hover:bg-black/5 hover:text-foreground"
+                  : "text-foreground/70 hover:bg-accent hover:text-foreground"
               }`}
             >
               <Icon size={17} strokeWidth={1.9} />
@@ -80,7 +81,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         </nav>
 
         <div className="m-3 p-3 rounded-2xl border border-border bg-background/60 flex items-center gap-2.5">
-          <span className="grid place-items-center w-9 h-9 rounded-full bg-brand/10 text-brand text-sm font-semibold shrink-0">
+          <span className="grid place-items-center w-10 h-10 rounded-full bg-brand/10 text-brand text-sm font-semibold shrink-0">
             {user?.name?.[0] ?? "?"}
           </span>
           <div className="min-w-0 flex-1 leading-tight">
@@ -91,7 +92,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             type="button"
             onClick={logout}
             title="로그아웃"
-            className="grid place-items-center w-9 h-9 rounded-full text-foreground-muted hover:text-foreground hover:bg-black/5 transition-colors shrink-0"
+            className="grid place-items-center w-10 h-10 rounded-full text-foreground-muted hover:text-foreground hover:bg-accent transition-colors shrink-0"
           >
             <LogOut size={16} strokeWidth={1.9} />
           </button>
@@ -111,7 +112,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
           <label className="hidden sm:flex items-center gap-2 flex-1 max-w-md ml-1 px-3.5 h-10 rounded-full bg-background border border-border text-sm">
             <Search size={16} className="text-foreground-muted shrink-0" />
-            <input
+            <Input
               name="search"
               placeholder="상권, 회원, 업종 검색"
               className="bg-transparent outline-none flex-1 placeholder:text-foreground-muted"
@@ -121,13 +122,13 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
             <button
               type="button"
-              className="relative grid place-items-center w-10 h-10 rounded-full hover:bg-black/5 transition-colors"
+              className="relative grid place-items-center w-10 h-10 rounded-full hover:bg-accent transition-colors"
             >
               <Bell size={18} strokeWidth={1.8} />
               <span className="absolute top-2.5 right-2.5 w-1.5 h-1.5 rounded-full bg-brand" />
             </button>
             <div className="flex items-center gap-2.5">
-              <span className="grid place-items-center w-9 h-9 rounded-full bg-brand/10 text-brand text-sm font-semibold">
+              <span className="grid place-items-center w-10 h-10 rounded-full bg-brand/10 text-brand text-sm font-semibold">
                 {user?.name?.[0] ?? "?"}
               </span>
               <div className="hidden sm:block leading-tight">
@@ -138,7 +139,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                 type="button"
                 onClick={logout}
                 title="로그아웃"
-                className="lg:hidden grid place-items-center w-9 h-9 rounded-full text-foreground-muted hover:text-foreground hover:bg-black/5 transition-colors"
+                className="lg:hidden grid place-items-center w-10 h-10 rounded-full text-foreground-muted hover:text-foreground hover:bg-accent transition-colors"
               >
                 <LogOut size={16} strokeWidth={1.9} />
               </button>

@@ -1,0 +1,25 @@
+{
+  "reference_id": "toss",
+  "description": "서울 상권 분석 + 주식 분석 + 모의투자 게임 웹앱(redoceanmap). 토스 같은 느낌으로 깔끔하고 세련되게, 버튼이 이쁘게. 마케팅 랜딩이 아니라 앱 내부 화면이 대부분이다. 브랜드 색(크림 #FDFAF2 + 다크레드 #991B1B)은 유지하고 기하·간격·상태·모션만 정리한다.",
+  "mode": "inspired",
+  "delta_set": {
+    "axes": {
+      "color.hue_deg": -215,
+      "color.saturation_pct": -22,
+      "color.lightness_pct": -23,
+      "radius.delta_px": -2,
+      "density.shift": 0,
+      "tracking.shift": 0
+    },
+    "voiceHints": [
+      "한국어로 작성 — 저장소의 CLAUDE.md 문서군과 언어를 맞춘다",
+      "레퍼런스의 증거 기반 어조 유지 — 검증되지 않은 값은 local extension으로 명시"
+    ],
+    "matchedKeywords": ["fintech", "minimal", "clarity", "dense"],
+    "warnings": [
+      "canvas/surface 역할이 레퍼런스와 반대다. 토스는 canvas=흰색·surface=회색 레이어지만 redoceanmap은 canvas=크림·surface=흰색이다. 색 유지가 전제이므로 역할 설명만 프로젝트 기준으로 바꾸고 값은 현행을 따른다.",
+      "레퍼런스는 그림자(§6)와 모션(§15)에 canonical 토큰을 두지 않는다. 이 프로젝트에서 정의하는 값은 전부 local extension으로 표기한다."
+    ]
+  },
+  "bootstrapped_at": "2026-08-04"
+}

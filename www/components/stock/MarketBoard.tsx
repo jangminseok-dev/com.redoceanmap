@@ -91,7 +91,7 @@ function BoardRow({ row, onSelect }: { row: StockBoardRow; onSelect: (symbol: st
       <button
         type="button"
         onClick={() => onSelect(row.ticker)}
-        className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:bg-black/[0.03] transition-colors"
+        className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:bg-accent transition-colors"
       >
         <span className="w-28 shrink-0 min-w-0">
           <span className="block text-sm font-medium truncate">{row.name}</span>
