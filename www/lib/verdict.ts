@@ -11,7 +11,7 @@ const DIRECTION_WORD: Record<StockAnalyzeResult["direction"], string> = {
 
 /** 결론 한 줄 — 방향 신호와 과거 통계를 합쳐 하나로 말한다.
  *  판정·확률·확신도를 따로 띄우면 "상승 36%" vs "평소와 다르지 않음"처럼 서로 반박한다.
- *  히어로·StageSummary·챗 카드 3면이 같은 결론을 쓰도록 단일 소스로 둔다. */
+ *  StockHero·챗 카드가 같은 결론을 쓰도록 단일 소스로 둔다. */
 export function verdict(
   analyze: StockAnalyzeResult,
   forecast?: StockForecast,

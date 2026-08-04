@@ -73,7 +73,7 @@ export default function PopulationCharts({ latest }: { latest: AreaStatsDetail["
       {time && (
         <div>
           <p className="text-xs text-foreground-muted mb-1.5">
-            시간대별 <span className="text-[10px]">(시간당 평균)</span>
+            시간대별 <span className="text-xs">(시간당 평균)</span>
           </p>
           {/* 구간 폭이 제각각이라(0-6시 6시간, 11-14시 3시간) 원값을 그대로 그리면 막대가
               정반대를 말한다. 미아사거리 실측: 총합은 0-6시가 최고지만 시간당으로는 최하위

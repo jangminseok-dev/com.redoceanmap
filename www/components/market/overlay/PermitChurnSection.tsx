@@ -65,7 +65,7 @@ export default function PermitChurnSection({
         </div>
       </div>
 
-      <p className="text-[11px] leading-relaxed text-muted">
+      <p className="text-xs leading-relaxed text-muted">
         음식점·카페 인허가 대장(서울시) 기준이며, 상권 중심 반경으로 묶은 값입니다. 경계 근처
         업소는 빠질 수 있어 위 업종별 점포 수와는 집계 기준이 다릅니다.
       </p>

@@ -35,13 +35,13 @@ type Stat = {
 };
 
 const TONE_TEXT: Record<Tone, string> = {
-  up: "text-red-600",
-  down: "text-blue-600",
+  up: "text-up",
+  down: "text-down",
   flat: "text-foreground-muted",
 };
 const TONE_BG: Record<Tone, string> = {
-  up: "bg-red-500",
-  down: "bg-blue-500",
+  up: "bg-up",
+  down: "bg-down",
   flat: "bg-foreground-muted",
 };
 
@@ -160,7 +160,7 @@ function buildStats(a: StockAnalyzeResult, symbol: string): Stat[] {
 function StatTile({ stat }: { stat: Stat }) {
   return (
     <div className="bg-surface border border-border rounded-lg px-3 py-2.5">
-      <div className="text-[11px] text-foreground-muted">{stat.label}</div>
+      <div className="text-xs text-foreground-muted">{stat.label}</div>
       <div className="text-sm font-semibold mt-0.5 tabular-nums">{stat.value}</div>
       {stat.gauge && (
         <div className="relative mt-1.5 h-1 rounded-full bg-border/70">
@@ -177,7 +177,7 @@ function StatTile({ stat }: { stat: Stat }) {
           />
         </div>
       )}
-      <div className={`mt-1 text-[10px] leading-tight ${TONE_TEXT[stat.tone]}`}>{stat.hint}</div>
+      <div className={`mt-1 text-xs leading-tight ${TONE_TEXT[stat.tone]}`}>{stat.hint}</div>
     </div>
   );
 }
@@ -223,7 +223,7 @@ export default function IndicatorPanel({
       {used.length > 0 && (
         <div>
           {!expert && (
-            <p className="mb-1.5 text-[11px] text-foreground-muted">이번 판정에 쓰인 지표</p>
+            <p className="mb-1.5 text-xs text-foreground-muted">이번 판정에 쓰인 지표</p>
           )}
           <div className="grid grid-cols-2 gap-2">
             {used.map((stat) => (
@@ -235,7 +235,7 @@ export default function IndicatorPanel({
 
       {reference.length > 0 && (
         <details className="group">
-          <summary className="flex items-center gap-1 text-[11px] text-foreground-muted cursor-pointer list-none select-none">
+          <summary className="flex items-center gap-1 text-xs text-foreground-muted cursor-pointer list-none select-none">
             <ChevronDown size={12} className="transition-transform group-open:rotate-180" />
             판정에 반영되지 않은 참고 지표 {reference.length}개
           </summary>
@@ -248,7 +248,7 @@ export default function IndicatorPanel({
       )}
 
       <div className="bg-surface border border-border rounded-lg px-3 py-2.5">
-        <div className="text-[11px] text-foreground-muted">뉴스 감성</div>
+        <div className="text-xs text-foreground-muted">뉴스 감성</div>
         <div className="text-sm font-semibold mt-0.5">
           {analyze.sentiment_label}{" "}
           <span className="text-xs font-normal text-foreground-muted">
@@ -257,7 +257,7 @@ export default function IndicatorPanel({
         </div>
         {/* 기준선(최근 30일 라벨 평균)이 없으면 절대값이 그대로 신호에 들어간다 —
             상시 낙관 편향을 걸러내는 장치가 꺼진 상태라 이를 숨기지 않는다. */}
-        <div className="mt-1 text-[10px] leading-tight text-amber-700">
+        <div className="mt-1 text-xs leading-tight text-amber-700">
           {analyze.sentiment_baseline == null
             ? "30일 기준선 없음 — 편향 보정 없이 반영됨(수집 대상 종목이 아닙니다)"
             : `30일 평균 ${analyze.sentiment_baseline > 0 ? "+" : ""}${fmt(analyze.sentiment_baseline)} 대비 편차로 반영됨`}

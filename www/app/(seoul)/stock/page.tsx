@@ -17,11 +17,8 @@ import { useChatStore } from "@/lib/store";
 import { useDensityStore } from "@/lib/uiStore";
 import WorkspaceShell from "@/components/workspace/WorkspaceShell";
 import ChatPanel from "@/components/chat/ChatPanel";
-import SymbolHeader from "@/components/stock/SymbolHeader";
+import StockHero from "@/components/stock/StockHero";
 import StockPanel from "@/components/stock/StockPanel";
-import StageSummary from "@/components/stock/StageSummary";
-import StockVerdictHero from "@/components/stock/StockVerdictHero";
-import SymbolSummary from "@/components/stock/SymbolSummary";
 import MarketBoard from "@/components/stock/MarketBoard";
 
 // lightweight-charts는 SSR 불가 — 클라이언트에서만 로드
@@ -199,144 +196,118 @@ function StockWorkspace() {
     <MarketBoard onSelect={setSymbol} />
   ) : (
     <>
-      <SymbolHeader
+      <StockHero
         symbol={symbol}
         resolvedTicker={pricesQ.data?.resolvedTicker}
         analyze={analyzeQ.data}
+        forecast={forecastQ.data}
+        fundamentals={fundamentalsQ.data}
         isLoading={analyzeQ.isLoading}
         quotePrice={quoteQ.data?.price}
         previousClose={previousClose}
-      />
-      <StockVerdictHero
-        symbol={pricesQ.data?.resolvedTicker ?? symbol}
-        price={quoteQ.data?.price}
-        analyze={analyzeQ.data}
-        forecast={forecastQ.data}
-        fundamentals={fundamentalsQ.data}
+        aiSummary={pinnedSummary}
         expert={expert}
         onToggleExpert={toggleExpert}
       />
-      {pinnedSummary && <SymbolSummary text={pinnedSummary} />}
-      <StageSummary
-        symbol={pricesQ.data?.resolvedTicker ?? symbol}
-        price={quoteQ.data?.price}
-        analyze={analyzeQ.data}
-        forecast={forecastQ.data}
-        expert={expert}
-      />
-      {pricesQ.isLoading && <div className="flex-1 m-4 skeleton rounded-xl" />}
-      {pricesNotCollected && (
-        <div className="flex-1 grid place-items-center px-6 text-center">
-          <div>
-            <p className="text-sm font-medium">이 종목의 시세를 찾지 못했어요</p>
-            <p className="mt-1.5 text-xs text-foreground-muted leading-relaxed">
-              종목 코드나 티커를 확인해주세요.
-              <br />
-              (미수집 종목도 라이브 조회로 차트가 제공됩니다 — 이 안내는 조회 자체가 실패한 경우예요)
-            </p>
+
+      {/* 차트는 `flex-1 min-h-0` + `absolute inset-0` 구조라 **부모가 높이를 준다**.
+          스테이지가 스크롤 컨테이너 안으로 들어왔으므로 고정 높이 래퍼가 필요하다 —
+          빼면 flex-1이 0으로 접혀 차트가 사라진다. */}
+      <div className="flex flex-col h-[340px] sm:h-[400px] lg:h-[460px]">
+        {pricesQ.isLoading && <div className="flex-1 m-4 skeleton rounded-xl" />}
+        {pricesNotCollected && (
+          <div className="flex-1 grid place-items-center px-6 text-center">
+            <div>
+              <p className="text-sm font-medium">이 종목의 시세를 찾지 못했어요</p>
+              <p className="mt-1.5 text-xs text-foreground-muted leading-relaxed">
+                종목 코드나 티커를 확인해주세요.
+                <br />
+                (미수집 종목도 라이브 조회로 차트가 제공됩니다 — 이 안내는 조회 자체가 실패한 경우예요)
+              </p>
+            </div>
           </div>
-        </div>
-      )}
-      {pricesQ.data && (
-        <CandleChart
-          bars={pricesQ.data.bars}
-          support={analyzeQ.data?.support}
-          resistance={analyzeQ.data?.resistance}
-          forecast={timeframe === "1d" ? forecastQ.data : null}
-          quotePrice={timeframe === "1d" ? quoteQ.data?.price : null}
-          rangeDays={rangeDays}
-          news={timeframe === "1d" ? newsQ.data : undefined}
-          intraday={timeframe === "5m"}
-          pattern={activePattern}
-        />
-      )}
+        )}
+        {pricesQ.data && (
+          <CandleChart
+            bars={pricesQ.data.bars}
+            support={analyzeQ.data?.support}
+            resistance={analyzeQ.data?.resistance}
+            forecast={timeframe === "1d" ? forecastQ.data : null}
+            quotePrice={timeframe === "1d" ? quoteQ.data?.price : null}
+            rangeDays={rangeDays}
+            news={timeframe === "1d" ? newsQ.data : undefined}
+            intraday={timeframe === "5m"}
+            pattern={activePattern}
+          />
+        )}
+      </div>
+
       {activePattern && (
-        <p className="shrink-0 px-4 pb-1 text-[11px] leading-relaxed text-foreground-muted">
+        <p className="px-4 pb-1 text-xs leading-relaxed text-foreground-muted">
           {activePattern.note} 점선이 그 형태의 꼭짓점을 잇습니다. 형태를 알아본 것일 뿐 앞으로의
           방향을 뜻하지 않습니다.
         </p>
       )}
-      <div className="shrink-0 flex flex-wrap items-center gap-1 px-4 py-2 border-t border-border">
+
+      {/* 차트 컨트롤 — 알약 칩. 낮은 위계 요소라 Button 스케일과 섞지 않는다(DESIGN.md §5). */}
+      <div className="flex flex-wrap items-center gap-1.5 px-4 py-2.5 border-t border-border">
         {(["1d", "5m"] as const).map((tf) => (
-          <button
+          <Chip
             key={tf}
-            type="button"
+            active={timeframe === tf}
             // 타임프레임이 바뀌면 봉 배열이 통째로 달라져 형태 좌표가 무효가 된다
             onClick={() => setView({ timeframe: tf, rangeDays: DEFAULT_RANGE[tf], pattern: null })}
-            aria-pressed={timeframe === tf}
-            className={`px-3 h-7 rounded-md text-xs font-medium transition-colors ${
-              timeframe === tf
-                ? "bg-brand text-white"
-                : "text-foreground-muted hover:bg-accent"
-            }`}
           >
             {tf === "1d" ? "일봉" : "5분봉"}
-          </button>
+          </Chip>
         ))}
         <span className="mx-1 h-4 w-px bg-border" aria-hidden />
         {RANGE_PRESETS[timeframe].map((preset) => (
-          <button
+          <Chip
             key={preset.label}
-            type="button"
+            active={rangeDays === preset.days}
             onClick={() => setView((prev) => ({ ...prev, rangeDays: preset.days }))}
-            aria-pressed={rangeDays === preset.days}
-            className={`px-2.5 h-7 rounded-md text-xs font-medium transition-colors ${
-              rangeDays === preset.days
-                ? "border border-brand text-brand"
-                : "text-foreground-muted hover:bg-accent"
-            }`}
           >
             {preset.label}
-          </button>
+          </Chip>
         ))}
-        {timeframe === "5m" && (
-          <span className="ml-2 text-[11px] text-foreground-muted">최근 60일 보유</span>
-        )}
-        {timeframe === "5m" && forecastQ.data?.band && (
-          <span className="text-[11px] text-foreground-muted">· 예측 밴드는 일봉에서만 표시</span>
-        )}
-        {pricesQ.data?.live && (
-          <span className="ml-2 px-2 py-0.5 rounded-full border border-border bg-surface text-[10px] text-foreground-muted">
-            라이브 조회 · 수집 대상 아님
-          </span>
-        )}
         {patterns.length > 0 && (
           <>
             <span className="mx-1 h-4 w-px bg-border" aria-hidden />
-            <span className="text-[11px] text-foreground-muted">형태</span>
+            <span className="text-xs text-foreground-muted">형태</span>
             {patterns.map((p) => (
-              <button
+              <Chip
                 key={p.name}
-                type="button"
+                active={activePattern?.name === p.name}
+                // 같은 칩을 다시 누르면 보조선을 끈다
                 onClick={() =>
-                  setView((prev) => ({
-                    ...prev,
-                    // 같은 칩을 다시 누르면 보조선을 끈다
-                    pattern: prev.pattern === p.name ? null : p.name,
-                  }))
+                  setView((prev) => ({ ...prev, pattern: prev.pattern === p.name ? null : p.name }))
                 }
-                aria-pressed={activePattern?.name === p.name}
-                className={`px-2.5 h-7 rounded-md text-xs font-medium transition-colors ${
-                  activePattern?.name === p.name
-                    ? "bg-foreground text-background"
-                    : "text-foreground-muted hover:bg-accent"
-                }`}
               >
                 {p.label}
                 <span className="ml-1 tabular-nums opacity-70">
                   {Math.round(p.confidence * 100)}
                 </span>
-              </button>
+              </Chip>
             ))}
           </>
         )}
+        <div className="w-full flex flex-wrap items-center gap-x-2 text-xs text-foreground-muted">
+          {timeframe === "5m" && <span>최근 60일 보유</span>}
+          {timeframe === "5m" && forecastQ.data?.band && <span>· 예측 밴드는 일봉에서만 표시</span>}
+          {pricesQ.data?.live && <span>· 라이브 조회 · 수집 대상 아님</span>}
+        </div>
       </div>
     </>
   );
 
   return (
     <WorkspaceShell
-      stageLabel="차트"
+      // 종목을 고른 뒤에도 보드를 좌측에 남긴다(2xl+). 고르기 전에는 스테이지가 곧 보드라
+      // 같은 표를 두 벌 그리지 않도록 넘기지 않는다.
+      list={
+        symbol ? <MarketBoard onSelect={setSymbol} compact selected={symbol} /> : undefined
+      }
       stage={stage}
       panel={<StockPanel symbol={symbol} analyze={analyzeQ.data} />}
       chat={
@@ -348,6 +319,33 @@ function StockWorkspace() {
         />
       }
     />
+  );
+}
+
+// 차트 컨트롤 칩 — 알약(rounded-full)은 "이건 주요 액션이 아니다"를 형태로 말한다(DESIGN.md §5).
+// Button 스케일(32/40/48/56)과 섞으면 그 구분이 사라지므로 여기에 둔다.
+function Chip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`inline-flex items-center h-8 px-3 rounded-full text-xs font-medium transition-colors duration-150 ${
+        active
+          ? "bg-brand text-white"
+          : "border border-border text-foreground-muted hover:bg-accent hover:text-foreground"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 

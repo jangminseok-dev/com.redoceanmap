@@ -6,7 +6,7 @@ import { fetchGameSettlements } from "@/lib/api";
 import type { GameAdvice } from "@/lib/types";
 
 const won = (v: number) => `${v.toLocaleString()}원`;
-const toneOf = (v: number) => (v >= 0 ? "text-[#DC2626]" : "text-[#2563EB]");
+const toneOf = (v: number) => (v >= 0 ? "text-up" : "text-down");
 
 const ADVICE_ICON: Record<GameAdvice["tone"], typeof Info> = {
   good: CircleCheck,
@@ -16,7 +16,7 @@ const ADVICE_ICON: Record<GameAdvice["tone"], typeof Info> = {
 const ADVICE_CLASS: Record<GameAdvice["tone"], string> = {
   good: "text-emerald-600",
   warn: "text-amber-600",
-  bad: "text-[#DC2626]",
+  bad: "text-up",
 };
 
 /**
@@ -67,7 +67,7 @@ export default function SettlementCard() {
               <span className="text-sm font-medium">
                 {s.gameQuarter}분기 · {s.trdarName}
               </span>
-              <span className="text-[11px] text-foreground-muted">
+              <span className="text-xs text-foreground-muted">
                 {s.serviceName} · {s.daysCounted}일 · 손님 {s.customerCount.toLocaleString()}명
               </span>
               <span className={`ml-auto text-sm font-bold tabular-nums ${toneOf(s.profitKrw)}`}>
@@ -76,7 +76,7 @@ export default function SettlementCard() {
               </span>
             </div>
 
-            <dl className="mt-2 grid grid-cols-2 sm:grid-cols-5 gap-x-3 gap-y-1 text-[11px]">
+            <dl className="mt-2 grid grid-cols-2 sm:grid-cols-5 gap-x-3 gap-y-1 text-xs">
               <div>
                 <dt className="text-foreground-muted">매출</dt>
                 <dd className="tabular-nums">{won(s.simulatedSalesKrw)}</dd>
@@ -104,7 +104,7 @@ export default function SettlementCard() {
                 {s.advices.map((a, i) => {
                   const Icon = ADVICE_ICON[a.tone];
                   return (
-                    <li key={i} className="flex gap-1.5 text-[11px] leading-relaxed">
+                    <li key={i} className="flex gap-1.5 text-xs leading-relaxed">
                       <Icon
                         size={13}
                         strokeWidth={2}
@@ -120,7 +120,7 @@ export default function SettlementCard() {
         ))}
       </ul>
 
-      <p className="mt-3 text-[11px] text-foreground-muted">
+      <p className="mt-3 text-xs text-foreground-muted">
         임대료·인건비·원가는 공개 데이터가 없어 게임 규칙으로 산정한 가정치입니다.
       </p>
     </div>

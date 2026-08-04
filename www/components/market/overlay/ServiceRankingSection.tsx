@@ -44,7 +44,7 @@ export default function ServiceRankingSection({
           <button
             key={key}
             onClick={() => setSort(key)}
-            className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${
+            className={`px-2 py-0.5 rounded-full text-xs font-medium ${
               sort === key ? "bg-brand/10 text-brand" : "text-foreground-muted"
             }`}
           >
@@ -74,7 +74,7 @@ export default function ServiceRankingSection({
                 {won(sort === "monthlySales" ? r.monthlySales : r.salesPerStore)}원
               </span>
               <span
-                className={`text-[11px] tabular-nums w-12 text-right ${
+                className={`text-xs tabular-nums w-12 text-right ${
                   r.salesQoq == null
                     ? "text-foreground-muted"
                     : r.salesQoq > 0

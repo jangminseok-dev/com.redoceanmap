@@ -5,12 +5,15 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchAreaScore } from "@/lib/api";
 import type { AreaScoreDetail, ScoreComponent } from "@/lib/types";
 
+// 5단계를 방향 토큰 2개(up/down)로 표현한다 — 주황 같은 새 색을 만들지 않기 위해(DESIGN.md §7)
+// 텍스트는 방향만 말하고, 강약은 배경 농도가 맡는다. 단계 이름이 라벨로 이미 적혀 있으므로
+// 색이 5단계를 혼자 구분할 필요는 없다.
 const GRADE_STYLE: Record<string, string> = {
-  우수: "text-red-600 bg-red-50 border-red-200",
-  양호: "text-orange-600 bg-orange-50 border-orange-200",
+  우수: "text-up bg-up-weak border-up/20",
+  양호: "text-up bg-up-weak/50 border-up/10",
   보통: "text-foreground bg-surface border-border",
-  주의: "text-blue-600 bg-blue-50 border-blue-200",
-  위험: "text-blue-700 bg-blue-50 border-blue-300",
+  주의: "text-down bg-down-weak/50 border-down/10",
+  위험: "text-down bg-down-weak border-down/20",
 };
 
 // 상권 종합점수 카드 — /market/trdar/{code}/score. 산출 근거 팩트가 없으면 렌더 생략.
@@ -41,7 +44,7 @@ export default function AreaScoreCard({
             {total}
             <span className="text-sm font-medium text-foreground-muted ml-0.5">점</span>
           </div>
-          <p className="text-[11px] text-foreground-muted mt-0.5">
+          <p className="text-xs text-foreground-muted mt-0.5">
             서울 평균 대비 종합점수 · 50점 = 평균 수준
           </p>
         </div>
@@ -72,7 +75,7 @@ function TrendStrip({ trend }: { trend: AreaScoreDetail["trend"] }) {
   return (
     <div className="mt-3 pt-3 border-t border-border">
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[11px] text-foreground-muted">
+        <span className="text-xs text-foreground-muted">
           상권 전체 매출 추이 <span className="opacity-60">(전 업종 합계)</span>
         </span>
         <span className="flex gap-1">
@@ -80,7 +83,7 @@ function TrendStrip({ trend }: { trend: AreaScoreDetail["trend"] }) {
             <button
               key={b}
               onClick={() => setBasis(b)}
-              className={`px-1.5 py-0.5 rounded-md text-[10px] font-medium ${
+              className={`px-1.5 py-0.5 rounded-md text-xs font-medium ${
                 basis === b ? "bg-brand/10 text-brand" : "text-foreground-muted"
               }`}
             >
@@ -110,7 +113,7 @@ function TrendStrip({ trend }: { trend: AreaScoreDetail["trend"] }) {
           );
         })}
       </div>
-      <p className="text-[10px] text-foreground-muted mt-1 tabular-nums">
+      <p className="text-xs text-foreground-muted mt-1 tabular-nums">
         최근 {points[points.length - 1].yearQuarter} {rates[rates.length - 1] > 0 ? "+" : ""}
         {rates[rates.length - 1]}%
       </p>
@@ -134,7 +137,7 @@ function ComponentBar({ component: c }: { component: ScoreComponent }) {
       : `${v.toFixed(1)}${unit}`;
   return (
     <div>
-      <div className="flex items-center justify-between text-[11px]">
+      <div className="flex items-center justify-between text-xs">
         <span className="text-foreground-muted">{c.name}</span>
         {/* 점수만 보여주면 근거가 사라진다 — 응답에 실려 오던 실수치를 되돌려 준다 */}
         <span className="flex items-baseline gap-1.5">

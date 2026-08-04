@@ -36,7 +36,7 @@ export default function StorePanel({
         <div className="grid grid-cols-2 gap-2">
           {stats.map(([label, value]) => (
             <div key={label} className="bg-surface border border-border rounded-lg px-3 py-2.5">
-              <div className="text-[11px] text-foreground-muted">{label}</div>
+              <div className="text-xs text-foreground-muted">{label}</div>
               <div className="text-sm font-semibold mt-0.5">{value}</div>
             </div>
           ))}
@@ -48,9 +48,9 @@ export default function StorePanel({
       {(latest.changeIndicator || latest.operatingMonthsAvg !== null) && (
         <div className="bg-surface border border-border rounded-lg px-3 py-2.5">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-foreground-muted">상권 변화</span>
+            <span className="text-xs text-foreground-muted">상권 변화</span>
             {latest.changeIndicator && (
-              <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-md border border-brand/30 bg-brand/5 text-brand">
+              <span className="text-xs font-medium px-1.5 py-0.5 rounded-md border border-brand/30 bg-brand/5 text-brand">
                 {latest.changeIndicator}
               </span>
             )}

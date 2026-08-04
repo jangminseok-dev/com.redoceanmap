@@ -38,7 +38,7 @@ function HeatStrip({
             style={{ backgroundColor: `rgba(153, 27, 27, ${intensity})` }}
             title={`${label}: ${formatMoney(v)} (${share}%)${per ? ` · 객단가 ${per}` : ""}`}
           >
-            <p className={`text-[10px] leading-tight ${intensity > 0.45 ? "text-white/80" : "text-foreground-muted"}`}>
+            <p className={`text-xs leading-tight ${intensity > 0.45 ? "text-white/80" : "text-foreground-muted"}`}>
               {label}
             </p>
             <p className={`text-xs font-semibold leading-tight ${intensity > 0.45 ? "text-white" : "text-foreground"}`}>

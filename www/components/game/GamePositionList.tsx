@@ -12,7 +12,7 @@ type Props = {
 
 const won = (v: number) => `${v.toLocaleString()}원`;
 const signed = (v: number) => `${v >= 0 ? "+" : ""}${v.toLocaleString()}`;
-const toneOf = (v: number) => (v >= 0 ? "text-[#DC2626]" : "text-[#2563EB]");
+const toneOf = (v: number) => (v >= 0 ? "text-up" : "text-down");
 
 export default function GamePositionList({
   positions,
@@ -40,8 +40,8 @@ export default function GamePositionList({
             className="rounded-2xl border border-border bg-surface p-4 flex flex-wrap items-center gap-x-4 gap-y-2"
           >
             <span
-              className={`px-2 py-0.5 rounded-md text-[11px] font-bold text-white ${
-                isLong ? "bg-[#DC2626]" : "bg-[#2563EB]"
+              className={`px-2 py-0.5 rounded-md text-xs font-bold text-white ${
+                isLong ? "bg-up" : "bg-down"
               }`}
             >
               {isLong ? "롱" : "숏"}
@@ -50,23 +50,23 @@ export default function GamePositionList({
 
             <span className="min-w-0">
               <span className="block text-sm font-semibold truncate">{p.name}</span>
-              <span className="block text-[11px] text-foreground-muted">
+              <span className="block text-xs text-foreground-muted">
                 {p.quantity.toLocaleString()}주 · {won(p.entryPriceKrw)} 진입 · 게임 {heldDays}일 보유
               </span>
             </span>
 
             <span className="ml-auto text-right">
               <span className="block text-sm tabular-nums">{won(p.currentPriceKrw)}</span>
-              <span className={`block text-[11px] tabular-nums ${toneOf(p.unrealizedPnlKrw)}`}>
+              <span className={`block text-xs tabular-nums ${toneOf(p.unrealizedPnlKrw)}`}>
                 {signed(p.unrealizedPnlKrw)}원 ({p.unrealizedPct >= 0 ? "+" : ""}
                 {p.unrealizedPct.toFixed(2)}%)
               </span>
               {/* 수수료·숏 캐리를 뺀 실수령액 — 평가손익만 보면 청산 후 잔고와 어긋난다 */}
-              <span className="block text-[11px] text-foreground-muted tabular-nums">
+              <span className="block text-xs text-foreground-muted tabular-nums">
                 지금 청산 시 {won(p.marketValueKrw)}
               </span>
               {p.liquidationPriceKrw !== null && (
-                <span className="block text-[11px] text-amber-700 tabular-nums">
+                <span className="block text-xs text-amber-700 tabular-nums">
                   청산선 {won(p.liquidationPriceKrw)}
                   {p.expiresTick !== null &&
                     ` · 게임 ${Math.max(0, Math.ceil((p.expiresTick - currentTick) / ticksPerGameDay))}일 남음`}

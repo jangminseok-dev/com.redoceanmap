@@ -98,7 +98,7 @@ export default function MarketBacktestPage() {
                       <td className="px-5 py-3 text-right tabular-nums text-foreground-muted">
                         {signedP(g.avg_sales_qoq, 2, "%")}
                         {g.sales_n > 0 && (
-                          <span className="ml-1.5 inline-flex px-1.5 py-0.5 rounded-full text-[10px] bg-amber-50 text-amber-700">
+                          <span className="ml-1.5 inline-flex px-1.5 py-0.5 rounded-full text-xs bg-amber-50 text-amber-700">
                             n={g.sales_n.toLocaleString()}
                           </span>
                         )}

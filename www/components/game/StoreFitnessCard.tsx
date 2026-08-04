@@ -14,7 +14,7 @@ const TONE_ICON = {
 const TONE_CLASS = {
   good: "text-emerald-600",
   warn: "text-amber-600",
-  bad: "text-[#DC2626]",
+  bad: "text-up",
 } as const;
 
 function gradeOf(fitness: number) {
@@ -22,7 +22,7 @@ function gradeOf(fitness: number) {
   if (fitness >= 1.1) return { label: "양호", tone: "text-emerald-600" };
   if (fitness >= 0.95) return { label: "보통", tone: "text-amber-600" };
   if (fitness >= 0.8) return { label: "주의", tone: "text-amber-700" };
-  return { label: "위험", tone: "text-[#DC2626]" };
+  return { label: "위험", tone: "text-up" };
 }
 
 /**
@@ -47,7 +47,7 @@ export default function StoreFitnessCard({ fitness }: { fitness: GameAreaFitness
 
       {/* 적합도가 높아도 열 수 없는 자리가 있다 — 등급만 보고 오해하지 않게 먼저 말한다 */}
       {!fitness.openable && (
-        <p className="mt-3 rounded-xl bg-[#DC2626]/[0.06] border border-[#DC2626]/20 px-3 py-2 text-xs text-[#DC2626]">
+        <p className="mt-3 rounded-xl bg-up/[0.06] border border-up/20 px-3 py-2 text-xs text-up">
           이 상권엔 {fitness.serviceName} 매출 기록이 없어 창업 기준(점포당 월매출)을 세울 수
           없습니다.
         </p>
@@ -134,7 +134,7 @@ export default function StoreFitnessCard({ fitness }: { fitness: GameAreaFitness
         )}
       </dl>
 
-      <p className="mt-3 text-[11px] text-foreground-muted">
+      <p className="mt-3 text-xs text-foreground-muted">
         {fitness.observedQuarter}분기 서울시 상권분석서비스 실데이터 기준. 임대료·인건비·원가는
         공개 데이터가 없어 게임 규칙으로 산정한 가정치입니다.
       </p>

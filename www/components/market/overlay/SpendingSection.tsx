@@ -32,13 +32,13 @@ export default function SpendingSection({
       <div className="grid grid-cols-2 gap-2">
         {spending.monthlyAvgIncome !== null && (
           <div className="rounded-lg border border-border px-2.5 py-2">
-            <p className="text-[10px] text-foreground-muted">월평균 소득</p>
+            <p className="text-xs text-foreground-muted">월평균 소득</p>
             <p className="text-sm font-semibold mt-0.5">{formatMoney(spending.monthlyAvgIncome)}</p>
           </div>
         )}
         {spending.totalExpenditure !== null && (
           <div className="rounded-lg border border-border px-2.5 py-2">
-            <p className="text-[10px] text-foreground-muted">지출 총액</p>
+            <p className="text-xs text-foreground-muted">지출 총액</p>
             <p className="text-sm font-semibold mt-0.5">{formatMoney(spending.totalExpenditure)}</p>
           </div>
         )}
@@ -46,7 +46,7 @@ export default function SpendingSection({
             구간 숫자(1~10)는 그 자체로 의미가 없어 백분위만 보여준다. */}
         {spending.incomePercentile !== null && (
           <div className="rounded-lg border border-border px-2.5 py-2">
-            <p className="text-[10px] text-foreground-muted">배후 소득 위치</p>
+            <p className="text-xs text-foreground-muted">배후 소득 위치</p>
             <p className="text-sm font-semibold mt-0.5">
               서울 상권 상위 {Math.max(1, Math.round((1 - spending.incomePercentile) * 100))}%
             </p>

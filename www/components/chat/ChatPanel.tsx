@@ -2,15 +2,16 @@
 
 import { useEffect, useRef } from "react";
 import Link from "next/link";
-import { ArrowUpRight, TrendingDown, TrendingUp, Minus } from "lucide-react";
+import { ArrowUpRight, TrendingDown, TrendingUp, Minus, Sparkles } from "lucide-react";
 import { useChatStore } from "@/lib/store";
 import type { Area, NewsCardItem, StockAnalysis } from "@/lib/types";
 import { formatPrice } from "@/lib/currency";
 import ChatInput from "@/components/seoul/ChatInput";
 
+// 방향 색은 DESIGN.md §2 Direction roles 토큰을 쓴다 — Tailwind 기본 팔레트를 직접 쓰지 않는다
 const DIRECTION_META = {
-  UP: { label: "상승 신호", icon: TrendingUp, className: "text-red-600 bg-red-50 border-red-200" },
-  DOWN: { label: "하락 신호", icon: TrendingDown, className: "text-blue-600 bg-blue-50 border-blue-200" },
+  UP: { label: "상승 신호", icon: TrendingUp, className: "text-up bg-up-weak border-up/20" },
+  DOWN: { label: "하락 신호", icon: TrendingDown, className: "text-down bg-down-weak border-down/20" },
   NEUTRAL: { label: "중립", icon: Minus, className: "text-foreground-muted bg-surface border-border" },
 } as const;
 
@@ -83,18 +84,24 @@ export default function ChatPanel({
           if (m.role === "user") {
             return (
               <div key={m.id} className="flex justify-end animate-fade-in-up">
-                <div className="max-w-[85%] bg-surface border border-border rounded-2xl px-3.5 py-2.5 text-sm text-foreground whitespace-pre-wrap">
+                <div className="max-w-[85%] bg-accent rounded-2xl px-3.5 py-2.5 text-sm text-foreground whitespace-pre-wrap">
                   {m.content}
                 </div>
               </div>
             );
           }
+          // AI 답변은 카드로 세운다 — 이 제품이 시세 화면과 다른 지점이 여기인데,
+          // 회색 본문 한 덩어리로 두면 사용자가 흘려 읽는다(레퍼런스 토스 "왜 떨어졌을까?" 카드).
           return (
-            <div key={m.id} className="flex gap-2.5 animate-fade-in-up">
-              <div className="shrink-0 w-5 grid place-items-start pt-1">
-                <PinMark />
+            <div
+              key={m.id}
+              className="animate-fade-in-up rounded-xl border border-border bg-surface p-3.5"
+            >
+              <div className="flex items-center gap-1.5 mb-2">
+                <Sparkles size={13} strokeWidth={2} className="text-brand" />
+                <span className="text-xs font-medium text-foreground-muted">AI 분석</span>
               </div>
-              <div className="flex-1 min-w-0">
+              <div className="min-w-0">
                 <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
                   {m.content}
                 </p>
@@ -123,11 +130,11 @@ export default function ChatPanel({
                           key={r.id}
                           type="button"
                           onClick={() => onSelectArea?.(r)}
-                          className="w-full text-left bg-surface border border-border rounded-xl p-3 hover:border-brand/40 transition-colors"
+                          className="w-full text-left bg-background border border-border rounded-xl p-3 hover:border-brand/40 transition-colors"
                         >
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-sm font-semibold">{r.name}</span>
-                            <span className="text-[11px] text-foreground-muted shrink-0">{r.category}</span>
+                            <span className="text-xs text-foreground-muted shrink-0">{r.category}</span>
                           </div>
                           <p className="text-xs mt-1.5 text-foreground/80 leading-snug">{r.reason}</p>
                         </button>
@@ -149,11 +156,16 @@ export default function ChatPanel({
         })}
 
         {isLoading && (
-          <div className="flex gap-2.5 animate-fade-in-up" role="status" aria-label="응답 생성 중">
-            <div className="shrink-0 w-5 grid place-items-start pt-1">
-              <PinMark />
+          <div
+            className="animate-fade-in-up rounded-xl border border-border bg-surface p-3.5"
+            role="status"
+            aria-label="응답 생성 중"
+          >
+            <div className="flex items-center gap-1.5 mb-2">
+              <Sparkles size={13} strokeWidth={2} className="text-brand" />
+              <span className="text-xs font-medium text-foreground-muted">분석 중…</span>
             </div>
-            <div className="flex-1 flex flex-col gap-2">
+            <div className="flex flex-col gap-2">
               <div className="skeleton h-3.5 rounded-md w-[85%]" />
               <div className="skeleton h-3.5 rounded-md w-[65%]" />
               <div className="skeleton h-3.5 rounded-md w-[45%]" />
@@ -178,7 +190,7 @@ export default function ChatPanel({
 const fmtNum = (v: number, digits = 2) =>
   v.toLocaleString("ko-KR", { maximumFractionDigits: digits });
 
-// 확신도 %를 그대로 띄우면(예: "중립 9%") 초보자가 상승 확률로 오독한다 — 페이지 StageSummary와
+// 확신도 %를 그대로 띄우면(예: "중립 9%") 초보자가 상승 확률로 오독한다 — 페이지 StockHero와
 // 같은 결로 신호 세기(약/보통/강)로 바꾼다. 기준은 방향 임계값(±0.3)의 1·2배.
 function signalStrength(confidence: number): string {
   if (confidence < 0.3) return "약";
@@ -205,7 +217,7 @@ function StockSummaryCard({ stock, onClick }: { stock: StockAnalysis; onClick: (
     <button
       type="button"
       onClick={onClick}
-      className="mt-3 w-full text-left bg-surface border border-border rounded-xl p-3 hover:border-brand/40 transition-colors"
+      className="mt-3 w-full text-left bg-background border border-border rounded-xl p-3 hover:border-brand/40 transition-colors"
     >
       <div className="flex items-center justify-between gap-2">
         <div>
@@ -217,11 +229,11 @@ function StockSummaryCard({ stock, onClick }: { stock: StockAnalysis; onClick: (
         {/* 이 카드는 질문 시점에 얼어붙은 값이다. 스테이지 헤더는 방금 재분석한 값이라
             둘이 어긋날 수 있어(상승 36% vs 중립 16% 실사례) 시점을 명시한다. */}
         <div className="shrink-0 text-right">
-          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full border text-[11px] font-medium ${meta.className}`}>
+          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full border text-xs font-medium ${meta.className}`}>
             <DirectionIcon size={12} strokeWidth={2} />
             {meta.label} · 신호 {stock.strength || signalStrength(stock.confidence)}
           </span>
-          <div className="mt-1 text-[10px] text-foreground-muted">질문 시점 기준</div>
+          <div className="mt-1 text-xs text-foreground-muted">질문 시점 기준</div>
         </div>
       </div>
       {/* 결론 한 줄 — 서버가 페이지와 같은 verdict로 계산(구버전 payload엔 없어 생략) */}
@@ -229,18 +241,18 @@ function StockSummaryCard({ stock, onClick }: { stock: StockAnalysis; onClick: (
         <p className="mt-2 text-sm font-semibold leading-snug">{stock.headline}</p>
       )}
       {stock.watch && (
-        <p className="mt-1 text-[11px] text-foreground-muted leading-snug">지켜볼 점 {stock.watch}</p>
+        <p className="mt-1 text-xs text-foreground-muted leading-snug">지켜볼 점 {stock.watch}</p>
       )}
       {stock.value && stock.value.length > 0 && (
-        <p className="mt-1 text-[11px] text-foreground-muted leading-snug">
+        <p className="mt-1 text-xs text-foreground-muted leading-snug">
           가치·체력 {stock.value.join(" · ")}
         </p>
       )}
       {indicators && (
         <div className="mt-2.5 grid grid-cols-3 gap-1.5">
           {indicators.map(([label, value]) => (
-            <div key={label} className="rounded-lg bg-background/60 border border-border px-2 py-1.5">
-              <div className="text-[10px] text-foreground-muted">{label}</div>
+            <div key={label} className="rounded-lg bg-surface border border-border px-2 py-1.5">
+              <div className="text-xs text-foreground-muted">{label}</div>
               <div className="text-xs font-semibold mt-0.5">{value}</div>
             </div>
           ))}
@@ -248,15 +260,15 @@ function StockSummaryCard({ stock, onClick }: { stock: StockAnalysis; onClick: (
       )}
       <div className="mt-2 flex items-center gap-1.5 flex-wrap">
         {stock.referenceUpSignal && (
-          <span className="inline-flex px-2 py-0.5 rounded-full bg-red-50 border border-red-200 text-red-600 text-[10px] font-medium">
+          <span className="inline-flex px-2 py-0.5 rounded-full bg-up-weak border border-up/20 text-up text-xs font-medium">
             백테스트 검증 참고 신호
           </span>
         )}
         {stock.sentimentLabel && (
-          <span className="text-[11px] text-foreground-muted">뉴스 감성 {stock.sentimentLabel}</span>
+          <span className="text-xs text-foreground-muted">뉴스 감성 {stock.sentimentLabel}</span>
         )}
       </div>
-      <p className="mt-2 text-[11px] text-foreground-muted">차트에 반영하려면 클릭</p>
+      <p className="mt-2 text-xs text-foreground-muted">차트에 반영하려면 클릭</p>
     </button>
   );
 }
@@ -264,11 +276,11 @@ function StockSummaryCard({ stock, onClick }: { stock: StockAnalysis; onClick: (
 function NewsEvidenceList({ items }: { items: NewsCardItem[] }) {
   return (
     <div className="mt-3 flex flex-col gap-1.5">
-      <p className="text-[11px] font-medium text-foreground-muted">근거 뉴스 {items.length}건</p>
+      <p className="text-xs font-medium text-foreground-muted">근거 뉴스 {items.length}건</p>
       {items.map((n, i) => (
-        <div key={i} className="bg-surface border border-border rounded-xl px-3 py-2">
+        <div key={i} className="bg-background border border-border rounded-xl px-3 py-2">
           <p className="text-xs font-medium leading-snug">{n.title}</p>
-          <p className="text-[11px] text-foreground-muted mt-0.5">
+          <p className="text-xs text-foreground-muted mt-0.5">
             {n.publishedAt ?? "날짜 미상"} · {n.ticker ?? "종목 무관"} · {sentimentText(n)}
           </p>
         </div>

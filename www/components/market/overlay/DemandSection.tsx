@@ -13,10 +13,14 @@ import {
 import type { AreaDetail } from "@/lib/types";
 import { formatMoney, formatPop } from "./format";
 
+// recharts는 CSS 변수를 fill로 받지 못한다 — DESIGN.md §2가 허용한 "차트 라이브러리 경계"이며,
+// 값은 `--down`(#2563EB)과 같다. 토큰을 바꾸면 여기도 함께 바꾼다.
+const RESIDENT_FILL = "#2563EB";
+
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-border px-2.5 py-2">
-      <p className="text-[10px] text-foreground-muted">{label}</p>
+      <p className="text-xs text-foreground-muted">{label}</p>
       <p className="text-sm font-semibold mt-0.5">{value}</p>
     </div>
   );
@@ -52,7 +56,7 @@ function BandBar({
       </div>
       <div className="flex flex-wrap gap-x-2.5 gap-y-1 mt-1.5">
         {segments.map((s) => (
-          <span key={s.name} className="inline-flex items-center gap-1 text-[10px] text-foreground-muted">
+          <span key={s.name} className="inline-flex items-center gap-1 text-xs text-foreground-muted">
             <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: s.color }} />
             {s.name} {Math.round(s.share * 100)}%
           </span>
@@ -128,7 +132,7 @@ export default function DemandSection({
       {hasPyramid && (
         <div>
           <p className="text-xs text-foreground-muted mb-1.5">
-            연령대별 <span className="text-[#2563EB]">상주</span> · <span className="text-brand">직장</span> 인구
+            연령대별 <span className="text-down">상주</span> · <span className="text-brand">직장</span> 인구
           </p>
           <div className="h-36">
             <ResponsiveContainer width="100%" height="100%">
@@ -163,7 +167,7 @@ export default function DemandSection({
                   cursor={{ fill: "rgba(153, 27, 27, 0.06)" }}
                 />
                 <ReferenceLine x={0} stroke="#9CA3AF" />
-                <Bar dataKey="resident" stackId="pop" fill="#2563EB" fillOpacity={0.7} maxBarSize={14} />
+                <Bar dataKey="resident" stackId="pop" fill={RESIDENT_FILL} fillOpacity={0.7} maxBarSize={14} />
                 <Bar dataKey="working" stackId="pop" fill="#991B1B" fillOpacity={0.8} maxBarSize={14} />
               </BarChart>
             </ResponsiveContainer>
@@ -199,7 +203,7 @@ export default function DemandSection({
             {anchors.map(([label, n]) => (
               <span
                 key={label}
-                className="text-[11px] px-2 py-1 rounded-full bg-brand/10 text-brand font-medium"
+                className="text-xs px-2 py-1 rounded-full bg-brand/10 text-brand font-medium"
               >
                 {label} {n}
               </span>

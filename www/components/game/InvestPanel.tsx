@@ -22,6 +22,7 @@ import { useUIStore } from "@/lib/uiStore";
 import type { GameSymbolPrices } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import CountUp from "@/components/common/CountUp";
+import SymbolMark from "@/components/common/SymbolMark";
 
 const CHART_TICKS = 120; // 게임 2일치 — 곡선 모양이 읽히는 최소 구간
 // 일봉 기간 탭. 백엔드 상한은 120일이고, 120일선을 그리려면 그만큼이 화면에 있어야 한다.
@@ -40,11 +41,11 @@ const eok = (v: number) =>
   v >= 1e12 ? `${(v / 1e12).toFixed(2)}조원` : `${Math.round(v / 1e8).toLocaleString()}억원`;
 
 const SURPRISE: Record<string, { label: string; tone: string }> = {
-  beat: { label: "기대 상회", tone: "text-[#DC2626] font-medium" },
-  miss: { label: "기대 하회", tone: "text-[#2563EB] font-medium" },
+  beat: { label: "기대 상회", tone: "text-up font-medium" },
+  miss: { label: "기대 하회", tone: "text-down font-medium" },
   inline: { label: "기대 부합", tone: "text-foreground-muted" },
 };
-const toneOf = (v: number) => (v >= 0 ? "text-[#DC2626]" : "text-[#2563EB]");
+const toneOf = (v: number) => (v >= 0 ? "text-up" : "text-down");
 
 export default function InvestPanel() {
   // 선택 종목 · 체결 안내 · 화면 필터. 나머지는 서버 응답이라 상태로 들 것이 없다
@@ -250,7 +251,7 @@ export default function InvestPanel() {
               </dd>
             </div>
           ))}
-          <p className="col-span-2 sm:col-span-4 text-[11px] text-foreground-muted">
+          <p className="col-span-2 sm:col-span-4 text-xs text-foreground-muted">
             최소 생활자금 {won(wallet.reservedKrw)}은 투자에 쓸 수 없습니다 — 전부 잃어도 이 돈은
             남습니다.
           </p>
@@ -290,7 +291,8 @@ export default function InvestPanel() {
       {current && (
         <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_320px]">
           <section className="rounded-2xl border border-border bg-surface p-5">
-            <div className="flex items-baseline gap-2 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
+              <SymbolMark name={current.name} size="md" />
               <h2 className="text-lg font-bold tracking-tight">{current.name}</h2>
               <span className="text-xs text-foreground-muted">{current.sector}</span>
               <span className="ml-auto text-xl font-bold tabular-nums">
@@ -333,7 +335,7 @@ export default function InvestPanel() {
                     key={r.days}
                     type="button"
                     onClick={() => setView((prev) => ({ ...prev, candleDays: r.days }))}
-                    className={`h-7 rounded-lg px-2.5 text-[11px] font-medium transition-colors ${
+                    className={`h-7 rounded-lg px-2.5 text-xs font-medium transition-colors ${
                       view.candleDays === r.days
                         ? "bg-foreground/10 text-foreground"
                         : "text-foreground-muted hover:text-foreground"
@@ -343,7 +345,7 @@ export default function InvestPanel() {
                   </button>
                 ))}
                 {/* 이동평균 범례 — 어느 색이 몇 일선인지 알아야 선이 의미를 갖는다 */}
-                <span className="ml-auto flex items-center gap-2 text-[10px] tabular-nums">
+                <span className="ml-auto flex items-center gap-2 text-xs tabular-nums">
                   {data?.movingAverages?.map((m) => (
                     <span key={m.period} style={{ color: MA_COLOR[m.period] }}>
                       {m.period}
@@ -370,7 +372,7 @@ export default function InvestPanel() {
               {newsMarkers.length > 0 && " · 세로 눈금은 이 종목에 걸린 뉴스 시점"}
             </p>
             {view.chart === "candle" && (
-              <p className="mt-1 text-[11px] text-foreground-muted">
+              <p className="mt-1 text-xs text-foreground-muted">
                 거래량은 게임에 호가·체결 개념이 없어 규칙으로 만든 가정치입니다.
               </p>
             )}
@@ -384,7 +386,7 @@ export default function InvestPanel() {
                       key={p.name}
                       type="button"
                       onClick={() => setView((prev) => ({ ...prev, pattern: p.name }))}
-                      className={`h-7 rounded-lg px-2.5 text-[11px] font-medium transition-colors ${
+                      className={`h-7 rounded-lg px-2.5 text-xs font-medium transition-colors ${
                         activePattern?.name === p.name
                           ? "bg-foreground text-background"
                           : "text-foreground-muted hover:bg-accent"
@@ -398,7 +400,7 @@ export default function InvestPanel() {
                   ))}
                 </div>
                 {activePattern && (
-                  <p className="mt-2 text-[11px] leading-relaxed text-foreground-muted">
+                  <p className="mt-2 text-xs leading-relaxed text-foreground-muted">
                     {activePattern.note} 점선이 그 형태의 꼭짓점을 잇습니다.
                     <br />
                     형태를 알아본 것일 뿐 앞으로의 방향을 뜻하지 않습니다. 이 게임의 주가는
@@ -426,11 +428,11 @@ export default function InvestPanel() {
                   { label: `최근 ${info.recentDays}일 저가`, value: won(info.recentLowKrw) },
                 ].map((item) => (
                   <div key={item.label}>
-                    <dt className="text-[11px] text-foreground-muted">{item.label}</dt>
+                    <dt className="text-xs text-foreground-muted">{item.label}</dt>
                     <dd className="text-sm font-semibold tabular-nums">{item.value}</dd>
                   </div>
                 ))}
-                <p className="col-span-2 sm:col-span-4 text-[11px] text-foreground-muted leading-relaxed">
+                <p className="col-span-2 sm:col-span-4 text-xs text-foreground-muted leading-relaxed">
                   {info.sectorGroup} · {info.gameQuarter}분기 공시{" "}
                   <span className={SURPRISE[info.earningsSurprise].tone}>
                     {SURPRISE[info.earningsSurprise].label}
@@ -438,7 +440,7 @@ export default function InvestPanel() {
                   · 실적은 <b>가상 기업의 가정치</b>입니다(실재 기업의 재무가 아닙니다). 분기마다
                   새로 공시되며, 주가와 독립으로 만들어지므로 많이 오르면 PER이 올라갑니다.
                   {info.meme && (
-                    <span className="text-[#DC2626]">
+                    <span className="text-up">
                       {" "}
                       밈 종목입니다 — <b>적자 상태</b>라 PER이 없습니다. 실적이 아니라 수급·화제성이
                       값을 만들고, 전용 뉴스(스퀴즈·반대매매)가 한 번에 8~28%를 밀어냅니다.
@@ -490,7 +492,7 @@ export default function InvestPanel() {
                     key={group}
                     type="button"
                     onClick={() => setView((prev) => ({ ...prev, sector: group }))}
-                    className={`h-7 rounded-lg px-2.5 text-[11px] font-medium transition-colors ${
+                    className={`h-7 rounded-lg px-2.5 text-xs font-medium transition-colors ${
                       view.sector === group
                         ? "bg-brand text-white"
                         : "text-foreground-muted hover:bg-accent"
@@ -513,17 +515,18 @@ export default function InvestPanel() {
                           active ? "bg-brand/8" : "hover:bg-accent"
                         }`}
                       >
+                        <SymbolMark name={s.name} />
                         <span className="min-w-0 flex-1">
                           <span className="flex items-center gap-1.5">
                             <span className="text-sm font-medium truncate">{s.name}</span>
                             {/* 밈 종목은 변동성이 다른 종목의 2배 이상이다 — 목록에서 바로 보이게 */}
                             {s.meme && (
-                              <span className="shrink-0 rounded-md px-1 py-px text-[10px] font-bold bg-[#DC2626]/10 text-[#DC2626]">
+                              <span className="shrink-0 rounded-md px-1 py-px text-xs font-bold bg-up/10 text-up">
                                 밈
                               </span>
                             )}
                           </span>
-                          <span className="block text-[11px] text-foreground-muted truncate">
+                          <span className="block text-xs text-foreground-muted truncate">
                             {s.sector}
                           </span>
                         </span>
@@ -533,7 +536,7 @@ export default function InvestPanel() {
                             {s.priceKrw.toLocaleString()}
                           </span>
                           <span
-                            className={`block text-[11px] font-medium tabular-nums ${toneOf(s.changePct)}`}
+                            className={`block text-xs font-medium tabular-nums ${toneOf(s.changePct)}`}
                           >
                             {signed(s.changePct)}
                           </span>

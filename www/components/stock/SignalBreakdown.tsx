@@ -24,13 +24,13 @@ export default function SignalBreakdown({ analyze }: { analyze: StockAnalyzeResu
 
   return (
     <div className="bg-surface border border-border rounded-lg px-3 py-2.5">
-      <p className="text-[11px] text-foreground-muted mb-2">신호별 기여도 (왜 이 방향인가)</p>
+      <p className="text-xs text-foreground-muted mb-2">신호별 기여도 (왜 이 방향인가)</p>
       <div className="flex flex-col gap-1.5">
         {signals.map((s) => {
           const inactive = s.weight === 0;
           const widthPct = Math.min(50, (Math.abs(s.contribution) / maxAbs) * 50);
           return (
-            <div key={s.key} className="flex items-center gap-2 text-[11px]">
+            <div key={s.key} className="flex items-center gap-2 text-xs">
               <span className={`w-16 shrink-0 ${inactive ? "text-foreground-muted/60" : "text-foreground-muted"}`}>
                 {SIGNAL_LABELS[s.key] ?? s.key}
               </span>
@@ -56,7 +56,7 @@ export default function SignalBreakdown({ analyze }: { analyze: StockAnalyzeResu
         })}
       </div>
       <div className="mt-2.5 pt-2 border-t border-border">
-        <div className="flex justify-between text-[10px] text-foreground-muted mb-1">
+        <div className="flex justify-between text-xs text-foreground-muted mb-1">
           <span>하락 기준 {downThr.toFixed(2)}</span>
           <span className="font-medium text-foreground">종합 {analyze.score >= 0 ? "+" : ""}{analyze.score.toFixed(2)}</span>
           <span>상승 기준 +{upThr.toFixed(2)}</span>
@@ -74,7 +74,7 @@ export default function SignalBreakdown({ analyze }: { analyze: StockAnalyzeResu
           />
         </div>
       </div>
-      <p className="mt-2 text-[10px] text-foreground-muted">
+      <p className="mt-2 text-xs text-foreground-muted">
         회색 괄호 값은 판정에 반영되지 않는 지표(가중치 0)의 신호 상태입니다.
       </p>
     </div>

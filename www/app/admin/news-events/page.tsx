@@ -122,7 +122,7 @@ function BucketTable({
                 <td className="py-1.5">
                   {b.key}
                   {!b.reliable && (
-                    <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-foreground/5 text-foreground-muted">
+                    <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full bg-foreground/5 text-foreground-muted">
                       표본 부족
                     </span>
                   )}

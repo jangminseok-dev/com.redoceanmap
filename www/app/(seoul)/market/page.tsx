@@ -9,6 +9,7 @@ import WorkspaceShell from "@/components/workspace/WorkspaceShell";
 import ChatPanel from "@/components/chat/ChatPanel";
 import MapView, { type MapPin } from "@/components/seoul/MapView";
 import AreaStatsPanel from "@/components/market/AreaStatsPanel";
+import AreaBrowsePanel from "@/components/market/AreaBrowsePanel";
 import AreaDetailOverlay from "@/components/market/overlay/AreaDetailOverlay";
 
 const EMPTY_PROMPTS = [
@@ -93,16 +94,52 @@ function MarketWorkspace() {
 
   return (
     <WorkspaceShell
-      stageLabel="지도"
       stage={
-        <div className="relative flex-1 min-h-0 p-3">
+        // 지도를 전면으로 깐다(레퍼런스 네이버지도) — 여백과 radius를 두면 "카드 안의 지도"가 되어
+        // 지도가 배경이 아니라 부품처럼 보인다. 조작(줌)은 MapView가 지도 위에 올린다.
+        <div className="relative h-full min-h-[420px]">
           <MapView areas={pins} selectedId={trdar || null} onSelect={setTrdar} />
+
+          {/* 지도 위 떠 있는 상권 칩 — 네이버지도의 카테고리 칩 자리다.
+              추천받은 상권을 지도 밖으로 나가지 않고 그 위에서 바로 오갈 수 있게 한다.
+              오버레이가 열려 있으면 그 폭만큼 비켜 준다(lg 이상에서만 나란히 놓인다). */}
+          {recommendations.length > 0 && (
+            <div
+              className={`absolute inset-x-0 top-0 z-10 flex gap-1.5 overflow-x-auto px-3 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+                overlayOpen ? "lg:pr-[420px]" : ""
+              }`}
+            >
+              {recommendations.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => setTrdar(r.id)}
+                  aria-pressed={r.id === trdar}
+                  className={`shrink-0 h-8 px-3 rounded-full text-xs font-medium shadow-sm transition-colors duration-150 ${
+                    r.id === trdar
+                      ? "bg-brand text-white"
+                      : "bg-surface border border-border hover:bg-accent"
+                  }`}
+                >
+                  {r.name}
+                </button>
+              ))}
+            </div>
+          )}
+
           {overlayOpen && (
             <AreaDetailOverlay trdarCode={trdar} serviceCode={serviceCode} onClose={closeOverlay} />
           )}
         </div>
       }
-      panel={<AreaStatsPanel trdarCode={trdar} serviceCode={serviceCode} />}
+      // 상권을 고르기 전에는 둘러보기 목록으로 채운다 — 예전에는 안내 한 줄만 있었다
+      panel={
+        trdar ? (
+          <AreaStatsPanel trdarCode={trdar} serviceCode={serviceCode} />
+        ) : (
+          <AreaBrowsePanel onSelect={setTrdar} />
+        )
+      }
       chat={
         <ChatPanel
           workspace="market"

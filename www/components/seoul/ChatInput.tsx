@@ -49,9 +49,18 @@ export default function ChatInput({
   const current = ENGINES.find((e) => e.id === engine) ?? ENGINES[0];
 
   return (
+    // 상자는 **하나**다. Textarea가 자체 border·ring을 갖고 있어(shadcn 기본) 그대로 두면
+    // 둥근 form 안에 각진 상자가 하나 더 그려진다 — 아래에서 전부 무력화하고,
+    // focus 표시는 form이 focus-within으로 한 번만 낸다.
     <form
       onSubmit={handleFormSubmit}
-      className="bg-surface border border-border rounded-2xl shadow-sm"
+      className={[
+        "bg-surface border border-border rounded-3xl",
+        "shadow-[0_1px_2px_rgba(26,26,26,0.04),0_10px_30px_-12px_rgba(26,26,26,0.12)]",
+        "transition-[border-color,box-shadow] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)]",
+        "hover:border-foreground-muted/25",
+        "focus-within:border-brand/45 focus-within:ring-4 focus-within:ring-brand/10",
+      ].join(" ")}
     >
       <Textarea
         aria-label="질문 입력"
@@ -60,7 +69,7 @@ export default function ChatInput({
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
         rows={2}
-        className="w-full resize-none bg-transparent px-5 pt-5 pb-2 outline-none text-base placeholder:text-foreground-muted"
+        className="w-full resize-none border-0 rounded-none bg-transparent px-5 pt-5 pb-2 text-base shadow-none placeholder:text-foreground-muted focus-visible:border-0 focus-visible:ring-0"
       />
       <div className="flex items-center justify-between px-3 pb-3">
         <button
@@ -129,7 +138,7 @@ export default function ChatInput({
             type="submit"
             aria-label="보내기"
             disabled={!canSend}
-            className="ml-1 w-10 h-10 grid place-items-center rounded-full bg-brand text-white hover:bg-brand-deep transition-colors disabled:bg-border disabled:text-foreground-muted disabled:cursor-not-allowed"
+            className="ml-1 w-10 h-10 grid place-items-center rounded-full bg-brand text-white transition-[background-color,transform] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-brand-deep active:scale-95 disabled:bg-accent disabled:text-foreground-muted/50 disabled:cursor-not-allowed disabled:active:scale-100"
           >
             <ArrowRight size={16} strokeWidth={2.25} />
           </button>

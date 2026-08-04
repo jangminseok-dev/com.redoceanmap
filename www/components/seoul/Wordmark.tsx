@@ -3,11 +3,17 @@
 import Link from "next/link";
 import { useChatStore } from "@/lib/store";
 
-export default function Wordmark() {
+// iconOnly는 72px 레일용이다 — 그 폭에 "redoceanmap" 11글자가 들어가지 않는다.
+export default function Wordmark({ iconOnly = false }: { iconOnly?: boolean }) {
   const reset = useChatStore((s) => s.reset);
 
   return (
-    <Link href="/" onClick={reset} className="flex items-center gap-2 text-foreground">
+    <Link
+      href="/"
+      onClick={reset}
+      aria-label={iconOnly ? "redoceanmap 홈" : undefined}
+      className="flex items-center gap-2 text-foreground"
+    >
       <svg
         width="16"
         height="20"
@@ -21,9 +27,11 @@ export default function Wordmark() {
         />
         <circle cx="8" cy="8" r="2.5" fill="#FFFFFF" />
       </svg>
-      <span className="font-semibold tracking-tight text-[15px]">
-        redoceanmap
-      </span>
+      {!iconOnly && (
+        <span className="font-semibold tracking-tight text-[15px]">
+          redoceanmap
+        </span>
+      )}
     </Link>
   );
 }

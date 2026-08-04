@@ -3,12 +3,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { Minus, TrendingDown, TrendingUp } from "lucide-react";
 import { fetchStockBoard, fetchStockQuote } from "@/lib/api";
-import { formatPrice } from "@/lib/currency";
+import { formatPrice, formatTurnover } from "@/lib/currency";
+import { Marquee } from "@/components/ui/marquee";
+import SymbolMark from "@/components/common/SymbolMark";
 import type { StockBoardRow } from "@/lib/types";
-
-// 한국 관례: 상승 빨강 / 하락 파랑 (차트·방향 배지와 동일)
-const UP = "#DC2626";
-const DOWN = "#2563EB";
 
 // 지수는 수집 대상이 아니다(price_bars는 레짐 판정용 SPY·^VIX만 담는다) —
 // 서버 20초 공유 캐시가 붙은 quote를 그대로 재사용한다.
@@ -20,16 +18,19 @@ const INDICES = [
 ];
 
 const DIRECTION_META = {
-  UP: { label: "상승", icon: TrendingUp, className: "text-red-600 bg-red-50 border-red-200" },
-  DOWN: { label: "하락", icon: TrendingDown, className: "text-blue-600 bg-blue-50 border-blue-200" },
+  UP: { label: "상승", icon: TrendingUp, className: "text-up bg-up-weak border-up/20" },
+  DOWN: { label: "하락", icon: TrendingDown, className: "text-down bg-down-weak border-down/20" },
   NEUTRAL: { label: "중립", icon: Minus, className: "text-foreground-muted bg-surface border-border" },
 } as const;
 
 const signedPct = (v: number) => `${v >= 0 ? "+" : ""}${(v * 100).toFixed(2)}%`;
 
-function changeClass(v: number | null | undefined) {
+// 등락률 배경 하이라이트 — 값보다 방향이 먼저 읽히게 한다(DESIGN.md §2 Direction roles)
+function toneBox(v: number | null | undefined) {
   if (v === null || v === undefined) return "text-foreground-muted";
-  return v > 0 ? "text-red-600" : v < 0 ? "text-blue-600" : "text-foreground-muted";
+  if (v > 0) return "text-up bg-up-weak";
+  if (v < 0) return "text-down bg-down-weak";
+  return "text-foreground-muted";
 }
 
 function IndexChip({ symbol, label }: { symbol: string; label: string }) {
@@ -44,13 +45,13 @@ function IndexChip({ symbol, label }: { symbol: string; label: string }) {
   if (!data) return null;
 
   return (
-    <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
+    <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap text-xs">
       <span className="text-foreground-muted">{label}</span>
       <span className="font-semibold tabular-nums">
         {data.price.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}
       </span>
       {data.change_pct != null && (
-        <span className={`tabular-nums ${changeClass(data.change_pct)}`}>
+        <span className={`tabular-nums ${data.change_pct > 0 ? "text-up" : data.change_pct < 0 ? "text-down" : "text-foreground-muted"}`}>
           {signedPct(data.change_pct)}
         </span>
       )}
@@ -72,7 +73,7 @@ function Sparkline({ values, rising }: { values: number[]; rising: boolean }) {
       <polyline
         points={points}
         fill="none"
-        stroke={rising ? UP : DOWN}
+        stroke={rising ? "var(--up)" : "var(--down)"}
         strokeWidth={1.25}
         strokeLinejoin="round"
         strokeLinecap="round"
@@ -81,56 +82,131 @@ function Sparkline({ values, rising }: { values: number[]; rising: boolean }) {
   );
 }
 
-function BoardRow({ row, onSelect }: { row: StockBoardRow; onSelect: (symbol: string) => void }) {
+function BoardRow({
+  row,
+  rank,
+  compact,
+  active,
+  onSelect,
+}: {
+  row: StockBoardRow;
+  rank: number;
+  compact: boolean; // 320px 좌측 컬럼 — 스파크라인·신호·평소대비를 접는다
+  active: boolean;
+  onSelect: (symbol: string) => void;
+}) {
   const meta = DIRECTION_META[row.direction] ?? DIRECTION_META.NEUTRAL;
   const DirectionIcon = meta.icon;
-  const rising = row.sparkline.length >= 2 && row.sparkline[row.sparkline.length - 1] >= row.sparkline[0];
+  const rising =
+    row.sparkline.length >= 2 && row.sparkline[row.sparkline.length - 1] >= row.sparkline[0];
 
   return (
     <li>
       <button
         type="button"
         onClick={() => onSelect(row.ticker)}
-        className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:bg-accent transition-colors"
+        aria-current={active ? "true" : undefined}
+        className={`w-full flex items-center gap-3 px-4 py-2.5 text-left border-b border-border transition-colors ${
+          active ? "bg-accent" : "hover:bg-accent"
+        }`}
       >
-        <span className="w-28 shrink-0 min-w-0">
+        <span className="w-5 shrink-0 text-xs tabular-nums text-foreground-muted">{rank}</span>
+        <SymbolMark name={row.name} />
+
+        <span className="flex-1 min-w-0">
           <span className="block text-sm font-medium truncate">{row.name}</span>
-          <span className="block text-[11px] text-foreground-muted truncate">{row.ticker}</span>
+          <span className="block text-xs text-foreground-muted truncate">{row.ticker}</span>
         </span>
-        <Sparkline values={row.sparkline} rising={rising} />
-        <span className="w-24 shrink-0 text-right text-sm tabular-nums">
+
+        {!compact && (
+          <span className="hidden sm:block">
+            <Sparkline values={row.sparkline} rising={rising} />
+          </span>
+        )}
+
+        <span className="w-24 shrink-0 text-right text-sm font-medium tabular-nums">
           {formatPrice(row.price, row.ticker)}
         </span>
-        <span className={`w-16 shrink-0 text-right text-xs tabular-nums ${changeClass(row.change_pct)}`}>
+
+        <span
+          className={`w-[72px] shrink-0 text-right text-sm font-medium tabular-nums px-1.5 py-0.5 rounded-md ${toneBox(row.change_pct)}`}
+        >
           {row.change_pct != null ? signedPct(row.change_pct) : "—"}
         </span>
-        <span
-          className={`w-24 shrink-0 inline-flex items-center justify-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-medium ${meta.className}`}
-        >
-          <DirectionIcon size={11} strokeWidth={2} />
-          {meta.label} {row.score >= 0 ? "+" : ""}{row.score.toFixed(2)}
-        </span>
-        <span className="w-20 shrink-0 text-right text-[11px] tabular-nums text-foreground-muted">
-          {row.edge_pct != null ? (
-            <>
-              평소 {row.edge_pct >= 0 ? "+" : ""}
-              {(row.edge_pct * 100).toFixed(0)}%p
-            </>
-          ) : (
-            "—"
-          )}
-        </span>
+
+        {!compact && (
+          <>
+            {/* 거래대금 — 통화가 섞이므로 값끼리 비교하지 않는다. 종목별 규모를 읽는 용도다. */}
+            <span className="hidden xl:block w-24 shrink-0 text-right text-xs tabular-nums text-foreground-muted">
+              {row.turnover != null ? formatTurnover(row.turnover, row.ticker) : "—"}
+            </span>
+
+            <span
+              className={`hidden lg:inline-flex w-[104px] shrink-0 items-center justify-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium ${meta.className}`}
+            >
+              <DirectionIcon size={11} strokeWidth={2} />
+              {meta.label} {row.score >= 0 ? "+" : ""}
+              {row.score.toFixed(2)}
+            </span>
+
+            <span className="hidden lg:block w-20 shrink-0 text-right text-xs tabular-nums text-foreground-muted">
+              {row.edge_pct != null ? (
+                <>
+                  평소 {row.edge_pct >= 0 ? "+" : ""}
+                  {(row.edge_pct * 100).toFixed(0)}%p
+                </>
+              ) : (
+                "—"
+              )}
+            </span>
+          </>
+        )}
       </button>
     </li>
   );
 }
 
-export default function MarketBoard({ onSelect }: { onSelect: (symbol: string) => void }) {
+function SummaryTile({
+  label,
+  count,
+  className,
+}: {
+  label: string;
+  count: number;
+  className: string;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-surface px-3 py-2.5">
+      <p className="text-xs text-foreground-muted">{label}</p>
+      <p className={`text-data-xl tabular-nums ${className}`}>
+        {count}
+        <span className="ml-0.5 text-sm font-normal text-foreground-muted">개</span>
+      </p>
+    </div>
+  );
+}
+
+export default function MarketBoard({
+  onSelect,
+  compact = false,
+  selected = null,
+}: {
+  onSelect: (symbol: string) => void;
+  /** 좌측 320px 컬럼에서 쓰는 축약형 — 지수 티커·요약·각주를 접고 표만 남긴다 */
+  compact?: boolean;
+  selected?: string | null;
+}) {
   const boardQ = useQuery({
     queryKey: ["stock-board"],
     queryFn: () => fetchStockBoard(),
     staleTime: 10 * 60_000, // 스냅샷은 일 1회 갱신 — 재방문마다 다시 받을 이유가 없다
   });
+
+  const rows = boardQ.data?.rows ?? [];
+  const counts = rows.reduce(
+    (acc, row) => ({ ...acc, [row.direction]: acc[row.direction] + 1 }),
+    { UP: 0, DOWN: 0, NEUTRAL: 0 } as Record<StockBoardRow["direction"], number>,
+  );
 
   // 신호는 스냅샷(일 1회)에서, 가격은 그 뒤 더 쌓인 최신 봉에서 온다 — 한 날짜로 뭉뚱그리면
   // "기준 7/21"인데 가격은 7/22인 화면이 된다. 두 날짜가 다르면 둘 다 적는다.
@@ -141,66 +217,100 @@ export default function MarketBoard({ onSelect }: { onSelect: (symbol: string) =
   const sameDay = asOf && priceAsOf && day(asOf) === day(priceAsOf);
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto">
-      <div className="flex items-center gap-4 px-4 py-2 border-b border-border overflow-x-auto text-xs">
-        {INDICES.map((index) => (
-          <IndexChip key={index.symbol} {...index} />
-        ))}
-      </div>
+    // 스크롤은 WorkspaceShell이 잡는다 — 여기서 또 잡으면 이중 스크롤이 된다
+    <div>
+      {/* 지수 티커 — 4개가 375px에 들어가지 않아 예전에는 잘렸다. 흐르게 두면 폭과 무관해진다. */}
+      {!compact && (
+        <div className="border-b border-border py-2">
+          <Marquee duration="50s" className="[--gap:2rem]">
+            {INDICES.map((index) => (
+              <IndexChip key={index.symbol} {...index} />
+            ))}
+          </Marquee>
+        </div>
+      )}
 
-      <div className="px-6 pt-6 pb-4 text-center">
-        <h2 className="text-lg font-semibold">주식 분석 워크스페이스</h2>
-        <p className="mt-1.5 text-sm text-foreground-muted">
-          아래 보드에서 고르거나, 오른쪽 채팅에 종목명·티커를 물어보세요
-        </p>
-      </div>
+      {/* 신호 요약 — 보드 행을 세어 만든다(새 요청 없음). 표가 길어 위에서 전체 그림이 안 잡히던 자리다.
+          "주식 분석" 제목은 뺐다 — 레일에서 주식이 활성이라 어디인지는 이미 알고 있다. */}
+      {!compact && rows.length > 0 && (
+        <div className="grid grid-cols-3 gap-2 px-4 pt-4 pb-1">
+          <SummaryTile label="상승 신호" count={counts.UP} className="text-up" />
+          <SummaryTile label="하락 신호" count={counts.DOWN} className="text-down" />
+          <SummaryTile label="중립" count={counts.NEUTRAL} className="text-foreground-muted" />
+        </div>
+      )}
 
-      <div className="px-4 pb-6">
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-3 pb-1.5">
-          <h3 className="text-sm font-semibold">오늘의 신호 보드</h3>
-          <span className="text-[11px] text-foreground-muted">
+      <div className="flex flex-wrap items-baseline gap-x-2 px-4 pt-4 pb-2">
+        <h3 className="text-base font-semibold">오늘의 신호 보드</h3>
+        {!compact && (
+          <span className="text-xs text-foreground-muted">
             워치리스트 · 신호가 뚜렷한 순
             {boardQ.data && ` · ${boardQ.data.horizon_days}일 예측`}
             {asOf && ` · 신호 ${day(asOf)} 기준`}
             {priceAsOf && !sameDay && ` · 가격 ${day(priceAsOf)} 종가`}
           </span>
-        </div>
-
-        {boardQ.isLoading && (
-          <div className="flex flex-col gap-1.5 px-3">
-            {Array.from({ length: 8 }, (_, i) => (
-              <div key={i} className="skeleton h-11 rounded-lg" />
-            ))}
-          </div>
-        )}
-
-        {boardQ.data && boardQ.data.rows.length === 0 && (
-          <p className="px-3 py-6 text-center text-sm text-foreground-muted">
-            아직 쌓인 예측 스냅샷이 없습니다. 위에서 종목을 직접 열어보세요.
-          </p>
-        )}
-
-        {boardQ.isError && (
-          <p className="px-3 py-6 text-center text-sm text-foreground-muted">
-            신호 보드를 불러오지 못했습니다. 위에서 종목을 직접 열어보세요.
-          </p>
-        )}
-
-        {boardQ.data && boardQ.data.rows.length > 0 && (
-          <>
-            <ul className="flex flex-col">
-              {boardQ.data.rows.map((row) => (
-                <BoardRow key={row.ticker} row={row} onSelect={onSelect} />
-              ))}
-            </ul>
-            <p className="mt-3 px-3 text-[11px] text-foreground-muted leading-relaxed">
-              매수 추천 순위가 아니라 지표 신호가 뚜렷한 순서입니다. &lsquo;평소 대비&rsquo;는 과거 같은
-              신호에서의 상승 비율과 평소 상승률의 차이로, 과거 통계이며 미래를 보장하지 않습니다.
-              가격은 최근 수집 종가라 실시간이 아닙니다.
-            </p>
-          </>
         )}
       </div>
+
+      {boardQ.isLoading && (
+        <div className="flex flex-col gap-1.5 px-4">
+          {Array.from({ length: 8 }, (_, i) => (
+            <div key={i} className="skeleton h-12 rounded-lg" />
+          ))}
+        </div>
+      )}
+
+      {boardQ.data && boardQ.data.rows.length === 0 && (
+        <p className="px-4 py-6 text-center text-sm text-foreground-muted">
+          아직 쌓인 예측 스냅샷이 없습니다. 채팅으로 종목을 직접 열어보세요.
+        </p>
+      )}
+
+      {boardQ.isError && (
+        <p className="px-4 py-6 text-center text-sm text-foreground-muted">
+          신호 보드를 불러오지 못했습니다. 채팅으로 종목을 직접 열어보세요.
+        </p>
+      )}
+
+      {boardQ.data && boardQ.data.rows.length > 0 && (
+        <>
+          {/* 컬럼 라벨 — lg에서만. 좁은 폭에서는 열이 접혀 라벨이 값과 어긋난다. */}
+          {!compact && (
+            <div className="hidden lg:flex items-center gap-3 px-4 pb-1.5 text-xs text-foreground-muted">
+              <span className="w-5 shrink-0">#</span>
+              <span className="w-6 shrink-0" />
+              <span className="flex-1">종목</span>
+              <span className="w-16 shrink-0" />
+              <span className="w-24 shrink-0 text-right">현재가</span>
+              <span className="w-[72px] shrink-0 text-right">등락률</span>
+              <span className="hidden xl:block w-24 shrink-0 text-right">거래대금</span>
+              <span className="w-[104px] shrink-0 text-center">신호</span>
+              <span className="w-20 shrink-0 text-right">평소 대비</span>
+            </div>
+          )}
+
+          <ul className="flex flex-col border-t border-border">
+            {boardQ.data.rows.map((row, i) => (
+              <BoardRow
+                key={row.ticker}
+                row={row}
+                rank={i + 1}
+                compact={compact}
+                active={row.ticker === selected}
+                onSelect={onSelect}
+              />
+            ))}
+          </ul>
+
+          {!compact && (
+            <p className="px-4 py-3 text-xs text-foreground-muted leading-relaxed">
+              매수 추천 순위가 아니라 지표 신호가 뚜렷한 순서입니다. &lsquo;평소 대비&rsquo;는 과거 같은
+              신호에서의 상승 비율과 평소 상승률의 차이로, 과거 통계이며 미래를 보장하지 않습니다. 가격은
+              최근 수집 종가라 실시간이 아닙니다.
+            </p>
+          )}
+        </>
+      )}
     </div>
   );
 }

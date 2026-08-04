@@ -52,10 +52,10 @@ export default function AreaDetailOverlay({
     <div className="absolute inset-3 lg:inset-auto lg:right-3 lg:top-3 lg:bottom-3 lg:w-[400px] lg:max-w-[calc(100%-1.5rem)] rounded-2xl border border-border bg-background/90 backdrop-blur-md shadow-xl overflow-y-auto z-10">
       <div className="sticky top-0 flex items-start justify-between gap-2 px-4 pt-3.5 pb-2.5 bg-background/90 backdrop-blur-md border-b border-border">
         <div className="min-w-0">
-          <p className="text-[10px] text-foreground-muted">{data?.districtName ?? "상권 상세 분석"}</p>
+          <p className="text-xs text-foreground-muted">{data?.districtName ?? "상권 상세 분석"}</p>
           <h2 className="text-sm font-semibold truncate">{data?.trdarName ?? "…"}</h2>
           {data?.serviceName && data.salesMix && (
-            <p className="text-[10px] text-foreground-muted mt-0.5">
+            <p className="text-xs text-foreground-muted mt-0.5">
               기준 업종 {data.serviceName} · {String(data.salesMix.yearQuarter).slice(0, 4)}년{" "}
               {String(data.salesMix.yearQuarter).slice(4)}분기
             </p>

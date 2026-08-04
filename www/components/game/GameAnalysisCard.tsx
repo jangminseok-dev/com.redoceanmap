@@ -8,11 +8,11 @@ const HOT = "#DC2626";
 const COLD = "#2563EB";
 
 const LABEL_TONE: Record<string, string> = {
-  과열: "text-[#DC2626]",
-  달아오름: "text-[#DC2626]",
+  과열: "text-up",
+  달아오름: "text-up",
   잠잠: "text-foreground-muted",
-  "식는 중": "text-[#2563EB]",
-  침체: "text-[#2563EB]",
+  "식는 중": "text-down",
+  침체: "text-down",
 };
 
 const fmt = (v: number | null, digits = 2, suffix = "") =>
@@ -132,7 +132,7 @@ export default function GameAnalysisCard({
         </div>
       )}
 
-      <p className="mt-4 flex items-start gap-1.5 text-[11px] text-foreground-muted leading-relaxed">
+      <p className="mt-4 flex items-start gap-1.5 text-xs text-foreground-muted leading-relaxed">
         <TriangleAlert size={13} strokeWidth={2} className="mt-0.5 shrink-0 text-amber-600" />
         <span>
           <b>예측이 아닙니다.</b> 이 게임의 주가는 난수(브라운 운동)에 뉴스 충격을 더해

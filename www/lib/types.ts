@@ -173,6 +173,8 @@ export type StockBoardRow = {
   ready: boolean;
   sparkline: number[]; // 최근 종가(과거 → 최신)
   price_as_of: string | null; // 가격 기준일 — 신호 기준일(as_of)과 다를 수 있다
+  volume?: number | null; // 마지막 봉 거래량(주) — 구버전 응답 호환을 위해 옵셔널
+  turnover?: number | null; // 거래대금 = 종가 × 거래량. 통화는 종목을 따른다(원/달러 혼재)
 };
 
 export type StockBoard = {

@@ -13,7 +13,7 @@ const CHART_TICKS = 240; // 지수는 완만해서 주식보다 긴 구간을 �
 
 const won = (v: number) => `${v.toLocaleString()}원`;
 const signed = (v: number) => `${v >= 0 ? "+" : ""}${v.toLocaleString()}`;
-const toneOf = (v: number) => (v >= 0 ? "text-[#DC2626]" : "text-[#2563EB]");
+const toneOf = (v: number) => (v >= 0 ? "text-up" : "text-down");
 
 /**
  * 지수 선물 — 근월물 하나.
@@ -138,32 +138,32 @@ export default function FuturesPanel() {
 
           <dl className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 border-t border-border pt-4">
             <div>
-              <dt className="text-[11px] text-foreground-muted">선물가</dt>
+              <dt className="text-xs text-foreground-muted">선물가</dt>
               <dd className="text-sm font-semibold tabular-nums">
                 {data.futuresPoint.toLocaleString()}pt
               </dd>
             </div>
             <div>
-              <dt className="text-[11px] text-foreground-muted">베이시스</dt>
+              <dt className="text-xs text-foreground-muted">베이시스</dt>
               <dd className="text-sm font-semibold tabular-nums">
                 {data.basisPct >= 0 ? "+" : ""}
                 {data.basisPct.toFixed(2)}%
-                <span className="ml-1 text-[11px] font-normal text-foreground-muted">
+                <span className="ml-1 text-xs font-normal text-foreground-muted">
                   {contango ? "콘탱고" : "백워데이션"}
                 </span>
               </dd>
             </div>
             <div>
-              <dt className="text-[11px] text-foreground-muted">만기까지</dt>
+              <dt className="text-xs text-foreground-muted">만기까지</dt>
               <dd className="text-sm font-semibold tabular-nums">
                 게임 {expiryGameDays}일 ({data.ticksToExpiry}틱)
               </dd>
             </div>
             <div>
-              <dt className="text-[11px] text-foreground-muted">1계약 명목</dt>
+              <dt className="text-xs text-foreground-muted">1계약 명목</dt>
               <dd className="text-sm font-semibold tabular-nums">{won(data.contractValueKrw)}</dd>
             </div>
-            <p className="col-span-2 sm:col-span-4 text-[11px] leading-relaxed text-foreground-muted">
+            <p className="col-span-2 sm:col-span-4 text-xs leading-relaxed text-foreground-muted">
               지수는 게임 종목 12개 상대가격의 기하평균입니다. 선물가는 만기가 가까울수록
               현물에 수렴하며, 만기에는 그 시점 현물 지수로 정산됩니다.
             </p>
@@ -187,8 +187,8 @@ export default function FuturesPanel() {
                     className={`flex items-center justify-center gap-1.5 h-10 rounded-xl text-sm font-medium border transition-colors ${
                       active
                         ? isLong
-                          ? "bg-[#DC2626] text-white border-transparent"
-                          : "bg-[#2563EB] text-white border-transparent"
+                          ? "bg-up text-white border-transparent"
+                          : "bg-down text-white border-transparent"
                         : "border-border text-foreground-muted hover:bg-accent"
                     }`}
                   >
@@ -235,13 +235,13 @@ export default function FuturesPanel() {
               </div>
               <div className="flex justify-between font-semibold border-t border-border pt-1 mt-1">
                 <dt>증거금 ({Math.round(data.marginRatio * 100)}%)</dt>
-                <dd className={`tabular-nums ${overBudget ? "text-[#DC2626]" : ""}`}>
+                <dd className={`tabular-nums ${overBudget ? "text-up" : ""}`}>
                   {won(margin)}
                 </dd>
               </div>
             </dl>
 
-            <p className="mt-2 text-[11px] leading-relaxed text-foreground-muted">
+            <p className="mt-2 text-xs leading-relaxed text-foreground-muted">
               중도 강제청산은 없습니다 — 손실은 증거금까지입니다. 만기(게임 {expiryGameDays}일 뒤)가
               지나면 접속하지 않아도 현물 지수로 자동 정산됩니다.
             </p>
@@ -279,26 +279,26 @@ export default function FuturesPanel() {
                 className="rounded-2xl border border-border bg-surface p-4 flex flex-wrap items-center gap-x-4 gap-y-2"
               >
                 <span
-                  className={`px-2 py-0.5 rounded-md text-[11px] font-bold text-white ${
-                    p.side === "LONG" ? "bg-[#DC2626]" : "bg-[#2563EB]"
+                  className={`px-2 py-0.5 rounded-md text-xs font-bold text-white ${
+                    p.side === "LONG" ? "bg-up" : "bg-down"
                   }`}
                 >
                   {p.side === "LONG" ? "매수" : "매도"}
                 </span>
                 <span className="min-w-0">
                   <span className="block text-sm font-semibold truncate">{p.contractCode}</span>
-                  <span className="block text-[11px] text-foreground-muted">
+                  <span className="block text-xs text-foreground-muted">
                     {p.contracts}계약 · {won(p.entryPriceKrw)} 진입 · 만기까지{" "}
                     {Math.max(0, Math.ceil(p.ticksToExpiry / 60))}게임일
                   </span>
                 </span>
                 <span className="ml-auto text-right">
                   <span className="block text-sm tabular-nums">{won(p.currentPriceKrw)}</span>
-                  <span className={`block text-[11px] tabular-nums ${toneOf(p.unrealizedPnlKrw)}`}>
+                  <span className={`block text-xs tabular-nums ${toneOf(p.unrealizedPnlKrw)}`}>
                     {signed(p.unrealizedPnlKrw)}원 ({p.unrealizedPct >= 0 ? "+" : ""}
                     {p.unrealizedPct.toFixed(2)}%)
                   </span>
-                  <span className="block text-[11px] text-foreground-muted tabular-nums">
+                  <span className="block text-xs text-foreground-muted tabular-nums">
                     지금 청산 시 {won(p.marketValueKrw)}
                   </span>
                 </span>

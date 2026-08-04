@@ -44,7 +44,7 @@ export default function RomChatPage() {
   };
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col bg-background">
+    <div className="h-full min-h-0 flex flex-col bg-background">
       <header className="shrink-0 flex items-center gap-3 px-4 h-14 border-b border-border bg-surface/60">
         <Link
           href="/"
@@ -55,7 +55,7 @@ export default function RomChatPage() {
         </Link>
         <div className="flex-1 min-w-0 text-center">
           <div className="text-[15px] font-semibold tracking-tight">ROM 2.0</div>
-          <div className="text-[11px] text-foreground-muted">상권·주식 대화형 어시스턴트</div>
+          <div className="text-xs text-foreground-muted">상권·주식 대화형 어시스턴트</div>
         </div>
         <button
           type="button"
@@ -169,7 +169,7 @@ function Bubble({ message }: { message: Message }) {
       <div className="flex justify-end animate-fade-in-up">
         <div className="max-w-[80%] bg-brand text-white rounded-2xl rounded-br-md px-4 py-2.5">
           <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{message.content}</p>
-          {time && <p className="mt-1 text-[11px] text-white/70 text-right">{time}</p>}
+          {time && <p className="mt-1 text-xs text-white/70 text-right">{time}</p>}
         </div>
       </div>
     );
@@ -180,7 +180,7 @@ function Bubble({ message }: { message: Message }) {
       <RobotAvatar size={28} />
       <div className="max-w-[80%] bg-surface border border-border rounded-2xl rounded-bl-md px-4 py-3">
         <MarkdownBody text={message.content} />
-        {time && <p className="mt-1.5 text-[11px] text-foreground-muted">{time}</p>}
+        {time && <p className="mt-1.5 text-xs text-foreground-muted">{time}</p>}
       </div>
     </div>
   );

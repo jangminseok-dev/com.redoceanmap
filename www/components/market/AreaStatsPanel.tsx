@@ -82,12 +82,12 @@ export default function AreaStatsPanel({
 
       {/* 20분기를 쌓아두고 4분기만 보던 것을 연다 — 8분기면 YoY 짝이 4쌍 생긴다 */}
       <div className="flex items-center gap-1 px-1">
-        <span className="text-[11px] text-foreground-muted mr-1">구간</span>
+        <span className="text-xs text-foreground-muted mr-1">구간</span>
         {([4, 8, 20] as const).map((q) => (
           <button
             key={q}
             onClick={() => setView({ quarters: q })}
-            className={`px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors ${
+            className={`px-2 py-0.5 rounded-full text-xs font-medium transition-colors ${
               view.quarters === q
                 ? "bg-brand/10 text-brand"
                 : "text-foreground-muted hover:text-foreground"
@@ -138,7 +138,7 @@ function FloatingTrend({ series }: { series: QuarterStat[] }) {
             style={{ height: `${Math.max(8, ((q.totalFloatingPop as number) / max) * 100)}%` }}
             title={`${(q.totalFloatingPop as number).toLocaleString("ko-KR")}명`}
           />
-          <span className="text-[10px] text-foreground-muted">
+          <span className="text-xs text-foreground-muted">
             {String(q.yearQuarter).slice(4)}Q
           </span>
         </div>

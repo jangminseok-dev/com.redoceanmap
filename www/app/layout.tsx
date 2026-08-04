@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import TopNav from "@/components/seoul/TopNav";
+import AppShell from "@/components/shell/AppShell";
 import AuthModal from "@/components/seoul/AuthModal";
 import AuthProvider from "@/components/seoul/AuthProvider";
 import Providers from "./providers";
@@ -32,11 +32,16 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko" className="h-full antialiased">
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full">
         <Providers>
           <AuthProvider />
-          <TopNav />
-          <main className="flex-1 flex flex-col min-h-0">{children}</main>
+          {/* AppShell이 h-dvh를 잡고 레일/하단탭을 그린다. 어드민·/rom은 자체 셸이라 그대로 통과시킨다. */}
+          <AppShell>
+            {/* 셸이 h-dvh를 잡으므로 페이지 스크롤은 여기서 난다. 홈·게임처럼 자연 높이로 긴
+                페이지가 잘리지 않게 하는 자리다. 스스로 높이를 관리하는 화면(워크스페이스·/rom)은
+                루트에 `h-full`을 두어 이 컨테이너를 넘기지 않는다. */}
+            <main className="flex-1 min-h-0 overflow-y-auto flex flex-col">{children}</main>
+          </AppShell>
           <AuthModal />
         </Providers>
       </body>

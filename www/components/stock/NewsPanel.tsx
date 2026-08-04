@@ -7,10 +7,10 @@ import { fetchStockNews } from "@/lib/api";
 function sentimentChip(sentiment: number | null) {
   if (sentiment === null) return null;
   if (sentiment >= 0.15) {
-    return { label: `호재 +${sentiment.toFixed(2)}`, className: "text-red-600 bg-red-50 border-red-200" };
+    return { label: `호재 +${sentiment.toFixed(2)}`, className: "text-up bg-up-weak border-up/20" };
   }
   if (sentiment <= -0.15) {
-    return { label: `악재 ${sentiment.toFixed(2)}`, className: "text-blue-600 bg-blue-50 border-blue-200" };
+    return { label: `악재 ${sentiment.toFixed(2)}`, className: "text-down bg-down-weak border-down/20" };
   }
   return { label: `중립 ${sentiment.toFixed(2)}`, className: "text-foreground-muted bg-surface border-border" };
 }
@@ -58,7 +58,7 @@ export default function NewsPanel({ symbol }: { symbol: string }) {
               className="block bg-surface border border-border rounded-lg p-3 hover:border-brand/40 transition-colors"
             >
               <p className="text-sm leading-snug">{item.title}</p>
-              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-foreground-muted">
+              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-foreground-muted">
                 <span>{item.source}</span>
                 {item.publishedAt && <span>· {formatDate(item.publishedAt)}</span>}
                 {chip && (

@@ -87,8 +87,8 @@ export default function GameOrderForm({
               className={`flex items-center justify-center gap-1.5 h-10 rounded-xl text-sm font-medium border transition-colors ${
                 active
                   ? isLong
-                    ? "bg-[#DC2626] text-white border-transparent"
-                    : "bg-[#2563EB] text-white border-transparent"
+                    ? "bg-up text-white border-transparent"
+                    : "bg-down text-white border-transparent"
                   : "border-border text-foreground-muted hover:bg-accent"
               }`}
             >
@@ -163,12 +163,12 @@ export default function GameOrderForm({
         </div>
         <div className="flex justify-between font-semibold border-t border-border pt-1 mt-1">
           <dt>합계</dt>
-          <dd className={`tabular-nums ${overBudget ? "text-[#DC2626]" : ""}`}>{won(total)}</dd>
+          <dd className={`tabular-nums ${overBudget ? "text-up" : ""}`}>{won(total)}</dd>
         </div>
       </dl>
 
       {liquidationPrice !== null && (
-        <p className="mt-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-[11px] leading-relaxed text-amber-900">
+        <p className="mt-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-xs leading-relaxed text-amber-900">
           <b>{won(liquidationPrice)}</b>에 닿으면 강제청산되어 증거금을 잃습니다
           (현재가 대비 {(((liquidationPrice - symbol.priceKrw) / symbol.priceKrw) * 100).toFixed(1)}%).
           <br />
@@ -178,7 +178,7 @@ export default function GameOrderForm({
       )}
 
       {order.side === "SHORT" && rules && (
-        <p className="mt-2 text-[11px] text-foreground-muted leading-relaxed">
+        <p className="mt-2 text-xs text-foreground-muted leading-relaxed">
           숏은 증거금 100%이고 손실은 증거금까지입니다. 보유하는 동안 게임 1일마다
           증거금의 {(rules.shortCarryRatePerGameDay * 100).toFixed(2)}%가 비용으로 붙습니다.
         </p>

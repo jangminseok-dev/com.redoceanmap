@@ -6,13 +6,13 @@ import type { GameCustomerBucket } from "@/lib/types";
 import { Input } from "@/components/ui/input";
 
 const won = (v: number) => `${v.toLocaleString()}원`;
-const toneOf = (v: number) => (v >= 0 ? "text-[#DC2626]" : "text-[#2563EB]");
+const toneOf = (v: number) => (v >= 0 ? "text-up" : "text-down");
 
 function BucketRow({ title, buckets }: { title: string; buckets: GameCustomerBucket[] }) {
   const total = buckets.reduce((sum, b) => sum + b.count, 0) || 1;
   return (
     <div>
-      <p className="text-[11px] text-foreground-muted">{title}</p>
+      <p className="text-xs text-foreground-muted">{title}</p>
       <ul className="mt-1 space-y-1">
         {buckets.slice(0, 3).map((b) => (
           <li key={b.label} className="flex items-center gap-2 text-xs">
@@ -106,26 +106,26 @@ export default function StoreDetailCard({ storeId }: { storeId: number }) {
 
       <dl className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 border-t border-border pt-3">
         <div>
-          <dt className="text-[11px] text-foreground-muted">보증금 (폐업 시 회수)</dt>
+          <dt className="text-xs text-foreground-muted">보증금 (폐업 시 회수)</dt>
           <dd className="text-sm font-semibold tabular-nums">{won(data.depositKrw)}</dd>
         </div>
         <div>
-          <dt className="text-[11px] text-foreground-muted">인테리어 (회수 불가)</dt>
+          <dt className="text-xs text-foreground-muted">인테리어 (회수 불가)</dt>
           <dd className="text-sm font-semibold tabular-nums">{won(data.interiorKrw)}</dd>
         </div>
         <div>
-          <dt className="text-[11px] text-foreground-muted">상권 점포당 월매출 (실측)</dt>
+          <dt className="text-xs text-foreground-muted">상권 점포당 월매출 (실측)</dt>
           <dd className="text-sm font-semibold tabular-nums">
             {won(Math.round(data.observedSalesPerStore))}
           </dd>
         </div>
         <div>
-          <dt className="text-[11px] text-foreground-muted">객단가 (실측)</dt>
+          <dt className="text-xs text-foreground-muted">객단가 (실측)</dt>
           <dd className="text-sm font-semibold tabular-nums">
             {won(Math.round(data.observedTicketPrice))}
           </dd>
         </div>
-        <p className="col-span-2 sm:col-span-4 text-[11px] text-foreground-muted">
+        <p className="col-span-2 sm:col-span-4 text-xs text-foreground-muted">
           입지 적합도 {data.fitness.toFixed(2)}배 · 실측은 서울시 상권 데이터, 나머지는 게임 규칙의
           가정치입니다.
         </p>
@@ -138,7 +138,7 @@ export default function StoreDetailCard({ storeId }: { storeId: number }) {
         </p>
       )}
       {!profitable && (
-        <p className="mt-2 rounded-xl bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-800">
+        <p className="mt-2 rounded-xl bg-destructive/8 border border-destructive/20 px-3 py-2 text-xs text-destructive">
           누적 적자입니다. 입지·업종이 맞지 않거나 고정비가 매출을 넘고 있습니다.
         </p>
       )}
@@ -160,7 +160,7 @@ export default function StoreDetailCard({ storeId }: { storeId: number }) {
         >
           <p className="text-xs font-semibold">운영 조정</p>
           <div className="mt-2 flex flex-wrap items-end gap-3">
-            <label className="text-[11px] text-foreground-muted">
+            <label className="text-xs text-foreground-muted">
               가격 계수 (0.6~1.3)
               <Input
                 name="priceFactor"
@@ -172,7 +172,7 @@ export default function StoreDetailCard({ storeId }: { storeId: number }) {
                 className="mt-1 block h-10 w-28 px-3 rounded-xl border border-border bg-background text-sm tabular-nums"
               />
             </label>
-            <label className="text-[11px] text-foreground-muted">
+            <label className="text-xs text-foreground-muted">
               직원 수 (0~20)
               <Input
                 name="staffCount"
@@ -183,7 +183,7 @@ export default function StoreDetailCard({ storeId }: { storeId: number }) {
                 className="mt-1 block h-10 w-24 px-3 rounded-xl border border-border bg-background text-sm tabular-nums"
               />
             </label>
-            <label className="text-[11px] text-foreground-muted">
+            <label className="text-xs text-foreground-muted">
               시설 추가 (현재 {data.facilityScore}점)
               <Input
                 name="facilityAdd"
@@ -219,13 +219,13 @@ export default function StoreDetailCard({ storeId }: { storeId: number }) {
               {close.isPending ? "폐업 중…" : "폐업"}
             </button>
           </div>
-          <p className="mt-2 text-[11px] text-foreground-muted">
+          <p className="mt-2 text-xs text-foreground-muted">
             변경은 <b>다음 게임일부터</b> 적용됩니다 — 지나간 날의 매출은 그때의 결정으로
             계산되어 바뀌지 않습니다. 조정은 게임 1일에 한 번이며, 시설은 줄일 수 없습니다
             (인테리어비는 회수되지 않습니다).
           </p>
           {actionError && (
-            <p className="mt-2 rounded-xl bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-800">
+            <p className="mt-2 rounded-xl bg-destructive/8 border border-destructive/20 px-3 py-2 text-xs text-destructive">
               {actionError.message}
             </p>
           )}

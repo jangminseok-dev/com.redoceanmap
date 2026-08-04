@@ -53,8 +53,8 @@ export default function CustomerProfileSection({
             <span>여성 {100 - malePct}%</span>
           </div>
           <div className="flex h-2 rounded-full overflow-hidden bg-border">
-            <div className="bg-[#2563EB]/70" style={{ width: `${malePct}%` }} />
-            <div className="bg-[#DC2626]/70" style={{ width: `${100 - malePct}%` }} />
+            <div className="bg-down/70" style={{ width: `${malePct}%` }} />
+            <div className="bg-up/70" style={{ width: `${100 - malePct}%` }} />
           </div>
         </div>
       )}

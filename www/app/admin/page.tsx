@@ -45,7 +45,7 @@ function AreaTrend({ monthly }: { monthly: AdminMonthCount[] }) {
           <circle key={i} cx={xs(i)} cy={ys(v)} r="2.5" fill="#991B1B" />
         ))}
       </svg>
-      <div className="mt-2 flex justify-between text-[11px] text-foreground-muted">
+      <div className="mt-2 flex justify-between text-xs text-foreground-muted">
         {monthly.map((m) => (
           <span key={m.month}>{Number(m.month.slice(5))}월</span>
         ))}

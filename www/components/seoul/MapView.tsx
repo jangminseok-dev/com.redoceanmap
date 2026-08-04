@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { Minus, Plus } from "lucide-react";
 
 declare global {
   interface Window {
@@ -122,5 +123,38 @@ export default function MapView({ areas, selectedId, onSelect }: Props) {
     if (area) mapRef.current.panTo(new window.kakao.maps.LatLng(area.lat, area.lng));
   }, [selectedId]);
 
-  return <div ref={containerRef} className="w-full h-full rounded-2xl overflow-hidden" />;
+  // 카카오맵은 level이 작을수록 확대다 — 버튼 라벨과 부호가 반대라는 걸 여기서 흡수한다
+  const zoom = (delta: number) => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.setLevel(map.getLevel() + delta);
+  };
+
+  return (
+    <div className="relative w-full h-full">
+      <div ref={containerRef} className="w-full h-full" />
+
+      {/* 지도 컨트롤 — 레퍼런스(네이버지도)의 우측 세로 스택. 지금 우리가 가진 조작은 줌뿐이다.
+          테마·거리뷰·면적 같은 칸은 대응 기능이 없어 만들지 않는다(빈 버튼은 UI가 아니라 거짓말이다). */}
+      <div className="absolute right-3 bottom-3 z-10 flex flex-col rounded-xl border border-border bg-surface shadow-sm overflow-hidden">
+        <button
+          type="button"
+          onClick={() => zoom(-1)}
+          aria-label="지도 확대"
+          className="w-9 h-9 grid place-items-center text-foreground-muted hover:bg-accent hover:text-foreground transition-colors"
+        >
+          <Plus size={16} strokeWidth={2} />
+        </button>
+        <span className="h-px bg-border" aria-hidden />
+        <button
+          type="button"
+          onClick={() => zoom(1)}
+          aria-label="지도 축소"
+          className="w-9 h-9 grid place-items-center text-foreground-muted hover:bg-accent hover:text-foreground transition-colors"
+        >
+          <Minus size={16} strokeWidth={2} />
+        </button>
+      </div>
+    </div>
+  );
 }

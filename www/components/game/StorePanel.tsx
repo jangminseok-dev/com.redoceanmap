@@ -201,11 +201,11 @@ export default function StorePanel() {
                     }`}
                   >
                     <span className="block text-sm font-medium">{s.trdarName}</span>
-                    <span className="block text-[11px] text-foreground-muted">
+                    <span className="block text-xs text-foreground-muted">
                       {s.serviceName} · {s.daysOpen}일 ·{" "}
                       <span
                         className={
-                          s.cumulativeProfitKrw >= 0 ? "text-[#DC2626]" : "text-[#2563EB]"
+                          s.cumulativeProfitKrw >= 0 ? "text-up" : "text-down"
                         }
                       >
                         {s.cumulativeProfitKrw >= 0 ? "+" : ""}
@@ -366,7 +366,7 @@ export default function StorePanel() {
                 {/* 자본에 비례해 규모가 정해진다 — 너무 작으면 열려도 손님이 오지 않는다.
                     막지는 않는다. 작게 들어가는 것도 선택이므로 결과만 먼저 알린다 */}
                 {!blockedReason && payment < fitness.assumedViableCapitalKrw && (
-                  <p className="text-xs text-[#DC2626]">
+                  <p className="text-xs text-up">
                     이 자본으로는 가게 규모가 너무 작아 하루 손님이 1명에 못 미칩니다 —
                     이 자리에서 장사가 되려면 {won(fitness.assumedViableCapitalKrw)}부터입니다.
                   </p>

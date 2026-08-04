@@ -192,7 +192,7 @@ export default function ForecastsPage() {
                           <td className="px-4 py-3">
                             <DirectionBadge direction={r.direction} />
                             {r.earnings_veto && (
-                              <span className="ml-1 inline-flex px-1.5 py-0.5 rounded-full text-[10px] bg-amber-50 text-amber-700">
+                              <span className="ml-1 inline-flex px-1.5 py-0.5 rounded-full text-xs bg-amber-50 text-amber-700">
                                 어닝
                               </span>
                             )}
@@ -202,7 +202,7 @@ export default function ForecastsPage() {
                           </td>
                           <td className="px-4 py-3 text-right tabular-nums">
                             {r.up_rate == null ? "—" : `${(r.up_rate * 100).toFixed(1)}%`}
-                            {r.ready && <span className="ml-1 text-[10px] text-emerald-600 font-medium">ready</span>}
+                            {r.ready && <span className="ml-1 text-xs text-emerald-600 font-medium">ready</span>}
                           </td>
                           <td className="px-4 py-3 text-right tabular-nums">{signedPct(r.realized_return_pct)}</td>
                           <td className="px-5 py-3 text-right"><HitBadge hit={r.hit} evaluated={r.evaluated_at != null} /></td>

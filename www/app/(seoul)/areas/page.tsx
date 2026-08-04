@@ -249,7 +249,7 @@ export default function AreasDirectoryPage() {
       </div>
 
       <div className="flex items-center gap-1">
-        <span className="text-[11px] text-foreground-muted mr-1">집계 단위</span>
+        <span className="text-xs text-foreground-muted mr-1">집계 단위</span>
         {(
           [
             ["area", "상권"],
@@ -360,7 +360,7 @@ function AreaCard({
       <button
         onClick={onCompare}
         title="비교에 담기 (최대 3곳)"
-        className={`absolute right-3 top-3 z-10 w-5 h-5 rounded-md border text-[10px] font-bold transition-colors ${
+        className={`absolute right-3 top-3 z-10 w-5 h-5 rounded-md border text-xs font-bold transition-colors ${
           selected ? "bg-brand text-white border-brand" : "bg-surface border-border text-transparent"
         }`}
       >
@@ -378,7 +378,7 @@ function AreaCard({
           <p className="font-semibold truncate">
             {row.trdarName}
             {pct !== null && (
-              <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-brand/10 text-brand align-middle">
+              <span className="ml-1.5 text-xs font-medium px-1.5 py-0.5 rounded-full bg-brand/10 text-brand align-middle">
                 상위 {pct}%
               </span>
             )}

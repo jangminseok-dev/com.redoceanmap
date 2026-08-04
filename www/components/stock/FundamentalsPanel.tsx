@@ -64,7 +64,7 @@ export default function FundamentalsPanel({ symbol }: { symbol: string }) {
       )}
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-[11px] text-foreground-muted">
+          <tr className="text-xs text-foreground-muted">
             <th className="text-left font-normal pb-2">지표</th>
             {snapshots.map((s) => (
               <th key={s.source} className="text-right font-normal pb-2">
@@ -86,7 +86,7 @@ export default function FundamentalsPanel({ symbol }: { symbol: string }) {
           ))}
         </tbody>
       </table>
-      <p className="mt-3 text-[11px] text-foreground-muted">
+      <p className="mt-3 text-xs text-foreground-muted">
         기준일 {snapshots.map((s) => `${SOURCE_LABEL[s.source] ?? s.source} ${s.asOf}`).join(" · ")}.
         한국 종목의 PER/PBR은 DART 재무제표로 자체 계산됩니다.
       </p>

@@ -511,7 +511,7 @@ export default function CandleChart({
         <rect id="fc-label-box" height={17} rx={4} fill="#991B1B" />
         <text id="fc-label-text" fill="#FFFFFF" fontSize={10.5} fontWeight={600} />
       </svg>
-      <div className="absolute left-3 top-2 z-10 flex items-center gap-3 text-[11px] text-foreground-muted pointer-events-none">
+      <div className="absolute left-3 top-2 z-10 flex items-center gap-3 text-xs text-foreground-muted pointer-events-none">
         <span className="flex items-center gap-1">
           <span className="inline-block w-3 h-0.5" style={{ background: MA20_COLOR }} /> MA20
         </span>
@@ -538,7 +538,7 @@ export default function CandleChart({
         href="https://www.tradingview.com/"
         target="_blank"
         rel="noopener noreferrer"
-        className="absolute right-2 bottom-1 z-10 text-[10px] text-foreground-muted/70 hover:text-foreground-muted"
+        className="absolute right-2 bottom-1 z-10 text-xs text-foreground-muted/70 hover:text-foreground-muted"
       >
         Charts by TradingView
       </a>

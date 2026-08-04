@@ -68,18 +68,18 @@ export default function MarketNewsFeed({
               <Icon
                 size={14}
                 strokeWidth={2}
-                className={`shrink-0 mt-0.5 ${e.positive ? "text-[#DC2626]" : "text-[#2563EB]"}`}
+                className={`shrink-0 mt-0.5 ${e.positive ? "text-up" : "text-down"}`}
               />
               <span className="min-w-0 flex-1">
                 <span className="block leading-relaxed">
                   {mine && (
-                    <span className="mr-1.5 rounded-md bg-brand px-1.5 py-0.5 text-[10px] font-semibold text-white align-middle">
+                    <span className="mr-1.5 rounded-md bg-brand px-1.5 py-0.5 text-xs font-semibold text-white align-middle">
                       내 종목
                     </span>
                   )}
                   {e.headline}
                 </span>
-                <span className="block text-[11px] text-foreground-muted">
+                <span className="block text-xs text-foreground-muted">
                   {SCOPE_LABEL[e.scope]}
                   <span className="mx-1 text-border">·</span>
                   {daysAgo === 0 ? "오늘" : `${daysAgo}일 전`}
@@ -98,7 +98,7 @@ export default function MarketNewsFeed({
           );
         })}
       </ul>
-      <p className="mt-3 text-[11px] leading-relaxed text-foreground-muted">
+      <p className="mt-3 text-xs leading-relaxed text-foreground-muted">
         뉴스는 가격을 한쪽으로 밀 뿐, 그날의 변동을 이기지 못할 수도 있습니다.
         <br />
         가상 회사에 대한 게임 내 사건입니다. 실제 기업·시장과 무관합니다.
