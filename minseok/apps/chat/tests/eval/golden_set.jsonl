@@ -1,0 +1,120 @@
+{"case_id": "MR01", "category": "market_region", "prompt": "성수동에 카페 차릴만해?", "expected_intent": "market", "region": "성수동"}
+{"case_id": "MR02", "category": "market_region", "prompt": "홍대에 술집 차리면 어때?", "expected_intent": "market", "region": "홍대"}
+{"case_id": "MR03", "category": "market_region", "prompt": "강남역 근처에 샐러드 가게 어떨까?", "expected_intent": "market", "region": "강남역"}
+{"case_id": "MR04", "category": "market_region", "prompt": "연남동 브런치 카페 괜찮아?", "expected_intent": "market", "region": "연남동"}
+{"case_id": "MR05", "category": "market_region", "prompt": "망원동에 베이커리 차리고 싶은데 어때?", "expected_intent": "market", "region": "망원동"}
+{"case_id": "MR06", "category": "market_region", "prompt": "서촌에서 한식당 해볼까 하는데 어때?", "expected_intent": "market", "region": "서촌"}
+{"case_id": "MR07", "category": "market_region", "prompt": "익선동에 찻집 어때?", "expected_intent": "market", "region": "익선동"}
+{"case_id": "MR08", "category": "market_region", "prompt": "성신여대 앞에 네일숍 괜찮을까?", "expected_intent": "market", "region": "성신여대"}
+{"case_id": "MR09", "category": "market_region", "prompt": "미아사거리에 치킨집 어때?", "expected_intent": "market", "region": "미아사거리"}
+{"case_id": "MR10", "category": "market_region", "prompt": "노원역 앞 분식집 해볼만해?", "expected_intent": "market", "region": "노원역"}
+{"case_id": "MR11", "category": "market_region", "prompt": "왕십리에서 곱창집 어때?", "expected_intent": "market", "region": "왕십리"}
+{"case_id": "MR12", "category": "market_region", "prompt": "건대입구 쪽 술집 상권 알려줘", "expected_intent": "market", "region": "건대입구"}
+{"case_id": "MR13", "category": "market_region", "prompt": "신촌에 스터디카페 전망 어때?", "expected_intent": "market", "region": "신촌"}
+{"case_id": "MR14", "category": "market_region", "prompt": "이태원에 칵테일바 차리면 어떨까?", "expected_intent": "market", "region": "이태원"}
+{"case_id": "MR15", "category": "market_region", "prompt": "문래동에 카페 창업 어때?", "expected_intent": "market", "region": "문래동"}
+{"case_id": "MR16", "category": "market_region", "prompt": "잠실에 디저트 가게 괜찮아?", "expected_intent": "market", "region": "잠실"}
+{"case_id": "MR17", "category": "market_region", "prompt": "여의도에서 직장인 상대로 김밥집 어때?", "expected_intent": "market", "region": "여의도"}
+{"case_id": "MR18", "category": "market_region", "prompt": "종로3가에 호프집 차리면 어때?", "expected_intent": "market", "region": "종로3가"}
+{"case_id": "MR19", "category": "market_region", "prompt": "압구정에 미용실 차릴만해?", "expected_intent": "market", "region": "압구정"}
+{"case_id": "MR20", "category": "market_region", "prompt": "마곡에 편의점 어때?", "expected_intent": "market", "region": "마곡"}
+{"case_id": "MN01", "category": "market_noregion", "prompt": "유동인구 많은 동네에 카페 차리고 싶어", "expected_intent": "market"}
+{"case_id": "MN02", "category": "market_noregion", "prompt": "1억으로 치킨집 차릴 만한 상권 추천해줘", "expected_intent": "market"}
+{"case_id": "MN03", "category": "market_noregion", "prompt": "직장인 많은 곳에서 점심 장사 하려는데 어디가 좋아?", "expected_intent": "market"}
+{"case_id": "MN04", "category": "market_noregion", "prompt": "20대가 많이 다니는 동네에 옷가게 어때?", "expected_intent": "market"}
+{"case_id": "MN05", "category": "market_noregion", "prompt": "폐업률 낮은 안정적인 상권 알려줘", "expected_intent": "market"}
+{"case_id": "MN06", "category": "market_noregion", "prompt": "주말 장사가 잘되는 곳에 브런치 카페 내고 싶어", "expected_intent": "market"}
+{"case_id": "MN07", "category": "market_noregion", "prompt": "밤에 유동인구 많은 곳에 포차 어때?", "expected_intent": "market"}
+{"case_id": "MN08", "category": "market_noregion", "prompt": "객단가 높은 동네에 디저트샵 차리려면 어디가 좋을까?", "expected_intent": "market"}
+{"case_id": "MN09", "category": "market_noregion", "prompt": "대학가 근처 스터디카페 창업 어때?", "expected_intent": "market"}
+{"case_id": "MN10", "category": "market_noregion", "prompt": "초보 창업자한테 무난한 상권이랑 업종 추천해줘", "expected_intent": "market"}
+{"case_id": "NS01", "category": "market_nonseoul", "prompt": "수원 인계동에 카페 차릴만해?", "expected_intent": "market", "region": "수원"}
+{"case_id": "NS02", "category": "market_nonseoul", "prompt": "부산 서면 술집 상권 어때?", "expected_intent": "market", "region": "부산"}
+{"case_id": "NS03", "category": "market_nonseoul", "prompt": "대구 동성로에 옷가게 어때?", "expected_intent": "market", "region": "대구"}
+{"case_id": "NS04", "category": "market_nonseoul", "prompt": "인천 송도에 브런치 카페 괜찮아?", "expected_intent": "market", "region": "인천"}
+{"case_id": "NS05", "category": "market_nonseoul", "prompt": "판교에서 점심 장사 어때?", "expected_intent": "market", "region": "판교"}
+{"case_id": "NS06", "category": "market_nonseoul", "prompt": "분당 정자동 카페거리 어때?", "expected_intent": "market", "region": "분당"}
+{"case_id": "NS07", "category": "market_nonseoul", "prompt": "대전 둔산동 학원가에 분식집 어때?", "expected_intent": "market", "region": "대전"}
+{"case_id": "NS08", "category": "market_nonseoul", "prompt": "광주 상무지구에 고깃집 어때?", "expected_intent": "market", "region": "광주"}
+{"case_id": "NS09", "category": "market_nonseoul", "prompt": "일산 라페스타에 술집 차릴만해?", "expected_intent": "market", "region": "일산"}
+{"case_id": "NS10", "category": "market_nonseoul", "prompt": "동탄에 키즈카페 차릴만해?", "expected_intent": "market", "region": "동탄"}
+{"case_id": "SK01", "category": "stock_kr", "prompt": "삼성전자 주가 어때?", "expected_intent": "stock", "accepted_queries": ["삼성전자", "005930"]}
+{"case_id": "SK02", "category": "stock_kr", "prompt": "SK하이닉스 지금 어때?", "expected_intent": "stock", "accepted_queries": ["SK하이닉스", "하이닉스", "000660"]}
+{"case_id": "SK03", "category": "stock_kr", "prompt": "카카오 요즘 어떤가?", "expected_intent": "stock", "accepted_queries": ["카카오", "035720"]}
+{"case_id": "SK04", "category": "stock_kr", "prompt": "네이버 주식 전망 알려줘", "expected_intent": "stock", "accepted_queries": ["네이버", "NAVER", "035420"]}
+{"case_id": "SK05", "category": "stock_kr", "prompt": "현대차 어때?", "expected_intent": "stock", "accepted_queries": ["현대차", "현대자동차", "005380"]}
+{"case_id": "SK06", "category": "stock_kr", "prompt": "LG에너지솔루션 괜찮아?", "expected_intent": "stock", "accepted_queries": ["LG에너지솔루션", "373220"]}
+{"case_id": "SK07", "category": "stock_kr", "prompt": "셀트리온 지금 들어가도 돼?", "expected_intent": "stock", "accepted_queries": ["셀트리온", "068270"]}
+{"case_id": "SK08", "category": "stock_kr", "prompt": "삼성바이오로직스 어때?", "expected_intent": "stock", "accepted_queries": ["삼성바이오로직스", "207940"]}
+{"case_id": "SK09", "category": "stock_kr", "prompt": "기아 주가 흐름 어때?", "expected_intent": "stock", "accepted_queries": ["기아", "기아차", "000270"]}
+{"case_id": "SK10", "category": "stock_kr", "prompt": "포스코홀딩스 어때?", "expected_intent": "stock", "accepted_queries": ["포스코홀딩스", "POSCO홀딩스", "포스코", "005490"]}
+{"case_id": "SK11", "category": "stock_kr", "prompt": "한화에어로스페이스 어때?", "expected_intent": "stock", "accepted_queries": ["한화에어로스페이스", "012450"]}
+{"case_id": "SK12", "category": "stock_kr", "prompt": "두산에너빌리티 전망 어때?", "expected_intent": "stock", "accepted_queries": ["두산에너빌리티", "034020"]}
+{"case_id": "SK13", "category": "stock_kr", "prompt": "KB금융 배당 매력 있어?", "expected_intent": "stock", "accepted_queries": ["KB금융", "105560"]}
+{"case_id": "SK14", "category": "stock_kr", "prompt": "크래프톤 어때?", "expected_intent": "stock", "accepted_queries": ["크래프톤", "259960"]}
+{"case_id": "SK15", "category": "stock_kr", "prompt": "에코프로 지금 어때?", "expected_intent": "stock", "accepted_queries": ["에코프로", "086520"]}
+{"case_id": "SU01", "category": "stock_us", "prompt": "테슬라 어때?", "expected_intent": "stock", "accepted_queries": ["TSLA"]}
+{"case_id": "SU02", "category": "stock_us", "prompt": "애플 주가 알려줘", "expected_intent": "stock", "accepted_queries": ["AAPL"]}
+{"case_id": "SU03", "category": "stock_us", "prompt": "엔비디아 지금 어때?", "expected_intent": "stock", "accepted_queries": ["NVDA"]}
+{"case_id": "SU04", "category": "stock_us", "prompt": "마이크로소프트 전망 어때?", "expected_intent": "stock", "accepted_queries": ["MSFT"]}
+{"case_id": "SU05", "category": "stock_us", "prompt": "아마존 주식 어때?", "expected_intent": "stock", "accepted_queries": ["AMZN"]}
+{"case_id": "SU06", "category": "stock_us", "prompt": "구글 주가 어때?", "expected_intent": "stock", "accepted_queries": ["GOOGL", "GOOG"]}
+{"case_id": "SU07", "category": "stock_us", "prompt": "메타 어때?", "expected_intent": "stock", "accepted_queries": ["META"]}
+{"case_id": "SU08", "category": "stock_us", "prompt": "넷플릭스 주가 흐름 어때?", "expected_intent": "stock", "accepted_queries": ["NFLX"]}
+{"case_id": "SU09", "category": "stock_us", "prompt": "AMD 어때?", "expected_intent": "stock", "accepted_queries": ["AMD"]}
+{"case_id": "SU10", "category": "stock_us", "prompt": "팔란티어 지금 들어가도 돼?", "expected_intent": "stock", "accepted_queries": ["PLTR"]}
+{"case_id": "SF01", "category": "stock_fuzzy", "prompt": "삼전 어때?", "expected_intent": "stock", "accepted_queries": ["삼성전자", "삼전", "005930"]}
+{"case_id": "SF02", "category": "stock_fuzzy", "prompt": "하닉 요즘 어때?", "expected_intent": "stock", "accepted_queries": ["SK하이닉스", "하이닉스", "하닉", "000660"]}
+{"case_id": "SF03", "category": "stock_fuzzy", "prompt": "LG엔솔 어때?", "expected_intent": "stock", "accepted_queries": ["LG에너지솔루션", "LG엔솔", "373220"]}
+{"case_id": "SF04", "category": "stock_fuzzy", "prompt": "테슬라모터스 주가 어때?", "expected_intent": "stock", "accepted_queries": ["TSLA", "테슬라", "테슬라모터스"]}
+{"case_id": "SF05", "category": "stock_fuzzy", "prompt": "삼성 주가 어때?", "expected_intent": "stock", "accepted_queries": ["삼성전자", "삼성", "005930", "삼성물산"]}
+{"case_id": "MW01", "category": "market_news", "prompt": "반도체 업황 어때?", "expected_intent": "market_news"}
+{"case_id": "MW02", "category": "market_news", "prompt": "요즘 금리가 증시에 어떤 영향 주고 있어?", "expected_intent": "market_news"}
+{"case_id": "MW03", "category": "market_news", "prompt": "AI 관련주 분위기 어때?", "expected_intent": "market_news"}
+{"case_id": "MW04", "category": "market_news", "prompt": "2차전지 섹터 요즘 어때?", "expected_intent": "market_news"}
+{"case_id": "MW05", "category": "market_news", "prompt": "환율이 수출주에 미치는 영향 알려줘", "expected_intent": "market_news"}
+{"case_id": "MW06", "category": "market_news", "prompt": "코스피 전체 분위기 어때?", "expected_intent": "market_news"}
+{"case_id": "MW07", "category": "market_news", "prompt": "미국 증시 요즘 어떤 흐름이야?", "expected_intent": "market_news"}
+{"case_id": "MW08", "category": "market_news", "prompt": "유가 오르면 정유주는 어떻게 돼?", "expected_intent": "market_news"}
+{"case_id": "MW09", "category": "market_news", "prompt": "바이오 섹터 분위기 어때?", "expected_intent": "market_news"}
+{"case_id": "MW10", "category": "market_news", "prompt": "은행주 전반 동향 알려줘", "expected_intent": "market_news"}
+{"case_id": "MW11", "category": "market_news", "prompt": "방산주 요즘 왜 오르는 거야?", "expected_intent": "market_news"}
+{"case_id": "MW12", "category": "market_news", "prompt": "조선업 사이클 지금 어디쯤이야?", "expected_intent": "market_news"}
+{"case_id": "MW13", "category": "market_news", "prompt": "건설 경기랑 건설주 분위기 어때?", "expected_intent": "market_news"}
+{"case_id": "MW14", "category": "market_news", "prompt": "게임주 전반 분위기 어때?", "expected_intent": "market_news"}
+{"case_id": "MW15", "category": "market_news", "prompt": "엔터주 요즘 어때?", "expected_intent": "market_news"}
+{"case_id": "MW16", "category": "market_news", "prompt": "원전 관련주 동향 알려줘", "expected_intent": "market_news"}
+{"case_id": "MW17", "category": "market_news", "prompt": "로봇 산업 쪽 주식 분위기 어때?", "expected_intent": "market_news"}
+{"case_id": "MW18", "category": "market_news", "prompt": "전기차 시장이 요즘 어떤지 알려줘", "expected_intent": "market_news"}
+{"case_id": "MW19", "category": "market_news", "prompt": "배당주 시즌 분위기 어때?", "expected_intent": "market_news"}
+{"case_id": "MW20", "category": "market_news", "prompt": "반도체 장비 업체들 업황 어때?", "expected_intent": "market_news"}
+{"case_id": "GN01", "category": "general", "prompt": "안녕! 뭐 할 수 있어?", "expected_intent": "general"}
+{"case_id": "GN02", "category": "general", "prompt": "오늘 날씨 어때?", "expected_intent": "general"}
+{"case_id": "GN03", "category": "general", "prompt": "김치찌개 맛있게 끓이는 법 알려줘", "expected_intent": "general"}
+{"case_id": "GN04", "category": "general", "prompt": "카파시가 누구야?", "expected_intent": "general"}
+{"case_id": "GN05", "category": "general", "prompt": "파이썬이 뭐야?", "expected_intent": "general"}
+{"case_id": "GN06", "category": "general", "prompt": "서울 인구가 몇 명이야?", "expected_intent": "general"}
+{"case_id": "GN07", "category": "general", "prompt": "볼만한 영화 추천해줘", "expected_intent": "general"}
+{"case_id": "GN08", "category": "general", "prompt": "헬스 초보 운동 루틴 짜줘", "expected_intent": "general"}
+{"case_id": "GN09", "category": "general", "prompt": "아이폰 신형 언제 나와?", "expected_intent": "general"}
+{"case_id": "GN10", "category": "general", "prompt": "영어 회화 빨리 느는 법 알려줘", "expected_intent": "general"}
+{"case_id": "GN11", "category": "general", "prompt": "고양이 사료 뭐가 좋아?", "expected_intent": "general"}
+{"case_id": "GN12", "category": "general", "prompt": "잠이 안 올 때 어떻게 해?", "expected_intent": "general"}
+{"case_id": "GN13", "category": "general", "prompt": "명언 하나 알려줘", "expected_intent": "general"}
+{"case_id": "GN14", "category": "general", "prompt": "지구 둘레가 얼마나 돼?", "expected_intent": "general"}
+{"case_id": "GN15", "category": "general", "prompt": "커피에 카페인이 얼마나 들어 있어?", "expected_intent": "general"}
+{"case_id": "GN16", "category": "general", "prompt": "축구 오프사이드 규칙 설명해줘", "expected_intent": "general"}
+{"case_id": "GN17", "category": "general", "prompt": "시 한 편 써줘", "expected_intent": "general"}
+{"case_id": "GN18", "category": "general", "prompt": "컴퓨터가 자꾸 느려지는데 왜 그래?", "expected_intent": "general"}
+{"case_id": "GN19", "category": "general", "prompt": "요즘 읽을만한 책 추천해줘", "expected_intent": "general"}
+{"case_id": "GN20", "category": "general", "prompt": "삼겹살 맛있게 굽는 법 알려줘", "expected_intent": "general"}
+{"case_id": "MT01", "category": "multiturn", "prompt": "그 중에서 어디가 제일 나아?", "expected_intent": "market", "history_regions": ["성수동"]}
+{"case_id": "MT02", "category": "multiturn", "prompt": "거기에 카페를 차린다면 어때?", "expected_intent": "market", "history_regions": ["홍대"]}
+{"case_id": "MT03", "category": "multiturn", "prompt": "방금 알려준 상권 폐업률이 궁금해", "expected_intent": "market", "history_regions": ["강남역"]}
+{"case_id": "MT04", "category": "multiturn", "prompt": "거기 유동인구는 어때?", "expected_intent": "market", "history_regions": ["연남동"]}
+{"case_id": "MT05", "category": "multiturn", "prompt": "그 상권에서 브런치 카페면 괜찮을까?", "expected_intent": "market", "history_regions": ["망원동"]}
+{"case_id": "MT06", "category": "multiturn", "prompt": "아까 그 동네 주말 장사는 어때?", "expected_intent": "market", "history_regions": ["이태원"]}
+{"case_id": "MT07", "category": "multiturn", "prompt": "거기 객단가는 어느 정도야?", "expected_intent": "market", "history_regions": ["잠실"]}
+{"case_id": "MT08", "category": "multiturn", "prompt": "그럼 거기서 김밥집 말고 카페는 어때?", "expected_intent": "market", "history_regions": ["여의도"]}
+{"case_id": "MT09", "category": "multiturn", "prompt": "방금 추천한 곳 경쟁이 얼마나 심해?", "expected_intent": "market", "history_regions": ["노원역"]}
+{"case_id": "MT10", "category": "multiturn", "prompt": "거기 20대 비중은 어때?", "expected_intent": "market", "history_regions": ["신촌"]}
