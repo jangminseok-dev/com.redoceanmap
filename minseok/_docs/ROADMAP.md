@@ -27,8 +27,8 @@
 | M2 | **프로덕션 compose + deploy.sh** — --reload 제거, 비밀 .env 분리, healthcheck, DB 비노출. **n8n·neo4j prod 제외**(미사용). 배포=`git pull origin window && compose up -d --build` | 2-3일 | 우분투 PC 1커맨드 기동, 재부팅 자동 복구 |
 | M3 | **백업** — pg_dump 일간(7세대) + rclone→Google Drive 15GB 무료(주간 4세대) + models/ 포함 | 1일 | 복원 리허설 1회 성공 |
 | M4 | **RBAC + admin 스포크 실구현(최소)** — role 2종(free/admin)만, 실데이터 있는 화면만(회원/역할, 자동화 로그, 수집 현황). 목데이터 admin 페이지는 삭제. 데이터 접근은 허브 포트+DTO 경유 | 5-7일 | 역할별 접근 매트릭스 테스트 |
-| M5 | **n8n 완전 탈피 + 프론트 ESLint** — 이메일 발송을 SMTP outbound adapter로 교체(포트 유지 — 어댑터 교체 사례), compose에서 n8n 제거 | 3-4일 | 이메일 E2E, n8n 컨테이너 0 |
-| M6 | **문서 정합** — www/PLAN.md·README 현행화, 아키텍처 결정 기록(백테스트 기각 이력 포함), soccer·judge 스켈레톤 삭제 | 2-3일 | 문서-코드 전수 일치 |
+| M5 | ~~n8n 완전 탈피 + 프론트 ESLint~~ — **취소(사용자 결정, 2026-08-04)**. n8n·이메일 경로 현행 유지, 재제안 금지 | - | - |
+| M6 | ~~문서 정합~~ — **취소(사용자 결정, 2026-08-04)**. 루트 README는 2026-08-04 신규 작성됨, 나머지 항목(judge 스켈레톤 삭제 포함) 보류 | - | - |
 
 ### 편입 마일스톤 (2026-07-13 추가)
 
@@ -61,7 +61,7 @@
 | game(모의투자·상권 창업) | **새 스포크** (2026-07-31) | listing과 동일 논리 — 유저 진행상태(쓰기)는 공공데이터 스포크(market·stock)와 액터·라이프사이클이 다르다. 게다가 **두 도메인을 지갑 하나로 가로질러** market·stock 어느 쪽에도 넣을 수 없다(넣으면 스포크 간 직접 참조가 필요해진다). 상권 데이터는 허브 신규 포트 1개로 읽기 전용 소비. 경계·게이트 → [[minseok/apps/game/_docs/game-harness\|game-harness]], 도입 순서 → [[minseok/apps/game/_docs/game-strategy\|game-strategy]] |
 | 학습 파이프라인 | **앱 아님** — scripts/ 유지 | 오프라인 배치. 모델은 `models/<이름>/v<n>/`+지표 JSON+git 태그. MLflow/DVC 금지 |
 | soccer | **삭제됨 (2026-07-15)** | 스켈레톤 금지 원칙. 코드·DB 컨테이너(:5433)·볼륨 제거, git 이력으로 복원 가능 |
-| mail judge | **삭제 예정** (②-M6) | 스켈레톤 금지 원칙. git 이력으로 복원 가능 |
+| mail judge | **삭제 보류** (②-M6 취소, 2026-08-04) | 스켈레톤 금지 원칙은 유지되나 삭제를 담던 ②-M6가 취소됨. git 이력으로 복원 가능 |
 
 ## 데이터·모델 트랙
 
