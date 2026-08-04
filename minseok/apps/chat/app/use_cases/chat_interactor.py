@@ -65,6 +65,10 @@ TIME_FIELDS = [
     ("time_21_24_floating_pop", "밤 9시~자정", 3),
 ]
 
+# 서울 외 지역 가드 안내의 고정 접두 — question_insight 게이트웨이가 이 문구로
+# "가드가 차단한 질문"을 식별한다(단일 정의처 — 문구를 바꾸면 집계도 함께 따라온다).
+NONSEOUL_GUARD_PREFIX = "지금은 서울 상권 데이터만 분석할 수 있어요."
+
 # 서울 외 주요 지역명 — 상권 데이터가 서울뿐이라, 이 지명만 언급된 질문은
 # phase1 호출 전에 결정론적으로 "준비중" 안내로 차단한다.
 # "경기"는 경기(景氣), "김포"는 김포공항(서울 강서구)과 겹쳐 제외.
@@ -450,7 +454,7 @@ class ChatInteractor(ChatUseCase):
             region = next((r for r in NON_SEOUL_REGIONS if r in prompt), None)
             if region:
                 text = (
-                    f"지금은 서울 상권 데이터만 분석할 수 있어요. {region} 등 다른 지역은 "
+                    f"{NONSEOUL_GUARD_PREFIX} {region} 등 다른 지역은 "
                     "아직 준비 중이라 조금만 기다려 주세요. 서울에서 궁금한 동네(예: 성수동, "
                     "홍대)를 말씀해 주시면 바로 분석해 드릴게요."
                 )

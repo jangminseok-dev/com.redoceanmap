@@ -363,6 +363,21 @@ DB 직접, `AreaBacktestReportPort`와 같은 선례). admin(소비)과 stock(�
 초과분으로 읽어야 한다. 리포트는 표본 집중도(`top_week_share`)와 경고도 함께 낸다.
 **사용자 화면에 노출하지 않는다** — 어드민 전용(투자 정보가 아니라 라벨러 평가 연구).
 
+## 소유 계약 — QuestionInsightPort
+
+질문 인텔리전스 협력(조회 전용 — 쓰기는 chat의 대화 저장 경로가 이미 한다,
+Record ↔ Directory 분리 선례). admin(소비)과 chat(구현·영속: conversations/messages)을 잇는다.
+`recent_questions(limit)`(최근 질문 + 답변 종류) · `stats(days)`(총량·종류 분포·서울 외 지역 수요).
+
+답변 종류는 저장값이 아니라 **관측 유도값**이다 — assistant payload 키(recommendations/stock/
+news)와 서울 외 가드 고정 접두(`NONSEOUL_GUARD_PREFIX`, chat 인터랙터가 정의)로 판정한다.
+서울 외 지역 카운트는 가드가 실제 차단한 질문 기준 — 전국 확장 우선순위의 실수요 신호.
+계약에 개인 식별 정보(user_id·이메일)를 싣지 않는다.
+
+- **구현**: `chat`의 `QuestionInsightGateway`(messages 읽기 전용 집계).
+- **소비**: `admin`의 question_insight 인터랙터(`GET /admin/questions`).
+- **배선**: `main.py`에서 `app.dependency_overrides[get_question_insight_port] = get_question_insight_gateway`.
+
 ## 소유 계약 — AreaBacktestReportPort
 
 상권 점수 백테스트 리포트 조회 협력(조회 전용 — 쓰기는 `scripts/backtest_area_score.py`가

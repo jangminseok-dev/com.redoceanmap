@@ -319,6 +319,24 @@ export const fetchAdminDataSources = (): Promise<{ datasets: AdminDatasetStat[] 
 export const fetchAdminAudit = (limit = 50): Promise<{ items: AdminAuditEntry[] }> =>
   request(`/admin/audit?limit=${limit}`);
 
+export type AdminQuestionRow = {
+  conversation_id: number;
+  question: string;
+  answer_kind: string;
+  asked_at: string;
+};
+
+export type AdminQuestionBoard = {
+  window_days: number;
+  total_questions: number;
+  kinds: { kind: string; count: number; share_pct: number }[];
+  nonseoul_regions: { region: string; count: number }[];
+  recent: AdminQuestionRow[];
+};
+
+export const fetchAdminQuestions = (days = 30, limit = 50): Promise<AdminQuestionBoard> =>
+  request(`/admin/questions?days=${days}&limit=${limit}`);
+
 export const fetchAdminForecasts = (
   horizon: number | null,
   limit = 50,
