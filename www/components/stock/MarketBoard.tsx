@@ -128,6 +128,25 @@ function BoardRow({
           {formatPrice(row.price, row.ticker)}
         </span>
 
+        {/* 등락액 — 토스 표 컨벤션(현재가·등락액·등락률). 등락률로 역산한 근사치다 */}
+        {!compact && (
+          <span
+            className={`hidden xl:block w-24 shrink-0 text-right text-sm tabular-nums ${
+              row.change_pct == null
+                ? "text-foreground-muted"
+                : row.change_pct > 0
+                  ? "text-up"
+                  : row.change_pct < 0
+                    ? "text-down"
+                    : "text-foreground-muted"
+            }`}
+          >
+            {row.change_pct != null
+              ? `${row.change_pct > 0 ? "+" : ""}${formatPrice(row.price - row.price / (1 + row.change_pct), row.ticker)}`
+              : "—"}
+          </span>
+        )}
+
         <span
           className={`w-[72px] shrink-0 text-right text-sm font-medium tabular-nums px-1.5 py-0.5 rounded-md ${toneBox(row.change_pct)}`}
         >
@@ -282,6 +301,7 @@ export default function MarketBoard({
               <span className="flex-1">종목</span>
               <span className="w-16 shrink-0" />
               <span className="w-24 shrink-0 text-right">현재가</span>
+              <span className="hidden xl:block w-24 shrink-0 text-right">등락액</span>
               <span className="w-[72px] shrink-0 text-right">등락률</span>
               <span className="hidden xl:block w-24 shrink-0 text-right">거래대금</span>
               <span className="w-[104px] shrink-0 text-center">신호</span>

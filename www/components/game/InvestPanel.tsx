@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Info, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import GameOrderForm from "@/components/game/GameOrderForm";
 import GamePositionList from "@/components/game/GamePositionList";
 import GameSymbolTable from "@/components/game/GameSymbolTable";
@@ -34,9 +34,21 @@ const won = (v: number) => `${v.toLocaleString()}원`;
 const signed = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
 const toneOf = (v: number) => (v >= 0 ? "text-up" : "text-down");
 
+// 폭 상한 — 대시보드 예외 폭(DESIGN.md §5)
+const SHELL = "mx-auto w-full max-w-[1720px] px-4 sm:px-6";
+
+/**
+ * 투자 탭 — 레퍼런스(토스증권 홈)의 골격을 따른다.
+ *
+ *   [마켓 요약: GXI + 섹터]                ← 얇게
+ *   [표 (주인공, 내부 스크롤) | 상세·주문 컬럼]
+ *   [하단 고정 티커 바]
+ *
+ * 지갑은 **한 줄**이다 — 토스 홈에 계좌 정보가 없는 것처럼, 자산 카드가 화면 위 절반을
+ * 먹고 정작 표가 접혀 있던 이전 구조를 버렸다.
+ */
 export default function InvestPanel() {
-  // 선택 종목 · 체결 안내 · 봉 기간. 봉 기간은 쿼리 키에 들어가므로 여기가 소유한다.
-  // (REACT_RULES 패턴 B: 여러 값은 단일 객체로)
+  // 선택 종목 · 체결 안내 · 봉 기간 · 시장 세그먼트(REACT_RULES 패턴 B: 단일 객체)
   const [view, setView] = useState<{
     market: "stock" | "futures";
     selected: string | null;
@@ -54,15 +66,6 @@ export default function InvestPanel() {
     staleTime: 10 * 60_000,
   });
 
-  // 지수·선물 — 마켓 요약이 쓴다. FuturesPanel과 **같은 쿼리 키**라 선물 세그먼트로 넘어가도
-  // 다시 받지 않는다(FUTURES_TICKS를 그쪽과 맞춰 둔 이유다).
-  const futuresQ = useQuery({
-    queryKey: ["game-futures", FUTURES_TICKS],
-    queryFn: () => fetchGameFutures(FUTURES_TICKS),
-    refetchInterval: (query) => (query.state.status === "error" ? 300_000 : 30_000),
-    placeholderData: keepPreviousData,
-  });
-
   // 시세 — 결정론 계산이라 같은 틱을 다시 물어도 같은 값이다. 에러 시 5분 저속 재시도.
   // 선택 종목의 일봉·종목정보를 함께 받는다(전 종목 봉은 응답 목표를 넘긴다).
   // 종목을 바꾸면 키가 바뀌므로 이전 데이터를 유지해 차트가 깜빡이지 않게 한다.
@@ -78,6 +81,14 @@ export default function InvestPanel() {
     queryKey: ["game-wallet"],
     queryFn: fetchGameWallet,
     refetchInterval: (query) => (query.state.status === "error" ? 300_000 : 30_000),
+  });
+
+  // 지수·선물 — 마켓 요약·티커 바가 쓴다. FuturesPanel과 같은 쿼리 키라 캐시를 공유한다.
+  const futuresQ = useQuery({
+    queryKey: ["game-futures", FUTURES_TICKS],
+    queryFn: () => fetchGameFutures(FUTURES_TICKS),
+    refetchInterval: (query) => (query.state.status === "error" ? 300_000 : 30_000),
+    placeholderData: keepPreviousData,
   });
 
   const refresh = () => {
@@ -139,36 +150,24 @@ export default function InvestPanel() {
   const unauthorized =
     (pricesQ.error as ApiError)?.status === 401 || (walletQ.error as ApiError)?.status === 401;
 
-  return (
-    <div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200 px-3 py-1 text-xs font-medium text-amber-800">
-          <Info size={13} strokeWidth={2} />
-          가상 주가 · 실제 시세가 아닙니다
-        </span>
-        <p className="text-sm text-foreground-muted">
-          접속하지 않는 동안에도 시세가 움직이며, 모든 참가자가 같은 장을 봅니다.
-        </p>
-      </div>
+  // 섹터별 평균 등락 — 하단 티커 바용(산술평균이라 대형주 가중이 없다)
+  const sectorMoves = useMemo(() => {
+    const buckets = new Map<string, number[]>();
+    symbols.forEach((s) => {
+      const list = buckets.get(s.sectorGroup) ?? [];
+      list.push(s.changePct);
+      buckets.set(s.sectorGroup, list);
+    });
+    return Array.from(buckets, ([group, values]) => ({
+      group,
+      changePct: values.reduce((a, b) => a + b, 0) / values.length,
+    })).sort((a, b) => b.changePct - a.changePct);
+  }, [symbols]);
 
-      {data && !data.calibrated && (
-        <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-foreground-muted">
-          <TriangleAlert size={13} strokeWidth={2} className="text-amber-600" />
-          종목 변동성은 실데이터 캘리브레이션 전 잠정값입니다.
-        </p>
-      )}
-
-      {/* 시즌 시작 전·직후에는 전 종목이 기준가에 멈춰 있다 — 화면이 고장 난 것처럼 보이지 않게 말한다 */}
-      {data && data.tick === 0 && (
-        <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-foreground-muted">
-          <TriangleAlert size={13} strokeWidth={2} className="text-amber-600" />
-          시즌이 아직 시작되지 않았습니다 — 지금 보이는 값은 전 종목의 시즌 시작가입니다. 시작되면
-          1분마다 게임 1일이 흐릅니다.
-        </p>
-      )}
-
-      {unauthorized && (
-        <div className="mt-8 rounded-2xl border border-border bg-surface p-8 text-center">
+  if (unauthorized) {
+    return (
+      <div className={`${SHELL} mt-8`}>
+        <div className="rounded-2xl border border-border bg-surface p-8 text-center">
           <p className="text-sm text-foreground-muted">
             게임은 누구나 이용할 수 있지만, 자산을 저장하려면 로그인이 필요합니다.
           </p>
@@ -176,179 +175,215 @@ export default function InvestPanel() {
             로그인하고 시작하기
           </Button>
         </div>
-      )}
-
-      {pricesQ.isLoading && !unauthorized && (
-        <div className="mt-8 grid place-items-center h-64 text-sm text-foreground-muted">
-          시세를 불러오는 중…
-        </div>
-      )}
-
-      {/* 마켓 요약 — 지수 하나를 크게, 섹터를 격자로(레퍼런스 토스증권 홈 상단) */}
-      <div className="mt-4">
-        <GameMarketSummary futures={futuresQ.data} symbols={symbols} />
       </div>
+    );
+  }
 
-      {/* 자산 요약 */}
-      {wallet && (
-        <section className="mt-3 rounded-2xl border border-border bg-surface px-4 py-3.5 grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3">
-          {/* 금액은 체결·정산으로 계속 바뀌므로 굴러가게 둔다. 수익률은 소수라
-              중간값이 튀어 읽기 나빠지므로 그대로 찍는다. */}
-          {[
-            { label: "총자산", raw: wallet.totalAssetKrw, format: won, animate: true, tone: "" },
-            {
-              label: "수익률",
-              raw: wallet.totalReturnPct,
-              format: signed,
-              animate: false,
-              tone: toneOf(wallet.totalReturnPct),
-            },
-            { label: "현금", raw: wallet.cashKrw, format: won, animate: true, tone: "" },
-            { label: "투자 가능", raw: wallet.investableKrw, format: won, animate: true, tone: "" },
-          ].map((item) => (
-            <div key={item.label}>
-              <dt className="text-xs text-foreground-muted">{item.label}</dt>
-              <dd className={`mt-0.5 text-data-l tabular-nums ${item.tone}`}>
-                {item.animate ? (
-                  <CountUp value={item.raw} format={item.format} />
-                ) : (
-                  item.format(item.raw)
-                )}
+  return (
+    <div className="flex-1 min-h-0 flex flex-col">
+      {/* 세그먼트 + 지갑 한 줄 — 토스의 전체/국내/해외 자리 + 계좌는 문장이 아니라 숫자 세 개 */}
+      <div className={`${SHELL} shrink-0 flex flex-wrap items-center gap-x-4 gap-y-2`}>
+        <div className="flex items-center gap-1.5" role="tablist" aria-label="시장 선택">
+          {(
+            [
+              ["stock", "주식"],
+              ["futures", "지수 선물"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={view.market === key}
+              onClick={() => setView((p) => ({ ...p, market: key }))}
+              className={`h-8 px-3.5 rounded-full text-sm font-medium transition-colors duration-150 ${
+                view.market === key
+                  ? "bg-brand text-white"
+                  : "border border-border text-foreground-muted hover:bg-accent hover:text-foreground"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {wallet && (
+          <dl className="ml-auto flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm tabular-nums">
+            <div className="flex items-baseline gap-1.5">
+              <dt className="text-xs text-foreground-muted">총자산</dt>
+              <dd className="font-semibold">
+                <CountUp value={wallet.totalAssetKrw} format={won} />
               </dd>
             </div>
-          ))}
-          <p className="col-span-2 sm:col-span-4 text-xs text-foreground-muted">
-            최소 생활자금 {won(wallet.reservedKrw)}은 투자에 쓸 수 없습니다 — 전부 잃어도 이 돈은
-            남습니다.
-          </p>
-        </section>
-      )}
-
-      {view.notice && (
-        <p className="mt-3 rounded-xl bg-brand/8 border border-brand/20 px-4 py-2.5 text-sm">
-          {view.notice}
-        </p>
-      )}
-
-      {/* 미접속 중 마감된 포지션 — 복귀했을 때 무슨 일이 있었는지 알린다 */}
-      {(wallet?.recentlyClosed?.length ?? 0) > 0 && (
-        <section className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-          <p className="text-xs font-semibold text-amber-900">자리를 비운 사이에</p>
-          <ul className="mt-1.5 space-y-1">
-            {wallet?.recentlyClosed?.map((c) => (
-              <li key={c.id} className="text-xs text-amber-900 tabular-nums">
-                {c.name} {c.side === "LONG" ? "롱" : "숏"}
-                {c.leverage > 1 && ` ${c.leverage}배`} {c.quantity.toLocaleString()}주 —{" "}
-                {c.closedGameDay}일차에{" "}
-                {c.reason === "liquidated"
-                  ? "강제청산"
-                  : c.reason === "expired"
-                    ? "만료 마감"
-                    : "만기 정산"}
-                <span className={`ml-1 font-semibold ${toneOf(c.realizedPnlKrw)}`}>
-                  {signed(c.realizedPnlKrw)}원
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* 주식 ↔ 지수 선물 — 예전에는 게임 탭 최상단에서 페이지를 갈랐다.
-          지갑이 하나이고 지수가 이 종목들로 만들어지므로, 페이지를 나누는 대신
-          같은 화면에서 오가게 한다(레퍼런스 토스증권의 전체/국내/해외 세그먼트 자리). */}
-      <div className="mt-4 flex items-center gap-1.5" role="tablist" aria-label="시장 선택">
-        {(
-          [
-            ["stock", "주식"],
-            ["futures", "지수 선물"],
-          ] as const
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            aria-selected={view.market === key}
-            onClick={() => setView((p) => ({ ...p, market: key }))}
-            className={`h-8 px-4 rounded-full text-sm font-medium transition-colors duration-150 ${
-              view.market === key
-                ? "bg-brand text-white"
-                : "border border-border text-foreground-muted hover:bg-accent hover:text-foreground"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+            <div className="flex items-baseline gap-1.5">
+              <dt className="text-xs text-foreground-muted">수익률</dt>
+              <dd className={`font-semibold ${toneOf(wallet.totalReturnPct)}`}>
+                {signed(wallet.totalReturnPct)}
+              </dd>
+            </div>
+            <div className="flex items-baseline gap-1.5">
+              <dt className="text-xs text-foreground-muted">투자 가능</dt>
+              <dd className="font-semibold">
+                <CountUp value={wallet.investableKrw} format={won} />
+              </dd>
+            </div>
+          </dl>
+        )}
       </div>
 
-      {view.market === "futures" && (
-        <div className="mt-4">
+      {/* 상태 알림 — 전부 한 줄씩. 카드로 쌓으면 표가 밀린다 */}
+      <div className={`${SHELL} shrink-0`}>
+        {view.notice && (
+          <p className="mt-2 rounded-lg bg-brand/8 border border-brand/20 px-3 py-1.5 text-xs">
+            {view.notice}
+          </p>
+        )}
+        {data && !data.calibrated && (
+          <p className="mt-1.5 inline-flex items-center gap-1.5 text-xs text-foreground-muted">
+            <TriangleAlert size={12} strokeWidth={2} className="text-amber-600" />
+            종목 변동성은 실데이터 캘리브레이션 전 잠정값입니다.
+          </p>
+        )}
+        {data && data.tick === 0 && (
+          <p className="mt-1.5 inline-flex items-center gap-1.5 text-xs text-foreground-muted">
+            <TriangleAlert size={12} strokeWidth={2} className="text-amber-600" />
+            시즌이 아직 시작되지 않았습니다 — 지금 값은 전 종목의 시즌 시작가입니다.
+          </p>
+        )}
+        {(wallet?.recentlyClosed?.length ?? 0) > 0 && (
+          <p className="mt-1.5 text-xs text-amber-900 tabular-nums">
+            자리를 비운 사이 —{" "}
+            {wallet?.recentlyClosed?.slice(0, 2).map((c, i) => (
+              <span key={c.id}>
+                {i > 0 && " · "}
+                {c.name}{" "}
+                {c.reason === "liquidated" ? "강제청산" : c.reason === "expired" ? "만료 마감" : "만기 정산"}
+                <b className={`ml-0.5 ${toneOf(c.realizedPnlKrw)}`}>{signed(c.realizedPnlKrw)}원</b>
+              </span>
+            ))}
+            {(wallet?.recentlyClosed?.length ?? 0) > 2 && ` 외 ${wallet!.recentlyClosed!.length - 2}건`}
+          </p>
+        )}
+      </div>
+
+      {view.market === "stock" ? (
+        <>
+          {pricesQ.isLoading && (
+            <div className="flex-1 grid place-items-center text-sm text-foreground-muted">
+              시세를 불러오는 중…
+            </div>
+          )}
+
+          {current && (
+            <div
+              className={`${SHELL} flex-1 min-h-0 mt-3 overflow-y-auto lg:overflow-hidden lg:grid lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-4`}
+            >
+              {/* 주인공 — 표. 데스크탑은 컬럼 내부에서만 스크롤한다 */}
+              <div className="lg:h-full lg:min-h-0">
+                <GameSymbolTable
+                  symbols={symbols}
+                  selected={current.symbol}
+                  favorites={favorites}
+                  onSelect={(symbol) => setView((prev) => ({ ...prev, selected: symbol }))}
+                  onToggleFavorite={toggleFavorite}
+                />
+              </div>
+
+              {/* 조연 — 선택 종목 상세 + 주문 + 보유(레퍼런스의 우측 미니 패널 자리) */}
+              <aside className="mt-4 lg:mt-0 lg:h-full lg:min-h-0 lg:overflow-y-auto flex flex-col gap-4 pb-4">
+                <GameSymbolDetail
+                  current={current}
+                  data={data}
+                  events={data?.events ?? []}
+                  ticksPerGameDay={rulebookQ.data?.ticksPerGameDay ?? 60}
+                  candleDays={view.candleDays}
+                  onCandleDaysChange={(days) => setView((prev) => ({ ...prev, candleDays: days }))}
+                  isSelected={current.symbol === view.selected}
+                />
+
+                {wallet && (
+                  <GameOrderForm
+                    symbol={current}
+                    rules={rulebookQ.data}
+                    investableKrw={wallet.investableKrw}
+                    disabled={open.isPending || wallet.seasonOver}
+                    onSubmit={(side, quantity, leverage) =>
+                      open.mutate({ symbol: current.symbol, side, quantity, leverage })
+                    }
+                  />
+                )}
+
+                {wallet && (
+                  <section>
+                    <h2 className="text-sm font-bold tracking-tight mb-2">
+                      보유 포지션
+                      {wallet.positions.length > 0 && (
+                        <span className="ml-1.5 text-foreground-muted font-normal">
+                          {wallet.positions.length}건 · 평가 {won(wallet.positionValueKrw)}
+                        </span>
+                      )}
+                    </h2>
+                    <GamePositionList
+                      positions={wallet.positions}
+                      ticksPerGameDay={rulebookQ.data?.ticksPerGameDay ?? 60}
+                      currentTick={wallet.tick}
+                      closingId={close.isPending ? (close.variables ?? null) : null}
+                      onClose={(id) => close.mutate(id)}
+                    />
+                  </section>
+                )}
+              </aside>
+            </div>
+          )}
+
+          {/* 마켓 요약은 표 아래가 아니라 모바일 스크롤 최하단으로 밀지 않도록 티커 바 위에 두지
+              않는다 — 데스크탑에서는 표가 이미 주인공이므로 요약은 접근 부담이 없는 하단 티커와
+              지수 카드(GameMarketSummary)를 상세 컬럼 위에 두는 대신 티커 바가 대신한다. */}
+        </>
+      ) : (
+        <div className={`${SHELL} flex-1 min-h-0 overflow-y-auto mt-3 pb-4`}>
+          <div className="mb-3">
+            <GameMarketSummary futures={futuresQ.data} symbols={symbols} />
+          </div>
           <FuturesPanel />
         </div>
       )}
 
-      {/* 3열 — [목록 | 상세 | 주문]. 레퍼런스(토스증권)처럼 목록이 상세와 함께 남는다.
-          2xl 미만에서는 폭이 모자라 [상세 | 주문] 2열 + 목록을 아래로 내린다. */}
-      {view.market === "stock" && current && (
-        <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[380px_minmax(0,1fr)_320px]">
-          <div className="order-2 xl:order-3 xl:col-span-2 2xl:order-1 2xl:col-span-1">
-            <GameSymbolTable
-              symbols={symbols}
-              selected={current.symbol}
-              favorites={favorites}
-              onSelect={(symbol) => setView((prev) => ({ ...prev, selected: symbol }))}
-              onToggleFavorite={toggleFavorite}
-            />
-          </div>
-
-          <div className="order-1 xl:order-1 2xl:order-2 min-w-0">
-            <GameSymbolDetail
-              current={current}
-              data={data}
-              events={data?.events ?? []}
-              ticksPerGameDay={rulebookQ.data?.ticksPerGameDay ?? 60}
-              candleDays={view.candleDays}
-              onCandleDaysChange={(days) => setView((prev) => ({ ...prev, candleDays: days }))}
-              isSelected={current.symbol === view.selected}
-            />
-          </div>
-
-          <div className="order-3 xl:order-2">
-            {wallet && (
-              <GameOrderForm
-                symbol={current}
-                rules={rulebookQ.data}
-                investableKrw={wallet.investableKrw}
-                disabled={open.isPending || wallet.seasonOver}
-                onSubmit={(side, quantity, leverage) =>
-                  open.mutate({ symbol: current.symbol, side, quantity, leverage })
-                }
+      {/* 하단 고정 티커 바 — 레퍼런스(토스증권)의 지수 스트립. 흐르지 않고 서 있다 */}
+      <div className="shrink-0 border-t border-border bg-surface">
+        <div
+          className={`${SHELL} flex items-center gap-5 py-1.5 overflow-x-auto whitespace-nowrap text-xs [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}
+        >
+          {futuresQ.data && (
+            <>
+              <Tick label="GXI" value={futuresQ.data.indexPoint.toLocaleString()} />
+              <Tick label="선물" value={futuresQ.data.futuresPoint.toLocaleString()} />
+              <Tick
+                label="베이시스"
+                value={signed(futuresQ.data.basisPct)}
+                tone={toneOf(futuresQ.data.basisPct)}
               />
-            )}
-          </div>
+              <Tick
+                label="만기"
+                value={`D-${Math.max(0, Math.ceil(futuresQ.data.ticksToExpiry / 60))}`}
+              />
+              <span className="h-3.5 w-px bg-border shrink-0" aria-hidden />
+            </>
+          )}
+          {sectorMoves.map((s) => (
+            <Tick key={s.group} label={s.group} value={signed(s.changePct)} tone={toneOf(s.changePct)} />
+          ))}
         </div>
-      )}
-
-      {/* 보유 포지션 — 주식 세그먼트에서만. 선물 포지션은 FuturesPanel이 자기 안에서 보여준다 */}
-      {view.market === "stock" && wallet && (
-        <section className="mt-6">
-          <h2 className="text-sm font-bold tracking-tight mb-2">
-            보유 포지션
-            {wallet.positions.length > 0 && (
-              <span className="ml-1.5 text-foreground-muted font-normal">
-                {wallet.positions.length}건 · 평가 {won(wallet.positionValueKrw)}
-              </span>
-            )}
-          </h2>
-          <GamePositionList
-            positions={wallet.positions}
-            ticksPerGameDay={rulebookQ.data?.ticksPerGameDay ?? 60}
-            currentTick={wallet.tick}
-            closingId={close.isPending ? (close.variables ?? null) : null}
-            onClose={(id) => close.mutate(id)}
-          />
-        </section>
-      )}
+      </div>
     </div>
+  );
+}
+
+function Tick({ label, value, tone = "" }: { label: string; value: string; tone?: string }) {
+  return (
+    <span className="inline-flex items-baseline gap-1.5 shrink-0">
+      <span className="text-foreground-muted">{label}</span>
+      <span className={`font-semibold tabular-nums ${tone}`}>{value}</span>
+    </span>
   );
 }

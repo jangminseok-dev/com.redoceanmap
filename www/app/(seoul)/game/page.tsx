@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CandlestickChart, Gamepad2, Store } from "lucide-react";
+import { CandlestickChart, Store } from "lucide-react";
 import InvestPanel from "@/components/game/InvestPanel";
 import StorePanel from "@/components/game/StorePanel";
 import { fetchGameRulebook } from "@/lib/api";
@@ -17,10 +17,11 @@ const TABS = [
 type TabKey = (typeof TABS)[number]["key"];
 
 /**
- * 게임 셸 — 두 게임이 지갑 하나를 공유하므로 한 화면 안에서 탭으로 오간다.
+ * 게임 셸 — 투자 탭은 **화면 높이를 꽉 채우고 내부에서만 스크롤한다**(레퍼런스 토스증권).
  *
- * 워크스페이스 3패널(자료|스테이지|채팅)을 쓰지 않는다. 게임에는 채팅 패널이 붙을 자리가
- * 없고, `TAB_KEYS`에도 없어 `TabGuard`도 두지 않는다(game-harness §10).
+ * 예전에는 페이지가 세로로 흐르고 안내·자산·알림 카드가 위쪽 절반을 먹어서
+ * 정작 종목 표는 스크롤해야 나왔다. 표가 주인공인 화면에서 표가 접혀 있으면 안 된다.
+ * 상권 창업은 읽기 중심이라 예전처럼 세로로 흐른다.
  */
 export default function GamePage() {
   const [tab, setTab] = useState<TabKey>("invest"); // 상태는 이 하나뿐이다
@@ -34,59 +35,40 @@ export default function GamePage() {
   const clock = rulebookQ.data;
 
   return (
-    // max-w-6xl(1152px)로는 3열([목록|상세|주문])이 서지 않는다 — 대시보드 화면이라 폭을 연다.
-    // 읽기 중심 페이지(약관·홈)는 여전히 max-w-6xl이 상한이다(DESIGN.md §5).
-    <div className="mx-auto w-full max-w-[1720px] px-4 sm:px-6 py-6 sm:py-8">
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span className="grid place-items-center w-10 h-10 rounded-xl bg-brand/10 text-brand">
-          <Gamepad2 size={19} strokeWidth={1.9} />
-        </span>
-        <h1 className="text-xl font-bold tracking-tight">게임</h1>
-
-        {clock && (
-          <span className="text-sm text-foreground-muted">
-            {clock.gameQuarter}분기 {clock.dayOfQuarter}일차
-            <span className="mx-1.5 text-border">·</span>
-            시즌 {Math.ceil(clock.ticksRemaining / 60 / 24)}일 남음
-          </span>
-        )}
-      </header>
-
-      <p className="mt-3 text-sm text-foreground-muted leading-relaxed">
-        실제 1시간이 게임 1일입니다. 세 게임은 지갑 하나를 함께 씁니다 — 투자로 번 돈으로
-        창업하고, 가게 수익이 다시 투자금이 됩니다.
-      </p>
-
-      {/* 탭 3개가 좁은 폭에서 넘치므로 가로 스크롤을 허용한다 — inline-flex는 콘텐츠 폭을
-          그대로 잡아 스크롤이 걸리지 않으니 flex + max-w-full로 바꾼다. */}
-      <nav className="mt-5 flex w-fit max-w-full overflow-x-auto rounded-xl border border-border p-1 bg-surface">
-        {TABS.map(({ key, label, icon: Icon }) => {
-          const active = tab === key;
-          return (
+    <div className="h-full flex flex-col min-h-0">
+      <header className="shrink-0 flex flex-wrap items-center gap-x-3 gap-y-2 px-4 sm:px-6 pt-3 pb-2">
+        <nav className="flex items-center gap-1.5" aria-label="게임">
+          {TABS.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
               type="button"
               onClick={() => setTab(key)}
-              aria-current={active}
-              className={`shrink-0 inline-flex items-center gap-1.5 px-4 h-10 rounded-lg text-sm font-medium transition-colors ${
-                active ? "bg-brand text-white" : "text-foreground-muted hover:text-foreground"
+              aria-current={tab === key}
+              className={`inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full text-sm font-medium transition-colors duration-150 ${
+                tab === key
+                  ? "bg-brand text-white"
+                  : "border border-border text-foreground-muted hover:bg-accent hover:text-foreground"
               }`}
             >
               <Icon size={15} strokeWidth={1.9} />
               {label}
             </button>
-          );
-        })}
-      </nav>
+          ))}
+        </nav>
 
-      {/* 패널은 한 번만 마운트하고 표시만 전환한다 — 지도·차트 이중 인스턴스 방지
-          (WorkspaceShell과 같은 이유) */}
-      <div className="mt-5">
-        <div className={tab === "invest" ? "" : "hidden"}>
-          {/* 선물은 InvestPanel 안의 세그먼트로 들어갔다 — 여기서 따로 마운트하지 않는다 */}
-          <InvestPanel />
-        </div>
-        <div className={tab === "store" ? "" : "hidden"}>
+        {clock && (
+          <p className="text-xs text-foreground-muted">
+            {clock.gameQuarter}분기 {clock.gameDay}일차 · 실제 1시간이 게임 1일 · 가상 주가입니다
+          </p>
+        )}
+      </header>
+
+      {/* 패널은 한 번만 마운트하고 표시만 전환한다 — 차트 이중 인스턴스 방지 */}
+      <div className={`flex-1 min-h-0 ${tab === "invest" ? "flex flex-col" : "hidden"}`}>
+        <InvestPanel />
+      </div>
+      <div className={`flex-1 min-h-0 overflow-y-auto ${tab === "store" ? "" : "hidden"}`}>
+        <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 pb-8">
           <StorePanel />
         </div>
       </div>

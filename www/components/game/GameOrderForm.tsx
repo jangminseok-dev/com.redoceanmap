@@ -125,23 +125,28 @@ export default function GameOrderForm({
       <label className="mt-4 block text-xs text-foreground-muted" htmlFor="game-quantity">
         수량
       </label>
-      <div className="mt-1 flex gap-2">
-        <Input
-          id="game-quantity"
-          type="number"
-          min={1}
-          value={order.quantity}
-          onChange={(e) => setQuantity(Number(e.target.value))}
-          className="flex-1 h-10 px-3 rounded-xl border border-border bg-background text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-brand/30"
-        />
-        <button
-          type="button"
-          onClick={() => setQuantity(maxQuantity)}
-          disabled={maxQuantity < 1}
-          className="px-3 h-10 rounded-xl border border-border text-xs font-medium text-foreground-muted hover:bg-accent disabled:opacity-40"
-        >
-          최대 {maxQuantity.toLocaleString()}
-        </button>
+      <Input
+        id="game-quantity"
+        type="number"
+        min={1}
+        value={order.quantity}
+        onChange={(e) => setQuantity(Number(e.target.value))}
+        className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-brand/30"
+      />
+      {/* 투자 가능 금액 대비 비율 버튼 — 레퍼런스(토스증권 주문 패널)의 10/25/50/최대.
+          수량을 손으로 세지 않고 "얼마를 쓸지"로 주문하게 한다. */}
+      <div className="mt-1.5 grid grid-cols-4 gap-1.5">
+        {([10, 25, 50, 100] as const).map((pct) => (
+          <button
+            key={pct}
+            type="button"
+            onClick={() => setQuantity(Math.floor((maxQuantity * pct) / 100))}
+            disabled={Math.floor((maxQuantity * pct) / 100) < 1}
+            className="h-8 rounded-lg border border-border text-xs font-medium text-foreground-muted hover:bg-accent disabled:opacity-40"
+          >
+            {pct === 100 ? "최대" : `${pct}%`}
+          </button>
+        ))}
       </div>
 
       <dl className="mt-4 space-y-1 text-xs">
