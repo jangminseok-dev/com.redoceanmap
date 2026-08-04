@@ -28,7 +28,7 @@
 | 슬라이스 | 엔드포인트 | 내용 |
 |---|---|---|
 | rulebook | `GET /game/myself` | 자기소개(가상 주가·매매 실행 아님·가정치 고지) **+ 현재 게임 시각**(tick·game_day·game_quarter·시즌 잔여) |
-| market_price | `GET /game/market/prices?ticks=` | 전 종목 현재가·등락률·최근 곡선 + **최근 호재·악재**. `ticks` 2~240. `candle_symbol` 지정 시 선택 종목의 **일봉(최대 120일)·거래량·이동평균 5·20·60·120·RSI(14)·상태 요약(5축)·차트 형태(틱·일봉 양축)** 동반 |
+| market_price | `GET /game/market/prices?ticks=` | 전 종목 현재가·등락률·최근 곡선 + **오늘 거래량·시총**(표가 36종목을 거래대금·시총으로 줄 세우는 축 — 종목당 가격 평가 1회로 봉과 **같은 값**을 낸다) + **최근 호재·악재**. `ticks` 2~240. `candle_symbol` 지정 시 선택 종목의 **일봉(최대 120일)·거래량·이동평균 5·20·60·120·RSI(14)·상태 요약(5축)·차트 형태(틱·일봉 양축)** 동반 |
 | wallet | `GET /game/wallet` | 현금·투자가능액·보유 포지션(현재 시세 평가)·총자산. 계정이 없으면 초기자본 100만원으로 자동 생성 |
 | trade | `POST /game/trades` · `POST /game/trades/{id}/close` | 롱/숏 진입·청산. **레버리지 1~4배**(2배 이상은 만료 180틱 + 강제청산), 손실 상한은 증거금, 체결가는 요청 도착 틱 |
 | area_fitness | `GET /game/areas/{trdar_code}/fitness?service_code=` | 창업 전 입지 미리보기 — 적합도 4축(수요·시간대·경쟁·생존) + 실데이터 근거 진단 문장 + **창업 가능 여부(`openable`)와 최소 자본**(store_open의 거절 조건을 미리 답한다). 허브 `AreaDemandProfilePort` 소비 |

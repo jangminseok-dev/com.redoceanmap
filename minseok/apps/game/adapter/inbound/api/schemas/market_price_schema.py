@@ -17,6 +17,15 @@ class SymbolPricesSchema(BaseModel):
     priceKrw: int
     changePct: float = Field(description="게임 1일(현실 1시간) 전 대비 등락률")
     series: list[PricePointSchema]
+    simulatedVolume: int = Field(
+        description=(
+            "오늘 봉의 거래량 — 게임 규칙 산출값이며 실제 체결이 아니다. "
+            "같은 날 같은 종목이면 candles 마지막 봉의 simulatedVolume과 같은 값이다"
+        )
+    )
+    assumedMarketCapKrw: int = Field(
+        description="현재가 × 발행주식. 게임 규칙 산출 재무이며 실재 기업의 시총이 아니다"
+    )
 
 
 class CandleSchema(BaseModel):

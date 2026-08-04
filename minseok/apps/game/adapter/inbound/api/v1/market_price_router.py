@@ -82,6 +82,8 @@ async def list_prices(
                 series=[
                     PricePointSchema(tick=p.tick, priceKrw=p.price_krw) for p in s.series
                 ],
+                simulatedVolume=s.simulated_volume,
+                assumedMarketCapKrw=s.assumed_market_cap_krw,
             )
             for s in result.symbols
         ],

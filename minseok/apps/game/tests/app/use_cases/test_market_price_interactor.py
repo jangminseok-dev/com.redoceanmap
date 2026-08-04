@@ -128,3 +128,49 @@ async def test_섹터_그룹이_전_종목에_노출된다():
     assert groups == {s.sector_group for s in SYMBOLS}
     # 그룹마다 4종목이어야 섹터 이벤트가 §3-3의 "3~5종목"에 든다
     assert all(sum(1 for s in SYMBOLS if s.sector_group == g) == 4 for g in groups)
+
+
+async def test_표의_거래량은_차트_마지막_봉과_같은_값이다():
+    """표(symbols)와 차트(candles)가 같은 날 같은 종목에 다른 거래량을 보이면 안 된다.
+
+    표는 봉을 만들지 않고 당일 시가 1회 평가로 `daily_volume`을 부르므로, 계산 경로가
+    갈라지지 않았는지 여기서 못박는다.
+    """
+    result = await MarketPriceInteractor(clock=_StubClock(12_345)).list_prices(
+        MarketPriceQuery(ticks=30, candle_symbol="GX01", candle_days=7)
+    )
+
+    row = next(s for s in result.symbols if s.symbol == "GX01")
+    assert row.simulated_volume == result.candles[-1].simulated_volume
+
+
+async def test_표의_시총은_종목정보_카드와_같은_값이다():
+    """표와 상세 카드가 같은 종목에 다른 시총을 보이면 안 된다."""
+    result = await MarketPriceInteractor(clock=_StubClock(12_345)).list_prices(
+        MarketPriceQuery(ticks=30, candle_symbol="GX01", candle_days=7)
+    )
+
+    row = next(s for s in result.symbols if s.symbol == "GX01")
+    assert row.assumed_market_cap_krw == result.symbol_info.assumed_market_cap_krw
+
+
+async def test_거래량과_시총은_전_종목에_실린다():
+    """표가 36종목을 거래대금·시총으로 줄 세우려면 종목마다 있어야 한다."""
+    result = await MarketPriceInteractor(clock=_StubClock(3_000)).list_prices(
+        MarketPriceQuery(ticks=10)
+    )
+
+    assert len(result.symbols) == len(SYMBOLS)
+    assert all(s.simulated_volume > 0 for s in result.symbols)
+    assert all(s.assumed_market_cap_krw > 0 for s in result.symbols)
+
+
+async def test_시즌_종료_틱에서도_봉과_거래량이_일치한다():
+    """describe()는 시즌 마지막 틱을 SEASON_TICKS-1로 자르고 daily_candles는 자르지 않는다 —
+    game_day를 moment에서 가져오면 정확히 이 지점에서 하루가 어긋난다."""
+    result = await MarketPriceInteractor(clock=_StubClock(SEASON_TICKS)).list_prices(
+        MarketPriceQuery(ticks=10, candle_symbol="GX01", candle_days=3)
+    )
+
+    row = next(s for s in result.symbols if s.symbol == "GX01")
+    assert row.simulated_volume == result.candles[-1].simulated_volume

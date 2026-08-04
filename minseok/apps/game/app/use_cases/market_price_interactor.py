@@ -81,23 +81,7 @@ class MarketPriceInteractor(MarketPriceUseCase):
         extra = await load_active(self._interventions, end_tick)
 
         symbols = tuple(
-            SymbolPrices(
-                symbol=params.symbol,
-                name=params.name,
-                sector=params.sector,
-                sector_group=params.sector_group,
-                meme=params.meme,
-                price_krw=price_engine.price_at(params, end_tick, None, extra),
-                change_pct=round(
-                    price_engine.change_pct(params, end_tick, TICKS_PER_GAME_DAY, extra), 2
-                ),
-                series=tuple(
-                    PricePoint(tick=t, price_krw=p)
-                    for t, p in price_engine.price_series(
-                        params, end_tick, query.ticks, extra
-                    )
-                ),
-            )
+            self._symbol_prices(params, end_tick, query.ticks, moment.game_quarter, extra)
             for params in SYMBOLS
         )
         candles, symbol_info = self._candles_for(query, end_tick, extra)
@@ -138,6 +122,55 @@ class MarketPriceInteractor(MarketPriceUseCase):
             rsi=rsi,
             analysis=analysis,
             order_book=order_book,
+        )
+
+    @staticmethod
+    def _symbol_prices(
+        params,
+        end_tick: int,
+        ticks: int,
+        game_quarter: int,
+        extra: tuple[market_events.MarketEvent, ...],
+    ) -> SymbolPrices:
+        """한 종목의 현재가·곡선 + 오늘 거래량·시총.
+
+        거래량은 **`daily_candles`의 계산 경로를 그대로 재현한다** — 같은 날 같은 종목이면
+        표의 거래량과 차트 마지막 봉의 거래량이 반드시 같은 값이어야 한다. 갈라지면
+        "표에서 본 수치와 차트가 다르다"가 되고, 그건 호가창을 매매 경로와 같은 함수로
+        만든 이유(§`_order_book_for`)와 같은 종류의 요구다.
+
+        비용은 종목당 가격 평가 **1회**(당일 시가)다 — 봉을 만들면 하루당 60회라 전 종목에
+        못 돌리지만, `daily_volume`이 필요로 하는 것은 그날의 시가 대비 종가 수익률 하나뿐이라
+        시가만 있으면 된다. 종가는 아래 `price`가 이미 그 값이다.
+        """
+        price = price_engine.price_at(params, end_tick, None, extra)
+
+        # 봉과 같은 날 경계·같은 함수를 쓴다(`daily_candles`의 last_day·prices[0]).
+        # moment.game_day를 쓰지 않는 이유: describe()는 시즌 마지막 틱을 SEASON_TICKS-1로
+        # 잘라 정확히 시즌 끝에서 하루가 어긋난다.
+        game_day = end_tick // TICKS_PER_GAME_DAY
+        day_open = price_engine.price_at(params, game_day * TICKS_PER_GAME_DAY, None, extra)
+        day_return = (price - day_open) / day_open if day_open else 0.0
+
+        # 시총은 상세 카드(symbol_info)와 같은 도메인 함수로 낸다 — 표와 카드가 갈라지지 않게
+        financials = fundamentals.at_quarter(params, game_quarter)
+
+        return SymbolPrices(
+            symbol=params.symbol,
+            name=params.name,
+            sector=params.sector,
+            sector_group=params.sector_group,
+            meme=params.meme,
+            price_krw=price,
+            change_pct=round(
+                price_engine.change_pct(params, end_tick, TICKS_PER_GAME_DAY, extra), 2
+            ),
+            series=tuple(
+                PricePoint(tick=t, price_krw=p)
+                for t, p in price_engine.price_series(params, end_tick, ticks, extra)
+            ),
+            simulated_volume=price_engine.daily_volume(params, game_day, day_return),
+            assumed_market_cap_krw=fundamentals.value_at(params, price, financials).market_cap_krw,
         )
 
     def _indicators_for(

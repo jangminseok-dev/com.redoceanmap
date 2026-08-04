@@ -27,6 +27,10 @@ class SymbolPrices:
     price_krw: int
     change_pct: float       # 게임 1일 전 대비
     series: tuple[PricePoint, ...]
+    # 오늘 봉의 거래량·시총. 표가 36종목을 한 번에 줄 세우려면 종목마다 있어야 한다
+    # (지금까지는 선택 종목의 봉·symbol_info에만 있었다).
+    simulated_volume: int       # 게임 규칙 산출값 — 실제 체결이 아니다
+    assumed_market_cap_krw: int  # 현재가 × 발행주식 — 게임 규칙 산출 재무다
 
 
 @dataclass(frozen=True)
