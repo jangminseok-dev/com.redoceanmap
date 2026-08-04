@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -71,3 +73,31 @@ class IntervenePriceRequestSchema(BaseModel):
     target_price_krw: int | None = Field(
         default=None, description="주면 shock_pct를 현재가 대비로 역산한다(종목 개입 전용)"
     )
+
+
+class ReportedContentSchema(BaseModel):
+    """신고 대기줄 한 줄."""
+
+    target_type: str = Field(description="post | comment")
+    target_id: int
+    symbol: str
+    author: str = Field(description="게임이 만든 고정 가명 — 회원 실명·이메일이 아니다")
+    body: str
+    report_count: int = Field(description="서로 다른 신고자 수 — 같은 사람의 반복은 1건이다")
+    reasons: list[str] = Field(description="신고 사유들. 중복을 지우지 않는다(빈도가 곧 신호)")
+    reported_at: datetime = Field(description="가장 최근 신고 시각")
+    hidden: bool = Field(description="이미 내려간 글 — 되돌릴 수 있게 목록에 남는다")
+
+
+class HideContentRequestSchema(BaseModel):
+    """신고된 글·댓글 내리기. 작성자 본인 삭제와 다른 자리에 기록된다."""
+
+    target_type: str = Field(description="post | comment")
+    target_id: int
+    reason: str = Field(min_length=1, max_length=200, description="내린 이유(운영 이력에 남는다)")
+
+
+class UnhideContentRequestSchema(BaseModel):
+
+    target_type: str = Field(description="post | comment")
+    target_id: int

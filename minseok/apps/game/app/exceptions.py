@@ -40,3 +40,15 @@ class AreaProfileUnavailable(GameError):
 
 class StoreNotFound(GameError):
     """가게가 없거나 남의 것이다."""
+
+
+class InvalidPost(GameError):
+    """토론방 글·댓글 본문이 비었거나 길이 상한을 넘었다."""
+
+
+class PostNotFound(GameError):
+    """글·댓글이 없거나 남의 것이거나 이미 내려갔다.
+
+    셋을 구분하지 않는 이유: 남의 글을 지우려 했을 때 "권한 없음"과 "없음"을 나눠 답하면
+    글 존재 여부가 새어 나간다.
+    """

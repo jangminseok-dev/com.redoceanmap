@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from game.app.ports.output.game_account_repository import GameAccountRepository
 from game.app.ports.output.game_clock_port import GameClockPort
+from game.app.ports.output.community_moderation_repository import (
+    CommunityModerationRepositoryPort,
+)
 from game.app.ports.output.game_intervention_repository import GameInterventionRepository
 from game.domain.clock.game_epoch import GAME_EPOCH_ID, RULES_VERSION, describe
 from game.domain.market import market_events, price_engine
 from game.domain.market import price_intervention as intervention_rules
+from game.domain.community.nickname import display_name
 from game.domain.market.symbol_params import SYMBOLS, find
 from game.domain.trading.trading_rules import INITIAL_CASH_KRW
 from hub.app.dtos.game_ops_dto import (
@@ -13,8 +17,10 @@ from hub.app.dtos.game_ops_dto import (
     CapitalGrantReceipt,
     GameSymbolBrief,
     GameWalletSummary,
+    HideContentCommand,
     PriceInterventionCommand,
     PriceInterventionRecord,
+    ReportedContent,
 )
 from hub.app.ports.output.game_ops_port import GameOpsPort
 
@@ -34,10 +40,12 @@ class GameOpsGateway(GameOpsPort):
         accounts: GameAccountRepository,
         interventions: GameInterventionRepository,
         clock: GameClockPort,
+        moderation: CommunityModerationRepositoryPort,
     ) -> None:
         self._accounts = accounts
         self._interventions = interventions
         self._clock = clock
+        self._moderation = moderation
 
     # --- 지갑 -------------------------------------------------------------
 
@@ -158,6 +166,37 @@ class GameOpsGateway(GameOpsPort):
         tick = self._clock.now_tick()
         rows = await self._interventions.list_recent(GAME_EPOCH_ID, limit)
         return tuple(self._to_record(r, tick) for r in rows)
+
+    # --- 토론방 운영 -------------------------------------------------------
+
+    async def list_reported_content(self, limit: int = 50) -> tuple[ReportedContent, ...]:
+        rows = await self._moderation.list_reported(limit)
+        return tuple(
+            ReportedContent(
+                target_type=r.target_type,
+                target_id=r.target_id,
+                symbol=r.symbol,
+                # 실명이 아니라 가명을 싣는다 — 운영 화면이 필요로 하는 것은 신원이 아니라
+                # "같은 사람이 반복하는가"다. 허브 계약에 개인정보를 넣지 않는다.
+                author=display_name(r.author_user_id),
+                body=r.body,
+                report_count=r.report_count,
+                reasons=r.reasons,
+                reported_at=r.reported_at,
+                hidden=r.hidden,
+            )
+            for r in rows
+        )
+
+    async def hide_content(self, command: HideContentCommand) -> None:
+        if not await self._moderation.hide(
+            command.target_type, command.target_id, command.reason
+        ):
+            raise ValueError("대상이 없거나 이미 내려간 글입니다")
+
+    async def unhide_content(self, target_type: str, target_id: int) -> None:
+        if not await self._moderation.unhide(target_type, target_id):
+            raise ValueError("대상이 없거나 숨겨져 있지 않습니다")
 
     # --- 내부 -------------------------------------------------------------
 

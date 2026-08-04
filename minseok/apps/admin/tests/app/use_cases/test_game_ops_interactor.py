@@ -1,9 +1,12 @@
 """게임 운영 대장 검증 — 스텁 포트로만 돈다(mock 프레임워크 대신 스텁, 백엔드 컨벤션)."""
+from datetime import datetime, timezone
+
 import pytest
 
 from admin.app.dtos.game_ops_dto import (
     GameWalletQuery,
     GrantCapitalCommand,
+    HideContentCommand,
     InterveneCommand,
 )
 from admin.app.use_cases.game_ops_interactor import GameOpsInteractor
@@ -12,6 +15,7 @@ from hub.app.dtos.game_ops_dto import (
     GameSymbolBrief,
     GameWalletSummary,
     PriceInterventionRecord,
+    ReportedContent,
 )
 
 USER = 7
@@ -33,6 +37,8 @@ class _StubGame:
         )
         self.grants: list = []
         self.interventions: list = []
+        self.reported: tuple = ()
+        self.hidden: dict[int, str] = {}
 
     async def get_wallet(self, user_id):
         return self.summary
@@ -77,6 +83,21 @@ class _StubGame:
 
     async def list_interventions(self, limit=50):
         return ()
+
+    # --- 토론방 신고 처리 ---
+
+    async def list_reported_content(self, limit=50):
+        return self.reported
+
+    async def hide_content(self, command):
+        if command.target_id in self.hidden:
+            raise ValueError("이미 내려간 글입니다")
+        self.hidden[command.target_id] = command.reason
+
+    async def unhide_content(self, target_type, target_id):
+        if target_id not in self.hidden:
+            raise ValueError("숨겨져 있지 않습니다")
+        del self.hidden[target_id]
 
 
 class _StubMembers:
@@ -174,3 +195,73 @@ async def test_개입_지시가_그대로_game에_전달된다():
     assert sent.created_by == ADMIN
     assert view.headline == "세빛반도체 신규 대형 수주 공시"
     assert view.in_effect is True
+
+
+# --- 토론방 신고 처리 -------------------------------------------------------
+
+
+async def test_신고_대기줄이_화면_DTO로_옮겨진다():
+    interactor, game = _build()
+    game.reported = (
+        ReportedContent(
+            target_type="post",
+            target_id=11,
+            symbol="GX01",
+            author="느긋한 수달312",
+            body="문제 글",
+            report_count=3,
+            reasons=("욕설", "욕설", "광고"),
+            reported_at=datetime(2026, 8, 4, tzinfo=timezone.utc),
+            hidden=False,
+        ),
+    )
+
+    rows = await interactor.list_reported(50)
+
+    assert len(rows) == 1
+    assert rows[0].target_id == 11
+    assert rows[0].report_count == 3
+    # 사유 중복을 지우지 않는다 — 빈도가 곧 신호다
+    assert rows[0].reasons == ("욕설", "욕설", "광고")
+    # 실명이 아니라 게임이 만든 가명이 그대로 옮겨진다
+    assert rows[0].author == "느긋한 수달312"
+
+
+async def test_숨김_지시가_사유와_함께_game에_전달된다():
+    interactor, game = _build()
+
+    await interactor.hide_content(
+        HideContentCommand(target_type="post", target_id=11, reason="욕설")
+    )
+
+    assert game.hidden[11] == "욕설"
+
+
+@pytest.mark.parametrize("reason", ["", "   ", "\n"])
+async def test_사유_없는_숨김은_거부한다(reason):
+    """나중에 '왜 내렸나'를 답할 수 없게 된다."""
+    interactor, game = _build()
+
+    with pytest.raises(ValueError):
+        await interactor.hide_content(
+            HideContentCommand(target_type="post", target_id=11, reason=reason)
+        )
+
+    assert game.hidden == {}
+
+
+async def test_숨김을_되돌릴_수_있다():
+    interactor, game = _build()
+    await interactor.hide_content(
+        HideContentCommand(target_type="post", target_id=11, reason="욕설")
+    )
+
+    await interactor.unhide_content("post", 11)
+
+    assert game.hidden == {}
+
+
+async def test_숨겨지지_않은_글의_해제는_거부된다():
+    interactor, _ = _build()
+    with pytest.raises(ValueError):
+        await interactor.unhide_content("post", 999)

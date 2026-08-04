@@ -6,13 +6,16 @@ from admin.app.dtos.game_ops_dto import (
     GameWalletView,
     GrantCapitalCommand,
     GrantCapitalResult,
+    HideContentCommand,
     InterveneCommand,
     InterventionView,
+    ReportedContentView,
     SymbolOption,
 )
 from admin.app.ports.input.game_ops_use_case import GameOpsUseCase
 from hub.app.dtos.game_ops_dto import (
     CapitalGrantCommand,
+    HideContentCommand as HubHideContentCommand,
     PriceInterventionCommand,
     PriceInterventionRecord,
 )
@@ -28,7 +31,7 @@ MAX_DURATION_DAYS = 5
 
 
 class GameOpsInteractor(GameOpsUseCase):
-    """게임 운영 대장 — 지갑 지급과 주가 개입.
+    """게임 운영 대장 — 지갑 지급·주가 개입·토론방 신고 처리.
 
     게임 규칙은 하나도 모른다. 에포크·틱·이벤트 모델은 전부 game 쪽 게이트웨이가 갖고,
     여기서는 **누구에게 얼마** · **무엇을 몇 %** 를 옮기고 회원 정보를 붙일 뿐이다.
@@ -109,6 +112,43 @@ class GameOpsInteractor(GameOpsUseCase):
             )
         )
         return _to_view(record)
+
+
+    # --- 토론방 신고 처리 -------------------------------------------------
+
+    async def list_reported(self, limit: int = 50) -> tuple[ReportedContentView, ...]:
+        rows = await self._game.list_reported_content(limit)
+        return tuple(
+            ReportedContentView(
+                target_type=r.target_type,
+                target_id=r.target_id,
+                symbol=r.symbol,
+                author=r.author,
+                body=r.body,
+                report_count=r.report_count,
+                reasons=r.reasons,
+                reported_at=r.reported_at,
+                hidden=r.hidden,
+            )
+            for r in rows
+        )
+
+    async def hide_content(self, command: HideContentCommand) -> None:
+        # 내리는 이유를 비워둘 수 없다 — 나중에 "왜 내렸나"를 답할 수 없게 된다
+        reason = command.reason.strip()
+        if not reason:
+            raise ValueError("숨김 사유를 입력해주세요")
+        await self._game.hide_content(
+            HubHideContentCommand(
+                target_type=command.target_type,
+                target_id=command.target_id,
+                reason=reason,
+            )
+        )
+
+    async def unhide_content(self, target_type: str, target_id: int) -> None:
+        await self._game.unhide_content(target_type, target_id)
+
 
 
 def _to_view(record: PriceInterventionRecord) -> InterventionView:

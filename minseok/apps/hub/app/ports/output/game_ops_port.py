@@ -7,8 +7,10 @@ from hub.app.dtos.game_ops_dto import (
     CapitalGrantReceipt,
     GameSymbolBrief,
     GameWalletSummary,
+    HideContentCommand,
     PriceInterventionCommand,
     PriceInterventionRecord,
+    ReportedContent,
 )
 
 
@@ -52,4 +54,25 @@ class GameOpsPort(ABC):
     @abstractmethod
     async def list_interventions(self, limit: int = 50) -> tuple[PriceInterventionRecord, ...]:
         """현재 에포크의 개입 이력(최신순)."""
+        ...
+
+    @abstractmethod
+    async def list_reported_content(self, limit: int = 50) -> tuple[ReportedContent, ...]:
+        """토론방 신고 대기줄(최근 신고순). 이미 내려간 것도 포함한다 — 되돌리려면 보여야 한다."""
+        ...
+
+    @abstractmethod
+    async def hide_content(self, command: HideContentCommand) -> None:
+        """신고된 글·댓글을 내린다. 대상이 없거나 이미 내려갔으면 `ValueError`.
+
+        **작성자 본인 삭제와 다른 자리에 기록된다** — 누가 왜 내렸는지가 남아야 한다.
+        """
+        ...
+
+    @abstractmethod
+    async def unhide_content(self, target_type: str, target_id: int) -> None:
+        """숨김 해제. 대상이 없거나 숨겨져 있지 않으면 `ValueError`.
+
+        작성자가 스스로 지운 글은 되살리지 않는다 — 작성자 의사가 운영 판단보다 앞선다.
+        """
         ...

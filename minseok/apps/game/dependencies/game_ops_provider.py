@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from game.adapter.outbound.gateways.game_ops_gateway import GameOpsGateway
 from game.adapter.outbound.pg.game_account_pg_repository import GameAccountPgRepository
+from game.adapter.outbound.pg.community_pg_repository import CommunityPgRepository
 from game.adapter.outbound.pg.game_intervention_pg_repository import (
     GameInterventionPgRepository,
 )
@@ -18,4 +19,5 @@ def get_game_ops_gateway(db: AsyncSession = Depends(get_db)) -> GameOpsPort:
         accounts=GameAccountPgRepository(session=db),
         interventions=GameInterventionPgRepository(session=db),
         clock=SystemGameClockAdapter(),
+        moderation=CommunityPgRepository(session=db),
     )

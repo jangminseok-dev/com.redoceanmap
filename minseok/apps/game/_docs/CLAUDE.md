@@ -34,7 +34,8 @@
 | area_fitness | `GET /game/areas/{trdar_code}/fitness?service_code=` | 창업 전 입지 미리보기 — 적합도 4축(수요·시간대·경쟁·생존) + 실데이터 근거 진단 문장 + **창업 가능 여부(`openable`)와 최소 자본**(store_open의 거절 조건을 미리 답한다). 허브 `AreaDemandProfilePort` 소비 |
 | store_open | `POST /game/stores` | 창업 — 투입 자본이 가게 규모를 정한다. 보증금(회수 가능)·인테리어(회수 불가) 지불 |
 | store_daily | `GET /game/stores` · `GET /game/stores/{id}?days=` | 가게 목록·현황. 일별 매출·비용·반려율과 오늘 온 손님 구성. **일별 매출은 저장하지 않고 재계산한다** |
-| (운영) | `GET·POST /admin/game/*` | 어드민 전용 — 자본 지급·주가 개입. admin은 스포크라 직접 못 부르고 허브 `GameOpsPort`를 `adapter/outbound/gateways/game_ops_gateway.py`가 구현한다 |
+| community | `GET·POST /game/community/posts` · `POST /game/community/posts/{id}/comments` · `DELETE .../posts\|comments/{id}` · `POST /game/community/reports` | 종목별 토론방 — 글·댓글(대댓글·공감 없음). **저장하는 슬라이스**(사람이 쓴 문장은 시각의 함수로 유도할 수 없다). 작성자는 `users.name`이 아니라 user_id에서 유도한 **결정론 가명**(`domain/community/nickname.py`) — 실명 노출도, 신규 허브 포트도 없다. '보유 중' 배지는 **조회 시점**의 열린 포지션 기준. 내리는 경로 둘을 컬럼으로 분리한다(본인 `deleted_at` · 어드민 `hidden_at`+사유) |
+| (운영) | `GET·POST /admin/game/*` | 어드민 전용 — 자본 지급·주가 개입 + **토론방 신고 처리**(대기줄·숨김·해제). admin은 스포크라 직접 못 부르고 허브 `GameOpsPort`를 `adapter/outbound/gateways/game_ops_gateway.py`가 구현한다. **신고는 접수만 하고 글을 내리지 않는다** — 자동 숨김을 두면 몰려서 신고하는 것만으로 남의 글을 내릴 수 있다 |
 | settlement | `GET /game/settlements` | 분기 결산 — **조회가 곧 정산 시점**(지연 실행, cron 0개). 밀린 분기를 확정하고 손익을 지갑에 반영한다. 멱등 |
 | limit_order | `GET·POST /game/orders` · `POST /game/orders/exits` · `POST /game/orders/{id}/{cancel,extend}` | 지정가 — 진입 예약 + 청산 예약(익절·손절, 같은 포지션이면 OCO). **조회가 곧 체결 시점**(결산과 같은 지연 실행). 체결가는 지정가 고정·부분체결 없음(잔량 초과는 접수 거부), 진입 예약은 현금을 묶는다. **강제청산이 예약보다 우선**한다. 만료 180틱은 스캔 범위를 묶는 성능 장치라 없애지 않고 연장만 한다 |
 

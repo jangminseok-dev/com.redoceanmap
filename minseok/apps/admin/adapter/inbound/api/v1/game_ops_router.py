@@ -1,6 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from admin.adapter.inbound.api.schemas.game_ops_schema import (
+    HideContentRequestSchema,
+    ReportedContentSchema,
+    UnhideContentRequestSchema,
     GameOpsBoardSchema,
     GameWalletResponseSchema,
     GrantCapitalRequestSchema,
@@ -10,6 +13,7 @@ from admin.adapter.inbound.api.schemas.game_ops_schema import (
     SymbolOptionSchema,
 )
 from admin.app.dtos.game_ops_dto import (
+    HideContentCommand,
     GameWalletQuery,
     GrantCapitalCommand,
     InterveneCommand,
@@ -154,3 +158,71 @@ async def intervene_price(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return _to_schema(result)
+
+
+@game_ops_router.get(
+    "/community/reports",
+    response_model=list[ReportedContentSchema],
+    dependencies=[Depends(require_permission("game:read"))],
+)
+async def list_reported_content(
+    limit: int = Query(50, ge=1, le=200),
+    use_case: GameOpsUseCase = Depends(get_game_ops_use_case),
+) -> list[ReportedContentSchema]:
+    """토론방 신고 대기줄 — 최근 신고순. 이미 내려간 글도 포함한다(되돌리려면 보여야 한다)."""
+    rows = await use_case.list_reported(limit)
+    return [
+        ReportedContentSchema(
+            target_type=r.target_type,
+            target_id=r.target_id,
+            symbol=r.symbol,
+            author=r.author,
+            body=r.body,
+            report_count=r.report_count,
+            reasons=list(r.reasons),
+            reported_at=r.reported_at,
+            hidden=r.hidden,
+        )
+        for r in rows
+    ]
+
+
+@game_ops_router.post(
+    "/community/hide",
+    status_code=204,
+    dependencies=[Depends(require_permission("game:write"))],
+)
+async def hide_content(
+    body: HideContentRequestSchema,
+    use_case: GameOpsUseCase = Depends(get_game_ops_use_case),
+) -> None:
+    """신고된 글·댓글을 내린다.
+
+    작성자 본인 삭제와 **다른 컬럼**에 기록되므로 "누가 왜 내렸나"가 남는다.
+    """
+    try:
+        await use_case.hide_content(
+            HideContentCommand(
+                target_type=body.target_type,
+                target_id=body.target_id,
+                reason=body.reason,
+            )
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@game_ops_router.post(
+    "/community/unhide",
+    status_code=204,
+    dependencies=[Depends(require_permission("game:write"))],
+)
+async def unhide_content(
+    body: UnhideContentRequestSchema,
+    use_case: GameOpsUseCase = Depends(get_game_ops_use_case),
+) -> None:
+    """숨김 해제. 작성자가 스스로 지운 글은 되살아나지 않는다."""
+    try:
+        await use_case.unhide_content(body.target_type, body.target_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e

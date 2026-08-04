@@ -5,6 +5,7 @@
 들어오고, 반대로 game 내부 값(epoch·tick)은 화면이 그대로 보여줄 필요가 없다.
 """
 from dataclasses import dataclass
+from datetime import datetime
 
 
 @dataclass(frozen=True)
@@ -88,3 +89,25 @@ class GameOpsBoard:
     max_shock_pct: float
     max_drift_pct_per_day: float
     max_duration_days: int
+
+
+@dataclass(frozen=True)
+class ReportedContentView:
+    """신고 대기줄 한 줄. 작성자는 게임이 만든 가명이며 실명이 아니다."""
+
+    target_type: str
+    target_id: int
+    symbol: str
+    author: str
+    body: str
+    report_count: int
+    reasons: tuple[str, ...]
+    reported_at: datetime
+    hidden: bool
+
+
+@dataclass(frozen=True)
+class HideContentCommand:
+    target_type: str
+    target_id: int
+    reason: str

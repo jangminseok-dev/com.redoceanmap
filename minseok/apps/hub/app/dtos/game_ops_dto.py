@@ -6,6 +6,7 @@ admin은 "누구에게 얼마" · "무엇을 몇 % 밀지"만 말하고, 그것�
 들어가는지는 game이 정한다.
 """
 from dataclasses import dataclass
+from datetime import datetime
 
 
 @dataclass(frozen=True)
@@ -84,3 +85,29 @@ class GameSymbolBrief:
     sector_group: str
     price_krw: int
     meme: bool
+
+
+@dataclass(frozen=True)
+class ReportedContent:
+    """신고가 쌓인 토론방 글·댓글 1건 — 어드민 검토 대기줄의 한 줄.
+
+    `author`는 게임이 user_id에서 만든 **가명**이다. 실명·이메일을 허브 계약에 싣지 않는다 —
+    운영 화면이 필요로 하는 것은 "같은 사람이 반복하는가"이지 신원이 아니다.
+    """
+
+    target_type: str            # post | comment
+    target_id: int
+    symbol: str
+    author: str
+    body: str
+    report_count: int
+    reasons: tuple[str, ...]
+    reported_at: datetime
+    hidden: bool                # 이미 내려간 것 — 되돌리려면 목록에 보여야 한다
+
+
+@dataclass(frozen=True)
+class HideContentCommand:
+    target_type: str
+    target_id: int
+    reason: str
