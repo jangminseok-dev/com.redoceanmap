@@ -2,15 +2,15 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CandlestickChart, Gamepad2, Store, TrendingUpDown } from "lucide-react";
-import FuturesPanel from "@/components/game/FuturesPanel";
+import { CandlestickChart, Gamepad2, Store } from "lucide-react";
 import InvestPanel from "@/components/game/InvestPanel";
 import StorePanel from "@/components/game/StorePanel";
 import { fetchGameRulebook } from "@/lib/api";
 
+// 모의 투자와 지수 선물을 하나로 합쳤다 — 지갑이 하나이고 지수가 그 종목들로 만들어지므로,
+// 페이지를 가르는 대신 투자 탭 안에서 [주식 | 지수 선물] 세그먼트로 오간다.
 const TABS = [
-  { key: "invest", label: "모의 투자", icon: CandlestickChart },
-  { key: "futures", label: "지수 선물", icon: TrendingUpDown },
+  { key: "invest", label: "투자", icon: CandlestickChart },
   { key: "store", label: "상권 창업", icon: Store },
 ] as const;
 
@@ -83,10 +83,8 @@ export default function GamePage() {
           (WorkspaceShell과 같은 이유) */}
       <div className="mt-5">
         <div className={tab === "invest" ? "" : "hidden"}>
+          {/* 선물은 InvestPanel 안의 세그먼트로 들어갔다 — 여기서 따로 마운트하지 않는다 */}
           <InvestPanel />
-        </div>
-        <div className={tab === "futures" ? "" : "hidden"}>
-          <FuturesPanel />
         </div>
         <div className={tab === "store" ? "" : "hidden"}>
           <StorePanel />

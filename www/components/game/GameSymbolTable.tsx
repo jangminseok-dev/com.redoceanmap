@@ -4,9 +4,12 @@ import { useMemo, useState } from "react";
 import { Star } from "lucide-react";
 import type { GameSymbolPrices } from "@/lib/types";
 import SymbolMark from "@/components/common/SymbolMark";
-import GamePriceLine from "./GamePriceLine";
 
 const ALL = "전체";
+
+// 칩 한 줄 — 넘치면 가로로 밀린다. 스크롤바는 숨긴다(칩이 잘려 보이는 것이 스크롤 힌트다)
+const CHIP_ROW =
+  "flex items-center gap-1.5 px-3 pt-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
 
 // 정렬 축 — 레퍼런스(토스증권 실시간 차트)의 칩과 같은 역할이다.
 // **거래대금·거래량 축은 없다**: 게임 응답의 symbols에 종목별 거래량이 없어(선택 종목의 봉에만 있다)
@@ -66,12 +69,17 @@ export default function GameSymbolTable({
 
   return (
     <section className="rounded-2xl border border-border bg-surface overflow-hidden">
-      <div className="flex flex-wrap items-center gap-1.5 px-3 pt-3 pb-2">
-        <Chip active={view.onlyFavorites} onClick={() => setView((p) => ({ ...p, onlyFavorites: !p.onlyFavorites }))}>
+      {/* 칩은 각각 **한 줄**로 두고 넘치면 옆으로 민다. wrap으로 두면 섹터 9개가 세 줄이 되어
+          목록 높이의 4분의 1을 필터가 먹었다(레퍼런스 토스증권도 한 줄이다). */}
+      <div className={CHIP_ROW}>
+        <Chip
+          active={view.onlyFavorites}
+          onClick={() => setView((p) => ({ ...p, onlyFavorites: !p.onlyFavorites }))}
+        >
           <Star size={11} strokeWidth={2.4} className={view.onlyFavorites ? "fill-current" : ""} />
           관심
         </Chip>
-        <span className="mx-0.5 h-4 w-px bg-border" aria-hidden />
+        <span className="mx-0.5 h-4 w-px bg-border shrink-0" aria-hidden />
         {SORTS.map((s) => (
           <Chip key={s.key} active={view.sort === s.key} onClick={() => setView((p) => ({ ...p, sort: s.key }))}>
             {s.label}
@@ -79,7 +87,7 @@ export default function GameSymbolTable({
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5 px-3 pb-2.5">
+      <div className={`${CHIP_ROW} pb-2.5`}>
         {groups.map((g) => (
           <Chip key={g} active={view.group === g} onClick={() => setView((p) => ({ ...p, group: g }))}>
             {g}
@@ -87,14 +95,12 @@ export default function GameSymbolTable({
         ))}
       </div>
 
-      {/* 컬럼 라벨 — 좁은 폭에서는 열이 접혀 라벨이 값과 어긋나므로 감춘다 */}
-      <div className="hidden sm:flex items-center gap-2.5 px-3 pb-1.5 text-xs text-foreground-muted border-b border-border">
+      <div className="flex items-center gap-2.5 px-3 pb-1.5 text-xs text-foreground-muted border-b border-border">
         <span className="w-5 shrink-0">#</span>
         <span className="w-6 shrink-0" />
         <span className="flex-1">종목</span>
-        <span className="w-12 shrink-0" />
-        <span className="w-20 shrink-0 text-right">현재가</span>
-        <span className="w-[68px] shrink-0 text-right">등락률</span>
+        <span className="w-[72px] shrink-0 text-right">현재가</span>
+        <span className="w-[62px] shrink-0 text-right">등락률</span>
       </div>
 
       <ul className="max-h-[520px] overflow-y-auto">
@@ -130,12 +136,15 @@ export default function GameSymbolTable({
                   className="flex-1 min-w-0 flex items-center gap-2.5 text-left"
                 >
                   <SymbolMark name={s.name} />
+                  {/* 이름은 줄이지 않는다 — 340px 컬럼에서 스파크라인까지 넣었더니 "게…"만 남아
+                      어느 종목인지 알 수 없었다. 스파크라인을 뺐고(레퍼런스 테이블에도 없다),
+                      긴 이름은 두 줄로 접는다. */}
                   <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-1.5">
-                      <span className="text-sm font-medium truncate">{s.name}</span>
+                    <span className="flex items-start gap-1.5">
+                      <span className="text-sm font-medium leading-tight line-clamp-2">{s.name}</span>
                       {/* 밈 종목은 변동성이 다른 종목의 2배 이상이다 — 목록에서 바로 보이게 */}
                       {s.meme && (
-                        <span className="shrink-0 rounded-md px-1 py-px text-xs font-bold bg-up/10 text-up">
+                        <span className="shrink-0 mt-px rounded-md px-1 py-px text-xs font-bold bg-up/10 text-up">
                           밈
                         </span>
                       )}
@@ -143,13 +152,11 @@ export default function GameSymbolTable({
                     <span className="block text-xs text-foreground-muted truncate">{s.sector}</span>
                   </span>
 
-                  <GamePriceLine points={s.series} compact className="hidden sm:block w-12 h-6 shrink-0" />
-
-                  <span className="w-20 shrink-0 text-right text-sm font-medium tabular-nums">
+                  <span className="w-[72px] shrink-0 text-right text-sm font-medium tabular-nums">
                     {s.priceKrw.toLocaleString()}
                   </span>
                   <span
-                    className={`w-[68px] shrink-0 text-right text-sm font-medium tabular-nums px-1.5 py-0.5 rounded-md ${toneBox(s.changePct)}`}
+                    className={`w-[62px] shrink-0 text-right text-sm font-medium tabular-nums px-1.5 py-0.5 rounded-md ${toneBox(s.changePct)}`}
                   >
                     {signed(s.changePct)}
                   </span>
@@ -184,7 +191,7 @@ function Chip({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-xs font-medium transition-colors duration-150 ${
+      className={`shrink-0 inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-xs font-medium transition-colors duration-150 ${
         active
           ? "bg-brand text-white"
           : "border border-border text-foreground-muted hover:bg-accent hover:text-foreground"
