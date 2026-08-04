@@ -950,4 +950,4 @@ export type GameSymbolInfo = {
 };
 
 // 지수 선물 게임은 2026-08-04 폐지 — GameFutures* 타입과 /game/futures 호출을 제거했다.
-// 백엔드 futures 슬라이스 제거는 백엔드 PC 몫이다(프론트는 더 이상 호출하지 않는다).
+// 백엔드 futures 슬라이스와 game_positions.instrument 컬럼도 같은 날 제거됐다(양쪽 완료).

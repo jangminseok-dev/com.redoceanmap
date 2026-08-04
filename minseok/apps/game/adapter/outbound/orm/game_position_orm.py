@@ -24,12 +24,10 @@ class GamePositionOrm(Base):
     side: Mapped[str] = mapped_column(String(8))  # LONG | SHORT
     quantity: Mapped[int] = mapped_column(Integer)
 
-    # STOCK | FUTURES — 선물도 만기와 증거금을 가진 포지션이라 같은 테이블을 쓴다
-    instrument: Mapped[str] = mapped_column(String(8), server_default="STOCK")
     leverage: Mapped[int] = mapped_column(Integer, server_default="1")
-    # 만료는 레버리지·선물에만 있다. 1배 주식은 NULL이며 마감 판정 대상이 아니다.
+    # 만료는 레버리지에만 있다. 1배는 NULL이며 마감 판정 대상이 아니다.
     expires_tick: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # user | liquidated | expired | settled
+    # user | liquidated | expired
     close_reason: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
     entry_tick: Mapped[int] = mapped_column(Integer)

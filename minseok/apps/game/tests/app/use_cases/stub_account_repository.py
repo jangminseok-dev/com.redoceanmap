@@ -36,7 +36,6 @@ class StubAccountRepository:
                     entry_tick=p["entry_tick"],
                     entry_price_krw=p["entry_price_krw"],
                     entry_fee_krw=p["entry_fee_krw"],
-                    instrument=p.get("instrument", "STOCK"),
                     leverage=p.get("leverage", 1),
                     expires_tick=p.get("expires_tick"),
                 )
@@ -76,7 +75,6 @@ class StubAccountRepository:
         entry_fee_krw: int,
         cash_delta_krw: int,
         game_day: int,
-        instrument: str = "STOCK",
         leverage: int = 1,
         expires_tick: int | None = None,
     ) -> OpenPosition:
@@ -92,7 +90,6 @@ class StubAccountRepository:
             "entry_price_krw": entry_price_krw,
             "entry_fee_krw": entry_fee_krw,
             "closed_tick": None,
-            "instrument": instrument,
             "leverage": leverage,
             "expires_tick": expires_tick,
             "close_reason": None,
@@ -111,7 +108,6 @@ class StubAccountRepository:
             entry_tick=entry_tick,
             entry_price_krw=entry_price_krw,
             entry_fee_krw=entry_fee_krw,
-            instrument=instrument,
             leverage=leverage,
             expires_tick=expires_tick,
         )

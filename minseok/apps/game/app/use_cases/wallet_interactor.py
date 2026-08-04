@@ -14,9 +14,9 @@ from game.domain.clock.game_epoch import (
     TICKS_PER_GAME_DAY,
     describe,
 )
-from game.domain.market import futures_contract, market_events, price_engine
+from game.domain.market import market_events, price_engine
 from game.domain.market.symbol_params import find as find_symbol
-from game.domain.trading.liquidation import CloseHit, resolve_close
+from game.domain.trading.liquidation import resolve_close
 from game.domain.trading.trading_rules import (
     INITIAL_CASH_KRW,
     RESERVED_CASH_KRW,
@@ -127,32 +127,18 @@ class WalletInteractor(WalletUseCase):
             if position.leverage <= 1 or position.expires_tick is None:
                 continue  # 1배는 마감 판정 대상이 아니다
 
-            if position.instrument == "FUTURES":
-                # 선물은 **틱 스캔을 하지 않는다.** 지수 평가가 종목의 13배라 같은 스캔이
-                # 96ms가 되고, 만기 구간 변동(최대 7.99%)이 증거금 20%에 못 미쳐 중도
-                # 청산 경로가 사실상 없다. 만기 도달만 본다.
-                if price_tick < position.expires_tick:
-                    continue
-                hit = CloseHit(
-                    tick=position.expires_tick,
-                    price_krw=futures_contract.contract_value_krw(
-                        futures_contract.settlement_price(position.expires_tick, extra)
-                    ),
-                    reason="settled",
-                )
-            else:
-                params = find_symbol(position.symbol)
-                if params is None:
-                    continue
-                hit = resolve_close(
-                    lambda tick: price_engine.price_at(params, tick, None, extra),
-                    side=Side(position.side),
-                    entry_price_krw=position.entry_price_krw,
-                    leverage=position.leverage,
-                    entry_tick=position.entry_tick,
-                    now_tick=price_tick,
-                    expires_tick=position.expires_tick,
-                )
+            params = find_symbol(position.symbol)
+            if params is None:
+                continue
+            hit = resolve_close(
+                lambda tick: price_engine.price_at(params, tick, None, extra),
+                side=Side(position.side),
+                entry_price_krw=position.entry_price_krw,
+                leverage=position.leverage,
+                entry_tick=position.entry_tick,
+                now_tick=price_tick,
+                expires_tick=position.expires_tick,
+            )
             if hit is None:
                 continue
 
@@ -192,18 +178,11 @@ class WalletInteractor(WalletUseCase):
         extra: tuple[market_events.MarketEvent, ...] = (),
     ):
         for position in account.open_positions:
-            if position.instrument == "FUTURES":
-                name, sector = "지수 선물", futures_contract.INDEX_CODE
-                expiry = position.expires_tick or price_tick
-                current = futures_contract.contract_value_krw(
-                    futures_contract.futures_price(expiry, min(price_tick, expiry), extra)
-                )
-            else:
-                params = find_symbol(position.symbol)
-                if params is None:
-                    continue  # 시즌 교체로 종목이 사라진 경우 — 조용히 건너뛴다
-                name, sector = params.name, params.sector
-                current = price_engine.price_at(params, price_tick, None, extra)
+            params = find_symbol(position.symbol)
+            if params is None:
+                continue  # 시즌 교체로 종목이 사라진 경우 — 조용히 건너뛴다
+            name, sector = params.name, params.sector
+            current = price_engine.price_at(params, price_tick, None, extra)
             held_days = max(0.0, (price_tick - position.entry_tick) / TICKS_PER_GAME_DAY)
             result = close_result(
                 side=Side(position.side),

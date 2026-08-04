@@ -15,7 +15,6 @@ class OpenPosition:
     entry_tick: int
     entry_price_krw: int
     entry_fee_krw: int
-    instrument: str = "STOCK"       # STOCK | FUTURES
     leverage: int = 1               # 1이면 청산도 만료도 없다(도입 전과 같은 동작)
     expires_tick: int | None = None
 

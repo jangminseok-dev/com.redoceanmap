@@ -59,7 +59,6 @@ class GameAccountRepository(ABC):
         entry_fee_krw: int,
         cash_delta_krw: int,
         game_day: int,
-        instrument: str = "STOCK",
         leverage: int = 1,
         expires_tick: int | None = None,
     ) -> OpenPosition:

@@ -103,7 +103,6 @@ from market.adapter.inbound.api.v1.area_stats_router import area_stats_router
 from market.adapter.inbound.api.v1.cartographer_router import cartographer_router
 from game.adapter.inbound.api.v1.area_fitness_router import area_fitness_router
 from game.adapter.inbound.api.v1.community_router import community_router
-from game.adapter.inbound.api.v1.futures_router import futures_router
 from game.adapter.inbound.api.v1.market_price_router import market_price_router
 from game.adapter.inbound.api.v1.rulebook_router import rulebook_router
 from game.adapter.inbound.api.v1.settlement_router import settlement_router
@@ -211,7 +210,6 @@ app.include_router(wallet_router, dependencies=_authenticated)
 app.include_router(trade_router, dependencies=_authenticated)
 app.include_router(limit_order_router, dependencies=_authenticated)
 app.include_router(community_router, dependencies=_authenticated)
-app.include_router(futures_router, dependencies=_authenticated)
 app.include_router(area_fitness_router, dependencies=_authenticated)
 app.include_router(store_open_router, dependencies=_authenticated)
 app.include_router(store_daily_router, dependencies=_authenticated)

@@ -51,20 +51,34 @@ def _column_spec(call: ast.Call) -> tuple[str, tuple[str, bool]]:
 
 
 def _migration_columns() -> dict[str, dict[str, tuple[str, bool]]]:
-    """`op.create_table('game_…')`와 `op.add_column('game_…', …)`을 AST로 읽는다.
+    """`op.create_table` · `op.add_column` · `op.drop_column`을 AST로 읽는다.
 
     마이그레이션을 실행하지 않는다. **`add_column`도 읽어야 한다** — 컬럼을 나중에 덧댄
     테이블(레버리지 4개 등)이 create_table만 보면 ORM과 어긋난 것처럼 보인다.
+    **`drop_column`도 마찬가지다** — 지운 컬럼을 계속 세면 ORM에서 뺀 것이 "마이그레이션에만
+    있다"로 잡힌다(선물 폐지의 `instrument`가 첫 사례다).
     파일 이름순으로 훑으므로 리비전 순서대로 누적된다.
+
+    ⚠️ 파일 **이름순**이 곧 리비전 순서라는 가정 위에 서 있다. 지금까지의 이름 규칙
+    (리비전 ID 접두사)에서는 성립하지만, 같은 컬럼을 지웠다가 다시 넣는 마이그레이션 쌍이
+    생기면 순서가 어긋날 수 있다. 그때는 down_revision을 따라 위상 정렬해야 한다.
     """
     tables: dict[str, dict[str, tuple[str, bool]]] = {}
     for path in sorted(_VERSIONS.glob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
+        # **`upgrade()` 안만 읽는다.** 파일 전체를 훑으면 `downgrade()`의 되돌리기 연산까지
+        # 세어, 컬럼을 지우는 마이그레이션의 downgrade(add_column)가 그 컬럼을 되살린다.
+        upgrade = next(
+            (n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "upgrade"),
+            None,
+        )
+        if upgrade is None:
+            continue
+        for node in ast.walk(upgrade):
             if not isinstance(node, ast.Call):
                 continue
             op_name = getattr(node.func, "attr", "")
-            if op_name not in {"create_table", "add_column"}:
+            if op_name not in {"create_table", "add_column", "drop_column"}:
                 continue
             if not (node.args and isinstance(node.args[0], ast.Constant)):
                 continue
@@ -79,11 +93,15 @@ def _migration_columns() -> dict[str, dict[str, tuple[str, bool]]]:
                         name, spec = _column_spec(arg)
                         columns[name] = spec
                 tables[table_name] = columns
-            else:  # add_column — 이미 만들어진 테이블에 덧댄다
+            elif op_name == "add_column":  # 이미 만들어진 테이블에 덧댄다
                 target = node.args[1]
                 if isinstance(target, ast.Call) and getattr(target.func, "attr", "") == "Column":
                     name, spec = _column_spec(target)
                     tables.setdefault(table_name, {})[name] = spec
+            else:  # drop_column — downgrade의 add_column과 짝이라 upgrade 쪽만 세면 된다
+                target = node.args[1]
+                if isinstance(target, ast.Constant):
+                    tables.get(table_name, {}).pop(target.value, None)
     return tables
 
 

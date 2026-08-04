@@ -53,7 +53,6 @@ class GameAccountPgRepository(GameAccountRepository):
                     entry_tick=r.entry_tick,
                     entry_price_krw=r.entry_price_krw,
                     entry_fee_krw=r.entry_fee_krw,
-                    instrument=r.instrument,
                     leverage=r.leverage,
                     expires_tick=r.expires_tick,
                 )
@@ -139,7 +138,6 @@ class GameAccountPgRepository(GameAccountRepository):
         entry_fee_krw: int,
         cash_delta_krw: int,
         game_day: int,
-        instrument: str = "STOCK",
         leverage: int = 1,
         expires_tick: int | None = None,
     ) -> OpenPosition:
@@ -152,7 +150,6 @@ class GameAccountPgRepository(GameAccountRepository):
             entry_tick=entry_tick,
             entry_price_krw=entry_price_krw,
             entry_fee_krw=entry_fee_krw,
-            instrument=instrument,
             leverage=leverage,
             expires_tick=expires_tick,
             epoch_id=epoch_id,
@@ -181,7 +178,6 @@ class GameAccountPgRepository(GameAccountRepository):
             entry_tick=entry_tick,
             entry_price_krw=entry_price_krw,
             entry_fee_krw=entry_fee_krw,
-            instrument=instrument,
             leverage=leverage,
             expires_tick=expires_tick,
         )
