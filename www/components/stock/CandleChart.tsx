@@ -30,6 +30,7 @@ type CandleChartProps = {
   resistance?: number | null;
   forecast?: StockForecast | null; // 예측 밴드 — 1d 타임프레임에서만 전달된다
   quotePrice?: number | null; // 준실시간(지연) 현재가 — 마지막 봉 갱신용
+  sessionTz?: string; // 거래소 타임존 — 세션 날짜 판정용 (한국 "Asia/Seoul" · 미국 "America/New_York")
   rangeDays?: number | null; // 초기 표시 구간(달력일). null = 전체
   news?: StockNewsItem[]; // 감성 마커용 — 강한 기사만 캔들 위에 찍는다
   intraday?: boolean; // 5분봉 등 분 단위 — 시간축에 시각을 표시할지
@@ -97,6 +98,11 @@ function futureTimes(lastTs: string, tradingDays: number): UTCTimestamp[] {
 
 const toTime = (ts: string) => (new Date(ts).getTime() / 1000) as UTCTimestamp;
 
+// 거래소 세션 날짜 키(YYYY-MM-DD) — UTC 날짜로 비교하면 한국 종목(KST 세션)이
+// 최대 하루 어긋나, 어제 자리에 오늘 현재가로 만든 임시 봉이 생긴다.
+const sessionDayKey = (d: Date, tz: string) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(d);
+
 // 기사 발행 시각을 같거나 그 다음 봉에 붙여 마커로 만든다 — 장외·주말 발행분도
 // "다음 개장 첫 봉"으로 밀어 붙인다(뉴스 라벨링과 같은 관례).
 function toNewsMarkers(bars: PriceBar[], news: StockNewsItem[]): SeriesMarker<UTCTimestamp>[] {
@@ -158,6 +164,7 @@ export default function CandleChart({
   resistance,
   forecast,
   quotePrice,
+  sessionTz = "America/New_York",
   rangeDays,
   news,
   intraday = false,
@@ -184,9 +191,11 @@ export default function CandleChart({
     const price = quoteRef.current;
     if (!price || bars.length === 0) return;
     const last = bars[bars.length - 1];
-    const lastDay = Math.floor(new Date(last.ts).getTime() / 86_400_000);
-    const today = Math.floor(Date.now() / 86_400_000);
-    if (today === lastDay) {
+    // 세션 날짜는 거래소 타임존으로 판정한다 — UTC 날짜 비교는 KST 세션과 어긋나
+    // "어제" 자리에 오늘 현재가로 만든 임시 봉이 생겼다(한국 종목 오전 재현).
+    const lastKey = sessionDayKey(new Date(last.ts), sessionTz);
+    const todayKey = sessionDayKey(new Date(), sessionTz);
+    if (todayKey === lastKey) {
       r.candles.update({
         time: toTime(last.ts),
         open: last.open,
@@ -194,11 +203,16 @@ export default function CandleChart({
         low: Math.min(last.low, price),
         close: price,
       });
-    } else if (today > lastDay) {
-      const dow = new Date().getUTCDay();
-      if (dow === 0 || dow === 6) return; // 주말 — 유령 봉 방지
-      const time = (today * 86_400) as UTCTimestamp;
-      const prev = provisionalRef.current?.time === today * 86_400 ? provisionalRef.current : null;
+    } else if (todayKey > lastKey) {
+      const dow = new Date(`${todayKey}T00:00:00Z`).getUTCDay();
+      if (dow === 0 || dow === 6) return; // 거래소 기준 주말 — 유령 봉 방지
+      // 임시 봉 시각은 실봉과 같은 관례(세션 자정 기준 ts)를 유지한다 —
+      // 마지막 실봉 ts + 달력일 차이. 다음날 실봉이 적재되면 같은 시각으로 덮인다.
+      const diffDays = Math.round(
+        (Date.parse(todayKey) - Date.parse(lastKey)) / 86_400_000,
+      );
+      const time = (toTime(last.ts) + diffDays * 86_400) as UTCTimestamp;
+      const prev = provisionalRef.current?.time === time ? provisionalRef.current : null;
       const bar = {
         time,
         open: prev?.open ?? price,
@@ -206,7 +220,7 @@ export default function CandleChart({
         low: Math.min(prev?.low ?? price, price),
         close: price,
       };
-      provisionalRef.current = { time: today * 86_400, open: bar.open, high: bar.high, low: bar.low };
+      provisionalRef.current = { time, open: bar.open, high: bar.high, low: bar.low };
       r.candles.update(bar);
     }
   };

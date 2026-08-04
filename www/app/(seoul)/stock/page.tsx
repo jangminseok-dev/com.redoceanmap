@@ -114,6 +114,11 @@ function StockWorkspace() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
+  // 거래소 타임존 — 세션 날짜 판정용. 한국 6자리(거래소 접미 포함)는 KST, 그 외 미국.
+  // 백엔드 chat의 _currency_unit과 같은 판별 규칙.
+  const base = symbol.split(".")[0];
+  const sessionTz = base.length === 6 && /^\d+$/.test(base) ? "Asia/Seoul" : "America/New_York";
+
   const analyzeQ = useQuery({
     queryKey: ["stock-analyze", symbol],
     queryFn: () => fetchStockAnalysis(symbol),
@@ -129,6 +134,16 @@ function StockWorkspace() {
     // 봉은 일 단위 갱신이고 실시간성은 quote 폴링이 담당한다.
     staleTime: 5 * 60_000,
   });
+  // 차트 기준 라벨 — 저장 봉이 어디까지인지 명시한다(적재는 일 단위라 장중엔 지연이 정상).
+  const lastBar = pricesQ.data?.bars[pricesQ.data.bars.length - 1];
+  const lastBarLabel = lastBar
+    ? new Intl.DateTimeFormat("ko-KR", {
+        timeZone: sessionTz,
+        month: "numeric",
+        day: "numeric",
+        ...(timeframe === "5m" ? { hour: "2-digit", minute: "2-digit" } : {}),
+      }).format(new Date(lastBar.ts))
+    : null;
   // 확률·예측 밴드 — 저장 일봉 기반이라 미수집 종목은 404(카드·밴드 미표시로 열화)
   const forecastQ = useQuery({
     queryKey: ["forecast", symbol],
@@ -234,11 +249,20 @@ function StockWorkspace() {
             resistance={analyzeQ.data?.resistance}
             forecast={timeframe === "1d" ? forecastQ.data : null}
             quotePrice={timeframe === "1d" ? quoteQ.data?.price : null}
+            sessionTz={sessionTz}
             rangeDays={rangeDays}
             news={timeframe === "1d" ? newsQ.data : undefined}
             intraday={timeframe === "5m"}
             pattern={activePattern}
           />
+        )}
+        {lastBarLabel && (
+          <p className="mt-1.5 text-[11px] text-foreground-muted">
+            저장 봉 {lastBarLabel} 종가까지
+            {timeframe === "1d" && quoteQ.data?.price
+              ? " · 이후 캔들은 지연 현재가로 만든 임시 봉이에요"
+              : ""}
+          </p>
         )}
       </div>
 
