@@ -107,8 +107,17 @@ def _position_axis(percent_b: float | None) -> SignalAxis | None:
     return SignalAxis("position", "밴드 위치", value, WEIGHT_POSITION, note)
 
 
-def _flow_axis(volume_ratio: float | None, obv_slope: float | None) -> SignalAxis | None:
-    """거래가 실렸는가. 거래량만으로는 방향을 모르므로 OBV 기울기와 함께 본다."""
+def _flow_axis(
+    volume_ratio: float | None,
+    obv_slope: float | None,
+    trend_value: float | None = None,
+) -> SignalAxis | None:
+    """거래가 실렸는가. 거래량만으로는 방향을 모르므로 OBV 기울기와 함께 본다.
+
+    `trend_value`(추세 축 값)가 있으면 **가격 방향에 거래량이 동의하는가**를 문장으로
+    덧붙인다 — 가격 방향 + 거래량 증가는 신뢰, 방향은 있는데 거래량이 줄면 의심.
+    점수(value)는 바꾸지 않는다 — 신뢰도는 판정이 아니라 읽는 이에게 주는 주석이다.
+    """
     if volume_ratio is None and obv_slope is None:
         return None
     surge = _clamp(((volume_ratio or 1.0) - 1.0) / 1.0)
@@ -122,6 +131,12 @@ def _flow_axis(volume_ratio: float | None, obv_slope: float | None) -> SignalAxi
         note = f"거래가 한산합니다 — 실린 쪽은 {flow_word}입니다"
     else:
         note = f"거래량은 평소 수준 — 실린 쪽은 {flow_word}입니다"
+    # 방향 × 거래량 교차 검증 — 추세가 뚜렷할 때만 말한다(방향 없는 신뢰 판정은 무의미)
+    if trend_value is not None and volume_ratio is not None and abs(trend_value) > 0.15:
+        if volume_ratio >= 1.1:
+            note += ". 추세 방향에 거래량이 동반돼 신뢰가 실립니다"
+        elif volume_ratio <= 0.8:
+            note += ". 추세는 있는데 거래량이 받쳐주지 않아 의심 구간입니다"
     return SignalAxis("flow", "수급", value, WEIGHT_FLOW, note)
 
 
@@ -171,13 +186,15 @@ def evaluate(
     """축을 모아 하나의 요약으로. 계산할 수 없는 축(표본 부족)은 **빠지고 가중치도 빠진다** —
     0으로 채우면 시즌 초반에 모든 종목이 중립으로 보인다.
     """
+    trend = _trend_axis(ma_short, ma_long, price_krw)
     axes = [
         axis
         for axis in (
-            _trend_axis(ma_short, ma_long, price_krw),
+            trend,
             _momentum_axis(rsi),
             _position_axis(percent_b),
-            _flow_axis(volume_ratio, obv_slope),
+            # 수급 축이 추세 방향을 알아야 "방향+거래량" 교차 검증 문장을 만든다
+            _flow_axis(volume_ratio, obv_slope, trend.value if trend else None),
             _news_axis(news_impact_log, headline_count),
         )
         if axis is not None
