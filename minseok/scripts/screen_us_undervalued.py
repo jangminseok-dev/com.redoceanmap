@@ -159,6 +159,15 @@ def screened_line(quote: dict) -> str:
     return f"{name}|{symbol}|{name} stock"
 
 
+def _base(ticker: str) -> str:
+    """거래소 접미(.KS/.KQ)를 벗긴 표준형 — 백엔드 수요 집계와 같은 규칙."""
+    t = ticker.strip().upper()
+    for suffix in (".KS", ".KQ"):
+        if t.endswith(suffix):
+            return t[: -len(suffix)]
+    return t
+
+
 def fetch_demand(exclude: set[str]) -> list[str] | None:
     """허브 수요 상위 → 유효 티커만. 조회 실패면 None(기존 섹션 유지)."""
     try:
@@ -176,10 +185,13 @@ def fetch_demand(exclude: set[str]) -> list[str] | None:
         print(f"수요 조회 실패(auto:demand 유지) — {e}")
         return None
 
+    # 이미 수집 중인 종목인지 판정할 때 거래소 접미를 벗겨 맞춘다 — 수요는 표준형(005930)으로
+    # 쌓이고 워치리스트는 저장 티커(005930.KS)라 문자열 그대로는 영영 안 겹친다.
+    exclude_base = {_base(t) for t in exclude}
     lines: list[str] = []
     for row in rows:
         ticker = str(row.get("ticker", "")).strip().upper()
-        if not ticker or ticker in exclude:
+        if not ticker or ticker in exclude or _base(ticker) in exclude_base:
             continue
         try:  # 쓰레기 질의(오타 티커) 편입 방지 — 시세 존재 확인 1회
             if yf.Ticker(ticker).history(period="5d").empty:

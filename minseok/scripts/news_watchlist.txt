@@ -77,7 +77,18 @@ GE에어로스페이스|GE|GE Aerospace stock
 스포티파이|SPOT|Spotify stock
 
 # === auto:screened — screen_us_undervalued.py가 주 1회 갱신. 직접 수정 금지 ===
+Lincoln National Corporation|LNC|Lincoln National Corporation stock
+Charter Communications, Inc.|CHTR|Charter Communications, Inc. stock
+Joint Stock Company Kaspi.kz|KSPI|Joint Stock Company Kaspi.kz stock
+Annaly Capital Management, Inc.|NLY|Annaly Capital Management, Inc. stock
+Everest Group, Ltd.|EG|Everest Group, Ltd. stock
+AGNC Investment Corp.|AGNC|AGNC Investment Corp. stock
+AXIS Capital Holdings Limited|AXS|AXIS Capital Holdings Limited stock
+Banco Bradesco S.A.|BBD|Banco Bradesco S.A. stock
+BCE Inc.|BCE|BCE Inc. stock
+Petróleo Brasileiro S.A. - Petrobras|PBR|Petróleo Brasileiro S.A. - Petrobras stock
 # === /auto:screened ===
 
 # === auto:demand — 질문 수요 편입(상한 5), screen_us_undervalued.py가 갱신. 직접 수정 금지 ===
+SNDK|SNDK
 # === /auto:demand ===
