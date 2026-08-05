@@ -19,6 +19,7 @@ from hub.app.dtos.commercial_data_dto import (
     AreaScoreComponent,
     AreaScoreInfo,
     AreaSummary,
+    PermitChurnInfo,
     ServiceCode,
 )
 from chat.domain.services.verdict import strength, verdict
@@ -129,13 +130,16 @@ class _StubFundamentals:
 class _StubMarket:
     def __init__(self, scores: dict[int, AreaScoreInfo] | None = None,
                  insights: dict[int, tuple[AreaInsight, ...]] | None = None,
-                 raw: AreaRawStat | None = None):
+                 raw: AreaRawStat | None = None,
+                 permit_churn: dict[int, PermitChurnInfo] | None = None):
         self.summary_calls = 0
         self.scores = scores or {}
         self.score_calls: list[list[int]] = []
         self.insights = insights or {}
         self.insight_calls: list[tuple[list[int], str | None]] = []
         self.raw = raw
+        self.permit_churn = permit_churn or {}
+        self.permit_calls: list[list[int]] = []
 
     async def get_area_summary(self) -> AreaSummary:
         self.summary_calls += 1
@@ -156,6 +160,10 @@ class _StubMarket:
     async def get_area_insights(self, trdar_codes, service_code=None):
         self.insight_calls.append((list(trdar_codes), service_code))
         return self.insights
+
+    async def get_area_permit_churn(self, trdar_codes, months=12):
+        self.permit_calls.append(list(trdar_codes))
+        return self.permit_churn
 
 
 class _StubMarketNews:
@@ -338,6 +346,32 @@ async def test_상권_컨텍스트에_상권_성격_해석이_주입된다(monke
     assert "- 상권 성격: 직장인 중심 오피스 상권입니다 / 건당 평균 결제액 1.2만원" in context
     # 업종을 함께 넘겨야 해당 업종 기준 객단가가 나온다
     assert stubs["market"].insight_calls == [([1000001], "CS100010")]
+
+
+async def test_상권_컨텍스트에_인허가_업소_교체가_주입된다(monkeypatch):
+    # 분기 팩트는 "얼마나 있나"만 답한다 — 개업·폐업을 함께 줘야 방향이 읽힌다.
+    market = _StubMarket(permit_churn={
+        1000001: PermitChurnInfo(months=12, opened=18, closed=7, active=214),
+    })
+    interactor, llm, stubs = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON], market=market,
+    )
+    await interactor.ask("역삼동 카페 어때?")
+
+    context = llm.calls[2][0]
+    assert "- 인허가 업소 교체(최근 12개월): 개업 18곳 · 폐업 7곳 · 현재 영업중 214곳" in context
+    assert stubs["market"].permit_calls == [[1000001]]
+
+
+async def test_인허가가_없는_상권은_라인을_생략한다(monkeypatch):
+    # 상권 매칭이 좌표 근사라 붙은 업소가 없는 상권이 정상적으로 존재한다(열화 동작).
+    interactor, llm, _ = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON], market=_StubMarket(),
+    )
+    await interactor.ask("역삼동 카페 어때?")
+
+    # 프롬프트 규칙에도 같은 문구가 있으므로 데이터 라인 형태로 좁혀 확인한다
+    assert "- 인허가 업소 교체(최근" not in llm.calls[2][0]
 
 
 async def test_상권_성격은_우선순위_상위_4개로_자른다(monkeypatch):

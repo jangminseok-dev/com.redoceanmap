@@ -12,6 +12,7 @@ from hub.app.dtos.commercial_data_dto import (
     AreaScoreComponent,
     AreaScoreInfo,
     AreaSummary,
+    PermitChurnInfo,
     ServiceCode,
 )
 from hub.app.dtos.dataset_stat_dto import DatasetStat
@@ -127,6 +128,23 @@ class CommercialDataGateway(CommercialDataPort):
                 continue
             result[code] = tuple(
                 AreaInsight(key=i.key, tone=i.tone, text=i.text) for i in view.insights
+            )
+        return result
+
+    async def get_area_permit_churn(
+        self, trdar_codes: list[int], months: int = 12
+    ) -> dict[int, PermitChurnInfo]:
+        # get_area_insights와 같은 형태 — area_detail 슬라이스의 PG 리포지토리를 그대로 재사용한다.
+        # 상호 표본(recent_openings/closings)은 허브 계약에 싣지 않으므로 sample=0으로 받는다.
+        repository = AreaDetailPgRepository(session=self._session)
+        result: dict[int, PermitChurnInfo] = {}
+        for code in trdar_codes:
+            churn = await repository.find_permit_churn(code, months=months, sample=0)
+            if churn is None:
+                continue  # 인허가가 붙은 업소가 없는 상권 — 소비자가 라인을 생략한다
+            result[code] = PermitChurnInfo(
+                months=churn.months, opened=churn.opened,
+                closed=churn.closed, active=churn.active,
             )
         return result
 

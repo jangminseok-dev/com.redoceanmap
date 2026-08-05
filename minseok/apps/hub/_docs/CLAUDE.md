@@ -24,9 +24,10 @@ ORM/DB는 갖지 않는다 — 저장·분석 등 구체 작업은 아웃바운�
 apps/hub/app/
 ├── ports/output/commercial_data_port.py   # CommercialDataPort (ABC)
 │     get_service_codes / get_area_summary / get_area_raw_stats / get_area_scores
-│     / get_area_insights / get_area_overview / get_dataset_stats
+│     / get_area_insights / get_area_permit_churn / get_area_overview / get_dataset_stats
 └── dtos/commercial_data_dto.py            # ServiceCode · AreaInfo · AreaSummary · AreaRawStat
 │                                          #   · AreaScoreInfo · AreaScoreComponent · AreaOverviewRow
+│                                          #   · AreaInsight · PermitChurnInfo
 └── dtos/dataset_stat_dto.py               # DatasetStat — market·stock 공용이라 별도 모듈
 apps/hub/dependencies/commercial_data_provider.py  # get_commercial_data_port (NotImplementedError 스텁)
 ```
@@ -40,6 +41,10 @@ apps/hub/dependencies/commercial_data_provider.py  # get_commercial_data_port (N
 > "주의" …)가 이미 판정 라벨을 나른다. 실제 규칙은 "허브가 문장을 *만들지* 않는다"이고,
 > 문장의 소유자는 market 도메인이다. 원시로 내리면 임계값 판정이 소비자마다 중복 구현돼
 > 같은 상권을 지도와 채팅이 다르게 설명하게 된다. 주입 개수 절단은 소비자(chat) 몫이다.
+`get_area_permit_churn`은 인허가 대장 기준 업소 교체(최근 창의 개업·폐업·영업중 수)를 나른다 —
+분기 팩트가 답하는 "얼마나 있나"에 "지금 늘고 있나"를 더해 chat phase2가 소비한다(2026-08-05).
+**`active`를 분기 팩트 점포 수와 비교하지 않는다**(출처가 달라 검산 불성립 — market 도메인 규칙).
+업소 상호는 계약에 싣지 않는다: 서술에 필요한 건 교체의 방향과 규모다.
 `get_area_overview`(전 상권 최신 분기 점포수·폐업률·월매출)와 `get_dataset_stats`(데이터셋별
 행수·최신 시점)는 admin(어드민 콘솔)이 소비한다.
 

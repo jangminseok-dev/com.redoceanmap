@@ -22,6 +22,7 @@ from hub.app.dtos.commercial_data_dto import (
     AreaScoreComponent,
     AreaScoreInfo,
     AreaSummary,
+    PermitChurnInfo,
     ServiceCode,
 )
 from hub.app.dtos.gemini_dto import GeminiAnswerResponse
@@ -176,6 +177,19 @@ def synthetic_insights(code: int) -> tuple[AreaInsight, ...] | None:
     )
 
 
+def synthetic_permit_churn(code: int) -> PermitChurnInfo | None:
+    s = _seed(code)
+    if s % 4 == 0:
+        return None  # 인허가가 안 붙은 상권 — 라인 생략 경로도 평가에 포함
+    opened = 3 + s % 22
+    return PermitChurnInfo(
+        months=12,
+        opened=opened,
+        closed=2 + (s * 3) % 20,
+        active=60 + s % 240,
+    )
+
+
 # --- 기록형 스텁 포트 (기존 test_chat_interactor 스텁의 스냅샷 판) ---
 
 
@@ -207,6 +221,9 @@ class SnapshotMarket:
 
     async def get_area_insights(self, trdar_codes, service_code=None):
         return {c: i for c in trdar_codes if (i := synthetic_insights(c)) is not None}
+
+    async def get_area_permit_churn(self, trdar_codes, months=12):
+        return {c: p for c in trdar_codes if (p := synthetic_permit_churn(c)) is not None}
 
 
 class SnapshotStocks:

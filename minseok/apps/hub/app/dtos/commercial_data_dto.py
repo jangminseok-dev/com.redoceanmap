@@ -122,3 +122,24 @@ class AreaRawStat:
     # 폐업 점포가 버틴 개월 — 운영개월(생존 중)과 짝이 돼야 "얼마 만에 닫는가"가 보인다.
     closure_months_avg: float | None = None
     region_closure_months_avg: float | None = None
+
+
+@dataclass(frozen=True)
+class PermitChurnInfo:
+    """인허가 기준 업소 교체 — 최근 창(months) 안의 개업·폐업 수와 현재 영업중 수.
+
+    분기 팩트(`AreaRawStat`의 점포 수)는 "얼마나 있나"만 답한다. 이쪽은 인허가일·폐업일을
+    업소 단위로 세므로 "지금 새로 열리고 있나, 빠져나가고 있나"라는 **방향**을 답한다.
+
+    **`active`를 분기 팩트의 점포 수와 비교하지 않는다** — 출처(인허가 대장 vs 상권분석
+    서비스)도 집계 기준도 달라 검산이 성립하지 않는다(market 도메인 규칙 그대로 승계).
+    상권 매칭이 좌표 근사라 경계 근처는 오차가 있고, 붙은 업소가 없으면 아예 제외된다.
+
+    업소 상호(`recent_openings`)는 나르지 않는다 — 서술에 필요한 건 교체의 방향과 규모이고,
+    상호를 주면 모델이 특정 가게를 근거처럼 인용할 여지만 늘어난다.
+    """
+
+    months: int    # 집계 창(개월)
+    opened: int    # 창 안에 인허가된 업소 수
+    closed: int    # 창 안에 폐업한 업소 수
+    active: int    # 현재 영업중(창과 무관한 스냅샷)

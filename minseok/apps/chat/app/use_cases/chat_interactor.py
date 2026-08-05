@@ -28,6 +28,7 @@ from hub.app.dtos.commercial_data_dto import (
     AreaRawStat,
     AreaScoreInfo,
     AreaSummary,
+    PermitChurnInfo,
 )
 from hub.app.dtos.market_news_dto import MarketNewsHit
 from hub.app.dtos.news_dto import NewsHit
@@ -188,6 +189,9 @@ PHASE2_PROMPT = """당신은 서울 창업 컨설턴트입니다.
 - 수치를 단순 나열하지 말고 의미를 해석해서 서술
 - '서울 평균 대비' 종합점수가 제공된 상권은 그 근거(성장·건강도·지속성)를 추천 이유에 반영 (50점 = 서울 평균 수준)
 - '관련 지역 기사'가 제공되면 해당 지역 상권의 트렌드 근거로 반영 (기사 제목 인용 가능, 없는 사실 창작 금지)
+- '인허가 업소 교체'가 제공되면 개업·폐업을 함께 읽어 상권이 커지는 중인지 갈아치우는 중인지 해석
+  (개업만 인용해 '성장'으로 단정하지 말 것). '현재 영업중' 수는 위 '점포' 수치와 **출처가 다르므로
+  둘을 비교하거나 검산하지 말 것** — 어느 쪽이 맞다/틀리다는 서술 금지
 - **위 컨텍스트에 없는 사실을 절대 지어내지 말 것**. 특히 지하철 노선·환승역·행정구·랜드마크·
   '○○구 관문' 같은 입지 설명은 제공되지 않았으므로 언급 자체를 금지한다
   (실제 오류 사례: 성북구 미아사거리를 '5,8호선 환승, 강동구 관문'이라고 서술)
@@ -518,6 +522,9 @@ class ChatInteractor(ChatUseCase):
         # 상권 성격 해석 — 고객 프로필·배후 수요·소비·객단가. 지도 오버레이만 보던 문장을
         # 채팅에도 공급한다(근거 팩트 없는 상권은 키 자체가 없어 라인 생략).
         area_insights = await self._market.get_area_insights(valid_codes, service_code)
+        # 인허가 업소 교체 — 분기 팩트가 답하는 "얼마나 있나"에 "지금 늘고 있나"를 더한다
+        # (인허가가 붙은 업소가 없는 상권은 키가 없어 라인 생략).
+        permit_churn = await self._market.get_area_permit_churn(valid_codes)
         # 상권 뉴스 RAG 근거 — 지역 기사 의미 검색(히트 없으면 블록 생략)
         area_articles = await self._market_news.search(prompt, limit=4)
 
@@ -529,6 +536,7 @@ class ChatInteractor(ChatUseCase):
             score = area_scores.get(code)
             score_line = f"- 서울 평균 대비: {self._score_text(score)}\n" if score else ""
             insight_line = self._insight_text(area_insights.get(code))
+            permit_line = self._permit_text(permit_churn.get(code))
             stats_context_lines.append(
                 f"[{area.trdar_name} / {area.district_name}] (trdar_code: {code})\n"
                 f"- 수익: {st.get('revenue_text')} | {st.get('revenue_source')}\n"
@@ -538,7 +546,7 @@ class ChatInteractor(ChatUseCase):
                 f"- 유동인구 최다 연령대: {st.get('top_age')} (통행량 기준 — 매출 기준 고객층이 아님)"
                 f" | 유동인구 피크시간(시간당): {st.get('peak_time')}\n"
                 f"- 상권변화: {st.get('change_text')} | {st.get('op_months_text')}\n"
-                f"{score_line}{insight_line}"
+                f"{score_line}{permit_line}{insight_line}"
             )
         if area_articles:
             stats_context_lines.append(self._format_area_articles(area_articles))
@@ -784,6 +792,21 @@ class ChatInteractor(ChatUseCase):
             else:
                 parts.append(f"{c.name} {c.score}점")
         return f"종합 {score.total}점·{score.grade} (50점=서울 평균 수준) — " + ", ".join(parts)
+
+    @staticmethod
+    def _permit_text(churn: PermitChurnInfo | None) -> str:
+        """인허가 업소 교체 한 줄 — 없으면 라인 자체를 생략한다(열화 동작).
+
+        개업·폐업을 나란히 줘야 "늘고 있다"가 아니라 "얼마나 갈아치우는 곳인가"가 읽힌다.
+        영업중 수는 분기 팩트의 점포 수와 출처가 달라 비교 대상이 아니다 — 프롬프트에서도
+        따로 금지한다.
+        """
+        if churn is None:
+            return ""
+        return (
+            f"- 인허가 업소 교체(최근 {churn.months}개월): "
+            f"개업 {churn.opened}곳 · 폐업 {churn.closed}곳 · 현재 영업중 {churn.active}곳\n"
+        )
 
     @classmethod
     def _insight_text(cls, insights: tuple[AreaInsight, ...] | None) -> str:

@@ -8,6 +8,7 @@ from hub.app.dtos.commercial_data_dto import (
     AreaRawStat,
     AreaScoreInfo,
     AreaSummary,
+    PermitChurnInfo,
     ServiceCode,
 )
 from hub.app.dtos.dataset_stat_dto import DatasetStat
@@ -49,6 +50,17 @@ class CommercialDataPort(ABC):
         """지정 상권들의 해석 문장 — 고객 프로필·배후 수요·소비·객단가.
 
         지도 오버레이만 보던 인사이트를 채팅에도 공급한다. 근거 팩트가 없는 상권은 제외.
+        """
+        ...
+
+    @abstractmethod
+    async def get_area_permit_churn(
+        self, trdar_codes: list[int], months: int = 12
+    ) -> dict[int, PermitChurnInfo]:
+        """지정 상권들의 인허가 기준 업소 교체 — 최근 months개월 개업·폐업 수.
+
+        분기 팩트가 답하는 "얼마나 있나"에 "지금 늘고 있나"를 더한다. 인허가가 붙은
+        업소가 없는 상권은 제외(열화 동작 — 소비자가 라인을 생략한다).
         """
         ...
 
