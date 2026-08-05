@@ -16,7 +16,8 @@ from chat.domain.services.eval_scorer import score
 from chat.tests.eval.golden import BASELINE_PATH, TRACE_PATH, load_cases, load_traces
 
 _REGRESSION_KEYS = (
-    "intent_accuracy", "stock_query_accuracy", "region_hit_rate", "inherit_success_rate",
+    "intent_accuracy", "stock_query_accuracy", "region_hit_rate",
+    "inherit_rate", "inherit_focus_rate",
 )
 _REGRESSION_TOLERANCE = 0.03  # -3%p
 
@@ -40,7 +41,7 @@ def test_quality_gate():
           f" phase0_parse_failure={report.phase0_parse_failure_rate:.3f}")
     print(f"[gate] region_hit={report.region_hit_rate}"
           f" guard_activation={report.phase1_guard_activation_rate}"
-          f" inherit={report.inherit_success_rate}"
+          f" inherit={report.inherit_rate}/focus={report.inherit_focus_rate}"
           f" nonseoul_guard={report.nonseoul_guard_rate}")
     print(f"[gate] latency p50={report.latency_p50_ms} p95={report.latency_p95_ms}")
     print(f"[gate] 환각 의심 숫자 {len(hallucinations)}건, 답변 잘림 {len(truncations)}건"
@@ -58,7 +59,8 @@ def test_quality_gate():
         "intent_accuracy": report.intent_accuracy,
         "stock_query_accuracy": report.stock_query_accuracy,
         "region_hit_rate": report.region_hit_rate,
-        "inherit_success_rate": report.inherit_success_rate,
+        "inherit_rate": report.inherit_rate,
+        "inherit_focus_rate": report.inherit_focus_rate,
         "phase0_parse_failure_rate": report.phase0_parse_failure_rate,
         "phase1_guard_activation_rate": report.phase1_guard_activation_rate,
         "hallucination_count": len(hallucinations),

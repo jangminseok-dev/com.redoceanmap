@@ -53,16 +53,16 @@
 {"case_id": "SK13", "category": "stock_kr", "prompt": "KB금융 배당 매력 있어?", "expected_intent": "stock", "accepted_queries": ["KB금융", "105560"]}
 {"case_id": "SK14", "category": "stock_kr", "prompt": "크래프톤 어때?", "expected_intent": "stock", "accepted_queries": ["크래프톤", "259960"]}
 {"case_id": "SK15", "category": "stock_kr", "prompt": "에코프로 지금 어때?", "expected_intent": "stock", "accepted_queries": ["에코프로", "086520"]}
-{"case_id": "SU01", "category": "stock_us", "prompt": "테슬라 어때?", "expected_intent": "stock", "accepted_queries": ["TSLA"]}
-{"case_id": "SU02", "category": "stock_us", "prompt": "애플 주가 알려줘", "expected_intent": "stock", "accepted_queries": ["AAPL"]}
-{"case_id": "SU03", "category": "stock_us", "prompt": "엔비디아 지금 어때?", "expected_intent": "stock", "accepted_queries": ["NVDA"]}
-{"case_id": "SU04", "category": "stock_us", "prompt": "마이크로소프트 전망 어때?", "expected_intent": "stock", "accepted_queries": ["MSFT"]}
-{"case_id": "SU05", "category": "stock_us", "prompt": "아마존 주식 어때?", "expected_intent": "stock", "accepted_queries": ["AMZN"]}
-{"case_id": "SU06", "category": "stock_us", "prompt": "구글 주가 어때?", "expected_intent": "stock", "accepted_queries": ["GOOGL", "GOOG"]}
-{"case_id": "SU07", "category": "stock_us", "prompt": "메타 어때?", "expected_intent": "stock", "accepted_queries": ["META"]}
-{"case_id": "SU08", "category": "stock_us", "prompt": "넷플릭스 주가 흐름 어때?", "expected_intent": "stock", "accepted_queries": ["NFLX"]}
+{"case_id": "SU01", "category": "stock_us", "prompt": "테슬라 어때?", "expected_intent": "stock", "accepted_queries": ["TSLA", "테슬라"]}
+{"case_id": "SU02", "category": "stock_us", "prompt": "애플 주가 알려줘", "expected_intent": "stock", "accepted_queries": ["AAPL", "애플"]}
+{"case_id": "SU03", "category": "stock_us", "prompt": "엔비디아 지금 어때?", "expected_intent": "stock", "accepted_queries": ["NVDA", "엔비디아"]}
+{"case_id": "SU04", "category": "stock_us", "prompt": "마이크로소프트 전망 어때?", "expected_intent": "stock", "accepted_queries": ["MSFT", "마이크로소프트"]}
+{"case_id": "SU05", "category": "stock_us", "prompt": "아마존 주식 어때?", "expected_intent": "stock", "accepted_queries": ["AMZN", "아마존"]}
+{"case_id": "SU06", "category": "stock_us", "prompt": "구글 주가 어때?", "expected_intent": "stock", "accepted_queries": ["GOOGL", "GOOG", "구글"]}
+{"case_id": "SU07", "category": "stock_us", "prompt": "메타 어때?", "expected_intent": "stock", "accepted_queries": ["META", "메타"]}
+{"case_id": "SU08", "category": "stock_us", "prompt": "넷플릭스 주가 흐름 어때?", "expected_intent": "stock", "accepted_queries": ["NFLX", "넷플릭스"]}
 {"case_id": "SU09", "category": "stock_us", "prompt": "AMD 어때?", "expected_intent": "stock", "accepted_queries": ["AMD"]}
-{"case_id": "SU10", "category": "stock_us", "prompt": "팔란티어 지금 들어가도 돼?", "expected_intent": "stock", "accepted_queries": ["PLTR"]}
+{"case_id": "SU10", "category": "stock_us", "prompt": "팔란티어 지금 들어가도 돼?", "expected_intent": "stock", "accepted_queries": ["PLTR", "팔란티어"]}
 {"case_id": "SF01", "category": "stock_fuzzy", "prompt": "삼전 어때?", "expected_intent": "stock", "accepted_queries": ["삼성전자", "삼전", "005930"]}
 {"case_id": "SF02", "category": "stock_fuzzy", "prompt": "하닉 요즘 어때?", "expected_intent": "stock", "accepted_queries": ["SK하이닉스", "하이닉스", "하닉", "000660"]}
 {"case_id": "SF03", "category": "stock_fuzzy", "prompt": "LG엔솔 어때?", "expected_intent": "stock", "accepted_queries": ["LG에너지솔루션", "LG엔솔", "373220"]}

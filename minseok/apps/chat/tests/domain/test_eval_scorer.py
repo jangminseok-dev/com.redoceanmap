@@ -98,14 +98,18 @@ def test_지역_적중은_추천_라벨의_어간_포함으로_판정():
     assert report.region_hit_rate == 0.5
 
 
-def test_멀티턴_승계는_시딩_코드의_부분집합이어야_성공():
+def test_멀티턴은_승계율과_집중률을_따로_잰다():
+    # 첫 baseline 실측: 부분집합 단일 기준은 "이어받고 이웃 추가" 케이스를 실패로 세어 0%.
     cases = [_case("C1", category="multiturn", prompt="거기 어때?",
                    history_regions=("성수동",)),
-             _case("C2", category="multiturn", prompt="그 중엔?", history_regions=("홍대",))]
-    ok = _trace("C1", recommendation_codes=(1,), seeded_history_codes=(1, 2))
-    drifted = _trace("C2", recommendation_codes=(9,), seeded_history_codes=(1, 2))
-    report = score(cases, [ok, drifted])
-    assert report.inherit_success_rate == 0.5
+             _case("C2", category="multiturn", prompt="그 중엔?", history_regions=("홍대",)),
+             _case("C3", category="multiturn", prompt="아까 그곳?", history_regions=("잠실",))]
+    focused = _trace("C1", recommendation_codes=(1,), seeded_history_codes=(1, 2))
+    diluted = _trace("C2", recommendation_codes=(1, 9), seeded_history_codes=(1, 2))  # 승계+이웃 추가
+    drifted = _trace("C3", recommendation_codes=(9,), seeded_history_codes=(1, 2))
+    report = score(cases, [focused, diluted, drifted])
+    assert report.inherit_rate == 2 / 3        # focused·diluted — 하나라도 이어받음
+    assert report.inherit_focus_rate == 1 / 3  # focused만 — 그것만으로 답함
 
 
 # --- 절대 규칙 ---
@@ -134,6 +138,19 @@ def test_소수_형식만_다른_숫자는_환각이_아니다():
                      answer_text="48,400~50,600원 구간입니다. 투자 판단은 본인 책임입니다.")]
     report = score(cases, traces)
     assert [v.rule for v in report.violations] == []
+
+
+def test_반올림한_숫자는_환각이_아니다():
+    # 컨텍스트 182.36달러를 모델이 182달러로 되받는 것(2026-08-05 SU08 실측)은 창작이 아니다.
+    gen = LlmCall(phase="stock_answer", prompt="- 20일 이동평균: 182.36달러 / 50일: 175.44달러",
+                  response="{}", latency_ms=1.0)
+    cases = [_case("C1", category="stock_kr", prompt="삼성전자 어때?",
+                   expected_intent="stock", accepted_queries=("삼성전자",))]
+    traces = [_trace("C1", final_intent="stock", stock_query="삼성전자", calls=(gen,),
+                     answer_text="이동평균선(20일 182달러, 50일 175달러) 근처입니다."
+                                 " 투자 판단은 본인 책임입니다.")]
+    report = score(cases, traces)
+    assert [v for v in report.violations if v.rule == "hallucinated_number"] == []
 
 
 def test_정수의_0은_지우지_않는다():

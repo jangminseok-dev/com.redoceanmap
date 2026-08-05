@@ -10,7 +10,7 @@ LLM-as-judge를 쓰지 않는다(단일 모델 정책상 7.8B가 자기 답을 �
 - nonseoul_guard_rate                : 서울 외 지역 결정론 차단 성공률(기대 100%)
 - region_hit_rate                    : 지역 명시 질문의 추천 상권 적중률
 - phase1_guard_activation_rate       : phase1 원답과 최종 추천이 다른(가드 보정) 비율
-- inherit_success_rate               : 멀티턴 직전 추천 승계 성공률
+- inherit_rate / inherit_focus_rate  : 멀티턴 승계율(하나라도 이어받음) / 집중률(그것만 답함)
 - violations                         : 절대 규칙 위반(환각 숫자·금지 표현·고지 누락·입지 창작)
 - latency_p50/p95_ms                 : phase별 지연
 """
@@ -84,7 +84,8 @@ class EvalReport:
     nonseoul_guard_rate: float | None
     region_hit_rate: float | None
     phase1_guard_activation_rate: float | None
-    inherit_success_rate: float | None
+    inherit_rate: float | None        # 직전 추천을 하나라도 이어받았나(교집합)
+    inherit_focus_rate: float | None  # 이어받은 것만으로 답했나(부분집합)
     violations: tuple[RuleViolation, ...]
     latency_p50_ms: dict[str, float]
     latency_p95_ms: dict[str, float]
@@ -223,14 +224,22 @@ def score(cases: list[EvalCase], traces: list[CaseTrace]) -> EvalReport:
     )
     phase1_guard_activation_rate = _rate(guard_fired, len(guarded_pool))
 
-    # --- 멀티턴 승계 ---
+    # --- 멀티턴 승계 — 두 단계로 잰다(2026-08-05 이원화) ---
+    # 부분집합 단일 기준은 "이어받고 이웃을 추가"한 케이스까지 실패로 세어 실측 0%가 나왔다
+    # (첫 baseline에서 10건 중 5건이 실제로는 시딩 상권을 포함). 승계율은 "이어받긴 했나",
+    # 집중률은 ""그 중에서"라고 물었는데 그것만으로 답했나"를 따로 본다.
     multiturn = [(c, t) for c, t in scored if c.category == "multiturn"]
-    inherit_ok = sum(
+    inherited = sum(
+        1 for _, t in multiturn
+        if set(t.recommendation_codes) & set(t.seeded_history_codes)
+    )
+    focused = sum(
         1 for _, t in multiturn
         if t.recommendation_codes
         and set(t.recommendation_codes) <= set(t.seeded_history_codes)
     )
-    inherit_success_rate = _rate(inherit_ok, len(multiturn))
+    inherit_rate = _rate(inherited, len(multiturn))
+    inherit_focus_rate = _rate(focused, len(multiturn))
 
     # --- 절대 규칙 위반 ---
     violations: list[RuleViolation] = []
@@ -259,6 +268,9 @@ def score(cases: list[EvalCase], traces: list[CaseTrace]) -> EvalReport:
         if gen is not None:
             answer = t.answer_text + " " + " ".join(t.recommendation_reasons)
             grounded = _numbers(gen.prompt) | _numbers(c.prompt)
+            # 반올림 동치 — 컨텍스트가 182.36을 주면 모델은 182로 되받는다(2026-08-05 실측
+            # SU08). 소수 원값이 있는 숫자의 정수 반올림형은 근거 있는 숫자로 인정한다.
+            grounded |= {str(round(float(n))) for n in grounded if "." in n}
             for n in sorted(_numbers(answer) - grounded):
                 violations.append(RuleViolation(c.case_id, "hallucinated_number", n))
 
@@ -280,7 +292,8 @@ def score(cases: list[EvalCase], traces: list[CaseTrace]) -> EvalReport:
         nonseoul_guard_rate=nonseoul_guard_rate,
         region_hit_rate=region_hit_rate,
         phase1_guard_activation_rate=phase1_guard_activation_rate,
-        inherit_success_rate=inherit_success_rate,
+        inherit_rate=inherit_rate,
+        inherit_focus_rate=inherit_focus_rate,
         violations=tuple(violations),
         latency_p50_ms=latency_p50,
         latency_p95_ms=latency_p95,
