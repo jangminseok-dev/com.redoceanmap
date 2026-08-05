@@ -47,4 +47,8 @@ class StockAnalysisGateway(StockAnalysisPort):
             score=analysis.score,
             up_threshold=analysis.up_threshold,
             down_threshold=analysis.down_threshold,
+            volume_poc_low=analysis.volume_poc_low,
+            volume_poc_high=analysis.volume_poc_high,
+            volume_poc_share=analysis.volume_poc_share,
+            volume_price_position=analysis.volume_price_position,
         )

@@ -116,10 +116,17 @@ def _stem(name: str) -> str:
 
 
 def _numbers(text: str) -> set[str]:
-    """숫자 토큰 정규화 집합 — 콤마 제거, 10 미만(한 자리)은 잡음이라 제외."""
+    """숫자 토큰 정규화 집합 — 콤마·무의미한 소수 0 제거, 10 미만(한 자리)은 잡음이라 제외.
+
+    소수부를 안 지우면 컨텍스트의 `48,400.00`과 답변의 `48,400`이 다른 숫자로 잡힌다.
+    2026-08-05 실측에서 환각 의심 63건 중 56건(89%)이 이 형식 차이였다 — 지표가 아니라
+    잡음을 세고 있었다. 소수점이 있을 때만 잘라낸다(정수 `100`의 0을 지우면 안 된다).
+    """
     out: set[str] = set()
     for m in _NUM.finditer(text or ""):
         n = m.group().replace(",", "").rstrip(".")
+        if "." in n:
+            n = n.rstrip("0").rstrip(".")
         if len(n.replace(".", "")) >= 2:
             out.add(n)
     return out

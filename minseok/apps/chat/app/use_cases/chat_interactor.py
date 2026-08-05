@@ -135,6 +135,8 @@ STOCK_ANSWER_PROMPT = """당신은 주식 분석 상담사입니다.
 - 수치는 제공된 그대로 인용하고, RSI·이동평균·지지선/저항선·볼린저 밴드·변동성·거래량·모멘텀 중
   이 종목에서 두드러진 것을 골라 의미를 해석해 서술 (전부 나열하지 말 것)
 - '참고 신호'가 제공된 경우에만 검증된 참고 신호로 언급하되, 상승 확률이나 매수 권유로 표현 금지
+- '거래 밀집 구간'은 과거 거래량이 몰린 가격대라는 **팩트로만** 인용한다. 지지선·저항선으로
+  바꿔 부르거나 "여기서 지지받는다/막힌다"처럼 앞으로의 움직임을 단정하지 말 것
 - '관련 뉴스'가 제공되면 감성 라벨(호재/악재 방향)과 함께 근거로 인용
 - 매수/매도 지시 금지, 상승/하락 확률 단정 금지 — 방향 전망은 참고 신호로만 표현
 - 주식 초보자도 이해할 수 있게 설명 — 전문 용어를 처음 쓸 때는 괄호로 짧은 우리말 풀이를 붙인다
@@ -870,6 +872,26 @@ class ChatInteractor(ChatUseCase):
         return f"12-1 모멘텀 {pct:+.1f}% — 중장기 하락 추세"
 
     @staticmethod
+    def _volume_profile_text(r: StockAnalysisResult, unit: str) -> str:
+        """매물대(거래 밀집 구간) 한 줄 — 산출 불가면 라인 자체를 생략한다(열화 동작).
+
+        차트가 화면에 그리는 것과 같은 계산이라 사용자가 본 구간과 같은 값이 나온다.
+        **지지/저항으로 부르지 않는다** — 위에 이미 출처가 다른 지지선/저항선이 있어
+        섞이면 둘 다 못 믿게 된다. 문구는 화면과 같은 '거래 밀집 구간'으로 통일한다.
+        """
+        if r.volume_poc_low is None or r.volume_poc_high is None:
+            return ""
+        where = {"above": "그 위", "below": "그 아래", "inside": "그 안"}.get(
+            r.volume_price_position or "", "위치 미상"
+        )
+        share = f" (전체 거래량의 {r.volume_poc_share:.0%})" if r.volume_poc_share else ""
+        return (
+            f"- 거래 밀집 구간: {r.volume_poc_low:,.2f}~{r.volume_poc_high:,.2f}{unit}"
+            f"{share}, 현재가는 {where}"
+            " — 과거 거래량이 몰린 가격대일 뿐 지지선·저항선이 아님\n"
+        )
+
+    @staticmethod
     def _price_position_text(price: float, support: float, resistance: float) -> str:
         """현재가가 60일 저/고점 구간의 어디쯤인지 — 위치 해석을 안 주면 모델이 '지지선 근처
         안정·저항선 돌파 난항' 같은 근거 없는 템플릿을 지어낸다(중간권인데도)."""
@@ -957,6 +979,7 @@ class ChatInteractor(ChatUseCase):
             f"- 거래량·수급: {cls._volume_text(r.volume_ratio, r.obv_slope)}\n"
             f"- 중장기 추세: {cls._momentum_text(r.momentum_12_1)}\n"
         )
+        lines += cls._volume_profile_text(r, unit)
         if r.reference_up_signal:
             # 신호 없음(False)은 라인 자체를 생략 — 소형 모델이 '신호 부재'를 부정 신호로 오독하는 것 차단
             lines += (

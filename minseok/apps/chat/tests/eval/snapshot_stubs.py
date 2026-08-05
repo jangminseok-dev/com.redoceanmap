@@ -264,6 +264,14 @@ class SnapshotStocks:
             volume_ratio=round(0.8 + s / 100, 1), obv_slope=float(s % 3 - 1),
             momentum_12_1=round((s - 40) / 400, 3),
             reference_up_signal=False,  # 라인 생략 경로 고정 — 컨텍스트 단순화
+            # 매물대 — 시드 기준 1/4은 산출 불가로 둬서 라인 생략 경로도 평가에 포함한다.
+            # POC를 현재가 아래에 둬 '현재가는 그 위'가 나오게 고정(서술 일관성 확인용).
+            **({} if s % 4 == 0 else dict(
+                volume_poc_low=round(price * 0.90, 2),
+                volume_poc_high=round(price * 0.94, 2),
+                volume_poc_share=round(0.10 + (s % 25) / 100, 2),
+                volume_price_position="above",
+            )),
         )
 
 

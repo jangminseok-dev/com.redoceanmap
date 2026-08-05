@@ -12,6 +12,7 @@ from stock.domain.entities.analysis_config import AnalysisConfig
 from stock.domain.entities.outlook import Direction
 from stock.domain.services.outlook_predictor import OutlookPredictor
 from stock.domain.services.stock_narrator import narrate
+from stock.domain.services.volume_profile import compute_volume_profile
 from stock.domain.value_objects.market_values import Symbol
 from stock.domain.value_objects.sentiment_score import SentimentScore
 
@@ -83,6 +84,16 @@ class StockInteractor(StockUseCase):
             sentiment_surprise=surprise,
         )
 
+        # 매물대 — 이미 쓰는 MarketDataPort로 일봉을 받아 순수 도메인 서비스로 산출한다.
+        # 새 아웃바운드 의존을 만들지 않는다. 조회 실패는 분석을 막지 않는다(베스트 에포트).
+        profile = None
+        try:
+            profile = compute_volume_profile(
+                await self._market_data.daily_bars(symbol), price.value
+            )
+        except Exception:
+            logger.warning("[stock] 매물대 산출 실패: %s", symbol.code, exc_info=True)
+
         logger.info(
             "[stock] %s price=%.2f rsi=%.1f sentiment=%.2f → %s(%.2f)",
             symbol.code, price.value, indicators.rsi, sentiment.value,
@@ -115,6 +126,10 @@ class StockInteractor(StockUseCase):
             neutral_reason=outlook.neutral_reason,
             signals=contributions,
             insights=insights,
+            volume_poc_low=profile.poc_low if profile else None,
+            volume_poc_high=profile.poc_high if profile else None,
+            volume_poc_share=profile.poc_share if profile else None,
+            volume_price_position=profile.price_position if profile else None,
         )
 
     async def _sentiment_baseline(self, symbol: Symbol) -> tuple[float | None, int]:

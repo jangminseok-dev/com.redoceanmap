@@ -32,3 +32,10 @@ class StockAnalysisResult:
     score: float = 0.0                 # 가중 합산 종합 점수 (-1~1) — 신호 세기(약/보통/강) 판정용
     up_threshold: float = 0.3          # 방향 판정 기준 (프론트 strength()와 동일 공식)
     down_threshold: float = -0.3
+    # 매물대(거래 밀집 구간) — 과거에 어느 가격대에서 많이 거래됐나. 산출 불가면 None.
+    # **지지/저항이 아니다.** 위 support/resistance는 출처가 다른 별개 지표이고,
+    # 매물대를 지지선으로 환원하는 주장은 검증된 바 없다(프론트 차트 규칙 그대로 승계).
+    volume_poc_low: float | None = None
+    volume_poc_high: float | None = None
+    volume_poc_share: float | None = None      # POC 구간이 전체 거래량에서 차지하는 비율(0~1)
+    volume_price_position: str | None = None   # 현재가와 POC의 관계: above | inside | below

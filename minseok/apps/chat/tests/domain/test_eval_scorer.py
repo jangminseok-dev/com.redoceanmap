@@ -122,6 +122,32 @@ def test_환각_숫자_판정():
     assert [v.detail for v in halluc] == ["78000"]  # 4500·32는 컨텍스트에 있어 무혐의
 
 
+def test_소수_형식만_다른_숫자는_환각이_아니다():
+    # 컨텍스트는 가격을 48,400.00으로 주는데 모델은 48,400으로 되받는다. 소수부를 안 지우면
+    # 같은 숫자가 다른 숫자로 잡혀, 2026-08-05 실측에서 63건 중 56건이 이 형식 차이였다.
+    gen = LlmCall(phase="stock_answer",
+                  prompt="- 거래 밀집 구간: 48,400.00~50,600.00원 / 20일 이동평균: 182.36달러",
+                  response="{}", latency_ms=1.0)
+    cases = [_case("C1", category="stock_kr", prompt="삼성전자 어때?",
+                   expected_intent="stock", accepted_queries=("삼성전자",))]
+    traces = [_trace("C1", final_intent="stock", stock_query="삼성전자", calls=(gen,),
+                     answer_text="48,400~50,600원 구간입니다. 투자 판단은 본인 책임입니다.")]
+    report = score(cases, traces)
+    assert [v.rule for v in report.violations] == []
+
+
+def test_정수의_0은_지우지_않는다():
+    # 소수부만 잘라야 한다 — 100의 0을 지우면 1이 되어 엉뚱한 숫자가 무혐의 처리된다.
+    gen = LlmCall(phase="phase2", prompt="컨텍스트: 점포 100개", response="{}", latency_ms=1.0)
+    cases = [_case("C1")]
+    traces = [_trace("C1", answer_text="점포 1000개입니다", calls=(gen,),
+                     recommendation_codes=(1,),
+                     recommendation_labels=("성수동2가|성동구|성수동",))]
+    report = score(cases, traces)
+    halluc = [v for v in report.violations if v.rule == "hallucinated_number"]
+    assert [v.detail for v in halluc] == ["1000"]
+
+
 def test_금지_표현과_고지_누락은_stock_답변에서_잡는다():
     cases = [_case("C1", category="stock_kr", prompt="삼성전자 어때?",
                    expected_intent="stock", accepted_queries=("삼성전자",))]

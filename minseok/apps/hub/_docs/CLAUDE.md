@@ -130,6 +130,7 @@ apps/hub/app/
 ├── ports/output/stock_analysis_port.py   # StockAnalysisPort (ABC) — analyze(query)
 │     실패는 StockAnalysisUnavailable(계약 예외)로 알린다
 └── dtos/stock_analysis_dto.py            # StockAnalysisResult (원시 수치 — 문장화는 소비자 몫)
+│                                          #   + 매물대 요약(volume_poc_* — 2026-08-05)
 apps/hub/dependencies/stock_analysis_provider.py  # get_stock_analysis_port (NotImplementedError 스텁)
 ```
 

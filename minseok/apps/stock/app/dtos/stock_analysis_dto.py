@@ -39,3 +39,9 @@ class StockAnalysis:
     insights: list[Insight] = field(default_factory=list)            # 규칙 기반 해석 문장
     sentiment_baseline: float | None = None  # 최근 30일 라벨 감성 평균(표본 5건 미만이면 None)
     sentiment_surprise: float | None = None  # 당일 − 기준선 편차 — 신호에 실제 들어간 감성 값
+    # 매물대(거래 밀집 구간) — 산출 불가(표본 부족·범위 없음)면 None이라 소비자가 라인 생략.
+    # 지지/저항이 아니라 "과거에 어느 가격대에서 많이 거래됐나"라는 팩트다.
+    volume_poc_low: float | None = None
+    volume_poc_high: float | None = None
+    volume_poc_share: float | None = None
+    volume_price_position: str | None = None  # above | inside | below

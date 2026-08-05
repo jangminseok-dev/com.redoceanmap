@@ -457,6 +457,30 @@ async def test_주식_컨텍스트에_현재가_위치가_주입된다(monkeypat
     assert "67% 지점" in stock_prompt and "중간권" in stock_prompt
 
 
+async def test_주식_컨텍스트에_거래_밀집_구간이_주입된다(monkeypatch):
+    # 차트가 그리는 매물대와 같은 값을 서술에도 준다. 단 지지/저항으로 부르면 안 된다 —
+    # 바로 위 라인에 출처가 다른 지지선·저항선이 이미 있어 섞이면 둘 다 못 믿게 된다.
+    stocks = _StubStocks(_analysis(
+        volume_poc_low=86000.0, volume_poc_high=88000.0,
+        volume_poc_share=0.18, volume_price_position="above",
+    ))
+    interactor, llm, _ = _build(monkeypatch, [INTENT_STOCK, "서술"], stocks=stocks)
+    await interactor.ask("삼성전자 어때?")
+
+    stock_prompt = llm.calls[1][0]
+    assert "- 거래 밀집 구간: 86,000.00~88,000.00원" in stock_prompt
+    assert "전체 거래량의 18%" in stock_prompt
+    assert "현재가는 그 위" in stock_prompt
+    assert "지지선·저항선이 아님" in stock_prompt
+
+
+async def test_매물대_산출_불가면_라인을_생략한다(monkeypatch):
+    # 표본 부족·가격 범위 없음이면 도메인 서비스가 None을 준다(열화 동작).
+    interactor, llm, _ = _build(monkeypatch, [INTENT_STOCK, "서술"])
+    await interactor.ask("삼성전자 어때?")
+    assert "- 거래 밀집 구간:" not in llm.calls[1][0]
+
+
 async def test_주식_카드에_서버_결론이_실린다(monkeypatch):
     # forecast 표본이 유의(ready)하면 페이지 verdict와 같은 강한 결론 + 신호 세기 + 지켜볼 점을
     # 서버가 계산해 카드에 싣는다 — 채팅과 페이지가 어긋나지 않게.

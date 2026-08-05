@@ -4,8 +4,8 @@
   "region_hit_rate": 0.95,
   "inherit_success_rate": 0.0,
   "phase0_parse_failure_rate": 0.0,
-  "phase1_guard_activation_rate": 0.2,
-  "hallucination_count": 63,
+  "phase1_guard_activation_rate": 0.25,
+  "hallucination_count": 12,
   "truncation_count": 1,
   "total": 120
 }
