@@ -112,6 +112,35 @@ def test_멀티턴은_승계율과_집중률을_따로_잰다():
     assert report.inherit_focus_rate == 1 / 3  # focused만 — 그것만으로 답함
 
 
+# --- 서술 골격 준수율 ---
+
+def test_거래량_판정_포함률은_stock_답변에서_잰다():
+    cases = [_case("C1", category="stock_kr", prompt="삼성전자 어때?",
+                   expected_intent="stock", accepted_queries=("삼성전자",)),
+             _case("C2", category="stock_kr", prompt="카카오 어때?",
+                   expected_intent="stock", accepted_queries=("카카오",))]
+    with_verdict = _trace("C1", final_intent="stock", stock_query="삼성전자",
+                          answer_text="상승 추세에 거래량이 동반돼 신뢰가 실립니다."
+                                      " 투자 판단은 본인 책임입니다.")
+    without = _trace("C2", final_intent="stock", stock_query="카카오",
+                     answer_text="중립 흐름입니다. 투자 판단은 본인 책임입니다.")
+    report = score(cases, [with_verdict, without])
+    assert report.volume_verdict_rate == 0.5
+
+
+def test_리스크_문장_포함률은_모든_추천_이유에_유의가_있어야_성공():
+    cases = [_case("C1"), _case("C2", prompt="홍대?")]
+    all_marked = _trace("C1", recommendation_codes=(1, 2),
+                        recommendation_labels=("a|b|c", "d|e|f"),
+                        recommendation_reasons=("좋아요. 유의할 점: 폐업률.",
+                                                "좋아요. 유의할 점: 경쟁."))
+    partial = _trace("C2", recommendation_codes=(1, 2),
+                     recommendation_labels=("a|b|c", "d|e|f"),
+                     recommendation_reasons=("유의할 점: 경쟁.", "좋기만 해요."))
+    report = score(cases, [all_marked, partial])
+    assert report.risk_mention_rate == 0.5
+
+
 # --- 절대 규칙 ---
 
 def test_환각_숫자_판정():
@@ -149,6 +178,18 @@ def test_반올림한_숫자는_환각이_아니다():
     traces = [_trace("C1", final_intent="stock", stock_query="삼성전자", calls=(gen,),
                      answer_text="이동평균선(20일 182달러, 50일 175달러) 근처입니다."
                                  " 투자 판단은 본인 책임입니다.")]
+    report = score(cases, traces)
+    assert [v for v in report.violations if v.rule == "hallucinated_number"] == []
+
+
+def test_비율의_퍼센트_환산은_환각이_아니다():
+    # 컨텍스트 거래량비 0.9배를 모델이 "90% 수준"으로 되받는 것(2026-08-05 SK13·SK15).
+    gen = LlmCall(phase="stock_answer", prompt="- 거래량: 최근 5일이 20일 평균의 0.9배",
+                  response="{}", latency_ms=1.0)
+    cases = [_case("C1", category="stock_kr", prompt="삼성전자 어때?",
+                   expected_intent="stock", accepted_queries=("삼성전자",))]
+    traces = [_trace("C1", final_intent="stock", stock_query="삼성전자", calls=(gen,),
+                     answer_text="거래량은 평균의 약 90% 수준입니다. 투자 판단은 본인 책임입니다.")]
     report = score(cases, traces)
     assert [v for v in report.violations if v.rule == "hallucinated_number"] == []
 

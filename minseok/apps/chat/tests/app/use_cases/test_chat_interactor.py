@@ -131,7 +131,8 @@ class _StubMarket:
     def __init__(self, scores: dict[int, AreaScoreInfo] | None = None,
                  insights: dict[int, tuple[AreaInsight, ...]] | None = None,
                  raw: AreaRawStat | None = None,
-                 permit_churn: dict[int, PermitChurnInfo] | None = None):
+                 permit_churn: dict[int, PermitChurnInfo] | None = None,
+                 areas: list[AreaInfo] | None = None):
         self.summary_calls = 0
         self.scores = scores or {}
         self.score_calls: list[list[int]] = []
@@ -140,12 +141,18 @@ class _StubMarket:
         self.raw = raw
         self.permit_churn = permit_churn or {}
         self.permit_calls: list[list[int]] = []
+        self._areas = areas  # None이면 기존 단일 상권(무손상)
 
     async def get_area_summary(self) -> AreaSummary:
         self.summary_calls += 1
-        area = AreaInfo(trdar_code=1000001, trdar_name="테스트상권", district_name="강남구",
-                        adm_dong_name="역삼동", lat=37.5, lng=127.0)
-        return AreaSummary(areas=[area], latest_quarter=20254, sales_by_code={1000001: 100_000_000})
+        areas = self._areas or [
+            AreaInfo(trdar_code=1000001, trdar_name="테스트상권", district_name="강남구",
+                     adm_dong_name="역삼동", lat=37.5, lng=127.0)
+        ]
+        return AreaSummary(
+            areas=areas, latest_quarter=20254,
+            sales_by_code={a.trdar_code: 100_000_000 for a in areas},
+        )
 
     async def get_service_codes(self) -> list[ServiceCode]:
         return [ServiceCode(code="CS100010", name="커피-음료")]
@@ -310,6 +317,56 @@ async def test_지역_미언급_후속질문은_직전_추천_상권을_이어�
     result = await interactor.ask("카페 창업을 한다면?", conversation_id=100)
     assert len(result.recommendations) == 1
     assert result.recommendations[0].name == "테스트상권"
+
+
+async def test_지시어_후속질문은_직전_추천으로_후보를_제한한다(monkeypatch):
+    # 첫 baseline 실측: "그 중에서"라고 물어도 모델이 10건 전부 이웃 상권을 섞었다(집중률 0%).
+    # 지시어 + 직전 추천 존재면 phase1이 무엇을 골랐든 직전 추천으로 자른다.
+    areas = [
+        AreaInfo(trdar_code=1000001, trdar_name="테스트상권", district_name="강남구",
+                 adm_dong_name="역삼동", lat=37.5, lng=127.0),
+        AreaInfo(trdar_code=1000002, trdar_name="이웃상권", district_name="서초구",
+                 adm_dong_name="서초동", lat=37.4, lng=127.0),
+    ]
+    conversations = _StubConversations(history=[
+        Message(id=1, conversation_id=100, role="user", content="강남 상권 어때?",
+                created_at=_NOW, payload=None),
+        Message(id=2, conversation_id=100, role="assistant", content="상권 추천",
+                created_at=_NOW,
+                payload={"recommendations": [{"id": "1000001", "name": "테스트상권"}]}),
+    ])
+    phase1_both = ('{"service_code": "CS100010", "service_name": "커피-음료",'
+                   ' "trdar_codes": [1000001, 1000002]}')
+    interactor, _, _ = _build(
+        monkeypatch, [INTENT_MARKET, phase1_both, PHASE2_JSON],
+        conversations=conversations, market=_StubMarket(areas=areas),
+    )
+    result = await interactor.ask("그 중에서 제일 나은 곳은?", conversation_id=100)
+    assert [r.id for r in result.recommendations] == ["1000001"]  # 이웃상권이 잘려나간다
+
+
+async def test_지시어가_없으면_phase1_선택을_제한하지_않는다(monkeypatch):  # 무손상
+    areas = [
+        AreaInfo(trdar_code=1000001, trdar_name="테스트상권", district_name="강남구",
+                 adm_dong_name="역삼동", lat=37.5, lng=127.0),
+        AreaInfo(trdar_code=1000002, trdar_name="이웃상권", district_name="서초구",
+                 adm_dong_name="서초동", lat=37.4, lng=127.0),
+    ]
+    conversations = _StubConversations(history=[
+        Message(id=1, conversation_id=100, role="user", content="강남 상권 어때?",
+                created_at=_NOW, payload=None),
+        Message(id=2, conversation_id=100, role="assistant", content="상권 추천",
+                created_at=_NOW,
+                payload={"recommendations": [{"id": "1000001", "name": "테스트상권"}]}),
+    ])
+    phase1_both = ('{"service_code": "CS100010", "service_name": "커피-음료",'
+                   ' "trdar_codes": [1000001, 1000002]}')
+    interactor, _, _ = _build(
+        monkeypatch, [INTENT_MARKET, phase1_both, PHASE2_JSON],
+        conversations=conversations, market=_StubMarket(areas=areas),
+    )
+    result = await interactor.ask("숙대 말고 다른 후보도 보여줘", conversation_id=100)
+    assert [r.id for r in result.recommendations] == ["1000001", "1000002"]
 
 
 async def test_상권_컨텍스트에_서울_평균_대비_종합점수가_주입된다(monkeypatch):

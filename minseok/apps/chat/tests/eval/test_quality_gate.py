@@ -18,6 +18,8 @@ from chat.tests.eval.golden import BASELINE_PATH, TRACE_PATH, load_cases, load_t
 _REGRESSION_KEYS = (
     "intent_accuracy", "stock_query_accuracy", "region_hit_rate",
     "inherit_rate", "inherit_focus_rate",
+    # C 골격 준수율 — 프롬프트 규칙은 감시와 함께 유지된다(없던 시절 baseline은 자동 스킵)
+    "volume_verdict_rate", "risk_mention_rate",
 )
 _REGRESSION_TOLERANCE = 0.03  # -3%p
 
@@ -43,6 +45,8 @@ def test_quality_gate():
           f" guard_activation={report.phase1_guard_activation_rate}"
           f" inherit={report.inherit_rate}/focus={report.inherit_focus_rate}"
           f" nonseoul_guard={report.nonseoul_guard_rate}")
+    print(f"[gate] volume_verdict={report.volume_verdict_rate}"
+          f" risk_mention={report.risk_mention_rate}")
     print(f"[gate] latency p50={report.latency_p50_ms} p95={report.latency_p95_ms}")
     print(f"[gate] 환각 의심 숫자 {len(hallucinations)}건, 답변 잘림 {len(truncations)}건"
           f"{[v.case_id for v in truncations] or ''}, 절대 규칙 위반 {len(absolute)}건")
@@ -61,6 +65,8 @@ def test_quality_gate():
         "region_hit_rate": report.region_hit_rate,
         "inherit_rate": report.inherit_rate,
         "inherit_focus_rate": report.inherit_focus_rate,
+        "volume_verdict_rate": report.volume_verdict_rate,
+        "risk_mention_rate": report.risk_mention_rate,
         "phase0_parse_failure_rate": report.phase0_parse_failure_rate,
         "phase1_guard_activation_rate": report.phase1_guard_activation_rate,
         "hallucination_count": len(hallucinations),

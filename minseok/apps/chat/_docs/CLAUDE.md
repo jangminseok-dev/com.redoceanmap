@@ -83,6 +83,10 @@ chat은 다른 스포크를 **직접 import하지 않는다**. 허브 `hub`가 �
 
 - `conversations` / `messages` 테이블로 대화 맥락 보존. `ask(prompt, conversation_id)`가
   직전 대화를 phase1 컨텍스트에 주입한다("그 중 …" 같은 지시 해소).
+- **지시어 가드(2026-08-05)** — 질문에 지시어(`DEICTIC_TOKENS`: "그 중"·"거기"·"방금" 등)가
+  있고 직전 추천 payload가 있으면 phase1이 무엇을 골랐든 **직전 추천으로 후보를 제한**한다.
+  첫 baseline 실측에서 "그 중에서" 질문 10건 전부 모델이 이웃 상권을 섞었다(집중률 0%) —
+  프롬프트 부탁이 아니라 코드로 자른다. 지역명이 함께 언급되면 지역 가드가 우선.
 - `POST /chat/stream` — SSE(`text/event-stream`)로 `meta → delta* → done` 스트리밍.
 
 ## 대화 히스토리 (프론트 지난 대화)

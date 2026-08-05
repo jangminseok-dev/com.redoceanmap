@@ -49,6 +49,8 @@ golden_set.jsonl ──[러너: 실제 EXAONE 7.8B, -m ollama]──> trace.json
 | region_hit_rate | 지역 명시 질문의 추천 상권 어간 적중 | 회귀(-3%p) |
 | phase1_guard_activation_rate | phase1 원답 ≠ 최종 추천(가드 보정) 비율 — "가드가 없었으면 틀렸을 비율" | 관측 |
 | inherit_rate / inherit_focus_rate | 멀티턴 승계율(직전 추천과 교집합) / 집중률(부분집합 — "그 중에서"에 그것만으로 답함). 부분집합 단일 기준은 "이어받고 이웃 추가" 케이스를 실패로 세어 첫 실측이 0%로 나왔다(실제 승계율 0.5) — 2026-08-05 이원화 | 회귀(-3%p) |
+| volume_verdict_rate | 주식 답변의 거래량 '신뢰/의심' 판정 포함률 — C1 골격(추세→거래량 검증→모멘텀→가격대) 준수 감시 | 회귀(-3%p) |
+| risk_mention_rate | 상권 추천 이유 전체에 "유의할 점" 포함률 — C2 리스크 의무 준수 감시 | 회귀(-3%p) |
 | hallucinated_number | 답변 숫자가 주입 컨텍스트·질문에 없음 | 회귀(건수 비증가) |
 | forbidden_phrase / missing_disclaimer / location_claim | 매매지시·확률단정 / 책임 고지 / 입지 창작(호선·환승·관문) 정규식 | **절대 0건 / 100%** |
 | latency p50·p95 | phase별 프록시 타이밍 | 관측 |

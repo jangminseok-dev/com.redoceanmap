@@ -11,6 +11,8 @@ LLM-as-judge를 쓰지 않는다(단일 모델 정책상 7.8B가 자기 답을 �
 - region_hit_rate                    : 지역 명시 질문의 추천 상권 적중률
 - phase1_guard_activation_rate       : phase1 원답과 최종 추천이 다른(가드 보정) 비율
 - inherit_rate / inherit_focus_rate  : 멀티턴 승계율(하나라도 이어받음) / 집중률(그것만 답함)
+- volume_verdict_rate                : 주식 답변의 거래량 신뢰/의심 판정 포함률(C1 골격 준수)
+- risk_mention_rate                  : 상권 추천 이유의 "유의할 점" 포함률(C2 리스크 의무 준수)
 - violations                         : 절대 규칙 위반(환각 숫자·금지 표현·고지 누락·입지 창작)
 - latency_p50/p95_ms                 : phase별 지연
 """
@@ -86,6 +88,8 @@ class EvalReport:
     phase1_guard_activation_rate: float | None
     inherit_rate: float | None        # 직전 추천을 하나라도 이어받았나(교집합)
     inherit_focus_rate: float | None  # 이어받은 것만으로 답했나(부분집합)
+    volume_verdict_rate: float | None  # 주식 답변의 거래량 '신뢰/의심' 판정 포함률
+    risk_mention_rate: float | None    # 상권 추천 전체 이유에 "유의" 문장 포함률
     violations: tuple[RuleViolation, ...]
     latency_p50_ms: dict[str, float]
     latency_p95_ms: dict[str, float]
@@ -241,6 +245,23 @@ def score(cases: list[EvalCase], traces: list[CaseTrace]) -> EvalReport:
     inherit_rate = _rate(inherited, len(multiturn))
     inherit_focus_rate = _rate(focused, len(multiturn))
 
+    # --- 서술 골격 준수율 (C 골격의 감시 지표 — 규칙은 감시와 함께 태어난다) ---
+    # 프롬프트가 판정 어휘('신뢰'/'의심')와 표기("유의할 점")를 의무화하므로 정규식으로 잰다.
+    stock_answers = [t for _, t in scored if t.final_intent == "stock" and t.answer_text]
+    volume_verdicts = sum(
+        1 for t in stock_answers
+        if "거래량" in t.answer_text and re.search(r"신뢰|의심", t.answer_text)
+    )
+    volume_verdict_rate = _rate(volume_verdicts, len(stock_answers))
+
+    market_recs = [t for _, t in scored
+                   if t.final_intent == "market" and t.recommendation_reasons]
+    risk_mentions = sum(
+        1 for t in market_recs
+        if all("유의" in reason for reason in t.recommendation_reasons)
+    )
+    risk_mention_rate = _rate(risk_mentions, len(market_recs))
+
     # --- 절대 규칙 위반 ---
     violations: list[RuleViolation] = []
     for c, t in scored:
@@ -271,6 +292,12 @@ def score(cases: list[EvalCase], traces: list[CaseTrace]) -> EvalReport:
             # 반올림 동치 — 컨텍스트가 182.36을 주면 모델은 182로 되받는다(2026-08-05 실측
             # SU08). 소수 원값이 있는 숫자의 정수 반올림형은 근거 있는 숫자로 인정한다.
             grounded |= {str(round(float(n))) for n in grounded if "." in n}
+            # 퍼센트 동치 — 컨텍스트의 비율 0.9(배)를 모델이 "90%"로 되받는다(같은 날
+            # SK13·SK15 실측). 1 미만 소수에 한해 ×100형을 근거로 인정한다.
+            grounded |= {
+                str(round(float(n) * 100)) for n in grounded
+                if "." in n and 0 < float(n) < 1
+            }
             for n in sorted(_numbers(answer) - grounded):
                 violations.append(RuleViolation(c.case_id, "hallucinated_number", n))
 
@@ -294,6 +321,8 @@ def score(cases: list[EvalCase], traces: list[CaseTrace]) -> EvalReport:
         phase1_guard_activation_rate=phase1_guard_activation_rate,
         inherit_rate=inherit_rate,
         inherit_focus_rate=inherit_focus_rate,
+        volume_verdict_rate=volume_verdict_rate,
+        risk_mention_rate=risk_mention_rate,
         violations=tuple(violations),
         latency_p50_ms=latency_p50,
         latency_p95_ms=latency_p95,
