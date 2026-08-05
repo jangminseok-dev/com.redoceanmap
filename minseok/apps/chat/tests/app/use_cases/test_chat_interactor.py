@@ -319,6 +319,50 @@ async def test_지역_미언급_후속질문은_직전_추천_상권을_이어�
     assert result.recommendations[0].name == "테스트상권"
 
 
+async def test_파싱_실패는_1회_재시도로_복구된다(monkeypatch):
+    # phase1 첫 응답이 깨져도 재호출이 성공하면 사용자는 오류를 보지 않는다(실측 1/120 흡수)
+    interactor, llm, _ = _build(
+        monkeypatch, [INTENT_MARKET, "JSON 아님", PHASE1_JSON, PHASE2_JSON]
+    )
+    result = await interactor.ask("성수동 카페 어때?")
+    assert len(result.recommendations) == 1
+    assert len(llm.calls) == 4  # phase0 + phase1×2(재시도) + phase2
+
+
+async def test_리스크_문장이_없으면_데이터_기반_유의점을_붙인다(monkeypatch):
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON])
+    result = await interactor.ask("역삼동 카페 어때?")
+    reason = result.recommendations[0].reason
+    assert reason.startswith("추천 이유")
+    assert "유의할 점:" in reason  # 스텁 통계는 폐업·경쟁이 없어 데이터 한계 문구가 붙는다
+
+
+async def test_리스크_문장이_이미_있으면_덧붙이지_않는다(monkeypatch):
+    phase2_with_risk = ('{"text": "요약", "areas": [{"trdar_code": 1000001,'
+                        ' "reason": "좋아요. 유의할 점: 폐업률 확인."}]}')
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, phase2_with_risk])
+    result = await interactor.ask("역삼동 카페 어때?")
+    assert result.recommendations[0].reason.count("유의할 점") == 1
+
+
+async def test_역이_붙은_상권명은_역을_뗀_지명으로도_매칭된다(monkeypatch):
+    # 실측: "건대입구역 6번" 상권이 "건대입구 쪽" 질문과 안 맞아 지역 가드가 침묵했다
+    areas = [
+        AreaInfo(trdar_code=1000001, trdar_name="건대입구역 6번", district_name="광진구",
+                 adm_dong_name="화양동", lat=37.5, lng=127.0),
+        AreaInfo(trdar_code=1000002, trdar_name="테스트상권", district_name="강남구",
+                 adm_dong_name="역삼동", lat=37.5, lng=127.0),
+    ]
+    phase1_wrong = ('{"service_code": "CS100010", "service_name": "커피-음료",'
+                    ' "trdar_codes": [1000002]}')
+    interactor, _, _ = _build(
+        monkeypatch, [INTENT_MARKET, phase1_wrong, PHASE2_JSON],
+        market=_StubMarket(areas=areas),
+    )
+    result = await interactor.ask("건대입구 쪽 술집 상권 알려줘")
+    assert [r.id for r in result.recommendations] == ["1000001"]  # 지역 가드가 보정
+
+
 async def test_지시어_후속질문은_직전_추천으로_후보를_제한한다(monkeypatch):
     # 첫 baseline 실측: "그 중에서"라고 물어도 모델이 10건 전부 이웃 상권을 섞었다(집중률 0%).
     # 지시어 + 직전 추천 존재면 phase1이 무엇을 골랐든 직전 추천으로 자른다.
@@ -480,7 +524,10 @@ async def test_지역_기사가_없으면_기사_블록을_생략한다(monkeypa
 
 
 async def test_의도_파싱_실패면_market_폴백(monkeypatch):
-    interactor, _, stubs = _build(monkeypatch, ["JSON 아님", PHASE1_JSON, PHASE2_JSON])
+    # 파싱 실패는 1회 재시도되므로 두 번 연속 실패해야 폴백이 발동한다
+    interactor, _, stubs = _build(
+        monkeypatch, ["JSON 아님", "역시 JSON 아님", PHASE1_JSON, PHASE2_JSON]
+    )
     result = await interactor.ask("아무 질문")
     assert stubs["market"].summary_calls == 1
     assert len(result.recommendations) == 1

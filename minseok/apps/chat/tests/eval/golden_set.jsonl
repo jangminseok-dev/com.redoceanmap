@@ -4,7 +4,7 @@
 {"case_id": "MR04", "category": "market_region", "prompt": "연남동 브런치 카페 괜찮아?", "expected_intent": "market", "region": "연남동"}
 {"case_id": "MR05", "category": "market_region", "prompt": "망원동에 베이커리 차리고 싶은데 어때?", "expected_intent": "market", "region": "망원동"}
 {"case_id": "MR06", "category": "market_region", "prompt": "서촌에서 한식당 해볼까 하는데 어때?", "expected_intent": "market", "region": "서촌"}
-{"case_id": "MR07", "category": "market_region", "prompt": "익선동에 찻집 어때?", "expected_intent": "market", "region": "익선동"}
+{"case_id": "MR07", "category": "market_region", "prompt": "삼청동에 찻집 어때?", "expected_intent": "market", "region": "삼청동"}
 {"case_id": "MR08", "category": "market_region", "prompt": "성신여대 앞에 네일숍 괜찮을까?", "expected_intent": "market", "region": "성신여대"}
 {"case_id": "MR09", "category": "market_region", "prompt": "미아사거리에 치킨집 어때?", "expected_intent": "market", "region": "미아사거리"}
 {"case_id": "MR10", "category": "market_region", "prompt": "노원역 앞 분식집 해볼만해?", "expected_intent": "market", "region": "노원역"}

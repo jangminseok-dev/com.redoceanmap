@@ -187,7 +187,7 @@ PHASE2_PROMPT = """당신은 서울 창업 컨설턴트입니다.
   "areas": [
     {
       "trdar_code": 1000001,
-      "reason": "이 상권을 추천하는 이유 (4~5문장, 반드시 제공된 수치 인용, 창업자 관점)"
+      "reason": "이 상권을 추천하는 이유 (4~5문장, 반드시 제공된 수치 인용, 창업자 관점. 마지막 문장은 반드시 '유의할 점: …'으로 시작)"
     }
   ]
 }
@@ -308,7 +308,13 @@ class ChatInteractor(ChatUseCase):
         for a in summary.areas:
             for name in (a.district_name, a.adm_dong_name, a.trdar_name):
                 stem = self._place_stem(name)
-                if len(stem) >= 2 and stem in prompt:
+                # "건대입구역"은 "건대입구 쪽"과 어긋난다(첫 재측정 실측) — '역'을 뗀
+                # 변형도 본다. 단 뗀 결과가 3자 이상일 때만: "서울역→서울"처럼 흔한
+                # 지명이 되면 서울이 들어간 모든 질문에 걸린다.
+                variants = {stem}
+                if stem.endswith("역") and len(stem) >= 4:
+                    variants.add(stem[:-1])
+                if any(len(v) >= 2 and v in prompt for v in variants):
                     codes.add(a.trdar_code)
                     break
         return codes
@@ -513,14 +519,12 @@ class ChatInteractor(ChatUseCase):
             f"서울 상권 데이터:\n{area_context}"
         )
         # phase1(상권/업종 선택 = 도메인 판단) — 단일 모델(7.8B) 정책
-        p1_raw = await llm_orchestrator.orchestrate(
-            f"{PHASE1_PROMPT}\n\n{phase1_contents}", format="json",
-        )
-
         try:
-            p1 = _parse_llm_json(p1_raw)
+            p1 = await self._orchestrate_json(
+                f"{PHASE1_PROMPT}\n\n{phase1_contents}", "Phase1",
+            )
         except Exception:
-            logger.error("[chat] Phase1 파싱 실패: %s", p1_raw[:200])
+            logger.error("[chat] Phase1 파싱 실패(재시도 포함)")
             raise InvalidLLMResponseError("AI 응답 파싱 실패")
 
         service_code: str = p1.get("service_code", "")
@@ -592,17 +596,21 @@ class ChatInteractor(ChatUseCase):
             stats_context_lines.append(self._format_area_articles(area_articles))
 
         # phase2(최종 서술 = 최종 사용자 답변) → 오케스트레이터 기본 모델(7.8B)
-        p2_raw = await llm_orchestrator.orchestrate(
-            f"{PHASE2_PROMPT}\n\n" + "\n".join(stats_context_lines), format="json",
-        )
-
         try:
-            p2 = _parse_llm_json(p2_raw)
+            p2 = await self._orchestrate_json(
+                f"{PHASE2_PROMPT}\n\n" + "\n".join(stats_context_lines), "Phase2",
+            )
         except Exception:
-            logger.error("[chat] Phase2 파싱 실패: %s", p2_raw[:200])
+            logger.error("[chat] Phase2 파싱 실패(재시도 포함)")
             raise InvalidLLMResponseError("AI 서술 생성 실패")
 
         reason_map = {item["trdar_code"]: item["reason"] for item in p2.get("areas", [])}
+        # C2 리스크 의무의 결정론 보강 — 모델이 "유의할 점"을 빼먹으면(첫 재측정 준수율 31%)
+        # 이미 컨텍스트에 주입된 수치를 재인용해 붙인다. 창작이 아니라 팩트의 재사용이다.
+        reason_map = {
+            code: self._ensure_risk_note(reason, real_stats.get(code, {}))
+            for code, reason in reason_map.items()
+        }
 
         recommendations: list[AreaRecommendation] = []
         for code in valid_codes:
@@ -662,15 +670,29 @@ class ChatInteractor(ChatUseCase):
             text=text, recommendations=recommendations, conversationId=conversation_id,
         )
 
-    async def _classify_intent(self, prompt: str, history: list[Message]) -> tuple[str, str]:
-        raw = await llm_orchestrator.orchestrate(
-            f"{INTENT_PROMPT}\n\n{self._history_block(history)}사용자 질문: {prompt}",
-            format="json",
-        )
+    async def _orchestrate_json(self, prompt: str, phase_label: str) -> dict:
+        """JSON 강제 호출 + 파싱 1회 재시도.
+
+        소형 모델의 JSON 실패는 확률적이다(첫 재측정 실측 1/120 — MT04 phase2).
+        같은 프롬프트 재호출 한 번으로 흡수하고, 두 번째 실패는 호출부의 기존
+        오류 경로(폴백·InvalidLLMResponseError)로 그대로 던진다.
+        """
+        raw = await llm_orchestrator.orchestrate(prompt, format="json")
         try:
-            parsed = _parse_llm_json(raw)
+            return _parse_llm_json(raw)
         except Exception:
-            logger.warning("[chat] 의도 분류 파싱 실패 → market 폴백: %s", raw[:100])
+            logger.warning("[chat] %s 파싱 실패 — 1회 재시도: %s", phase_label, raw[:120])
+        raw = await llm_orchestrator.orchestrate(prompt, format="json")
+        return _parse_llm_json(raw)
+
+    async def _classify_intent(self, prompt: str, history: list[Message]) -> tuple[str, str]:
+        try:
+            parsed = await self._orchestrate_json(
+                f"{INTENT_PROMPT}\n\n{self._history_block(history)}사용자 질문: {prompt}",
+                "의도 분류",
+            )
+        except Exception:
+            logger.warning("[chat] 의도 분류 파싱 실패(재시도 포함) → market 폴백")
             return "market", ""
         stock_query = str(parsed.get("stock_query") or "").strip()
         intent = parsed.get("intent")
@@ -819,6 +841,24 @@ class ChatInteractor(ChatUseCase):
             area_text = h.area_tag or "지역 공통"
             lines.append(f"- ({date_text} | {area_text} | {h.source}) {h.title}")
         return "\n".join(lines)
+
+    @staticmethod
+    def _ensure_risk_note(reason: str, st: dict) -> str:
+        """추천 이유에 "유의할 점"이 없으면 데이터 기반 유의 문장을 붙인다(C2 리스크 의무).
+
+        붙이는 수치는 폐업률·경쟁 등 phase2 컨텍스트에 이미 있던 것만 쓴다 —
+        둘 다 없으면 데이터의 한계(임대료 미보유)를 유의점으로 쓴다.
+        """
+        if not reason or "유의" in reason:
+            return reason
+        fact = next(
+            (st.get(k) for k in ("closure_text", "rival_text")
+             if st.get(k) and st.get(k) != "데이터 없음"),
+            None,
+        )
+        if fact:
+            return f"{reason} 유의할 점: {fact} — 창업 전 직접 확인이 필요해요."
+        return f"{reason} 유의할 점: 임대료·권리금은 데이터가 없어 별도 확인이 필요해요."
 
     @staticmethod
     def _score_text(score: AreaScoreInfo) -> str:
