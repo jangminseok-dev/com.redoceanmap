@@ -32,6 +32,14 @@ _FORBIDDEN_PATTERNS = (
     r"무조건", r"확실히\s*(오릅|상승|하락)", r"100\s*% ", r"\d+\s*%의?\s*확률",
 )
 
+# 책임 고지 관용구(stock·market_news 답변). "책임" 단일 토큰만 보면 같은 뜻을 다른 말로 쓴
+# "투자 결정은 본인의 판단에 따라 …"류를 전부 누락으로 잡는다 — 2026-08-05 첫 baseline에서
+# 28건이 이 오탐이었고, 절대 규칙이라 baseline 기록 자체를 막았다.
+_DISCLAIMER_PATTERNS = (
+    r"책임",
+    r"(투자|매매)\s*(판단|결정)[^.\n]{0,40}?(본인|개인|스스로|신중)",
+)
+
 # 금지 입지 서술(market 답변) — 컨텍스트에 없는 교통·입지 창작(PHASE2_PROMPT 금지 규칙)
 _LOCATION_CLAIM_TOKENS = ("호선", "환승", "관문")
 
@@ -205,7 +213,8 @@ def score(cases: list[EvalCase], traces: list[CaseTrace]) -> EvalReport:
                 m = re.search(pattern, t.answer_text)
                 if m:
                     violations.append(RuleViolation(c.case_id, "forbidden_phrase", m.group()))
-            if t.recommendation_codes == () and t.answer_text and "책임" not in t.answer_text:
+            if (t.recommendation_codes == () and t.answer_text
+                    and not any(re.search(p, t.answer_text) for p in _DISCLAIMER_PATTERNS)):
                 violations.append(RuleViolation(c.case_id, "missing_disclaimer", "책임 고지 없음"))
         if t.final_intent == "market" and t.recommendation_codes:
             market_text = t.answer_text + " " + " ".join(t.recommendation_reasons)

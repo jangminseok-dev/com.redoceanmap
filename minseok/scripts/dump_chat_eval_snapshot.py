@@ -38,7 +38,11 @@ async def main() -> None:
     )
 
     sm = get_secret_manager()
-    url = sm.get("MARKET_DATABASE_URL", None) or sm.require("DATABASE_URL")
+    # 괄호 주의: .replace가 폴백 분기에만 묶이면 MARKET_DATABASE_URL을 쓸 때
+    # 드라이버가 안 바뀌어 psycopg2를 찾다 죽는다(ingest_seoul_3nf와 같은 함정).
+    url = (sm.get("MARKET_DATABASE_URL", None) or sm.require("DATABASE_URL")).replace(
+        "postgresql://", "postgresql+psycopg://"
+    )
     engine = create_async_engine(url)
     try:
         async with async_sessionmaker(engine, expire_on_commit=False)() as session:
@@ -48,14 +52,19 @@ async def main() -> None:
     finally:
         await engine.dispose()
 
+    # 게이트웨이가 DB의 Decimal을 그대로 흘린다(DTO 선언은 int/float). 프로덕션은
+    # 문자열 포맷팅만 해서 드러나지 않지만 JSON 직렬화는 죽는다 — 선언 타입대로 캐스팅한다.
+    def _num(v, cast):
+        return None if v is None else cast(v)
+
     payload = {
         "latest_quarter": summary.latest_quarter,
         "areas": [
             {
                 "trdar_code": a.trdar_code, "trdar_name": a.trdar_name,
                 "district_name": a.district_name, "adm_dong_name": a.adm_dong_name,
-                "lat": a.lat, "lng": a.lng,
-                "sales": summary.sales_by_code.get(a.trdar_code),
+                "lat": _num(a.lat, float), "lng": _num(a.lng, float),
+                "sales": _num(summary.sales_by_code.get(a.trdar_code), int),
             }
             for a in summary.areas
         ],
