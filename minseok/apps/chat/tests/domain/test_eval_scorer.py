@@ -126,11 +126,32 @@ def test_금지_표현과_고지_누락은_stock_답변에서_잡는다():
     cases = [_case("C1", category="stock_kr", prompt="삼성전자 어때?",
                    expected_intent="stock", accepted_queries=("삼성전자",))]
     traces = [_trace("C1", final_intent="stock", stock_query="삼성전자",
-                     answer_text="무조건 매수하세요")]
+                     answer_text="무조건 매수하세요.")]
     report = score(cases, traces)
     rules = sorted(v.rule for v in report.violations)
     assert "forbidden_phrase" in rules
     assert "missing_disclaimer" in rules
+
+
+def test_잘린_답변은_잘림으로_세고_고지_누락으로_겹쳐_세지_않는다():
+    cases = [_case("C1", category="stock_kr", prompt="삼성전자 어때?",
+                   expected_intent="stock", accepted_queries=("삼성전자",))]
+    traces = [_trace("C1", final_intent="stock", stock_query="삼성전자",
+                     answer_text="변동성은 낮은 편이고 거래량도 평소 수준이며,")]
+    report = score(cases, traces)
+    rules = sorted(v.rule for v in report.violations)
+    assert "truncated_answer" in rules
+    # 끊긴 뒤에 올 고지를 "없다"고 셀 수는 없다 — 같은 결함을 두 번 세지 않는다
+    assert "missing_disclaimer" not in rules
+
+
+def test_마크다운_강조로_끝나도_잘림이_아니다():
+    cases = [_case("C1", category="stock_kr", prompt="삼성전자 어때?",
+                   expected_intent="stock", accepted_queries=("삼성전자",))]
+    traces = [_trace("C1", final_intent="stock", stock_query="삼성전자",
+                     answer_text="**투자 판단은 본인 책임입니다.**")]
+    report = score(cases, traces)
+    assert [v.rule for v in report.violations] == []
 
 
 def test_고지가_있고_금지_표현이_없으면_위반_없음():

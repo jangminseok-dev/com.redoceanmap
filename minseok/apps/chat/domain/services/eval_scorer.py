@@ -32,13 +32,33 @@ _FORBIDDEN_PATTERNS = (
     r"무조건", r"확실히\s*(오릅|상승|하락)", r"100\s*% ", r"\d+\s*%의?\s*확률",
 )
 
-# 책임 고지 관용구(stock·market_news 답변). "책임" 단일 토큰만 보면 같은 뜻을 다른 말로 쓴
-# "투자 결정은 본인의 판단에 따라 …"류를 전부 누락으로 잡는다 — 2026-08-05 첫 baseline에서
-# 28건이 이 오탐이었고, 절대 규칙이라 baseline 기록 자체를 막았다.
-_DISCLAIMER_PATTERNS = (
-    r"책임",
-    r"(투자|매매)\s*(판단|결정)[^.\n]{0,40}?(본인|개인|스스로|신중)",
-)
+# 책임 고지 판정 — 문구를 열거하지 않고 답변 **말미의 구조**를 본다.
+# 모델은 같은 뜻을 매번 다르게 쓴다("본인 책임" · "본인의 판단에 따라" · "개인의 신중한 판단").
+# 문구 열거로 가면 변형마다 오탐이 새로 생겨 끝나지 않는다 — 2026-08-05에 28건을 잡고
+# 관용구를 넓혔더니 다음 실행에서 또 다른 표현 1건이 걸렸다.
+# 말미 안에 '투자·매매' 주어와 '본인·개인·책임' 귀속어가 함께 있으면 고지로 본다.
+_DISCLAIMER_TAIL = 150
+_DISCLAIMER_SUBJECT = re.compile(r"(투자|매매)")
+_DISCLAIMER_OWNER = re.compile(r"(본인|개인|스스로|책임|신중)")
+
+
+def _has_disclaimer(answer: str) -> bool:
+    tail = answer[-_DISCLAIMER_TAIL:]
+    return bool(_DISCLAIMER_SUBJECT.search(tail) and _DISCLAIMER_OWNER.search(tail))
+
+
+# 답변 잘림 — 모델이 문장 중간에 조기 종료한 경우(2026-08-05 MW09: 143자, 쉼표 뒤 중단.
+# 같은 단계 p50은 437자였고 토큰 상한 설정은 없다 — 설정으로 막을 수 없는 확률적 결함).
+# 절대 규칙이 아니라 **건수 비증가** 회귀로 건다(환각 숫자와 같은 취급).
+# general은 외부 Gemini 답변이고 평가에서는 스텁이라 대상에서 뺀다.
+_ANSWERED_INTENTS = ("stock", "market_news", "market")
+_SENTENCE_END = ".!?…"
+_TRAILING_DECOR = " \t\n*_)]\"'`"  # 마크다운 강조·괄호 닫힘은 문장 끝 판정에서 벗겨낸다
+
+
+def _is_truncated(answer: str) -> bool:
+    s = (answer or "").rstrip(_TRAILING_DECOR)
+    return bool(s) and s[-1] not in _SENTENCE_END
 
 # 금지 입지 서술(market 답변) — 컨텍스트에 없는 교통·입지 창작(PHASE2_PROMPT 금지 규칙)
 _LOCATION_CLAIM_TOKENS = ("호선", "환승", "관문")
@@ -208,13 +228,20 @@ def score(cases: list[EvalCase], traces: list[CaseTrace]) -> EvalReport:
     # --- 절대 규칙 위반 ---
     violations: list[RuleViolation] = []
     for c, t in scored:
+        # 잘린 답변에는 고지 유무를 물을 수 없다 — 끊긴 뒤에 올 문장을 없다고 셀 수는 없다.
+        # 잘림으로 따로 세고 고지 판정에서는 면제한다(같은 결함을 두 번 세지 않는다).
+        truncated = t.final_intent in _ANSWERED_INTENTS and _is_truncated(t.answer_text)
+        if truncated:
+            violations.append(
+                RuleViolation(c.case_id, "truncated_answer", t.answer_text.rstrip()[-20:])
+            )
         if t.final_intent in ("stock", "market_news"):
             for pattern in _FORBIDDEN_PATTERNS:
                 m = re.search(pattern, t.answer_text)
                 if m:
                     violations.append(RuleViolation(c.case_id, "forbidden_phrase", m.group()))
             if (t.recommendation_codes == () and t.answer_text
-                    and not any(re.search(p, t.answer_text) for p in _DISCLAIMER_PATTERNS)):
+                    and not truncated and not _has_disclaimer(t.answer_text)):
                 violations.append(RuleViolation(c.case_id, "missing_disclaimer", "책임 고지 없음"))
         if t.final_intent == "market" and t.recommendation_codes:
             market_text = t.answer_text + " " + " ".join(t.recommendation_reasons)

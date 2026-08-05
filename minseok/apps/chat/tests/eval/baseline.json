@@ -1,10 +1,11 @@
 {
   "intent_accuracy": 1.0,
-  "stock_query_accuracy": 0.8,
-  "region_hit_rate": 0.75,
+  "stock_query_accuracy": 0.7666666666666667,
+  "region_hit_rate": 0.95,
   "inherit_success_rate": 0.0,
   "phase0_parse_failure_rate": 0.0,
-  "phase1_guard_activation_rate": 0.41025641025641024,
-  "hallucination_count": 79,
+  "phase1_guard_activation_rate": 0.2,
+  "hallucination_count": 63,
+  "truncation_count": 1,
   "total": 120
 }

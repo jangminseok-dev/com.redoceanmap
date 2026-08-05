@@ -26,8 +26,12 @@ def test_quality_gate():
         pytest.skip("trace.jsonl 없음 — 러너(test_eval_runner.py, -m ollama) 먼저 실행")
 
     report = score(load_cases(), load_traces())
+    # 환각·잘림은 절대 규칙이 아니라 건수 비증가 회귀다 — 둘 다 모델의 확률적 결함이라
+    # 설정으로 못 막고, 절대 규칙으로 걸면 기본 스위트가 실행마다 흔들린다.
+    _COUNTED = ("hallucinated_number", "truncated_answer")
     hallucinations = [v for v in report.violations if v.rule == "hallucinated_number"]
-    absolute = [v for v in report.violations if v.rule != "hallucinated_number"]
+    truncations = [v for v in report.violations if v.rule == "truncated_answer"]
+    absolute = [v for v in report.violations if v.rule not in _COUNTED]
 
     print(f"\n[gate] 케이스 {report.total}건 (오류 {len(report.errored)}건: {report.errored})")
     print(f"[gate] intent_accuracy={report.intent_accuracy:.3f}"
@@ -39,7 +43,8 @@ def test_quality_gate():
           f" inherit={report.inherit_success_rate}"
           f" nonseoul_guard={report.nonseoul_guard_rate}")
     print(f"[gate] latency p50={report.latency_p50_ms} p95={report.latency_p95_ms}")
-    print(f"[gate] 환각 의심 숫자 {len(hallucinations)}건, 절대 규칙 위반 {len(absolute)}건")
+    print(f"[gate] 환각 의심 숫자 {len(hallucinations)}건, 답변 잘림 {len(truncations)}건"
+          f"{[v.case_id for v in truncations] or ''}, 절대 규칙 위반 {len(absolute)}건")
 
     # --- 절대 규칙 ---
     assert absolute == [], f"절대 규칙 위반: {absolute}"
@@ -57,6 +62,7 @@ def test_quality_gate():
         "phase0_parse_failure_rate": report.phase0_parse_failure_rate,
         "phase1_guard_activation_rate": report.phase1_guard_activation_rate,
         "hallucination_count": len(hallucinations),
+        "truncation_count": len(truncations),
         "total": report.total,
     }
     if not BASELINE_PATH.exists():
@@ -78,3 +84,9 @@ def test_quality_gate():
         f"회귀: 환각 의심 숫자 {baseline.get('hallucination_count')}건"
         f" → {current['hallucination_count']}건 ({[v.detail for v in hallucinations]})"
     )
+    # 이 지표가 없던 시절의 baseline에는 비교 대상이 없다 — 회귀 규칙 루프와 같은 처리.
+    if "truncation_count" in baseline:
+        assert current["truncation_count"] <= baseline["truncation_count"], (
+            f"회귀: 답변 잘림 {baseline['truncation_count']}건 → {current['truncation_count']}건"
+            f" ({[v.case_id for v in truncations]})"
+        )
