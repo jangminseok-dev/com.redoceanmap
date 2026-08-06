@@ -319,6 +319,28 @@ async def test_지역_미언급_후속질문은_직전_추천_상권을_이어�
     assert result.recommendations[0].name == "테스트상권"
 
 
+async def test_진행_콜백이_market_단계를_순서대로_알린다(monkeypatch):
+    stages: list[str] = []
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON])
+    await interactor.ask("역삼동 카페 어때?", on_stage=lambda s, label: stages.append(s))
+    assert stages == ["intent", "select", "data", "narrate"]
+
+
+async def test_진행_콜백이_stock_단계를_순서대로_알린다(monkeypatch):
+    stages: list[str] = []
+    interactor, _, _ = _build(monkeypatch, [INTENT_STOCK, "주식 서술"])
+    await interactor.ask("삼성전자 어때?", on_stage=lambda s, label: stages.append(s))
+    assert stages == ["intent", "analyze", "narrate"]
+
+
+async def test_진행_콜백_실패는_답변을_깨지_않는다(monkeypatch):
+    def boom(stage, label):
+        raise RuntimeError("통지 실패")
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON])
+    result = await interactor.ask("역삼동 카페 어때?", on_stage=boom)
+    assert len(result.recommendations) == 1  # 통지는 부가 기능 — 실패해도 답변은 나간다
+
+
 async def test_파싱_실패는_1회_재시도로_복구된다(monkeypatch):
     # phase1 첫 응답이 깨져도 재호출이 성공하면 사용자는 오류를 보지 않는다(실측 1/120 흡수)
     interactor, llm, _ = _build(

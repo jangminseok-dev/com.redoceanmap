@@ -1,8 +1,12 @@
 from abc import ABC, abstractmethod
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 
 from chat.app.dtos.chat_dto import AskResponse
 from chat.domain.entities.conversation_entity import ConversationSummary, Message
+
+# 진행 단계 콜백 — (stage 키, 사람이 읽는 라벨). phase 왕복(p95 ~1.5분) 동안
+# 화면이 침묵하지 않도록 인바운드 어댑터(SSE)가 주입한다. None이면 무통지(기존 동작).
+OnStage = Callable[[str, str], None]
 
 
 class ChatUseCase(ABC):
@@ -10,6 +14,7 @@ class ChatUseCase(ABC):
     @abstractmethod
     async def ask(
         self, prompt: str, conversation_id: int | None = None, user_id: int | None = None,
+        on_stage: OnStage | None = None,
     ) -> AskResponse: ...
 
     @abstractmethod

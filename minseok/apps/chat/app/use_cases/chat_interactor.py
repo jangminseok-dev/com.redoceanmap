@@ -471,8 +471,19 @@ class ChatInteractor(ChatUseCase):
 
         return result
 
+    @staticmethod
+    def _notify(on_stage, stage: str, label: str) -> None:
+        """진행 단계 통지 — 통지 실패가 답변 자체를 깨지 않게 삼킨다."""
+        if on_stage is None:
+            return
+        try:
+            on_stage(stage, label)
+        except Exception:
+            logger.warning("[chat] 진행 통지 실패: %s", stage, exc_info=True)
+
     async def ask(
         self, prompt: str, conversation_id: int | None = None, user_id: int | None = None,
+        on_stage=None,
     ) -> AskResponse:
         if conversation_id is None:
             conversation_id = (await self._conversations.create_conversation(user_id=user_id)).id
@@ -480,12 +491,14 @@ class ChatInteractor(ChatUseCase):
         await self._conversations.add_message(conversation_id, "user", prompt)
 
         # phase0(의도 분류 = 도메인 판단) — 단일 모델(7.8B) 정책
+        self._notify(on_stage, "intent", "질문 의도를 파악하고 있어요")
         intent, stock_query = await self._classify_intent(prompt, history)
         if intent == "stock":
-            return await self._answer_stock(conversation_id, prompt, stock_query)
+            return await self._answer_stock(conversation_id, prompt, stock_query, on_stage)
         if intent == "market_news":
-            return await self._answer_market_news(conversation_id, prompt)
+            return await self._answer_market_news(conversation_id, prompt, on_stage)
         if intent == "general":
+            self._notify(on_stage, "answer", "답변을 만들고 있어요")
             return await self._answer_general(conversation_id, prompt)
 
         summary = await self._market.get_area_summary()
@@ -521,6 +534,7 @@ class ChatInteractor(ChatUseCase):
             f"서울 상권 데이터:\n{area_context}"
         )
         # phase1(상권/업종 선택 = 도메인 판단) — 단일 모델(7.8B) 정책
+        self._notify(on_stage, "select", "후보 상권을 고르고 있어요")
         try:
             p1 = await self._orchestrate_json(
                 f"{PHASE1_PROMPT}\n\n{phase1_contents}", "Phase1",
@@ -561,6 +575,7 @@ class ChatInteractor(ChatUseCase):
         if not valid_codes:
             raise NoValidAreaError("유효한 상권을 찾지 못했습니다.")
 
+        self._notify(on_stage, "data", "공공데이터를 분석하고 있어요")
         raw_stats = await self._market.get_area_raw_stats(valid_codes, service_code, quarter)
         real_stats = self._format_stats(raw_stats, quarter)
         # M3 스코어링 근거 주입 — 시도 벤치마크 대비 종합점수(산출 불가 상권은 라인 생략)
@@ -598,6 +613,7 @@ class ChatInteractor(ChatUseCase):
             stats_context_lines.append(self._format_area_articles(area_articles))
 
         # phase2(최종 서술 = 최종 사용자 답변) → 오케스트레이터 기본 모델(7.8B)
+        self._notify(on_stage, "narrate", "추천 이유를 정리하고 있어요")
         try:
             p2 = await self._orchestrate_json(
                 f"{PHASE2_PROMPT}\n\n" + "\n".join(stats_context_lines), "Phase2",
@@ -732,10 +748,14 @@ class ChatInteractor(ChatUseCase):
         await self._conversations.add_message(conversation_id, "assistant", text)
         return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
 
-    async def _answer_market_news(self, conversation_id: int, prompt: str) -> AskResponse:
+    async def _answer_market_news(
+        self, conversation_id: int, prompt: str, on_stage=None,
+    ) -> AskResponse:
         """종목 무관 시장/업황 질문 — 수집 뉴스 의미 검색(RAG)을 근거로 서술."""
+        self._notify(on_stage, "search", "관련 뉴스를 찾고 있어요")
         hits = await self._news.search(prompt, ticker=None, limit=8)
         context = self._format_news_context(prompt, hits)
+        self._notify(on_stage, "narrate", "동향을 정리하고 있어요")
         # 최종 서술(최종 사용자 답변) → 오케스트레이터 기본 모델(7.8B)
         text = await llm_orchestrator.orchestrate(f"{MARKET_NEWS_ANSWER_PROMPT}\n\n{context}")
         news = [
@@ -776,8 +796,9 @@ class ChatInteractor(ChatUseCase):
         return "\n".join(lines)
 
     async def _answer_stock(
-        self, conversation_id: int, prompt: str, stock_query: str
+        self, conversation_id: int, prompt: str, stock_query: str, on_stage=None,
     ) -> AskResponse:
+        self._notify(on_stage, "analyze", "종목 지표를 분석하고 있어요")
         try:
             analysis = await self._stocks.analyze(stock_query)
         except StockAnalysisUnavailable as e:
@@ -807,6 +828,7 @@ class ChatInteractor(ChatUseCase):
 
         # 둘 다 서술 '앞'에서 조회한다 — 예전엔 답변을 만든 뒤에 조회해 카드에만 실렸고,
         # 그래서 본문이 밸류에이션·과거 통계를 근거로 말하지 못했다.
+        self._notify(on_stage, "narrate", "분석 내용을 정리하고 있어요")
         context = self._format_stock_context(prompt, analysis, hits, forecast, value_notes)
         # 최종 서술(최종 사용자 답변) → 오케스트레이터 기본 모델(7.8B)
         text = await llm_orchestrator.orchestrate(f"{STOCK_ANSWER_PROMPT}\n\n{context}")

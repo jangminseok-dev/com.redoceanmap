@@ -44,6 +44,7 @@ export default function ChatPanel({
 }: ChatPanelProps) {
   const messages = useChatStore((s) => s.messages);
   const isLoading = useChatStore((s) => s.isLoading);
+  const loadingStage = useChatStore((s) => s.loadingStage);
   const sendMessage = useChatStore((s) => s.sendMessage);
   const conversationId = useChatStore((s) => s.conversationId);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -163,7 +164,10 @@ export default function ChatPanel({
           >
             <div className="flex items-center gap-1.5 mb-2">
               <Sparkles size={13} strokeWidth={2} className="text-brand" />
-              <span className="text-xs font-medium text-foreground-muted">분석 중…</span>
+              {/* 진행 단계(SSE) — phase 왕복 동안 지금 뭘 하는지 보여준다. 없으면 기본 문구 */}
+              <span className="text-xs font-medium text-foreground-muted">
+                {loadingStage ?? "분석 중…"}
+              </span>
             </div>
             <div className="flex flex-col gap-2">
               <div className="skeleton h-3.5 rounded-md w-[85%]" />

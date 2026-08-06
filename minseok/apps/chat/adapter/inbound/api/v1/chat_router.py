@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -41,6 +42,44 @@ async def ask(
         return await use_case.ask(body.prompt, body.conversationId, user_id=user_id)
     except ChatError as e:
         raise HTTPException(status_code=_STATUS_BY_ERROR[type(e)], detail=e.detail)
+
+
+@chat_router.post("/ask/progress")
+async def ask_progress(
+    body: AskRequest,
+    user_id: int = Depends(get_current_user_id),
+    use_case: ChatUseCase = Depends(get_chat_use_case),
+):
+    """/ask와 같은 일을 하되 진행 단계를 SSE로 흘린다.
+
+    phase 왕복(p95 실측 ~1.5분) 동안 화면이 침묵하지 않게 한다.
+    이벤트: {"type":"stage","stage","label"}* → {"type":"result","data":AskResponse}
+            | {"type":"error","status","message"}
+    """
+    async def event_gen():
+        queue: asyncio.Queue = asyncio.Queue()
+        task = asyncio.create_task(use_case.ask(
+            body.prompt, body.conversationId, user_id=user_id,
+            on_stage=lambda stage, label: queue.put_nowait(
+                {"type": "stage", "stage": stage, "label": label}
+            ),
+        ))
+        while not (task.done() and queue.empty()):
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=0.3)
+            except asyncio.TimeoutError:
+                continue
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        try:
+            result = task.result()
+            payload = {"type": "result", "data": result.model_dump()}
+        except ChatError as e:
+            payload = {"type": "error", "status": _STATUS_BY_ERROR[type(e)], "message": e.detail}
+        except Exception:  # SSE는 이미 200 — 본문 이벤트로만 오류를 전할 수 있다
+            payload = {"type": "error", "status": 500, "message": "일시적인 오류가 발생했어요."}
+        yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
 
 
 @chat_router.post("/stream")
