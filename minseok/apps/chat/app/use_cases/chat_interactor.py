@@ -202,6 +202,8 @@ reason 서술 순서 (창업자의 판단 순서 그대로):
    데이터의 한계(임대료·권리금 미보유 등)를 유의점으로 쓸 것
 
 규칙:
+- **areas에는 위 컨텍스트에 제공된 모든 상권을 각각 하나씩 포함할 것** — 일부만 쓰고
+  끝내면 나머지 상권은 이유 없는 추천이 된다 (3차 실측: 모델이 상권 3곳 중 1곳만 서술)
 - text와 reason 모두 자연스러운 한국어로 작성
 - 수치는 **제공된 단위 그대로** 인용 — 만원을 억원으로 바꾸는 등 단위 환산 금지
 - 종합점수는 제공된 표기("N점")로만 인용 — "N/100", "성장도 N" 등 다른 형식 창작 금지
@@ -604,7 +606,13 @@ class ChatInteractor(ChatUseCase):
             logger.error("[chat] Phase2 파싱 실패(재시도 포함)")
             raise InvalidLLMResponseError("AI 서술 생성 실패")
 
-        reason_map = {item["trdar_code"]: item["reason"] for item in p2.get("areas", [])}
+        # 모델이 trdar_code를 문자열("3110131")로 되돌리는 일이 잦다 — int로 정규화하지
+        # 않으면 조회가 전부 빗나가 reason이 빈 채 나간다(3차 실측: reason 69%가 빈 문자열).
+        reason_map = {
+            int(item["trdar_code"]): item["reason"]
+            for item in p2.get("areas", [])
+            if str(item.get("trdar_code", "")).isdigit()
+        }
         # C2 리스크 의무의 결정론 보강 — 모델이 "유의할 점"을 빼먹으면(첫 재측정 준수율 31%)
         # 이미 컨텍스트에 주입된 수치를 재인용해 붙인다. 창작이 아니라 팩트의 재사용이다.
         reason_map = {

@@ -337,6 +337,16 @@ async def test_리스크_문장이_없으면_데이터_기반_유의점을_붙�
     assert "유의할 점:" in reason  # 스텁 통계는 폐업·경쟁이 없어 데이터 한계 문구가 붙는다
 
 
+async def test_phase2가_코드를_문자열로_돌려줘도_이유가_매핑된다(monkeypatch):
+    # 3차 실측: 모델이 "trdar_code": "1000001"(문자열)로 반환 → int 조회 전부 미스 →
+    # 추천 카드의 69%가 이유 없이 나갔다. 정규화로 매핑을 복구한다.
+    phase2_str_code = ('{"text": "요약", "areas": [{"trdar_code": "1000001",'
+                       ' "reason": "좋아요. 유의할 점: 경쟁 확인."}]}')
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, phase2_str_code])
+    result = await interactor.ask("역삼동 카페 어때?")
+    assert result.recommendations[0].reason.startswith("좋아요")
+
+
 async def test_리스크_문장이_이미_있으면_덧붙이지_않는다(monkeypatch):
     phase2_with_risk = ('{"text": "요약", "areas": [{"trdar_code": 1000001,'
                         ' "reason": "좋아요. 유의할 점: 폐업률 확인."}]}')
