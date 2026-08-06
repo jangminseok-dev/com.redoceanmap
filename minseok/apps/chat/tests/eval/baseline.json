@@ -1,11 +1,11 @@
 {
   "intent_accuracy": 0.99,
   "stock_query_accuracy": 0.93,
-  "region_hit_rate": 1.0,
+  "region_hit_rate": 0.95,
   "inherit_rate": 1.0,
   "inherit_focus_rate": 1.0,
   "volume_verdict_rate": 0.7,
-  "risk_mention_rate": 0.6,
+  "risk_mention_rate": 1.0,
   "phase0_parse_failure_rate": 0.0,
   "phase1_guard_activation_rate": 0.436,
   "hallucination_count": 4,

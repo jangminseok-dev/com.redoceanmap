@@ -24,7 +24,7 @@
 | # | 마일스톤 | 기간 | 핵심 |
 |---|---------|------|------|
 | M1 | ~~GitHub Actions CI~~ — **취소(사용자 결정, 2026-07-13)**. 구축·첫 실행 통과까지 확인 후 제거. 검증은 로컬 수동(pytest + lint-imports) 유지 | - | - |
-| M2 | **프로덕션 compose + deploy.sh** — --reload 제거, 비밀 .env 분리, healthcheck, DB 비노출. **n8n·neo4j prod 제외**(미사용). 배포=`git pull origin window && compose up -d --build` | 2-3일 | 우분투 PC 1커맨드 기동, 재부팅 자동 복구 |
+| M2 | **프로덕션 compose + deploy.sh — 초안 완료(2026-08-05)**. `docker-compose.prod.yaml`(--reload·소스 마운트 제거, 전 서비스 restart+healthcheck, neo4j·pgadmin 제외, **n8n 포함** — M5 취소로 현행 유지) + `deploy.sh`(window 브랜치 가드). 데이터 볼륨은 **external 선언** — 구 스택 볼륨명이 다르면 빈 DB로 조용히 뜨는 대신 기동이 실패한다. **잔여: 백엔드 PC 전환 검증**(볼륨명 확인→백업→구 스택 down→deploy.sh→스모크, 절차는 prod 파일 머리말) | 잔여 반나절 | 우분투 PC 1커맨드 기동, 재부팅 자동 복구 |
 | M3 | **백업 — 부분 완료**. 일간 pg_dump 7세대 + 무결성 검증 + market 덤프 계층(`scripts/backup_db.sh`, 04:00 cron) 완료. **잔여**: rclone→Google Drive 오프사이트(스크립트 주석에 "후속 계층"으로 명시) + 복원 리허설 | 잔여 반나절 | 복원 리허설 1회 성공 |
 | M4 | ~~RBAC + admin 스포크 실구현~~ — **완료(2026-07-21)**. RBAC 4테이블(auth 소유) + `require_permission`, admin 스포크는 허브 포트 소비, `grant_admin.py` 부트스트랩 | - | ✅ `tests/test_admin_access_matrix.py` — 가드 누락·코드 오타·read권한 쓰기 고정 |
 | M5 | ~~n8n 완전 탈피 + 프론트 ESLint~~ — **취소(사용자 결정, 2026-08-04)**. n8n·이메일 경로 현행 유지, 재제안 금지 | - | - |

@@ -415,12 +415,41 @@ async def test_지시어가_없으면_phase1_선택을_제한하지_않는다(mo
     ])
     phase1_both = ('{"service_code": "CS100010", "service_name": "커피-음료",'
                    ' "trdar_codes": [1000001, 1000002]}')
+    phase2_both = ('{"text": "요약", "areas": ['
+                   '{"trdar_code": 1000001, "reason": "이유1"},'
+                   '{"trdar_code": 1000002, "reason": "이유2"}]}')
     interactor, _, _ = _build(
-        monkeypatch, [INTENT_MARKET, phase1_both, PHASE2_JSON],
+        monkeypatch, [INTENT_MARKET, phase1_both, phase2_both],
         conversations=conversations, market=_StubMarket(areas=areas),
     )
     result = await interactor.ask("숙대 말고 다른 후보도 보여줘", conversation_id=100)
     assert [r.id for r in result.recommendations] == ["1000001", "1000002"]
+
+
+async def test_이유_없는_추천은_내보내지_않는다(monkeypatch):
+    # 4차 실측: 프롬프트 의무에도 모델이 상권 일부만 서술(빈 reason 33%) —
+    # 서술 없는 추천 카드는 사용자에게 "이유 없는 추천"이라 자른다.
+    areas = [
+        AreaInfo(trdar_code=1000001, trdar_name="테스트상권", district_name="강남구",
+                 adm_dong_name="역삼동", lat=37.5, lng=127.0),
+        AreaInfo(trdar_code=1000002, trdar_name="이웃상권", district_name="강남구",
+                 adm_dong_name="역삼동", lat=37.4, lng=127.0),
+    ]
+    phase1_both = ('{"service_code": "CS100010", "service_name": "커피-음료",'
+                   ' "trdar_codes": [1000001, 1000002]}')
+    interactor, _, _ = _build(
+        monkeypatch, [INTENT_MARKET, phase1_both, PHASE2_JSON],  # 1000001만 서술
+        market=_StubMarket(areas=areas),
+    )
+    result = await interactor.ask("역삼동 카페 어때?")
+    assert [r.id for r in result.recommendations] == ["1000001"]
+
+
+async def test_전부_서술이_없으면_추천을_유지한다(monkeypatch):  # 열화 동작
+    phase2_no_areas = '{"text": "요약만 있음", "areas": []}'
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, phase2_no_areas])
+    result = await interactor.ask("역삼동 카페 어때?")
+    assert len(result.recommendations) == 1  # 이유는 비지만 답변 자체는 살린다
 
 
 async def test_상권_컨텍스트에_서울_평균_대비_종합점수가_주입된다(monkeypatch):

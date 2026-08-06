@@ -619,6 +619,12 @@ class ChatInteractor(ChatUseCase):
             code: self._ensure_risk_note(reason, real_stats.get(code, {}))
             for code, reason in reason_map.items()
         }
+        # 이유 없는 추천은 내보내지 않는다 — 프롬프트로 "모든 상권 서술"을 의무화해도
+        # 모델이 일부만 쓰는 일이 남는다(4차 실측: 빈 reason 33%). 서술된 상권만 남기되,
+        # 전부 서술이 없으면 기존 추천을 유지해 답변 자체는 살린다(열화 동작).
+        reasoned = [c for c in valid_codes if reason_map.get(c, "").strip()]
+        if reasoned:
+            valid_codes = reasoned
 
         recommendations: list[AreaRecommendation] = []
         for code in valid_codes:

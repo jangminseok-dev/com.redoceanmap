@@ -37,6 +37,12 @@ from market.adapter.outbound.orm.trade_area_orm import TradeAreaOrm
 from hub.app.ports.output.commercial_data_port import CommercialDataPort
 
 
+# 상권 요약 캐시 — chat이 상권 질문마다 부르는데 결과(전 상권 조인 + 최신 분기 매출
+# GROUP BY)는 분기 적재 때만 바뀐다. 최신 분기를 버전 키로 삼아 자연 갱신한다 —
+# area_score의 시도 벤치마크 캐시(위 _CITY_CACHE)와 같은 방식이고 같은 이유로 TTL·Redis 불요.
+_SUMMARY_CACHE: dict[str, tuple[int, AreaSummary]] = {}
+
+
 class CommercialDataGateway(CommercialDataPort):
     """허브의 CommercialDataPort를 market(스포크)이 구현한다.
 
@@ -54,6 +60,14 @@ class CommercialDataGateway(CommercialDataPort):
         return [ServiceCode(code=r.code, name=r.name) for r in result.all()]
 
     async def get_area_summary(self) -> AreaSummary:
+        # 버전 키(최신 분기, index-only scan)만 먼저 조회 — 같은 분기면 재집계하지 않는다
+        latest_quarter = (
+            await self._session.execute(select(func.max(EstimatedSalesOrm.year_quarter)))
+        ).scalar()
+        hit = _SUMMARY_CACHE.get("area_summary")
+        if hit is not None and hit[0] == latest_quarter:
+            return hit[1]
+
         dong = aliased(RegionOrm)  # 행정동(level2)
         gu = aliased(RegionOrm)    # 자치구(level1)
         rows = (await self._session.execute(
@@ -61,10 +75,6 @@ class CommercialDataGateway(CommercialDataPort):
             .outerjoin(dong, TradeAreaOrm.region_code == dong.code)
             .outerjoin(gu, dong.parent_code == gu.code)
         )).all()
-
-        latest_quarter = (
-            await self._session.execute(select(func.max(EstimatedSalesOrm.year_quarter)))
-        ).scalar()
 
         sales_by_code: dict[int, int] = {}
         if latest_quarter:
@@ -89,9 +99,12 @@ class CommercialDataGateway(CommercialDataPort):
             )
             for t, r in ((row[0], row) for row in rows)
         ]
-        return AreaSummary(
+        summary = AreaSummary(
             areas=area_infos, latest_quarter=latest_quarter, sales_by_code=sales_by_code
         )
+        if latest_quarter is not None:  # 데이터 없는 상태를 캐시하면 적재 후에도 빈 채 남는다
+            _SUMMARY_CACHE["area_summary"] = (latest_quarter, summary)
+        return summary
 
     async def get_area_scores(self, trdar_codes: list[int]) -> dict[int, AreaScoreInfo]:
         # area_score 슬라이스(도메인 스코어러 + PG 리포지토리)를 그대로 재사용해 허브 DTO로 변환
