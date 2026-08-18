@@ -4,7 +4,6 @@ import { ChevronDown } from "lucide-react";
 import type { SignalContribution, StockAnalyzeResult } from "@/lib/types";
 import { formatPrice } from "@/lib/currency";
 import InsightList from "@/components/common/InsightList";
-import SignalBreakdown from "./SignalBreakdown";
 
 const fmt = (v: number, digits = 2) =>
   v.toLocaleString("ko-KR", { maximumFractionDigits: digits });
@@ -225,8 +224,6 @@ export default function IndicatorPanel({
 
   return (
     <div className="p-4 flex flex-col gap-3">
-      <SignalBreakdown analyze={analyze} />
-
       {analyze.insights && analyze.insights.length > 0 && (
         <div className="bg-surface border border-border rounded-lg px-3 py-2.5">
           <InsightList insights={analyze.insights} />

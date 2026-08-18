@@ -6,8 +6,9 @@ import type {
   GameMarketPrices,
   GameSymbolPrices,
 } from "@/lib/types";
+import { useThemeStore } from "@/lib/uiStore";
 import SymbolMark from "@/components/common/SymbolMark";
-import GameChart, { MA_COLOR } from "./GameChart";
+import GameChart, { maColor } from "./GameChart";
 import GameOrderBook from "./GameOrderBook";
 import GameAnalysisCard from "./GameAnalysisCard";
 import MarketNewsFeed from "./MarketNewsFeed";
@@ -70,6 +71,8 @@ export default function GameSymbolDetail({
   /** 봉·호가·분석은 선택 종목에만 계산된다 — 목록의 첫 종목을 보고 있을 때는 아직 없다 */
   isSelected: boolean;
 }) {
+  // MA 범례 색 — 차트 본체(GameChart)와 같은 maColor를 써야 색이 갈라지지 않는다
+  const dark = useThemeStore((s) => s.theme) === "dark";
   const [view, setView] = useState<{
     tab: TabKey;
     chart: "line" | "candle";
@@ -203,7 +206,7 @@ export default function GameSymbolDetail({
                                 : [...p.ma, m.period],
                             }))
                           }
-                          style={{ color: MA_COLOR[m.period] }}
+                          style={{ color: maColor(m.period, dark) }}
                           className={active ? "font-semibold" : "opacity-35"}
                         >
                           {m.period}

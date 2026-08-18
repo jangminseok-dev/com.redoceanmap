@@ -186,7 +186,7 @@ function GameOps() {
                       {wallet.rule_version})
                     </p>
                     {!wallet.ledger_matches && (
-                      <p className="flex items-start gap-1.5 text-[#DC2626]">
+                      <p className="flex items-start gap-1.5 text-up">
                         <AlertTriangle size={13} className="mt-0.5 shrink-0" />
                         원장 합계({won(wallet.ledger_total_krw)})가 잔고와 다릅니다 — 어딘가에서
                         돈이 샜습니다.
@@ -431,7 +431,7 @@ function GameOps() {
                     <td className="px-5 py-2.5">
                       <span
                         className={
-                          i.in_effect ? "text-[#DC2626] font-medium" : "text-foreground-muted"
+                          i.in_effect ? "text-up font-medium" : "text-foreground-muted"
                         }
                       >
                         {i.in_effect ? "반영 중" : "소멸"}

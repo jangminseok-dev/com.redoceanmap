@@ -31,7 +31,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ko" className="h-full antialiased">
+    // suppressHydrationWarning — 아래 인라인 스크립트가 hydration 전에 data-theme을 심어
+    // 서버 HTML(속성 없음)과 어긋난다. 의도된 어긋남이므로 경고만 끈다(html 한 단계에만 적용).
+    <html lang="ko" className="h-full antialiased" suppressHydrationWarning>
+      <head>
+        {/* FOUC 방지 — 첫 페인트 전에 저장된 테마(없으면 시스템 선호)를 적용한다.
+            React 밖에서 실행돼야 하므로 인라인 스크립트다. 키는 lib/uiStore.ts THEME_KEY와 동일. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem("rom-theme");if(t!=="dark"&&t!=="light"){t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}document.documentElement.dataset.theme=t}catch(e){}})()`,
+          }}
+        />
+      </head>
       <body className="min-h-full">
         <Providers>
           <AuthProvider />

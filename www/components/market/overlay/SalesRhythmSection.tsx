@@ -35,7 +35,7 @@ function HeatStrip({
           <div
             key={key}
             className="rounded-md py-1.5 text-center"
-            style={{ backgroundColor: `rgba(153, 27, 27, ${intensity})` }}
+            style={{ backgroundColor: `rgb(var(--heat-rgb) / ${intensity})` }}
             title={`${label}: ${formatMoney(v)} (${share}%)${per ? ` · 객단가 ${per}` : ""}`}
           >
             <p className={`text-xs leading-tight ${intensity > 0.45 ? "text-white/80" : "text-foreground-muted"}`}>

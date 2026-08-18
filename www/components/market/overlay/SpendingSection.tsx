@@ -63,17 +63,17 @@ export default function SpendingSection({
                 <YAxis
                   type="category"
                   dataKey="label"
-                  tick={{ fontSize: 10, fill: "#6B7280" }}
+                  tick={{ fontSize: 10, fill: "var(--foreground-muted)" }}
                   axisLine={false}
                   tickLine={false}
                   width={52}
                 />
                 <Tooltip
                   formatter={(v) => [formatMoney(Number(v)), "지출"]}
-                  contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #EBE8DF" }}
-                  cursor={{ fill: "rgba(153, 27, 27, 0.06)" }}
+                  contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
+                  cursor={{ fill: "rgb(var(--heat-rgb) / 0.06)" }}
                 />
-                <Bar dataKey="value" fill="#991B1B" fillOpacity={0.8} radius={[0, 3, 3, 0]} maxBarSize={14} />
+                <Bar dataKey="value" fill="var(--brand)" fillOpacity={0.8} radius={[0, 3, 3, 0]} maxBarSize={14} />
               </BarChart>
             </ResponsiveContainer>
           </div>

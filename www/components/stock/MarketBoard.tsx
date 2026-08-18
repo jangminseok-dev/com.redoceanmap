@@ -1,21 +1,20 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Minus, TrendingDown, TrendingUp } from "lucide-react";
-import { fetchStockBoard, fetchStockQuote } from "@/lib/api";
+import { fetchStockBoard } from "@/lib/api";
 import { formatPrice, formatTurnover } from "@/lib/currency";
-import { Marquee } from "@/components/ui/marquee";
 import SymbolMark from "@/components/common/SymbolMark";
 import type { StockBoardRow } from "@/lib/types";
 
-// 지수는 수집 대상이 아니다(price_bars는 레짐 판정용 SPY·^VIX만 담는다) —
-// 서버 20초 공유 캐시가 붙은 quote를 그대로 재사용한다.
-const INDICES = [
-  { symbol: "^GSPC", label: "S&P 500" },
-  { symbol: "^IXIC", label: "나스닥" },
-  { symbol: "^KS11", label: "코스피" },
-  { symbol: "KRW=X", label: "원/달러" },
-];
+// 좌측 목록의 방향 필터 — 종목이 늘면 상승 신호만 훑는 동작이 기본이 된다(레퍼런스 토스 필터 칩)
+const FILTERS = [
+  { key: "ALL", label: "전체" },
+  { key: "UP", label: "상승" },
+  { key: "DOWN", label: "하락" },
+] as const;
+type FilterKey = (typeof FILTERS)[number]["key"];
 
 const DIRECTION_META = {
   UP: { label: "상승", icon: TrendingUp, className: "text-up bg-up-weak border-up/20" },
@@ -31,32 +30,6 @@ function toneBox(v: number | null | undefined) {
   if (v > 0) return "text-up bg-up-weak";
   if (v < 0) return "text-down bg-down-weak";
   return "text-foreground-muted";
-}
-
-function IndexChip({ symbol, label }: { symbol: string; label: string }) {
-  const { data } = useQuery({
-    queryKey: ["quote", symbol],
-    queryFn: () => fetchStockQuote(symbol),
-    retry: false,
-    staleTime: 60_000,
-    refetchInterval: 60_000,
-  });
-  // 조회 실패한 지수는 조용히 빠진다 — 스트립은 장식이고 보드가 본체다
-  if (!data) return null;
-
-  return (
-    <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap text-xs">
-      <span className="text-foreground-muted">{label}</span>
-      <span className="font-semibold tabular-nums">
-        {data.price.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}
-      </span>
-      {data.change_pct != null && (
-        <span className={`tabular-nums ${data.change_pct > 0 ? "text-up" : data.change_pct < 0 ? "text-down" : "text-foreground-muted"}`}>
-          {signedPct(data.change_pct)}
-        </span>
-      )}
-    </span>
-  );
 }
 
 function Sparkline({ values, rising }: { values: number[]; rising: boolean }) {
@@ -106,8 +79,9 @@ function BoardRow({
         type="button"
         onClick={() => onSelect(row.ticker)}
         aria-current={active ? "true" : undefined}
-        className={`w-full flex items-center gap-3 px-4 py-2.5 text-left border-b border-border transition-colors ${
-          active ? "bg-accent" : "hover:bg-accent"
+        // 활성 행 — 면 + 좌측 2px 브랜드 보더. 색을 넓게 칠하지 않고 위치로 말한다(핸드오프 §3)
+        className={`relative w-full flex items-center gap-3 px-4 py-2.5 text-left border-b border-border transition-colors ${
+          active ? "bg-accent shadow-[inset_2px_0_0_var(--brand)]" : "hover:bg-accent"
         }`}
       >
         <span className="w-5 shrink-0 text-xs tabular-nums text-foreground-muted">{rank}</span>
@@ -220,8 +194,10 @@ export default function MarketBoard({
     queryFn: () => fetchStockBoard(),
     staleTime: 10 * 60_000, // 스냅샷은 일 1회 갱신 — 재방문마다 다시 받을 이유가 없다
   });
+  const [filter, setFilter] = useState<FilterKey>("ALL"); // 상태는 이 하나뿐이다
 
   const rows = boardQ.data?.rows ?? [];
+  const filtered = filter === "ALL" ? rows : rows.filter((r) => r.direction === filter);
   const counts = rows.reduce(
     (acc, row) => ({ ...acc, [row.direction]: acc[row.direction] + 1 }),
     { UP: 0, DOWN: 0, NEUTRAL: 0 } as Record<StockBoardRow["direction"], number>,
@@ -236,17 +212,32 @@ export default function MarketBoard({
   const sameDay = asOf && priceAsOf && day(asOf) === day(priceAsOf);
 
   return (
-    // 스크롤은 WorkspaceShell이 잡는다 — 여기서 또 잡으면 이중 스크롤이 된다
+    // 스크롤은 WorkspaceShell이 잡는다 — 여기서 또 잡으면 이중 스크롤이 된다.
+    // 지수 티커는 MarketStrip으로 분리됐다(스테이지 최상단 상주 — 페이지가 배치한다).
     <div>
-      {/* 지수 티커 — 4개가 375px에 들어가지 않아 예전에는 잘렸다. 흐르게 두면 폭과 무관해진다. */}
-      {!compact && (
-        <div className="border-b border-border py-2">
-          <Marquee duration="50s" className="[--gap:2rem]">
-            {INDICES.map((index) => (
-              <IndexChip key={index.symbol} {...index} />
-            ))}
-          </Marquee>
-        </div>
+      {/* 방향 필터 — 알약 칩(낮은 위계, Button 스케일과 섞지 않는다) */}
+      <div className="flex items-center gap-1.5 px-4 pt-3 pb-1">
+        {FILTERS.map((f) => (
+          <button
+            key={f.key}
+            type="button"
+            onClick={() => setFilter(f.key)}
+            aria-pressed={filter === f.key}
+            className={`inline-flex items-center h-7 px-2.5 rounded-full text-xs font-medium transition-colors duration-150 ${
+              filter === f.key
+                ? "bg-brand text-white"
+                : "border border-border text-foreground-muted hover:bg-accent hover:text-foreground"
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+        <span className="ml-auto text-xs text-foreground-muted">신호순</span>
+      </div>
+      {compact && asOf && (
+        <p className="px-4 pb-1.5 text-xs text-foreground-muted">
+          신호 {day(asOf)} 기준{priceAsOf && ` · 가격 ${day(priceAsOf)} 종가`}
+        </p>
       )}
 
       {/* 신호 요약 — 보드 행을 세어 만든다(새 요청 없음). 표가 길어 위에서 전체 그림이 안 잡히던 자리다.
@@ -310,17 +301,24 @@ export default function MarketBoard({
           )}
 
           <ul className="flex flex-col border-t border-border">
-            {boardQ.data.rows.map((row, i) => (
+            {/* 순위는 필터와 무관하게 전체 신호순 위치를 유지한다 — "상승만 보기"에서도 3위는 3위다 */}
+            {filtered.map((row) => (
               <BoardRow
                 key={row.ticker}
                 row={row}
-                rank={i + 1}
+                rank={rows.indexOf(row) + 1}
                 compact={compact}
                 active={row.ticker === selected}
                 onSelect={onSelect}
               />
             ))}
           </ul>
+          {filtered.length === 0 && (
+            <p className="px-4 py-6 text-center text-sm text-foreground-muted">
+              {filter === "UP" ? "상승" : "하락"} 신호인 종목이 지금은 없어요. 전체를 눌러 다른
+              신호를 둘러보세요.
+            </p>
+          )}
 
           {!compact && (
             <p className="px-4 py-3 text-xs text-foreground-muted leading-relaxed">

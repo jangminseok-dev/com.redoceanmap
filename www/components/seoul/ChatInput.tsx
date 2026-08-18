@@ -9,6 +9,8 @@ type Props = {
   onSubmit: (text: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  /** 초기 입력값 — "질문 고치기"로 중단한 문장을 복원할 때 쓴다(호출부가 key로 리마운트) */
+  initialText?: string;
 };
 
 const ENGINES: { id: ChatEngine; label: string; desc: string }[] = [
@@ -20,11 +22,12 @@ export default function ChatInput({
   onSubmit,
   disabled,
   placeholder = "예산이랑 하고 싶은 업종을 알려주세요",
+  initialText = "",
 }: Props) {
   // 엔진은 스토어 소유 — 답변 후 워크스페이스로 이동해도 고른 버전이 유지된다
   const engine = useChatStore((s) => s.engine);
   const setEngine = useChatStore((s) => s.setEngine);
-  const [ui, setUi] = useState({ text: "", menuOpen: false });
+  const [ui, setUi] = useState({ text: initialText, menuOpen: false });
 
   const submit = () => {
     const trimmed = ui.text.trim();

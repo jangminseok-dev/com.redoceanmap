@@ -21,7 +21,7 @@ export default function RobotAvatar({ size = 40, ring = false, thinking = false 
       <defs>
         {/* 링·글로우는 브랜드 레드 톤 — 크림 배경(#FDFAF2) 위에서 파랑 계열은 겉돈다 */}
         <linearGradient id={`${id}-ring`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#991B1B" />
+          <stop offset="0%" stopColor="var(--brand)" />
           <stop offset="100%" stopColor="#D97757" />
         </linearGradient>
         <linearGradient id={`${id}-shell`} x1="0.3" y1="0" x2="0.7" y2="1">
@@ -30,8 +30,8 @@ export default function RobotAvatar({ size = 40, ring = false, thinking = false 
           <stop offset="100%" stopColor="#B8BDC9" />
         </linearGradient>
         <radialGradient id={`${id}-glow`} cx="0.5" cy="0.5" r="0.5">
-          <stop offset="0%" stopColor="#991B1B" stopOpacity="0.14" />
-          <stop offset="100%" stopColor="#991B1B" stopOpacity="0" />
+          <stop offset="0%" stopColor="var(--brand)" stopOpacity="0.14" />
+          <stop offset="100%" stopColor="var(--brand)" stopOpacity="0" />
         </radialGradient>
       </defs>
 

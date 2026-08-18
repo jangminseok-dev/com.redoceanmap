@@ -11,8 +11,9 @@ declare global {
 
 const KAKAO_SDK_URL = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${process.env.NEXT_PUBLIC_KAKAO_MAP_KEY}&autoload=false`;
 
-// 지도에 찍는 데 필요한 최소 형태 — Area(추천 카드)와 상권 조회 응답 모두 수용
-export type MapPin = { id: string; lat: number; lng: number };
+// 지도에 찍는 데 필요한 최소 형태 — Area(추천 카드)와 상권 조회 응답 모두 수용.
+// n은 추천 순서(①②③) — 채팅 카드·칩과 같은 번호로 이어져 "몇 번째 추천"이 지도에서 읽힌다.
+export type MapPin = { id: string; lat: number; lng: number; n?: number };
 
 type Props = {
   areas: MapPin[];
@@ -20,18 +21,21 @@ type Props = {
   onSelect: (id: string) => void;
 };
 
-function makePinContent(selected: boolean): string {
-  const fill = selected ? "#7A1515" : "#991B1B";
-  const w = selected ? 34 : 26;
-  const h = selected ? 44 : 33;
+// 번호 핀 — 라운드 티어드롭(999/999/999/4 + rotate -45 → 뾰족한 모서리가 아래 중앙).
+// 색은 CSS 변수라 다크 전환을 자동 추종한다. 타일 필터(.map-canvas img)는 핀에 닿지 않는다.
+function makePinContent(selected: boolean, n?: number): string {
+  const size = selected ? 30 : 24;
   const shadow = selected
     ? "filter:drop-shadow(0 3px 6px rgba(0,0,0,0.35))"
     : "filter:drop-shadow(0 1px 3px rgba(0,0,0,0.25))";
-  return `<div style="cursor:pointer;${shadow}">
-    <svg width="${w}" height="${h}" viewBox="0 0 16 20" aria-hidden="true">
-      <path d="M8 0C3.6 0 0 3.6 0 8c0 6 8 12 8 12s8-6 8-12c0-4.4-3.6-8-8-8z" fill="${fill}"/>
-      <circle cx="8" cy="8" r="2.5" fill="#FFFFFF"/>
-    </svg>
+  const label =
+    n !== undefined
+      ? `<span style="transform:rotate(45deg);color:#fff;font-size:${selected ? 13 : 12}px;font-weight:700;font-variant-numeric:tabular-nums;">${n}</span>`
+      : `<span style="width:6px;height:6px;border-radius:50%;background:var(--surface);"></span>`;
+  return `<div style="cursor:pointer;${shadow};padding-bottom:${Math.round(size * 0.2)}px;">
+    <div style="width:${size}px;height:${size}px;border-radius:999px 999px 999px 4px;transform:rotate(-45deg);background:var(--brand);${selected ? "" : "opacity:.85;"}display:grid;place-items:center;border:2px solid var(--surface);">
+      ${label}
+    </div>
   </div>`;
 }
 
@@ -56,7 +60,7 @@ export default function MapView({ areas, selectedId, onSelect }: Props) {
       const isSelected = area.id === currentSelectedId;
 
       const content = document.createElement("div");
-      content.innerHTML = makePinContent(isSelected);
+      content.innerHTML = makePinContent(isSelected, area.n);
       content.addEventListener("click", () => onSelectRef.current(area.id));
 
       const overlay = new window.kakao.maps.CustomOverlay({
@@ -132,7 +136,9 @@ export default function MapView({ areas, selectedId, onSelect }: Props) {
 
   return (
     <div className="relative w-full h-full">
-      <div ref={containerRef} className="w-full h-full" />
+      {/* map-canvas — 다크에서 타일 <img>에만 반전 필터를 건다(globals.css).
+          카카오맵은 다크 타일 테마가 없다. 핀·칩은 img가 아니라 필터 밖이다. */}
+      <div ref={containerRef} className="map-canvas w-full h-full" />
 
       {/* 지도 컨트롤 — 레퍼런스(네이버지도)의 우측 세로 스택. 지금 우리가 가진 조작은 줌뿐이다.
           테마·거리뷰·면적 같은 칸은 대응 기능이 없어 만들지 않는다(빈 버튼은 UI가 아니라 거짓말이다). */}

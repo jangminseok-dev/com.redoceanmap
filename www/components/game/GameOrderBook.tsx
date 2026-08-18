@@ -3,8 +3,9 @@
 import { TriangleAlert } from "lucide-react";
 import type { GameOrderBook as Book } from "@/lib/types";
 
-const UP = "#DC2626";
-const DOWN = "#2563EB";
+// CSS 변수 — 다크 자동 추종(인라인 style도 var()를 받는다)
+const UP = "var(--up)";
+const DOWN = "var(--down)";
 
 const LIMIT_LABEL: Record<string, { text: string; tone: string }> = {
   upper: { text: "상한가", tone: "text-up" },

@@ -7,20 +7,34 @@ import type {
   GameMovingAverage,
   GamePricePoint,
 } from "@/lib/types";
+import { useThemeStore } from "@/lib/uiStore";
 import { computeVolumeProfile } from "@/lib/volumeProfile";
 
-// 한국 관례: 상승 빨강 / 하락 파랑
-const UP = "#DC2626";
-const DOWN = "#2563EB";
+// 한국 관례: 상승 빨강 / 하락 파랑 — SVG 속성은 CSS 변수를 받으므로 다크를 자동 추종한다
+const UP = "var(--up)";
+const DOWN = "var(--down)";
 
 // 이동평균선 색 — 백엔드 indicators.MA_PERIODS와 같은 기간을 쓴다.
 // 범례가 같은 값을 써야 하므로 내보낸다 — 두 곳에 적으면 색이 갈라진다.
+// 20일선은 캔들 상승색(--up)과 겹치지 않게 CandleChart의 MA 팔레트 계열을 따른다.
 export const MA_COLOR: Record<number, string> = {
   5: "#16A34A",
-  20: "#DC2626",
+  20: "#D97706",
   60: "#EA580C",
   120: "#7C3AED",
 };
+// 다크 대응 — 어두운 면 위에서 가라앉는 색만 밝은 변형으로(CandleChart chartColors와 같은 결)
+const MA_COLOR_DARK: Record<number, string> = {
+  5: "#4ADE80",
+  20: "#E8B45A",
+  60: "#FB923C",
+  120: "#B69CF4",
+};
+
+/** 기간별 이동평균선 색 — 차트 본체와 범례(GameSymbolDetail)가 같은 값을 쓴다 */
+export function maColor(period: number, dark: boolean): string {
+  return (dark ? MA_COLOR_DARK[period] : MA_COLOR[period]) ?? "#94A3B8";
+}
 
 const RSI_OVERBOUGHT = 70;
 const RSI_OVERSOLD = 30;
@@ -156,6 +170,8 @@ function Plot({
   markers,
   pattern,
 }: PlotProps) {
+  // 이동평균·RSI 선색만 테마 분기가 필요하다 — 나머지는 CSS 변수가 자동 추종
+  const dark = useThemeStore((s) => s.theme) === "dark";
   const candleMode = !!candles && candles.length > 0;
   const count = candleMode ? candles!.length : points.length;
 
@@ -316,11 +332,9 @@ function Plot({
               y={top + 0.5}
               width={barW}
               height={Math.max(1, bottom - top - 1)}
-              fill={
-                i === profile.pocIndex
-                  ? "rgba(153, 27, 27, 0.30)" // 최다 거래 구간만 강조
-                  : "rgba(107, 114, 128, 0.16)"
-              }
+              // 최다 거래 구간만 브랜드 톤으로 강조 — heat-rgb 변수가 다크를 자동 추종한다
+              fill={i === profile.pocIndex ? "rgb(var(--heat-rgb) / 0.30)" : "var(--foreground-muted)"}
+              fillOpacity={i === profile.pocIndex ? undefined : 0.16}
             />
           );
         })}
@@ -389,7 +403,7 @@ function Plot({
               key={`${ma.period}-${k}`}
               points={seg}
               fill="none"
-              stroke={MA_COLOR[ma.period] ?? "#94A3B8"}
+              stroke={maColor(ma.period, dark)}
               strokeWidth={1.2}
               opacity={0.9}
             />
@@ -449,7 +463,7 @@ function Plot({
         y={yPrice(current) + 3.5}
         fontSize={10}
         fontWeight={600}
-        fill="#fff"
+        fill="var(--surface)"
         className="tabular-nums"
       >
         {won(current)}
@@ -508,7 +522,7 @@ function Plot({
                 key={`rsi-${k}`}
                 points={seg}
                 fill="none"
-                stroke="#7C3AED"
+                stroke={maColor(120, dark)}
                 strokeWidth={1.2}
               />
             ));
@@ -546,7 +560,7 @@ function Plot({
             y={yPrice(closes[hoverIndex]) + 3.5}
             fontSize={10}
             fontWeight={600}
-            fill="#fff"
+            fill="var(--surface)"
             className="tabular-nums"
           >
             {won(closes[hoverIndex])}

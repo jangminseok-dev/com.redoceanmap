@@ -199,7 +199,7 @@ export default function GradesPage() {
                             disabled={mutating}
                             onChange={() => toggleTab(g, key)}
                             aria-label={`${g.name} — ${TAB_LABELS[key]} 노출`}
-                            className="w-4 h-4 accent-[var(--brand,#e0493f)] cursor-pointer disabled:cursor-default"
+                            className="w-4 h-4 accent-[var(--brand)] cursor-pointer disabled:cursor-default"
                           />
                         </td>
                       ))}

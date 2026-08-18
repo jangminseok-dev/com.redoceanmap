@@ -23,9 +23,9 @@ export default function Wordmark({ iconOnly = false }: { iconOnly?: boolean }) {
       >
         <path
           d="M8 0C3.6 0 0 3.6 0 8c0 6 8 12 8 12s8-6 8-12c0-4.4-3.6-8-8-8z"
-          fill="#991B1B"
+          fill="var(--brand)"
         />
-        <circle cx="8" cy="8" r="2.5" fill="#FFFFFF" />
+        <circle cx="8" cy="8" r="2.5" fill="var(--background)" />
       </svg>
       {!iconOnly && (
         <span className="font-semibold tracking-tight text-[15px]">

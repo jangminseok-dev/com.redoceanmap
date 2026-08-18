@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { fetchAreaInfo } from "@/lib/api";
 import { useChatStore } from "@/lib/store";
+import { useRecentStore } from "@/lib/uiStore";
 import WorkspaceShell from "@/components/workspace/WorkspaceShell";
 import ChatPanel from "@/components/chat/ChatPanel";
 import MapView, { type MapPin } from "@/components/seoul/MapView";
@@ -85,8 +86,17 @@ function MarketWorkspace() {
     enabled: !!trdar && !inRecommendations,
   });
 
+  // 레일 "최근" 스택 기록 — 이름을 아는 시점(추천 목록 또는 상권 조회 도착)에 남긴다
+  const pushRecent = useRecentStore((s) => s.push);
+  const recentLabel =
+    recommendations.find((r) => r.id === trdar)?.name ?? areaInfoQ.data?.trdar_name;
+  useEffect(() => {
+    if (trdar && recentLabel) pushRecent({ type: "market", id: trdar, label: recentLabel });
+  }, [trdar, recentLabel, pushRecent]);
+
+  // 추천 순서를 핀 번호로 — 채팅 카드·지도 칩과 같은 번호라 셋이 하나의 흐름으로 읽힌다
   const pins: MapPin[] = [
-    ...recommendations.map((r) => ({ id: r.id, lat: r.lat, lng: r.lng })),
+    ...recommendations.map((r, i) => ({ id: r.id, lat: r.lat, lng: r.lng, n: i + 1 })),
     ...(areaInfoQ.data && !inRecommendations
       ? [{ id: String(areaInfoQ.data.trdar_code), lat: areaInfoQ.data.lat, lng: areaInfoQ.data.lng }]
       : []),
@@ -109,23 +119,40 @@ function MarketWorkspace() {
                 overlayOpen ? "lg:pr-[420px]" : ""
               }`}
             >
-              {recommendations.map((r) => (
+              {recommendations.map((r, i) => (
                 <button
                   key={r.id}
                   type="button"
                   onClick={() => setTrdar(r.id)}
                   aria-pressed={r.id === trdar}
-                  className={`shrink-0 h-8 px-3 rounded-full text-xs font-medium shadow-sm transition-colors duration-150 ${
+                  // 유리 한 겹(핸드오프 §6 상한) — 지도 위에 뜨는 유일한 반투명 요소다.
+                  // 다크 활성은 브랜드 면 대신 전경 반전 — 다크에서 적색 면은 상승색과 헷갈린다.
+                  className={`shrink-0 inline-flex items-center gap-1.5 h-8 pl-1.5 pr-3 rounded-full text-xs font-medium shadow-sm transition-colors duration-150 ${
                     r.id === trdar
-                      ? "bg-brand text-white"
-                      : "bg-surface border border-border hover:bg-accent"
+                      ? "bg-brand text-white dark:bg-foreground dark:text-background"
+                      : "bg-surface/80 supports-[backdrop-filter]:backdrop-blur-md border border-border hover:bg-accent"
                   }`}
                 >
+                  <span
+                    aria-hidden
+                    className={`grid place-items-center w-5 h-5 rounded-full text-xs font-bold tabular-nums ${
+                      r.id === trdar
+                        ? "bg-white/20 dark:bg-background/20"
+                        : "bg-accent text-brand"
+                    }`}
+                  >
+                    {i + 1}
+                  </span>
                   {r.name}
                 </button>
               ))}
             </div>
           )}
+
+          {/* 데이터 출처 — 지도 좌하단 상주 칩. 기준 분기는 상세 시트 헤더가 상권별로 말한다. */}
+          <span className="absolute left-3 bottom-3 z-10 inline-flex items-center h-6 px-2.5 rounded-full bg-surface/80 supports-[backdrop-filter]:backdrop-blur-md border border-border text-xs text-foreground-muted pointer-events-none">
+            서울시 상권분석서비스 데이터
+          </span>
 
           {overlayOpen && (
             <AreaDetailOverlay trdarCode={trdar} serviceCode={serviceCode} onClose={closeOverlay} />

@@ -8,6 +8,10 @@
 /* shadcn 컴포넌트가 쓰는 animate-in/zoom-in-95 유틸 — Tailwind 4에는 내장돼 있지 않다 */
 @import "tw-animate-css";
 
+/* dark: 유틸을 미디어쿼리가 아니라 <html data-theme="dark"> 기준으로 건다 —
+   시스템 선호는 layout.tsx 인라인 스크립트가 이 속성으로 번역하고, 토글이 수동 오버라이드한다. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 :root {
   --background: #FDFAF2;
   --surface: #FFFFFF;
@@ -45,6 +49,13 @@
   --input: var(--border);
   --ring: var(--brand);
 
+  /* 다크 전용 3단계 계층(ext-2)의 라이트 대응 — 라이트에서는 surface와 같다.
+     라이트의 계층은 canvas/surface 2단 + border로 충분하다(DESIGN.md §6). */
+  --surface-raised: var(--surface);
+
+  /* 히트맵 셀 RGB — SalesRhythm 등이 알파만 바꿔 세기를 그린다. 다크에서 통째로 갈린다. */
+  --heat-rgb: 153 27 27;
+
   /* 모션 — DESIGN.md §15의 local extension. 세 단계 밖의 duration을 새로 만들지 않는다. */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --duration-state: 150ms; /* hover·pressed 같은 상태 전환 */
@@ -52,9 +63,34 @@
   --duration-overlay: 280ms; /* 모달·시트 */
 }
 
+/* 다크 테마 — 2026-08-16 리뉴얼에서 신규 설계(design_handoff README §Design Tokens).
+   크림의 반대는 중립 회색이 아니라 **따뜻한 먹색**이다. 순수 검정은 쓰지 않는다(대비 과다).
+   브랜드/상승 적색 충돌 해소: 다크에서 브랜드 강조는 면·테두리·위치로 옮기고(레일 인디케이터),
+   상승/하락은 색+부호+배경 3중 신호로 색 의존을 낮춘다. 약배경은 파스텔 금지 — 알파 8~14%. */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #14120E;
+  --surface: #1C1A15;
+  --surface-raised: #24211B;
+  --border: #322E26;
+  --foreground: #F2EDE3; /* 대비 13.1:1 */
+  --foreground-muted: #A39B8B; /* 대비 6.0:1 */
+  --brand: #E5484D; /* 로고·포커스·전송 등 비데이터 소면적만 — 넓은 면 채움 금지 */
+  --brand-deep: #D93D42;
+  --up: #F87171;
+  --down: #60A5FA;
+  --up-weak: rgba(248, 113, 113, 0.13);
+  --down-weak: rgba(96, 165, 250, 0.13);
+  /* weak쌍은 면 반전 — 라이트의 크림 accent 대신 raised 면을 쓴다 */
+  --accent: #24211B;
+  --secondary: #24211B;
+  --heat-rgb: 229 72 77;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
   --color-foreground: var(--foreground);
   --color-foreground-muted: var(--foreground-muted);
   --color-border: var(--border);
@@ -163,6 +199,127 @@ body {
   background-size: 24px 24px;
   /* 마스크의 #000은 색이 아니라 알파다 — "여기는 보이게"라는 뜻이라 팔레트와 무관하다 */
   mask-image: radial-gradient(ellipse 55% 45% at 50% 42%, #000 15%, transparent 72%);
+}
+
+/* 다크의 홈 글로우 — 농도 공식은 라이트와 같고 색만 다크 브랜드(#E5484D)로 간다.
+   어두운 면에서는 같은 알파도 더 세게 읽혀 한 단계 낮춘 값이 아니라 비슷한 값이 맞다(실측). */
+[data-theme="dark"] .home-glow {
+  background:
+    radial-gradient(ellipse 55% 40% at 50% 26%, rgb(229 72 77 / 0.06), transparent 68%),
+    radial-gradient(ellipse 45% 35% at 82% 88%, rgb(229 72 77 / 0.04), transparent 70%);
+}
+
+[data-theme="dark"] .home-glow::before {
+  /* 도트는 밝은 전경(#F2EDE3) 6% — 라이트의 foreground 7%와 같은 역할 */
+  background-image: radial-gradient(rgb(242 237 227 / 0.06) 1px, transparent 1px);
+}
+
+/* 다크 지도 — 카카오맵은 다크 타일 테마가 없어 타일 <img>에만 반전 필터를 건다.
+   목표 톤: 땅 #191713 / 도로 #2A2620 / 물 #16202B 근사(핸드오프 §상권).
+   핀·칩·컨트롤은 img가 아니므로 필터 밖 — 브랜드 색이 뒤집히지 않는다. */
+[data-theme="dark"] .map-canvas img {
+  filter: invert(93%) hue-rotate(180deg) saturate(0.6) brightness(0.9);
+}
+
+/* ── 3D 브랜드 오브젝트 (홈 전용 · 등급 A: CSS transform만) ─────────────────────
+   상권 지형을 추상화한 blob 4장을 rotateX(58deg) 평면에 translateZ로 쌓고 천천히 돌린다.
+   핀은 3D 스테이지 밖에서 수직으로 떠 있다 — 평면과 함께 돌면 눕는다.
+   데이터 화면에는 두지 않는다(핸드오프 §6). reduced-motion은 전역 규칙이 멈춘다. */
+.brand-object {
+  position: relative;
+  width: 220px;
+  height: 150px;
+  margin: 0 auto;
+  perspective: 900px;
+}
+
+.brand-object-stage {
+  position: absolute;
+  inset: 10px 30px 20px;
+  transform-style: preserve-3d;
+  animation: brand-turn 20s linear infinite;
+}
+
+.brand-layer {
+  position: absolute;
+  inset: 0;
+  border-radius: 44% 56% 52% 48% / 52% 46% 54% 48%;
+  border: 1px solid var(--border);
+}
+.brand-layer-1 {
+  background: linear-gradient(135deg, #f5f1e8, #efe8d9);
+  transform: translateZ(0);
+}
+.brand-layer-2 {
+  background: linear-gradient(135deg, #f3e9e0, #eedfd4);
+  transform: translateZ(18px) scale(0.86);
+}
+.brand-layer-3 {
+  background: linear-gradient(135deg, rgb(153 27 27 / 0.1), rgb(153 27 27 / 0.16));
+  border-color: rgb(153 27 27 / 0.18);
+  transform: translateZ(36px) scale(0.68);
+}
+.brand-layer-4 {
+  background: rgb(153 27 27 / 0.75);
+  border-color: rgb(153 27 27 / 0.18);
+  transform: translateZ(54px) scale(0.4);
+}
+
+/* 다크 — 먹색 지형 위 다크 브랜드(#E5484D) 톤. 라이트의 농도 공식을 그대로 옮긴다. */
+[data-theme="dark"] .brand-layer-1 {
+  background: linear-gradient(135deg, #24211b, #1f1d17);
+}
+[data-theme="dark"] .brand-layer-2 {
+  background: linear-gradient(135deg, #2a2620, #24211b);
+}
+[data-theme="dark"] .brand-layer-3 {
+  background: linear-gradient(135deg, rgb(229 72 77 / 0.12), rgb(229 72 77 / 0.18));
+  border-color: rgb(229 72 77 / 0.22);
+}
+[data-theme="dark"] .brand-layer-4 {
+  background: rgb(229 72 77 / 0.75);
+  border-color: rgb(229 72 77 / 0.22);
+}
+
+.brand-object-pin {
+  position: absolute;
+  left: 50%;
+  top: 4px;
+  transform: translateX(-50%);
+  filter: drop-shadow(0 6px 8px rgb(26 26 26 / 0.22));
+  animation: brand-pin-float 1.6s ease-in-out infinite alternate;
+}
+
+.brand-object-floor {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  width: 120px;
+  height: 14px;
+  transform: translateX(-50%);
+  border-radius: 9999px;
+  background: radial-gradient(ellipse at center, rgb(26 26 26 / 0.14), transparent 70%);
+}
+[data-theme="dark"] .brand-object-floor {
+  background: radial-gradient(ellipse at center, rgb(0 0 0 / 0.5), transparent 70%);
+}
+
+@keyframes brand-turn {
+  from {
+    transform: rotateX(58deg) rotateZ(-14deg);
+  }
+  to {
+    transform: rotateX(58deg) rotateZ(346deg);
+  }
+}
+
+@keyframes brand-pin-float {
+  from {
+    transform: translateX(-50%) translateY(0);
+  }
+  to {
+    transform: translateX(-50%) translateY(-6px);
+  }
 }
 
 .skeleton {

@@ -35,14 +35,14 @@ function AreaTrend({ monthly }: { monthly: AdminMonthCount[] }) {
       <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-44" preserveAspectRatio="none">
         <defs>
           <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#991B1B" stopOpacity="0.18" />
-            <stop offset="100%" stopColor="#991B1B" stopOpacity="0" />
+            <stop offset="0%" stopColor="var(--brand)" stopOpacity="0.18" />
+            <stop offset="100%" stopColor="var(--brand)" stopOpacity="0" />
           </linearGradient>
         </defs>
         <path d={fill} fill="url(#trendFill)" />
-        <path d={line} fill="none" stroke="#991B1B" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+        <path d={line} fill="none" stroke="var(--brand)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
         {values.map((v, i) => (
-          <circle key={i} cx={xs(i)} cy={ys(v)} r="2.5" fill="#991B1B" />
+          <circle key={i} cx={xs(i)} cy={ys(v)} r="2.5" fill="var(--brand)" />
         ))}
       </svg>
       <div className="mt-2 flex justify-between text-xs text-foreground-muted">

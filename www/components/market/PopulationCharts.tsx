@@ -21,26 +21,26 @@ function PopBarChart({ data }: { data: { label: string; value: number }[] }) {
     <div className="h-32">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-          <CartesianGrid stroke="#EBE8DF" strokeDasharray="3 3" vertical={false} />
+          <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
           <XAxis
             dataKey="label"
-            tick={{ fontSize: 10, fill: "#6B7280" }}
-            axisLine={{ stroke: "#EBE8DF" }}
+            tick={{ fontSize: 10, fill: "var(--foreground-muted)" }}
+            axisLine={{ stroke: "var(--border)" }}
             tickLine={false}
           />
           <YAxis
             tickFormatter={formatPop}
-            tick={{ fontSize: 10, fill: "#6B7280" }}
+            tick={{ fontSize: 10, fill: "var(--foreground-muted)" }}
             axisLine={false}
             tickLine={false}
             width={36}
           />
           <Tooltip
             formatter={(v) => [`${Number(v).toLocaleString("ko-KR")}명`, "유동인구"]}
-            contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #EBE8DF" }}
-            cursor={{ fill: "rgba(153, 27, 27, 0.06)" }}
+            contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
+            cursor={{ fill: "rgb(var(--heat-rgb) / 0.06)" }}
           />
-          <Bar dataKey="value" fill="#991B1B" radius={[3, 3, 0, 0]} maxBarSize={28} />
+          <Bar dataKey="value" fill="var(--brand)" radius={[3, 3, 0, 0]} maxBarSize={28} />
         </BarChart>
       </ResponsiveContainer>
     </div>

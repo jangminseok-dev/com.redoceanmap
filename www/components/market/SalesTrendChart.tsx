@@ -43,30 +43,30 @@ export default function SalesTrendChart({ series }: { series: QuarterStat[] }) {
     <div className="h-40">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={points} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
-          <CartesianGrid stroke="#EBE8DF" strokeDasharray="3 3" vertical={false} />
+          <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
           <XAxis
             dataKey="quarter"
-            tick={{ fontSize: 10, fill: "#6B7280" }}
-            axisLine={{ stroke: "#EBE8DF" }}
+            tick={{ fontSize: 10, fill: "var(--foreground-muted)" }}
+            axisLine={{ stroke: "var(--border)" }}
             tickLine={false}
           />
           <YAxis
             tickFormatter={formatWon}
-            tick={{ fontSize: 10, fill: "#6B7280" }}
+            tick={{ fontSize: 10, fill: "var(--foreground-muted)" }}
             axisLine={false}
             tickLine={false}
             width={44}
           />
           <Tooltip
             formatter={(v) => [`${formatWon(Number(v))}원`, "월 매출"]}
-            contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #EBE8DF" }}
+            contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid var(--border)", backgroundColor: "var(--surface)", color: "var(--foreground)" }}
           />
           <Line
             type="monotone"
             dataKey="sales"
-            stroke="#991B1B"
+            stroke="var(--brand)"
             strokeWidth={2}
-            dot={{ r: 3, fill: "#991B1B" }}
+            dot={{ r: 3, fill: "var(--brand)" }}
             activeDot={{ r: 4 }}
           />
         </LineChart>

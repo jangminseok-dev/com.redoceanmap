@@ -16,14 +16,56 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import type { ChartPattern, PriceBar, StockForecast, StockNewsItem } from "@/lib/types";
+import { useThemeStore } from "@/lib/uiStore";
 import { computeVolumeProfile } from "@/lib/volumeProfile";
 
-// 한국 관례: 상승 빨강 / 하락 파랑 (StockCard·방향 배지와 동일)
-const UP = "#DC2626";
-const DOWN = "#2563EB";
-const MA20_COLOR = "#D97706";
-const MA50_COLOR = "#7C3AED";
-const RSI_COLOR = "#0D9488";
+// lightweight-charts는 CSS 변수를 받지 못한다 — 테마별 색을 JS 옵션으로 직접 준다.
+// 값은 globals.css의 라이트/다크 토큰과 짝이다(핸드오프 §차트·지도 대응표).
+// 한국 관례: 상승 빨강 / 하락 파랑 (StockCard·방향 배지와 동일).
+function chartColors(dark: boolean) {
+  return dark
+    ? {
+        up: "#F87171",
+        down: "#60A5FA",
+        ma20: "#E8B45A",
+        ma50: "#B69CF4",
+        rsi: "#2DD4BF",
+        rsiGuide: "#4A463C",
+        pattern: "#A39B8B",
+        text: "#A39B8B",
+        border: "#322E26",
+        grid: "rgba(242, 237, 227, 0.06)",
+        brand: "#E5484D",
+        volUp: "rgba(248, 113, 113, 0.28)",
+        volDown: "rgba(96, 165, 250, 0.28)",
+        median: "#A39B8B",
+        profilePoc: "rgba(229, 72, 77, 0.30)",
+        profileBin: "rgba(163, 155, 139, 0.14)",
+        fcZone: "rgba(229, 72, 77, 0.06)",
+        fcCone: "rgba(248, 113, 113, 0.13)",
+      }
+    : {
+        up: "#DC2626",
+        down: "#2563EB",
+        ma20: "#D97706",
+        ma50: "#7C3AED",
+        rsi: "#0D9488",
+        rsiGuide: "#D1D5DB",
+        pattern: "#6B7280",
+        text: "#6B7280",
+        border: "#EBE8DF",
+        grid: "rgba(235, 232, 223, 0.6)",
+        brand: "#991B1B",
+        volUp: "rgba(220, 38, 38, 0.28)",
+        volDown: "rgba(37, 99, 235, 0.28)",
+        median: "#6B7280",
+        profilePoc: "rgba(153, 27, 27, 0.30)",
+        profileBin: "rgba(107, 114, 128, 0.16)",
+        fcZone: "rgba(153, 27, 27, 0.045)",
+        fcCone: "rgba(220, 38, 38, 0.13)",
+      };
+}
+type ChartColors = ReturnType<typeof chartColors>;
 
 type CandleChartProps = {
   bars: PriceBar[]; // ts 오름차순
@@ -37,9 +79,6 @@ type CandleChartProps = {
   intraday?: boolean; // 5분봉 등 분 단위 — 시간축에 시각을 표시할지
   pattern?: ChartPattern | null; // 강조할 형태 하나 — 여러 개를 겹치면 캔들이 보조선에 덮인다
 };
-
-// 형태 보조선 — 캔들·이평선과 구분되도록 회색 점선
-const PATTERN_COLOR = "#6B7280";
 
 // 감성 마커로 찍을 최소 강도·최대 개수 — 약한 기사까지 찍으면 캔들이 가려진다
 const MARKER_MIN_ABS_SENTIMENT = 0.3;
@@ -106,7 +145,11 @@ const sessionDayKey = (d: Date, tz: string) =>
 
 // 기사 발행 시각을 같거나 그 다음 봉에 붙여 마커로 만든다 — 장외·주말 발행분도
 // "다음 개장 첫 봉"으로 밀어 붙인다(뉴스 라벨링과 같은 관례).
-function toNewsMarkers(bars: PriceBar[], news: StockNewsItem[]): SeriesMarker<UTCTimestamp>[] {
+function toNewsMarkers(
+  bars: PriceBar[],
+  news: StockNewsItem[],
+  colors: ChartColors,
+): SeriesMarker<UTCTimestamp>[] {
   if (bars.length === 0) return [];
   const barTimes = bars.map((b) => toTime(b.ts));
   const strong = news
@@ -131,7 +174,7 @@ function toNewsMarkers(bars: PriceBar[], news: StockNewsItem[]): SeriesMarker<UT
       time: hit,
       position: positive ? "belowBar" : "aboveBar",
       shape: positive ? "arrowUp" : "arrowDown",
-      color: positive ? UP : DOWN,
+      color: positive ? colors.up : colors.down,
       text: item.title.length > 20 ? `${item.title.slice(0, 20)}…` : item.title,
     });
   }
@@ -171,6 +214,11 @@ export default function CandleChart({
   intraday = false,
   pattern,
 }: CandleChartProps) {
+  // 테마 전환 시 차트를 통째로 재구성한다 — layout·시리즈·priceLine에 색이 흩어져 있어
+  // 부분 재색칠보다 재생성이 단순하고, 전환은 드문 사용자 액션이라 비용이 문제되지 않는다.
+  const dark = useThemeStore((s) => s.theme) === "dark";
+  const C = chartColors(dark);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<SVGSVGElement>(null);
   const profileRef = useRef<SVGSVGElement>(null); // 매물대 — 콘의 display 토글과 독립
@@ -322,7 +370,7 @@ export default function CandleChart({
       rect.setAttribute(
         "fill",
         // 최다 거래 구간만 강조 — "여기서 가장 많이 거래됐다"는 팩트 표시
-        i === profile.pocIndex ? "rgba(153, 27, 27, 0.30)" : "rgba(107, 114, 128, 0.16)",
+        i === profile.pocIndex ? C.profilePoc : C.profileBin,
       );
       group.appendChild(rect);
     }
@@ -354,26 +402,26 @@ export default function CandleChart({
       autoSize: true,
       layout: {
         background: { color: "transparent" },
-        textColor: "#6B7280",
+        textColor: C.text,
         fontFamily:
           "'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif",
-        panes: { separatorColor: "#EBE8DF", enableResize: false },
+        panes: { separatorColor: C.border, enableResize: false },
       },
       grid: {
-        vertLines: { color: "rgba(235, 232, 223, 0.6)" },
-        horzLines: { color: "rgba(235, 232, 223, 0.6)" },
+        vertLines: { color: C.grid },
+        horzLines: { color: C.grid },
       },
-      rightPriceScale: { borderColor: "#EBE8DF" },
+      rightPriceScale: { borderColor: C.border },
       // 일봉에 시간을 켜면 축·크로스헤어에 "04:00:00"이 붙어 읽기만 나빠진다
-      timeScale: { borderColor: "#EBE8DF", timeVisible: intraday },
-      crosshair: { horzLine: { labelBackgroundColor: "#991B1B" }, vertLine: { labelBackgroundColor: "#991B1B" } },
+      timeScale: { borderColor: C.border, timeVisible: intraday },
+      crosshair: { horzLine: { labelBackgroundColor: C.brand }, vertLine: { labelBackgroundColor: C.brand } },
     });
 
     const candles = chart.addSeries(CandlestickSeries, {
-      upColor: UP,
-      downColor: DOWN,
-      wickUpColor: UP,
-      wickDownColor: DOWN,
+      upColor: C.up,
+      downColor: C.down,
+      wickUpColor: C.up,
+      wickDownColor: C.down,
       borderVisible: false,
     });
     const volume = chart.addSeries(HistogramSeries, {
@@ -384,13 +432,13 @@ export default function CandleChart({
     });
     chart.priceScale("volume").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
     const lineDefaults = { lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false } as const;
-    const ma20 = chart.addSeries(LineSeries, { color: MA20_COLOR, ...lineDefaults });
-    const ma50 = chart.addSeries(LineSeries, { color: MA50_COLOR, ...lineDefaults });
+    const ma20 = chart.addSeries(LineSeries, { color: C.ma20, ...lineDefaults });
+    const ma50 = chart.addSeries(LineSeries, { color: C.ma50, ...lineDefaults });
 
     // RSI 서브차트 — pane 1
-    const rsi = chart.addSeries(LineSeries, { color: RSI_COLOR, ...lineDefaults }, 1);
-    rsi.createPriceLine({ price: 70, color: "#D1D5DB", lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: "" });
-    rsi.createPriceLine({ price: 30, color: "#D1D5DB", lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: "" });
+    const rsi = chart.addSeries(LineSeries, { color: C.rsi, ...lineDefaults }, 1);
+    rsi.createPriceLine({ price: 70, color: C.rsiGuide, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: "" });
+    rsi.createPriceLine({ price: 30, color: C.rsiGuide, lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: "" });
     chart.panes()[1]?.setHeight(80);
 
     refs.current = {
@@ -413,8 +461,10 @@ export default function CandleChart({
       chart.remove();
       refs.current = null;
     };
+    // dark — 테마 전환 시 재생성. 아래 데이터 이펙트들도 dark를 의존성에 갖고 있어
+    // 같은 커밋에서 (정의 순서대로) 이 이펙트 다음에 실행돼 데이터를 다시 채운다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [dark]);
 
   useEffect(() => {
     const r = refs.current;
@@ -427,7 +477,7 @@ export default function CandleChart({
       bars.map((b) => ({
         time: toTime(b.ts),
         value: b.volume,
-        color: b.close >= b.open ? "rgba(220, 38, 38, 0.28)" : "rgba(37, 99, 235, 0.28)",
+        color: b.close >= b.open ? C.volUp : C.volDown,
       })),
     );
     r.ma20.setData(sma(bars, 20));
@@ -439,12 +489,12 @@ export default function CandleChart({
     const lineOptions = { lineWidth: 1, lineStyle: 2, axisLabelVisible: true } as const;
     if (support) {
       r.priceLines.push(
-        r.candles.createPriceLine({ price: support, color: DOWN, title: "60일 최저", ...lineOptions }),
+        r.candles.createPriceLine({ price: support, color: C.down, title: "60일 최저", ...lineOptions }),
       );
     }
     if (resistance) {
       r.priceLines.push(
-        r.candles.createPriceLine({ price: resistance, color: UP, title: "60일 최고", ...lineOptions }),
+        r.candles.createPriceLine({ price: resistance, color: C.up, title: "60일 최고", ...lineOptions }),
       );
     }
 
@@ -473,13 +523,13 @@ export default function CandleChart({
       const targets: { pct: number; color: string; width: 1 | 2 }[] =
         band.source === "quantile"
           ? [
-              { pct: band.q75_pct, color: UP, width: 2 },
-              { pct: band.median_pct, color: "#6B7280", width: 1 },
-              { pct: band.q25_pct, color: DOWN, width: 2 },
+              { pct: band.q75_pct, color: C.up, width: 2 },
+              { pct: band.median_pct, color: C.median, width: 1 },
+              { pct: band.q25_pct, color: C.down, width: 2 },
             ]
           : [
-              { pct: band.q75_pct, color: UP, width: 2 },
-              { pct: band.q25_pct, color: DOWN, width: 2 },
+              { pct: band.q75_pct, color: C.up, width: 2 },
+              { pct: band.q25_pct, color: C.down, width: 2 },
             ];
       for (const t of targets) {
         const series = r.chart.addSeries(LineSeries, {
@@ -509,7 +559,7 @@ export default function CandleChart({
         .map(([i, price]) => ({ time: toTime(bars[i].ts), value: price }));
       if (shape.length >= 2) {
         const series = r.chart.addSeries(LineSeries, {
-          color: PATTERN_COLOR,
+          color: C.pattern,
           lineWidth: 2,
           lineStyle: 2,
           priceLineVisible: false,
@@ -535,13 +585,14 @@ export default function CandleChart({
     drawCone(); // 가격축 자동 스케일이 바뀌었을 수 있다 — 구간 이동이 없어도 다시 그린다
     drawProfile();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bars, support, resistance, forecast, pattern]);
+  }, [bars, support, resistance, forecast, pattern, dark]);
 
-  // 뉴스 감성 마커 — 봉/뉴스가 바뀔 때만 재계산
+  // 뉴스 감성 마커 — 봉/뉴스/테마가 바뀔 때만 재계산
   useEffect(() => {
     const r = refs.current;
-    if (r) r.markers.setMarkers(toNewsMarkers(bars, news ?? []));
-  }, [bars, news]);
+    if (r) r.markers.setMarkers(toNewsMarkers(bars, news ?? [], C));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bars, news, dark]);
 
   // 타임프레임 전환 — 차트는 재생성하지 않으므로 시간축 옵션만 갈아끼운다
   useEffect(() => {
@@ -573,10 +624,10 @@ export default function CandleChart({
         style={{ display: "none" }}
         aria-hidden
       >
-        <rect id="fc-zone" fill="rgba(153, 27, 27, 0.045)" />
-        <polygon id="fc-cone" fill="rgba(220, 38, 38, 0.13)" />
-        <line id="fc-divider" stroke="#991B1B" strokeWidth={1} strokeDasharray="3 3" opacity={0.5} />
-        <rect id="fc-label-box" height={17} rx={4} fill="#991B1B" />
+        <rect id="fc-zone" fill={C.fcZone} />
+        <polygon id="fc-cone" fill={C.fcCone} />
+        <line id="fc-divider" stroke={C.brand} strokeWidth={1} strokeDasharray="3 3" opacity={0.5} />
+        <rect id="fc-label-box" height={17} rx={4} fill={C.brand} />
         <text id="fc-label-text" fill="#FFFFFF" fontSize={10.5} fontWeight={600} />
       </svg>
       {/* 매물대 — drawProfile()이 표시 구간 봉을 집계해 rect를 직접 채운다 */}
@@ -587,18 +638,19 @@ export default function CandleChart({
       >
         <g id="vp-bins" />
       </svg>
-      <div className="absolute left-3 top-2 z-10 flex items-center gap-3 text-xs text-foreground-muted pointer-events-none">
+      {/* 범례 — 375px에서는 예측 라벨·축 라벨과 겹쳐 서로를 지운다(2026-08-17 시각 검증). 숨긴다. */}
+      <div className="absolute left-3 top-2 z-10 hidden sm:flex items-center gap-3 text-xs text-foreground-muted pointer-events-none">
         <span className="flex items-center gap-1">
-          <span className="inline-block w-3 h-0.5" style={{ background: MA20_COLOR }} /> MA20
+          <span className="inline-block w-3 h-0.5" style={{ background: C.ma20 }} /> MA20
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block w-3 h-0.5" style={{ background: MA50_COLOR }} /> MA50
+          <span className="inline-block w-3 h-0.5" style={{ background: C.ma50 }} /> MA50
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block w-3 h-0.5" style={{ background: RSI_COLOR }} /> RSI(14)
+          <span className="inline-block w-3 h-0.5" style={{ background: C.rsi }} /> RSI(14)
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block w-2 h-2.5" style={{ background: "rgba(107, 114, 128, 0.35)" }} />
+          <span className="inline-block w-2 h-2.5" style={{ background: C.profileBin }} />
           매물대(표시 구간 거래 밀집)
         </span>
         {/* 범위 숫자는 차트 위 알약이 이미 말한다 — 여기는 산출 방식만 (중복 표기 방지) */}

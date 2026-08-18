@@ -15,7 +15,7 @@ import { formatMoney, formatPop } from "./format";
 
 // recharts는 CSS 변수를 fill로 받지 못한다 — DESIGN.md §2가 허용한 "차트 라이브러리 경계"이며,
 // 값은 `--down`(#2563EB)과 같다. 토큰을 바꾸면 여기도 함께 바꾼다.
-const RESIDENT_FILL = "#2563EB";
+const RESIDENT_FILL = "var(--down)";
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (

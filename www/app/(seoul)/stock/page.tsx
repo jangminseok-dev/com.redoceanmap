@@ -14,12 +14,15 @@ import {
   fetchStockQuote,
 } from "@/lib/api";
 import { useChatStore } from "@/lib/store";
-import { useDensityStore } from "@/lib/uiStore";
+import { useDensityStore, useRecentStore } from "@/lib/uiStore";
 import WorkspaceShell from "@/components/workspace/WorkspaceShell";
 import ChatPanel from "@/components/chat/ChatPanel";
+import AiInsightCard from "@/components/stock/AiInsightCard";
+import Disclaimer from "@/components/stock/Disclaimer";
+import MarketBoard from "@/components/stock/MarketBoard";
+import MarketStrip from "@/components/stock/MarketStrip";
 import StockHero from "@/components/stock/StockHero";
 import StockPanel from "@/components/stock/StockPanel";
-import MarketBoard from "@/components/stock/MarketBoard";
 
 // lightweight-charts는 SSR 불가 — 클라이언트에서만 로드
 const CandleChart = dynamic(() => import("@/components/stock/CandleChart"), {
@@ -71,6 +74,12 @@ function StockWorkspace() {
 
   const expert = useDensityStore((s) => s.expert);
   const toggleExpert = useDensityStore((s) => s.toggleExpert);
+  const pushRecent = useRecentStore((s) => s.push);
+
+  // 레일 "최근" 스택 기록 — 보고 있는 종목이 레일에 남아 한 번에 돌아온다
+  useEffect(() => {
+    if (symbol) pushRecent({ type: "stock", id: symbol, label: symbol });
+  }, [symbol, pushRecent]);
 
   const conversationId = useChatStore((s) => s.conversationId);
   const messages = useChatStore((s) => s.messages);
@@ -207,6 +216,16 @@ function StockWorkspace() {
     .reverse()
     .find((m) => m.role === "assistant" && m.stock?.symbol === symbol)?.content;
 
+  // 기준 시점 — quote 수신 시각("8월 14일 19:59 기준"). 모든 수치에 시점을 병기한다(핸드오프 §공통)
+  const asOfLabel = quoteQ.data
+    ? `${new Intl.DateTimeFormat("ko-KR", {
+        month: "numeric",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date(quoteQ.dataUpdatedAt))} 기준`
+    : null;
+
   const stage = !symbol ? (
     <MarketBoard onSelect={setSymbol} />
   ) : (
@@ -215,66 +234,15 @@ function StockWorkspace() {
         symbol={symbol}
         resolvedTicker={pricesQ.data?.resolvedTicker}
         analyze={analyzeQ.data}
-        forecast={forecastQ.data}
-        fundamentals={fundamentalsQ.data}
         isLoading={analyzeQ.isLoading}
         quotePrice={quoteQ.data?.price}
         previousClose={previousClose}
-        aiSummary={pinnedSummary}
-        expert={expert}
-        onToggleExpert={toggleExpert}
+        asOfLabel={asOfLabel}
       />
 
-      {/* 차트는 `flex-1 min-h-0` + `absolute inset-0` 구조라 **부모가 높이를 준다**.
-          스테이지가 스크롤 컨테이너 안으로 들어왔으므로 고정 높이 래퍼가 필요하다 —
-          빼면 flex-1이 0으로 접혀 차트가 사라진다. */}
-      <div className="flex flex-col h-[340px] sm:h-[400px] lg:h-[460px]">
-        {pricesQ.isLoading && <div className="flex-1 m-4 skeleton rounded-xl" />}
-        {pricesNotCollected && (
-          <div className="flex-1 grid place-items-center px-6 text-center">
-            <div>
-              <p className="text-sm font-medium">이 종목의 시세를 찾지 못했어요</p>
-              <p className="mt-1.5 text-xs text-foreground-muted leading-relaxed">
-                종목 코드나 티커를 확인해주세요.
-                <br />
-                (미수집 종목도 라이브 조회로 차트가 제공됩니다 — 이 안내는 조회 자체가 실패한 경우예요)
-              </p>
-            </div>
-          </div>
-        )}
-        {pricesQ.data && (
-          <CandleChart
-            bars={pricesQ.data.bars}
-            support={analyzeQ.data?.support}
-            resistance={analyzeQ.data?.resistance}
-            forecast={timeframe === "1d" ? forecastQ.data : null}
-            quotePrice={timeframe === "1d" ? quoteQ.data?.price : null}
-            sessionTz={sessionTz}
-            rangeDays={rangeDays}
-            news={timeframe === "1d" ? newsQ.data : undefined}
-            intraday={timeframe === "5m"}
-            pattern={activePattern}
-          />
-        )}
-        {lastBarLabel && (
-          <p className="mt-1.5 text-[11px] text-foreground-muted">
-            저장 봉 {lastBarLabel} 종가까지
-            {timeframe === "1d" && quoteQ.data?.price
-              ? " · 이후 캔들은 지연 현재가로 만든 임시 봉이에요"
-              : ""}
-          </p>
-        )}
-      </div>
-
-      {activePattern && (
-        <p className="px-4 pb-1 text-xs leading-relaxed text-foreground-muted">
-          {activePattern.note} 점선이 그 형태의 꼭짓점을 잇습니다. 형태를 알아본 것일 뿐 앞으로의
-          방향을 뜻하지 않습니다.
-        </p>
-      )}
-
-      {/* 차트 컨트롤 — 알약 칩. 낮은 위계 요소라 Button 스케일과 섞지 않는다(DESIGN.md §5). */}
-      <div className="flex flex-wrap items-center gap-1.5 px-4 py-2.5 border-t border-border">
+      {/* 차트 컨트롤 — 차트 **위**로 올렸다(레퍼런스 토스). 아래 두면 차트를 지나쳐야 조작이 나온다.
+          알약 칩은 낮은 위계 요소라 Button 스케일과 섞지 않는다(DESIGN.md §5). */}
+      <div className="flex flex-wrap items-center gap-1.5 px-4 py-2 border-b border-border">
         {(["1d", "5m"] as const).map((tf) => (
           <Chip
             key={tf}
@@ -316,12 +284,74 @@ function StockWorkspace() {
             ))}
           </>
         )}
-        <div className="w-full flex flex-wrap items-center gap-x-2 text-xs text-foreground-muted">
+        <div className="ml-auto flex flex-wrap items-center gap-x-2 text-xs text-foreground-muted">
           {timeframe === "5m" && <span>최근 60일 보유</span>}
           {timeframe === "5m" && forecastQ.data?.band && <span>· 예측 밴드는 일봉에서만 표시</span>}
           {pricesQ.data?.live && <span>· 라이브 조회 · 수집 대상 아님</span>}
         </div>
       </div>
+
+      {/* 차트는 `flex-1 min-h-0` + `absolute inset-0` 구조라 **부모가 높이를 준다**.
+          스테이지가 스크롤 컨테이너 안으로 들어왔으므로 고정 높이 래퍼가 필요하다 —
+          빼면 flex-1이 0으로 접혀 차트가 사라진다. */}
+      <div className="flex flex-col h-[280px] sm:h-[400px] lg:h-[460px]">
+        {pricesQ.isLoading && <div className="flex-1 m-4 skeleton rounded-xl" />}
+        {pricesNotCollected && (
+          <div className="flex-1 grid place-items-center px-6 text-center">
+            <div>
+              <p className="text-sm font-medium">이 종목의 시세를 찾지 못했어요</p>
+              <p className="mt-1.5 text-xs text-foreground-muted leading-relaxed">
+                종목 코드나 티커를 확인해주세요.
+                <br />
+                (미수집 종목도 라이브 조회로 차트가 제공됩니다 — 이 안내는 조회 자체가 실패한 경우예요)
+              </p>
+            </div>
+          </div>
+        )}
+        {pricesQ.data && (
+          <CandleChart
+            bars={pricesQ.data.bars}
+            support={analyzeQ.data?.support}
+            resistance={analyzeQ.data?.resistance}
+            forecast={timeframe === "1d" ? forecastQ.data : null}
+            quotePrice={timeframe === "1d" ? quoteQ.data?.price : null}
+            sessionTz={sessionTz}
+            rangeDays={rangeDays}
+            news={timeframe === "1d" ? newsQ.data : undefined}
+            intraday={timeframe === "5m"}
+            pattern={activePattern}
+          />
+        )}
+        {lastBarLabel && (
+          <p className="mt-1.5 px-4 text-xs text-foreground-muted">
+            저장 봉 {lastBarLabel} 종가까지
+            {timeframe === "1d" && quoteQ.data?.price
+              ? " · 이후 캔들은 지연 현재가로 만든 임시 봉이에요"
+              : ""}
+          </p>
+        )}
+      </div>
+
+      {activePattern && (
+        <p className="px-4 pt-1 text-xs leading-relaxed text-foreground-muted">
+          {activePattern.note} 점선이 그 형태의 꼭짓점을 잇습니다. 형태를 알아본 것일 뿐 앞으로의
+          방향을 뜻하지 않습니다.
+        </p>
+      )}
+
+      {/* AI 해설 — 차트 바로 아래(토스 "왜 올랐을까?" 자리). 결론·근거·기여도가 한 카드다. */}
+      {analyzeQ.data && (
+        <AiInsightCard
+          analyze={analyzeQ.data}
+          forecast={forecastQ.data}
+          fundamentals={fundamentalsQ.data}
+          price={quoteQ.data?.price ?? analyzeQ.data.price}
+          ticker={pricesQ.data?.resolvedTicker ?? symbol}
+          aiSummary={pinnedSummary}
+          expert={expert}
+          onToggleExpert={toggleExpert}
+        />
+      )}
     </>
   );
 
@@ -332,8 +362,22 @@ function StockWorkspace() {
       list={
         symbol ? <MarketBoard onSelect={setSymbol} compact selected={symbol} /> : undefined
       }
-      stage={stage}
-      panel={<StockPanel symbol={symbol} analyze={analyzeQ.data} />}
+      stage={
+        <>
+          {/* 시장 티커 스트립 — 스테이지 최상단 상주. 보드/종목 화면 공통이다. */}
+          <MarketStrip />
+          {stage}
+        </>
+      }
+      panel={
+        <>
+          <StockPanel symbol={symbol} analyze={analyzeQ.data} />
+          {/* 투자 유의 상주 라인 — 스크롤 컨테이너 하단에 붙는다. 화면당 한 번만 말한다. */}
+          <footer className="sticky bottom-0 border-t border-border bg-background/95 backdrop-blur-sm px-4 py-2">
+            <Disclaimer />
+          </footer>
+        </>
+      }
       chat={
         <ChatPanel
           workspace="stock"

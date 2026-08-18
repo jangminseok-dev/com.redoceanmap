@@ -24,6 +24,20 @@ tokens:
     down: "#2563EB"
     up-weak: "#FEF2F2"
     down-weak: "#EFF6FF"
+  colors-dark:
+    canvas: "#14120E"
+    surface: "#1C1A15"
+    surface-raised: "#24211B"
+    border: "#322E26"
+    foreground: "#F2EDE3"
+    muted: "#A39B8B"
+    primary: "#E5484D"
+    primary-hover: "#D93D42"
+    up: "#F87171"
+    down: "#60A5FA"
+    up-weak: "rgba(248,113,113,0.13)"
+    down-weak: "rgba(96,165,250,0.13)"
+    accent: "#24211B"
   typography:
     family: { sans: "Pretendard Variable" }
     data-xl: { size: 28, weight: 700, lineHeight: "1.15" }
@@ -307,3 +321,41 @@ radius는 **요소의 위계**로 정해진다. 크기로 정하지 않는다.
 뒤의 둘은 이미 있는 `CountUp`·`animate-fade-in-up`과 하는 일이 같다.
 
 `prefers-reduced-motion: reduce`에서 전부 꺼진다. 이건 선택이 아니다.
+
+## 16. 다크 테마 (2026-08-16 신규)
+
+**라이트가 기본, 다크는 토글로 켜는 보조 테마다.** 시스템 선호(`prefers-color-scheme`)를
+`layout.tsx` 인라인 스크립트가 `<html data-theme>`으로 번역하고, 레일 하단 토글이 수동
+오버라이드한다(localStorage `rom-theme`). Tailwind `dark:` 유틸은 미디어쿼리가 아니라
+이 속성 기준이다(`@custom-variant dark`, `app/globals.css`).
+
+팔레트는 frontmatter `colors-dark`가 정본이다. 세 가지 결정이 이 팔레트를 만든다:
+
+1. **크림의 반대는 중립 회색이 아니라 따뜻한 먹색이다.** 순수 검정을 쓰지 않는다(대비 과다).
+2. **다크에서 브랜드 적색(#E5484D)과 상승색(#F87171)이 가깝다** — 그래서 브랜드 강조를
+   색이 아닌 **면·테두리·위치**로 옮긴다. 레일 활성이 그 예다: 면 채움 대신
+   `surface-raised + border + 좌측 2px 인디케이터`. 다크에서 브랜드 색을 넓은 면에 칠하지 않는다.
+3. **약배경은 파스텔 금지** — 어두운 면 위에는 알파 8~14%로 얹는다(`rgba(248,113,113,0.13)`).
+
+- 계층: 다크에서 그림자는 계층을 못 만든다. `canvas → surface → surface-raised` 3단 +
+  테두리로 만든다(그림자는 여전히 모달·시트만).
+- **차트·지도는 CSS 변수를 못 받는다.** lightweight-charts는 `chartColors(dark)`
+  (`components/stock/CandleChart.tsx`)로 재구성하고, 카카오맵은 타일 `<img>`에만 반전 필터를
+  건다(`.map-canvas img`). recharts는 SVG 속성이 `var()`를 받아 자동 추종한다.
+- 포커스 링은 다크에서도 브랜드 톤 — `--ring`이 `--brand`를 가리켜 자동 전환된다.
+
+## 17. 3D와 깊이 (2026-08-16 신규 — 절제형)
+
+**3D는 데이터 위에 얹지 않는다.** 차트·표·지도·수치는 평면이다. 3D가 허용되는 자리는
+데이터가 없는 면뿐이다: 홈 히어로(`components/seoul/BrandObject.tsx` — CSS transform만,
+의존성 0), 빈 상태, 로그인, 게임 결과. 기울어지는 카드·스포트라이트 커서·패럴랙스는 금지.
+유리(backdrop-blur)는 지도 위 떠 있는 칩·시트 **한 겹까지만**.
+
+## 18. 확장(extension) 목록 — §4 밖, 2026-08-16 리뉴얼에서 도입
+
+| id | 내용 | 위치 |
+|---|---|---|
+| ext-1 | 필터 칩 xs 28px(h-7) | `components/stock/MarketBoard.tsx` |
+| ext-2 | `surface-raised` — 다크 전용 3단계 면(라이트에서는 surface와 동일) | `app/globals.css` |
+| ext-3 | 레일 활성 인디케이터 2px(다크 전용) | `components/shell/AppShell.tsx` |
+| ext-4 | 진행 스텝 dot 22px | `components/seoul/ProgressCard.tsx` |

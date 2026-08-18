@@ -7,6 +7,7 @@ import { useChatStore } from "@/lib/store";
 import type { Area, NewsCardItem, StockAnalysis } from "@/lib/types";
 import { formatPrice } from "@/lib/currency";
 import ChatInput from "@/components/seoul/ChatInput";
+import SymbolMark from "@/components/common/SymbolMark";
 
 // 방향 색은 DESIGN.md §2 Direction roles 토큰을 쓴다 — Tailwind 기본 팔레트를 직접 쓰지 않는다
 const DIRECTION_META = {
@@ -126,15 +127,29 @@ export default function ChatPanel({
                 {m.recommendations && m.recommendations.length > 0 && (
                   workspace === "market" ? (
                     <div className="mt-3 flex flex-col gap-2">
-                      {m.recommendations.map((r) => (
+                      {/* 번호 뱃지는 지도 핀·칩과 같은 순번 — 카드→핀→상세가 한 흐름으로 읽힌다.
+                          1번(첫 추천)만 브랜드 면 + 테두리로 세운다. */}
+                      {m.recommendations.map((r, i) => (
                         <button
                           key={r.id}
                           type="button"
                           onClick={() => onSelectArea?.(r)}
-                          className="w-full text-left bg-background border border-border rounded-xl p-3 hover:border-brand/40 transition-colors"
+                          className={`w-full text-left bg-background border rounded-xl p-3 transition-colors ${
+                            i === 0
+                              ? "border-brand/40 hover:border-brand/60"
+                              : "border-border hover:border-brand/40"
+                          }`}
                         >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-sm font-semibold">{r.name}</span>
+                          <div className="flex items-center gap-2">
+                            <span
+                              aria-hidden
+                              className={`grid place-items-center w-[18px] h-[18px] shrink-0 rounded-full text-xs font-bold tabular-nums ${
+                                i === 0 ? "bg-brand text-white" : "bg-accent text-brand"
+                              }`}
+                            >
+                              {i + 1}
+                            </span>
+                            <span className="text-sm font-semibold flex-1 min-w-0 truncate">{r.name}</span>
                             <span className="text-xs text-foreground-muted shrink-0">{r.category}</span>
                           </div>
                           <p className="text-xs mt-1.5 text-foreground/80 leading-snug">{r.reason}</p>
@@ -224,16 +239,17 @@ function StockSummaryCard({ stock, onClick }: { stock: StockAnalysis; onClick: (
       className="mt-3 w-full text-left bg-background border border-border rounded-xl p-3 hover:border-brand/40 transition-colors"
     >
       <div className="flex items-center justify-between gap-2">
-        <div>
-          <div className="text-sm font-semibold">{stock.symbol}</div>
-          <div className="text-base font-bold mt-0.5">
-            {formatPrice(stock.price, stock.symbol)}
-          </div>
+        <div className="flex items-center gap-2 min-w-0">
+          <SymbolMark name={stock.symbol} />
+          <span className="text-sm font-semibold truncate">{stock.symbol}</span>
         </div>
         {/* 이 카드는 질문 시점에 얼어붙은 값이다. 스테이지 헤더는 방금 재분석한 값이라
             둘이 어긋날 수 있어(상승 36% vs 중립 16% 실사례) 시점을 명시한다. */}
         <div className="shrink-0 text-right">
-          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full border text-xs font-medium ${meta.className}`}>
+          <div className="text-base font-bold tabular-nums">
+            {formatPrice(stock.price, stock.symbol)}
+          </div>
+          <span className={`mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium ${meta.className}`}>
             <DirectionIcon size={12} strokeWidth={2} />
             {meta.label} · 신호 {stock.strength || signalStrength(stock.confidence)}
           </span>

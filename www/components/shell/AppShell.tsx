@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import RecentRail from "@/components/shell/RecentRail";
+import ThemeToggle from "@/components/shell/ThemeToggle";
 import Wordmark from "@/components/seoul/Wordmark";
 import EmailModal from "@/components/seoul/EmailModal";
 import { useUIStore } from "@/lib/uiStore";
@@ -97,9 +99,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             onClick={() => setOverlay("more")}
             expanded={overlay === "more"}
           />
+          {/* 최근 본 종목/상권 — 주 항목 아래 구분선 뒤에 쌓인다(핸드오프 §공통 셸) */}
+          <RecentRail />
         </div>
 
-        <div className="mt-auto w-full px-2 pb-3">
+        <div className="mt-auto w-full px-2 pb-3 flex flex-col gap-0.5">
+          <ThemeToggle variant="rail" />
           {user ? (
             <button
               type="button"
@@ -176,6 +181,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 {label}
               </Link>
             ))}
+            <ThemeToggle variant="row" />
             {tabs?.has("automation") && (
               <button
                 type="button"
@@ -205,8 +211,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-// 레일 항목 — 활성 상태를 브랜드 적색 **면**으로 칠한다. 크림 배경 위에서 적색이
+// 레일 항목 — 라이트 활성은 브랜드 적색 **면**으로 칠한다. 크림 배경 위에서 적색이
 // 실제로 등장하는 첫 자리다(그전까지 적색은 아이콘 틴트와 버튼에만 있었다).
+// 다크 활성은 면 채움 대신 raised 면 + 좌측 2px 브랜드 인디케이터다 — 다크에서 브랜드 적색을
+// 넓게 칠하면 상승색(빨강)과 분간이 안 가므로, 브랜드 강조를 색이 아닌 위치로 옮긴다(핸드오프 §5).
 function RailItem({
   icon: Icon,
   label,
@@ -222,10 +230,18 @@ function RailItem({
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
-      className={`flex flex-col items-center gap-1 py-2.5 rounded-xl transition-colors ${
-        active ? "bg-brand text-white" : "text-foreground-muted hover:bg-accent hover:text-foreground"
+      className={`relative flex flex-col items-center gap-1 py-2.5 rounded-xl transition-colors ${
+        active
+          ? "bg-brand text-white dark:bg-surface-raised dark:text-foreground dark:border dark:border-border"
+          : "text-foreground-muted hover:bg-accent hover:text-foreground"
       }`}
     >
+      {active && (
+        <span
+          aria-hidden
+          className="hidden dark:block absolute left-0 top-3 bottom-3 w-0.5 rounded-full bg-brand"
+        />
+      )}
       <Icon size={20} strokeWidth={active ? 2.1 : 1.75} />
       <span className="text-xs font-medium">{label}</span>
     </Link>

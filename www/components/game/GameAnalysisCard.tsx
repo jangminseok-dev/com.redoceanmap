@@ -4,8 +4,8 @@ import { TriangleAlert } from "lucide-react";
 import type { GameSymbolAnalysis } from "@/lib/types";
 
 // 부호 규약: 양수 = 뜨겁다. 한국 관례대로 뜨거운 쪽이 빨강이다.
-const HOT = "#DC2626";
-const COLD = "#2563EB";
+const HOT = "var(--up)";
+const COLD = "var(--down)";
 
 const LABEL_TONE: Record<string, string> = {
   과열: "text-up",

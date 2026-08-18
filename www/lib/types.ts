@@ -445,6 +445,9 @@ export type ConversationSummary = {
   id: number;
   title: string;
   createdAt: string;
+  // 마지막 카드 요약(2026-08-17) — 목록의 도메인 필터·재개 라벨. 구버전 응답 호환 옵셔널
+  domain?: "stock" | "market" | null;
+  label?: string | null; // 종목 심볼 또는 "첫 상권 이름 외 N곳"
 };
 
 export type ConversationMessage = {
