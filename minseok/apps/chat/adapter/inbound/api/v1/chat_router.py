@@ -104,7 +104,9 @@ async def list_conversations(
 ) -> list[ConversationSummarySchema]:
     summaries = await use_case.list_conversations(user_id, limit)
     return [
-        ConversationSummarySchema(id=s.id, title=s.title, createdAt=s.created_at)
+        ConversationSummarySchema(
+            id=s.id, title=s.title, createdAt=s.created_at, domain=s.domain, label=s.label,
+        )
         for s in summaries
     ]
 

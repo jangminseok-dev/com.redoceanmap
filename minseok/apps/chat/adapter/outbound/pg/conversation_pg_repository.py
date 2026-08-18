@@ -4,7 +4,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from chat.adapter.outbound.mappers.conversation_mapper import ConversationMapper, MessageMapper
 from chat.adapter.outbound.orm.conversation_orm import ConversationOrm, MessageOrm
 from chat.app.ports.output.conversation_repository import ConversationRepository
-from chat.domain.entities.conversation_entity import Conversation, ConversationSummary, Message
+from chat.domain.entities.conversation_entity import (
+    Conversation,
+    ConversationSummary,
+    Message,
+    summarize_payload,
+)
 
 
 class ConversationPgRepository(ConversationRepository):
@@ -59,17 +64,34 @@ class ConversationPgRepository(ConversationRepository):
             .limit(1)
             .scalar_subquery()
         )
+        # 마지막 카드 payload — 목록이 "어느 워크스페이스의 무엇이었나"를 보여주는 근거.
+        # 카드 없는 대화(텍스트만)는 NULL이 내려와 domain/label이 None으로 열화한다.
+        last_payload = (
+            select(MessageOrm.payload)
+            .where(
+                MessageOrm.conversation_id == ConversationOrm.id,
+                MessageOrm.payload.isnot(None),
+            )
+            .order_by(MessageOrm.id.desc())
+            .limit(1)
+            .scalar_subquery()
+        )
         rows = (await self._session.execute(
-            select(ConversationOrm, first_user_message)
+            select(ConversationOrm, first_user_message, last_payload)
             .where(ConversationOrm.user_id == user_id)
             .order_by(ConversationOrm.id.desc())
             .limit(limit)
         )).all()
-        return [
-            ConversationSummary(
-                id=orm.id,
-                title=(first or "").strip()[:40] or "새 대화",
-                created_at=orm.created_at,
+        summaries: list[ConversationSummary] = []
+        for orm, first, payload in rows:
+            domain, label = summarize_payload(payload)
+            summaries.append(
+                ConversationSummary(
+                    id=orm.id,
+                    title=(first or "").strip()[:40] or "새 대화",
+                    created_at=orm.created_at,
+                    domain=domain,
+                    label=label,
+                )
             )
-            for orm, first in rows
-        ]
+        return summaries
