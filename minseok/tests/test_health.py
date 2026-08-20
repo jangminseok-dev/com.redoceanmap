@@ -28,10 +28,16 @@ def test_전부_살아있으면_200_ok(monkeypatch):
     _stub_pings(monkeypatch, db=True, market_db=True, redis=True)
     res = client.get("/health")
     assert res.status_code == 200
-    assert res.json() == {
-        "status": "ok",
-        "checks": {"database": True, "market_database": True, "redis": True},
-    }
+    assert res.json()["status"] == "ok"
+    assert res.json()["checks"] == {"database": True, "market_database": True, "redis": True}
+
+
+def test_배포_커밋을_함께_답한다():
+    # 상태만으로는 못 잡는 장애가 있다 — 2026-08-20에 12일 낡은 이미지가 돌며
+    # /chat/ask/progress가 404였는데 /health는 계속 ok였다.
+    # 밖에서 무는 모니터가 "떠 있는가"에 더해 "무엇이 떠 있는가"까지 보게 한다.
+    version = client.get("/health").json()["version"]
+    assert set(version) == {"commit", "builtAt"}
 
 
 def test_공유_DB가_죽으면_503_degraded(monkeypatch):
@@ -57,7 +63,9 @@ def test_실패_원인을_응답에_싣지_않는다(monkeypatch):
     # 인증 없이 열린 엔드포인트다 — 접속 문자열·예외 메시지가 나가면 안 된다.
     _stub_pings(monkeypatch, db=False, market_db=False, redis=False)
     body = res.text if (res := client.get("/health")) is not None else ""
-    assert set(res.json()) == {"status", "checks"}
+    # version은 의도적으로 허용한다(커밋 sha·빌드 시각은 비밀이 아니다). 나머지 키가
+    # 늘어나면 실패하게 두어, 원인 문자열이 섞여 들어오는 것을 계속 막는다.
+    assert set(res.json()) == {"status", "checks", "version"}
     for leak in ("postgresql", "redis://", "localhost", "5432", "5434", "Traceback"):
         assert leak not in body
 

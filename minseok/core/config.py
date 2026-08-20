@@ -40,6 +40,11 @@ def jwt_private_key() -> str:
 # 실행 환경 — 쿠키 Secure 속성 분기(bff-cloudflared-harness 규칙 2)에만 사용.
 ENV = _secrets.get("ENV", "development")
 
+# 배포 식별 — Dockerfile ARG로 이미지에 굽는 값이다(.env 키가 아니다).
+# 소스 마운트로 도는 dev나 --build-arg 없이 만든 이미지에서는 "unknown"이 맞다.
+GIT_SHA = _secrets.get("GIT_SHA", "unknown")
+BUILT_AT = _secrets.get("BUILT_AT", "unknown")
+
 # BFF 쿠키 도메인 — prod `.redoceanmap.com`(auth 서브도메인 발급 쿠키를 apex와 공유),
 # dev 미설정 = host-only. Secure·Domain만 ENV 분기, 나머지 속성은 리터럴(규칙 2).
 COOKIE_DOMAIN = _secrets.get("COOKIE_DOMAIN")

@@ -35,6 +35,7 @@ from auth.dependencies.grade_policy_provider import get_grade_policy_gateway
 from auth.dependencies.member_directory_provider import get_member_directory_gateway
 from chat.adapter.inbound.api.v1.chat_router import chat_router
 from chat.adapter.inbound.api.v1.concierge_router import concierge_router
+from core.config import BUILT_AT, GIT_SHA
 from core.database import dispose_engine, dispose_market_engine, init_engine, init_market_engine
 from core.database import ping as database_ping
 from core.redis import dispose_redis
@@ -321,7 +322,15 @@ async def health(response: Response):
     }
     healthy = all(checks.values())
     response.status_code = 200 if healthy else 503
-    return {"status": "ok" if healthy else "degraded", "checks": checks}
+    return {
+        "status": "ok" if healthy else "degraded",
+        "checks": checks,
+        # 배포 식별 — 실패 원인과 달리 이건 공개해도 되는 값이고, 밖에서 폴링하는
+        # 모니터가 "떠 있는가"에 더해 "무엇이 떠 있는가"까지 보게 한다.
+        # 2026-08-20: 12일 낡은 이미지가 돌며 /chat/ask/progress가 404였는데
+        # /health는 계속 ok였다 — 상태만으로는 잡을 수 없는 장애다.
+        "version": {"commit": GIT_SHA, "builtAt": BUILT_AT},
+    }
 
 
 

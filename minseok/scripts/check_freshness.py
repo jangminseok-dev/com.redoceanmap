@@ -17,10 +17,14 @@ DB·Redis 확인형으로 만들어 뒀다). 이 스크립트가 잡는 것은 "
 실행 (백엔드 컨테이너 — 호스트 cron venv에는 sqlalchemy가 없다):
     docker exec redoceanmap-backend-1 python scripts/check_freshness.py
     docker exec redoceanmap-backend-1 python scripts/check_freshness.py --dry-run  # 발송 생략
+
+배포 드리프트까지 보려면 기대 커밋을 호스트에서 넘긴다(컨테이너 안에는 git이 없다):
+    docker exec redoceanmap-backend-1 python scripts/check_freshness.py \
+        --expect-commit "$(git -C /home/host/projects/com.redoceanmap rev-parse --short HEAD)"
 """
 
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import requests
@@ -76,6 +80,47 @@ def latest_loaded_at(engine, table: str) -> datetime | None:
         return conn.execute(text(f"SELECT max(created_at) FROM {table}")).scalar()
 
 
+# 배포 드리프트 — "호스트도 살아 있고 수집도 도는데 코드만 낡은" 경우.
+# 2026-08-20: 이미지가 12일 낡아 /chat/ask/progress가 404였는데 위 데이터셋 감시는
+# 정상이었다(수집은 멈추지 않았다). 상태 감시와 버전 감시는 다른 축이다.
+#
+# 기대 커밋은 호스트 git만 안다(컨테이너에 .git이 없다) — cron이 --expect-commit으로 넘긴다.
+# 유예를 두는 이유: 커밋 직후 아직 배포 전인 정상 상태를 매일 알리면 알림이 무뎌진다.
+DEPLOY_DRIFT_GRACE = timedelta(days=3)
+
+
+def _built_at() -> datetime | None:
+    """이미지에 구운 빌드 시각. 굽지 않은 이미지는 파싱 불가 → None."""
+    raw = _secrets.get("BUILT_AT", "unknown")
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def deploy_drift(expect_commit: str | None, now: datetime) -> str | None:
+    """배포 커밋이 기대와 다르고 유예를 넘겼으면 사유 문자열, 아니면 None."""
+    if not expect_commit:
+        return None
+    running = _secrets.get("GIT_SHA", "unknown")
+    if running == "unknown":
+        return None  # --build-arg 없이 만든 이미지 — 대조할 값 자체가 없다
+    # 길이가 다른 축약형끼리도 맞도록 접두사로 비교한다
+    if running.startswith(expect_commit) or expect_commit.startswith(running):
+        return None
+
+    built = _built_at()
+    if built is None:
+        return f"배포 커밋 불일치 — 실행 중 {running}, 저장소 {expect_commit} (빌드 시각 불명)"
+    age = now - built
+    if age < DEPLOY_DRIFT_GRACE:
+        return None  # 방금 커밋했고 아직 배포 전 — 정상
+    return (
+        f"배포 커밋 불일치 {age.days}일째 — 실행 중 {running}"
+        f"(빌드 {built:%Y-%m-%d}), 저장소 {expect_commit}"
+    )
+
+
 def collect_verdicts() -> list[tuple[str, str, object]]:
     """(표시명, 상태 라벨, 판정) 목록. DB 접속 자체가 실패하면 예외를 그대로 올린다."""
     now = datetime.now(UTC)
@@ -93,11 +138,16 @@ def collect_verdicts() -> list[tuple[str, str, object]]:
     return rows
 
 
-def build_body(problems: list[tuple[str, str, object]]) -> str:
-    lines = ["다음 수집이 기대 주기를 넘겼습니다.", ""]
+def build_body(problems: list[tuple[str, str, object]], drift: str | None = None) -> str:
+    lines = []
+    if problems:
+        lines += ["다음 수집이 기대 주기를 넘겼습니다.", ""]
     for name, state, verdict in problems:
         age = "적재 이력 없음" if verdict.age_seconds is None else f"{verdict.age_seconds // 3600}시간 경과"
         lines.append(f"  · {name} — {STATE_LABEL[state]} (기대 주기: {verdict.expected}, {age})")
+    if drift:
+        lines += ["", "배포가 저장소보다 뒤처져 있습니다.", "", f"  · {drift}",
+                  "    조치: 백엔드 PC에서 ./deploy.sh"]
     lines += [
         "",
         "확인: 어드민 → 데이터소스, 그리고 백엔드 PC의 cron 로그(~/collect_*.log).",
@@ -119,6 +169,13 @@ def send(subject: str, body: str) -> None:
     res.raise_for_status()
 
 
+def _arg_value(flag: str) -> str | None:
+    if flag not in sys.argv:
+        return None
+    idx = sys.argv.index(flag) + 1
+    return sys.argv[idx] if idx < len(sys.argv) else None
+
+
 def main() -> int:
     dry_run = "--dry-run" in sys.argv
     stamp = f"[{datetime.now():%Y-%m-%d %H:%M:%S}]"
@@ -128,14 +185,18 @@ def main() -> int:
         print(f"  {name}: {state.value}" + (f" ({verdict.age_seconds // 3600}시간)"
                                             if verdict.age_seconds is not None else ""))
 
+    drift = deploy_drift(_arg_value("--expect-commit"), datetime.now(UTC))
+    print(f"  배포: {drift or '기대 커밋과 일치(또는 대조 생략)'}")
+
     problems = [r for r in rows if r[1] in ALERT_STATES]
-    if not problems:
-        print(f"{stamp} 전 데이터셋 정상 — 알림 없음", flush=True)
+    if not problems and not drift:
+        print(f"{stamp} 전 데이터셋·배포 정상 — 알림 없음", flush=True)
         return 0
 
-    subject = f"[redoceanmap] 수집 지연·정지 {len(problems)}건"
-    body = build_body(problems)
-    print(f"{stamp} 이상 {len(problems)}건\n{body}", flush=True)
+    parts = ([f"수집 지연·정지 {len(problems)}건"] if problems else []) + (["배포 드리프트"] if drift else [])
+    subject = f"[redoceanmap] {' / '.join(parts)}"
+    body = build_body(problems, drift)
+    print(f"{stamp} 이상 감지\n{body}", flush=True)
     if dry_run:
         print("[dry-run] 메일 발송 생략", flush=True)
         return 1
