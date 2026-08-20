@@ -20,7 +20,7 @@ import main
 from core.security import get_current_user_id
 
 # 마이그레이션이 시드한 권한 코드 — alembic/versions/f0a1b2c3d4e5(RBAC 테이블),
-# a1b2c3d4e5f6(audit:read), c1d2e3f4a5b6(analytics:read) 등.
+# a1b2c3d4e5f6(audit:read), c1d2e3f4a5b6(analytics:read), g1a2b3c4d5e6(game:read·write) 등.
 # 여기 없는 코드를 라우터가 쓰면 어떤 역할도 보유할 수 없어 영구 403이 된다.
 SEEDED_PERMISSIONS = {
     "analytics:read",
@@ -30,6 +30,8 @@ SEEDED_PERMISSIONS = {
     "datasources:read",
     "documents:read",
     "documents:write",
+    "game:read",
+    "game:write",
     "members:read",
     "members:write",
     "recommendations:read",
