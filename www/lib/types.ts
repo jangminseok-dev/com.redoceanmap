@@ -811,6 +811,41 @@ export type GameTradeReceipt = {
   tick: number;
 };
 
+// 지정가 주문 — 진입 예약(ENTRY)과 청산 예약(EXIT, 익절·손절)이 한 테이블을 쓴다.
+// `trigger`는 "이 방향으로 닿으면 체결": le=지정가 이하, ge=지정가 이상.
+export type GameLimitOrder = {
+  id: number;
+  kind: "ENTRY" | "EXIT";
+  symbol: string;
+  name: string;
+  side: "LONG" | "SHORT";
+  positionId: number | null; // EXIT만 — 어느 포지션의 예약인가
+  trigger: "le" | "ge";
+  limitPriceKrw: number;
+  quantity: number;
+  leverage: number;
+  placedTick: number;
+  expiresTick: number; // 만료는 체결 스캔 범위를 묶는 성능 장치라 없앨 수 없다(연장만 가능)
+  status: "pending" | "filled" | "cancelled" | "expired";
+  filledTick: number | null;
+  filledPriceKrw: number | null;
+  reservedCashKrw: number; // ENTRY가 묶어둔 현금 — 취소·만료 시 돌아온다
+};
+
+// `settledCount`는 **이번 조회에서** 확정된 건수다 — 조회가 곧 체결 판정 시점이라(cron 0개)
+// 폴링 응답에서 0보다 크면 그 사이에 체결·만료가 일어난 것이다.
+export type GameOrderList = {
+  tick: number;
+  pending: GameLimitOrder[];
+  recent: GameLimitOrder[];
+  settledCount: number;
+};
+
+export type GameOrderReceipt = {
+  orders: GameLimitOrder[];
+  cashKrw: number;
+};
+
 export type GamePricePoint = {
   tick: number;
   priceKrw: number;

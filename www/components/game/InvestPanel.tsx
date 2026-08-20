@@ -4,16 +4,22 @@ import { useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { TriangleAlert } from "lucide-react";
 import GameOrderForm from "@/components/game/GameOrderForm";
+import GameOrderList from "@/components/game/GameOrderList";
 import GamePositionList from "@/components/game/GamePositionList";
 import GameSymbolTable from "@/components/game/GameSymbolTable";
 import GameSymbolDetail from "@/components/game/GameSymbolDetail";
 import {
   ApiError,
+  cancelGameOrder,
   closeGameTrade,
+  extendGameOrder,
+  fetchGameOrders,
   fetchGamePrices,
   fetchGameRulebook,
   fetchGameWallet,
   openGameTrade,
+  placeGameEntryOrder,
+  placeGameExitOrder,
 } from "@/lib/api";
 import { useUIStore } from "@/lib/uiStore";
 import { useFavorites } from "@/lib/useFavorites";
@@ -80,9 +86,18 @@ export default function InvestPanel() {
     refetchInterval: (query) => (query.state.status === "error" ? 300_000 : 30_000),
   });
 
+  // 예약 주문 — **조회가 곧 체결 판정 시점이다**(cron 0개, 지연 실행). 그래서 폴링을
+  // 멈추면 체결도 멈춘 것처럼 보인다. 시세·지갑과 같은 주기로 돈다.
+  const ordersQ = useQuery({
+    queryKey: ["game-orders"],
+    queryFn: fetchGameOrders,
+    refetchInterval: (query) => (query.state.status === "error" ? 300_000 : 30_000),
+  });
+
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["game-wallet"] });
     queryClient.invalidateQueries({ queryKey: ["game-prices", CHART_TICKS] });
+    queryClient.invalidateQueries({ queryKey: ["game-orders"] });
   };
 
   const open = useMutation({
@@ -131,6 +146,74 @@ export default function InvestPanel() {
       })),
   });
 
+  const reserve = useMutation({
+    mutationFn: placeGameEntryOrder,
+    onSuccess: (r) => {
+      refresh();
+      const o = r.orders[0];
+      setView((prev) => ({
+        ...prev,
+        notice: o
+          ? `${o.name} ${o.side === "LONG" ? "롱" : "숏"} ${o.quantity.toLocaleString()}주 예약 · ` +
+            `${won(o.limitPriceKrw)} ${o.trigger === "le" ? "이하" : "이상"}에 체결 · ` +
+            `${won(o.reservedCashKrw)} 묶임`
+          : "예약을 걸었습니다.",
+      }));
+    },
+    onError: (e) =>
+      setView((prev) => ({
+        ...prev,
+        notice: e instanceof Error ? e.message : "예약에 실패했습니다.",
+      })),
+  });
+
+  const setExit = useMutation({
+    mutationFn: placeGameExitOrder,
+    onSuccess: (r) => {
+      refresh();
+      setView((prev) => ({
+        ...prev,
+        notice:
+          r.orders.length > 0
+            ? `청산 예약 ${r.orders.length}건 저장 — ${r.orders
+                .map((o) => `${won(o.limitPriceKrw)} ${o.trigger === "le" ? "이하" : "이상"}`)
+                .join(" · ")}`
+            : "청산 예약을 해제했습니다.",
+      }));
+    },
+    onError: (e) =>
+      setView((prev) => ({
+        ...prev,
+        notice: e instanceof Error ? e.message : "청산 예약에 실패했습니다.",
+      })),
+  });
+
+  const cancelOrder = useMutation({
+    mutationFn: cancelGameOrder,
+    onSuccess: () => {
+      refresh();
+      setView((prev) => ({ ...prev, notice: "예약을 취소했습니다 — 묶였던 금액이 돌아옵니다." }));
+    },
+    onError: (e) =>
+      setView((prev) => ({
+        ...prev,
+        notice: e instanceof Error ? e.message : "취소에 실패했습니다.",
+      })),
+  });
+
+  const extendOrder = useMutation({
+    mutationFn: extendGameOrder,
+    onSuccess: () => {
+      refresh();
+      setView((prev) => ({ ...prev, notice: "예약 만료를 연장했습니다." }));
+    },
+    onError: (e) =>
+      setView((prev) => ({
+        ...prev,
+        notice: e instanceof Error ? e.message : "연장에 실패했습니다.",
+      })),
+  });
+
   const data = pricesQ.data;
   const wallet = walletQ.data;
   const symbols = data?.symbols ?? [];
@@ -138,6 +221,11 @@ export default function InvestPanel() {
     symbols.find((s) => s.symbol === view.selected) ?? symbols[0];
   const unauthorized =
     (pricesQ.error as ApiError)?.status === 401 || (walletQ.error as ApiError)?.status === 401;
+
+  // 대기 예약을 종류별로 나눈다 — 청산 예약은 포지션 카드에, 진입 예약은 예약 목록 헤더에 쓴다
+  const pendingOrders = ordersQ.data?.pending ?? [];
+  const exitOrders = pendingOrders.filter((o) => o.kind === "EXIT");
+  const entryOrders = pendingOrders.filter((o) => o.kind === "ENTRY");
 
   // 섹터별 평균 등락 — 하단 티커 바용(산술평균이라 대형주 가중이 없다)
   const sectorMoves = useMemo(() => {
@@ -162,9 +250,12 @@ export default function InvestPanel() {
           symbol={current}
           rules={rulebookQ.data}
           investableKrw={wallet.investableKrw}
-          disabled={open.isPending || wallet.seasonOver}
+          disabled={open.isPending || reserve.isPending || wallet.seasonOver}
           onSubmit={(side, quantity, leverage) =>
             open.mutate({ symbol: current.symbol, side, quantity, leverage })
+          }
+          onReserve={(side, quantity, leverage, limitPriceKrw) =>
+            reserve.mutate({ symbol: current.symbol, side, quantity, leverage, limitPriceKrw })
           }
         />
         <section>
@@ -182,6 +273,44 @@ export default function InvestPanel() {
             currentTick={wallet.tick}
             closingId={close.isPending ? (close.variables ?? null) : null}
             onClose={(id) => close.mutate(id)}
+            exitOrders={exitOrders}
+            exitPendingId={setExit.isPending ? (setExit.variables?.positionId ?? null) : null}
+            onSetExit={(positionId, takeProfitKrw, stopLossKrw) => {
+              // 서버 place_exit는 "둘 다 없음"을 400으로 막는다 — 전부 비운 것은
+              // 예약 해제 의도이므로 취소로 표현한다(한쪽만 비우는 것은 서버가 갈아끼운다).
+              if (takeProfitKrw === null && stopLossKrw === null) {
+                exitOrders
+                  .filter((o) => o.positionId === positionId)
+                  .forEach((o) => cancelOrder.mutate(o.id));
+                return;
+              }
+              setExit.mutate({ positionId, takeProfitKrw, stopLossKrw });
+            }}
+          />
+        </section>
+        <section>
+          <h2 className="text-sm font-bold tracking-tight mb-2">
+            예약 주문
+            {entryOrders.length > 0 && (
+              <span className="ml-1.5 text-foreground-muted font-normal">
+                대기 {entryOrders.length}건 · {won(wallet.reservedKrw)} 묶임
+              </span>
+            )}
+          </h2>
+          <GameOrderList
+            pending={ordersQ.data?.pending ?? []}
+            recent={ordersQ.data?.recent ?? []}
+            currentTick={ordersQ.data?.tick ?? wallet.tick}
+            ticksPerGameDay={rulebookQ.data?.ticksPerGameDay ?? 60}
+            busyId={
+              cancelOrder.isPending
+                ? (cancelOrder.variables ?? null)
+                : extendOrder.isPending
+                  ? (extendOrder.variables ?? null)
+                  : null
+            }
+            onCancel={(id) => cancelOrder.mutate(id)}
+            onExtend={(id) => extendOrder.mutate(id)}
           />
         </section>
       </>
@@ -247,6 +376,13 @@ export default function InvestPanel() {
           <p className="mt-1.5 inline-flex items-center gap-1.5 text-xs text-foreground-muted">
             <TriangleAlert size={12} strokeWidth={2} className="text-amber-600" />
             시즌이 아직 시작되지 않았습니다 — 지금 값은 전 종목의 시즌 시작가입니다.
+          </p>
+        )}
+        {/* 조회가 곧 체결 판정이라(cron 0개) 방금 확정된 건수를 서버가 응답에 실어 준다.
+            상태로 담지 않는다 — 다음 폴링 응답이 0이면 자연히 사라지는 게 맞다. */}
+        {(ordersQ.data?.settledCount ?? 0) > 0 && (
+          <p className="mt-1.5 text-xs text-brand">
+            예약 주문 {ordersQ.data?.settledCount}건이 방금 확정되었습니다 — 아래 목록에서 결과를 확인하세요.
           </p>
         )}
         {(wallet?.recentlyClosed?.length ?? 0) > 0 && (

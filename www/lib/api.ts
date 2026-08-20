@@ -16,6 +16,8 @@ import type {
   GameStoreDaily,
   GameStoreDecisionReceipt,
   GameStoreSummary,
+  GameOrderList,
+  GameOrderReceipt,
   GameTradeReceipt,
   GameWallet,
   MarketArea,
@@ -182,6 +184,35 @@ export const openGameTrade = (
 
 export const closeGameTrade = (positionId: number): Promise<GameTradeReceipt> =>
   postGame(`/game/trades/${positionId}/close`);
+
+// 지정가 주문 — cron이 없다. **이 조회가 곧 체결 판정 시점이다**(지연 실행):
+// 서버가 placed~min(now, expires) 구간을 훑어 확정하고 그 결과를 돌려준다.
+// 그래서 폴링을 멈추면 체결도 멈춘 것처럼 보인다 — 화면이 열려 있는 동안 계속 부른다.
+export const fetchGameOrders = (): Promise<GameOrderList> => getJson(`/game/orders`);
+
+// 진입 예약 — 서버가 체결에 쓸 현금을 지금 묶는다(취소·만료 시 반환).
+export const placeGameEntryOrder = (body: {
+  symbol: string;
+  side: "LONG" | "SHORT";
+  quantity: number;
+  limitPriceKrw: number;
+  leverage: number;
+}): Promise<GameOrderReceipt> => postGame(`/game/orders`, body);
+
+// 익절·손절 — 둘 다 넣으면 OCO 한 쌍이 되어 한쪽이 체결되면 나머지가 취소된다.
+// 같은 포지션에 다시 걸면 기존 예약을 갈아끼운다(서버 규칙).
+export const placeGameExitOrder = (body: {
+  positionId: number;
+  takeProfitKrw: number | null;
+  stopLossKrw: number | null;
+}): Promise<GameOrderReceipt> => postGame(`/game/orders/exits`, body);
+
+export const cancelGameOrder = (orderId: number): Promise<GameOrderReceipt> =>
+  postGame(`/game/orders/${orderId}/cancel`);
+
+// 만료 연장 — 만료 자체는 없앨 수 없다(체결 스캔 범위를 묶는 성능 장치).
+export const extendGameOrder = (orderId: number): Promise<GameOrderReceipt> =>
+  postGame(`/game/orders/${orderId}/extend`);
 
 // 창업 — 적합도 미리보기는 실데이터 근거, 매출·비용은 게임 규칙이다(응답 필드 접두사로 구분).
 export const fetchGameAreaFitness = (

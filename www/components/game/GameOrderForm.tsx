@@ -12,6 +12,13 @@ type Props = {
   investableKrw: number;
   disabled: boolean;
   onSubmit: (side: "LONG" | "SHORT", quantity: number, leverage: number) => void;
+  // 지정가 예약. 체결가는 지정가 그대로다 — 유리한 갭을 유저 몫으로 주지 않는다(결정론이라 갭 정의가 애매).
+  onReserve: (
+    side: "LONG" | "SHORT",
+    quantity: number,
+    leverage: number,
+    limitPriceKrw: number,
+  ) => void;
 };
 
 const won = (v: number) => `${v.toLocaleString()}원`;
@@ -28,28 +35,36 @@ export default function GameOrderForm({
   investableKrw,
   disabled,
   onSubmit,
+  onReserve,
 }: Props) {
   // 방향·수량을 실시간으로 반영해 예상 금액을 보여준다(REACT_RULES 패턴 B: 단일 객체)
   const [order, setOrder] = useState<{
     side: "LONG" | "SHORT";
     quantity: number;
     leverage: number;
+    mode: "market" | "limit";
+    limitPriceKrw: number;
   }>({
     side: "LONG",
     quantity: 1,
     leverage: 1,
+    mode: "market",
+    limitPriceKrw: symbol.priceKrw,
   });
 
   const feeRate = rules?.feeRate ?? 0;
   const tiers = rules?.leverageTiers ?? [1];
-  const notional = symbol.priceKrw * order.quantity;
+  const isLimit = order.mode === "limit";
+  // 지정가는 그 가격에 체결된다(유리한 갭 없음) — 증거금·수수료·청산선 전부 지정가 기준이다.
+  const basePrice = isLimit && order.limitPriceKrw > 0 ? order.limitPriceKrw : symbol.priceKrw;
+  const notional = basePrice * order.quantity;
   // 증거금 = 명목 ÷ 배율. 수수료는 명목 기준이다(레버리지가 거래비용까지 깎지 않게).
   const principal = Math.floor(notional / order.leverage);
   const fee = Math.round(notional * feeRate);
   const total = principal + fee;
   const maxQuantity = Math.max(
     0,
-    Math.floor(investableKrw / (symbol.priceKrw * (1 / order.leverage + feeRate))),
+    Math.floor(investableKrw / (basePrice * (1 / order.leverage + feeRate))),
   );
   const overBudget = total > investableKrw;
 
@@ -60,13 +75,22 @@ export default function GameOrderForm({
       ? null
       : Math.round(
           order.side === "LONG"
-            ? (symbol.priceKrw * (1 - 1 / order.leverage)) / (1 - margin)
-            : (symbol.priceKrw * (1 + 1 / order.leverage)) / (1 + margin),
+            ? (basePrice * (1 - 1 / order.leverage)) / (1 - margin)
+            : (basePrice * (1 + 1 / order.leverage)) / (1 + margin),
         );
   const expiryGameDays = Math.round((rules?.leveragedExpiryTicks ?? 0) / (rules?.ticksPerGameDay ?? 60));
 
   const setQuantity = (value: number) =>
     setOrder((prev) => ({ ...prev, quantity: Math.max(1, Math.min(value, 1_000_000)) }));
+
+  // 지정가가 현재가와 같은 방향이면 예약이 의미 없다 — 롱은 현재가보다 낮게(le),
+  // 숏은 높게(ge) 잡아야 "닿으면 체결"이 성립한다. 서버도 같은 판정을 하지만
+  // 400을 받고서야 알게 하지 않는다.
+  const limitOffPct = ((order.limitPriceKrw - symbol.priceKrw) / symbol.priceKrw) * 100;
+  const limitWrongSide =
+    isLimit &&
+    order.limitPriceKrw > 0 &&
+    (order.side === "LONG" ? order.limitPriceKrw >= symbol.priceKrw : order.limitPriceKrw <= symbol.priceKrw);
 
   return (
     <div className="rounded-2xl border border-border bg-surface p-5">
@@ -98,6 +122,72 @@ export default function GameOrderForm({
           );
         })}
       </div>
+
+      {/* 체결 방식 — 세그먼트 토글이라 Button 스케일과 섞지 않는다(www CLAUDE §4) */}
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        {(["market", "limit"] as const).map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            onClick={() => setOrder((prev) => ({ ...prev, mode }))}
+            aria-pressed={order.mode === mode}
+            className={`h-10 rounded-xl text-sm font-medium border transition-colors ${
+              order.mode === mode
+                ? "bg-foreground text-background border-transparent"
+                : "border-border text-foreground-muted hover:bg-accent"
+            }`}
+          >
+            {mode === "market" ? "시장가" : "지정가"}
+          </button>
+        ))}
+      </div>
+
+      {isLimit && (
+        <>
+          <label className="mt-4 block text-xs text-foreground-muted" htmlFor="game-limit-price">
+            지정가 (현재가 {won(symbol.priceKrw)})
+          </label>
+          <Input
+            id="game-limit-price"
+            type="number"
+            min={1}
+            value={order.limitPriceKrw}
+            onChange={(e) =>
+              setOrder((prev) => ({ ...prev, limitPriceKrw: Math.max(0, Number(e.target.value)) }))
+            }
+            className="mt-1 w-full h-10 px-3 rounded-xl border border-border bg-background text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-brand/30"
+          />
+          <div className="mt-1.5 grid grid-cols-4 gap-1.5">
+            {([-5, -2, 2, 5] as const).map((pct) => (
+              <button
+                key={pct}
+                type="button"
+                onClick={() =>
+                  setOrder((prev) => ({
+                    ...prev,
+                    limitPriceKrw: Math.max(1, Math.round(symbol.priceKrw * (1 + pct / 100))),
+                  }))
+                }
+                className="h-8 rounded-lg border border-border text-xs font-medium text-foreground-muted hover:bg-accent tabular-nums"
+              >
+                {pct > 0 ? `+${pct}%` : `${pct}%`}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-xs text-foreground-muted tabular-nums">
+            현재가 대비 {limitOffPct >= 0 ? "+" : ""}
+            {limitOffPct.toFixed(2)}% ·{" "}
+            {order.side === "LONG" ? "이 가격 이하로 내려오면" : "이 가격 이상으로 올라가면"} 체결
+          </p>
+          {limitWrongSide && (
+            <p className="mt-1.5 text-xs text-amber-700 leading-relaxed">
+              {order.side === "LONG"
+                ? "롱 예약은 현재가보다 낮게 잡아야 합니다 — 지금 가격이면 바로 사면 됩니다."
+                : "숏 예약은 현재가보다 높게 잡아야 합니다 — 지금 가격이면 바로 팔면 됩니다."}
+            </p>
+          )}
+        </>
+      )}
 
       {tiers.length > 1 && (
         <>
@@ -174,8 +264,10 @@ export default function GameOrderForm({
 
       {liquidationPrice !== null && (
         <p className="mt-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-xs leading-relaxed text-amber-900">
+          {isLimit && "체결되면 "}
           <b>{won(liquidationPrice)}</b>에 닿으면 강제청산되어 증거금을 잃습니다
-          (현재가 대비 {(((liquidationPrice - symbol.priceKrw) / symbol.priceKrw) * 100).toFixed(1)}%).
+          ({isLimit ? "지정가" : "현재가"} 대비{" "}
+          {(((liquidationPrice - basePrice) / basePrice) * 100).toFixed(1)}%).
           <br />
           레버리지 포지션은 게임 {expiryGameDays}일 뒤 자동으로 마감되며, 접속하지 않은 동안에도
           청산될 수 있습니다. 손실은 증거금까지입니다.
@@ -189,16 +281,32 @@ export default function GameOrderForm({
         </p>
       )}
 
+      {isLimit && (
+        <p className="mt-3 text-xs text-foreground-muted leading-relaxed">
+          예약하면 체결에 쓸 <b>{won(total)}</b>이 지금 묶입니다(취소·만료 시 돌아옵니다).
+          체결 판정은 이 화면을 열어 둔 동안 이루어집니다.
+        </p>
+      )}
+
       <Button
         type="button"
-        onClick={() => onSubmit(order.side, order.quantity, order.leverage)}
-        disabled={disabled || overBudget || order.quantity < 1}
+        onClick={() =>
+          isLimit
+            ? onReserve(order.side, order.quantity, order.leverage, order.limitPriceKrw)
+            : onSubmit(order.side, order.quantity, order.leverage)
+        }
+        disabled={
+          disabled ||
+          overBudget ||
+          order.quantity < 1 ||
+          (isLimit && (order.limitPriceKrw < 1 || limitWrongSide))
+        }
         size="lg"
               className="mt-4 w-full"
       >
         {overBudget
           ? "투자 가능 금액을 넘습니다"
-          : `${order.quantity.toLocaleString()}주 주문${order.leverage > 1 ? ` · ${order.leverage}배` : ""}`}
+          : `${order.quantity.toLocaleString()}주 ${isLimit ? "예약" : "주문"}${order.leverage > 1 ? ` · ${order.leverage}배` : ""}`}
       </Button>
     </div>
   );
