@@ -82,8 +82,43 @@ export default function NewsEventStudyPage() {
           />
           <BucketTable title="감성대별" hint="라벨의 방향성이 실제 반응과 맞는지" rows={report.by_sentiment} />
 
+          {(report.short_horizon ?? []).map((s) => (
+            <section key={s.horizon_minutes} className="space-y-3 border-t border-border pt-5">
+              <div>
+                <h2 className="font-semibold">발행 직후 {s.horizon_minutes}분 (5분봉)</h2>
+                {/* 5분봉은 소급 수집이 안 된다 — 표본 수를 일간과 나란히 놓으면 오해가 생긴다 */}
+                <p className="mt-1 text-xs text-foreground-muted">{s.coverage_note}</p>
+              </div>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <Kpi icon={Newspaper} label="표본" value={s.total.toLocaleString()} />
+                <Kpi icon={Newspaper} label="지평" value={`${s.horizon_minutes}분`} />
+                <Kpi icon={Newspaper} label="기준선(전체 평균)" value={signed(s.baseline_pct)} />
+                <Kpi icon={Newspaper} label="최다 주 비중" value={pct(s.top_week_share)} />
+              </div>
+              {s.warnings.length > 0 && (
+                <ul className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm space-y-1">
+                  {s.warnings.map((w) => (
+                    <li key={w}>{w}</li>
+                  ))}
+                </ul>
+              )}
+              <BucketTable
+                title={`이벤트 유형별 (${s.horizon_minutes}분)`}
+                hint="장 마감을 걸쳐 다음 개장까지 벌어진 표본은 제외했습니다 — 그건 분 단위 반응이 아니라 밤샘 갭입니다."
+                rows={s.by_event}
+              />
+              <BucketTable
+                title={`감성대별 (${s.horizon_minutes}분)`}
+                hint="즉각 반응과 며칠 뒤 반응이 다르면, 라벨이 방향은 맞혀도 시점이 어긋난다는 뜻입니다."
+                rows={s.by_sentiment}
+              />
+            </section>
+          ))}
+
           <p className="text-xs text-foreground-muted">
             실행 {new Date(report.ran_at).toLocaleString("ko-KR")} · 지평 {report.horizon_days}일
+            {(report.short_horizon ?? []).length > 0 &&
+              ` · ${(report.short_horizon ?? []).map((s) => `${s.horizon_minutes}분`).join("·")}`}
           </p>
         </>
       )}

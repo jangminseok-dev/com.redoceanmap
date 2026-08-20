@@ -3,7 +3,11 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from hub.app.dtos.news_event_study_dto import EventBucketRow, NewsEventStudyInfo
+from hub.app.dtos.news_event_study_dto import (
+    EventBucketRow,
+    NewsEventStudyInfo,
+    ShortHorizonRow,
+)
 from hub.app.ports.output.news_event_study_port import NewsEventStudyPort
 from stock.adapter.outbound.orm.news_event_study_report_orm import NewsEventStudyReportOrm
 
@@ -19,6 +23,22 @@ def _buckets(rows: list[dict]) -> list[EventBucketRow]:
             reliable=b.get("reliable", False),
         )
         for b in rows
+    ]
+
+
+def _short_horizons(rows: list[dict]) -> list[ShortHorizonRow]:
+    return [
+        ShortHorizonRow(
+            horizon_minutes=s.get("horizon_minutes", 0),
+            total=s.get("total", 0),
+            baseline_pct=s.get("baseline_pct", 0.0),
+            top_week_share=s.get("top_week_share", 0.0),
+            warnings=s.get("warnings", []),
+            coverage_note=s.get("coverage_note", ""),
+            by_event=_buckets(s.get("by_event", [])),
+            by_sentiment=_buckets(s.get("by_sentiment", [])),
+        )
+        for s in rows
     ]
 
 
@@ -49,4 +69,5 @@ class NewsEventStudyGateway(NewsEventStudyPort):
             warnings=payload.get("warnings", []),
             by_event=_buckets(payload.get("by_event", [])),
             by_sentiment=_buckets(payload.get("by_sentiment", [])),
+            short_horizon=_short_horizons(payload.get("short_horizon", [])),
         )

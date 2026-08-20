@@ -1,5 +1,5 @@
 """이벤트 사후 수익률 집계 — 기준선 대비와 표본 경고가 핵심이다."""
-from stock.domain.services.event_study import EventSample, aggregate
+from stock.domain.services.event_study import EventSample, aggregate, aggregate_intraday
 
 
 def _s(event="실적", sentiment=0.5, ret=1.0, week="2026-07-13"):
@@ -73,3 +73,32 @@ def test_감성대별로도_집계한다():
 def test_양의_수익률_비율을_센다():
     samples = [_s(ret=1.0), _s(ret=-1.0), _s(ret=2.0), _s(ret=-2.0)]
     assert aggregate(samples, 5).by_event[0].positive_rate == 0.5
+
+
+# ── 장중(분 단위) 지평 — 5분봉으로 재는 발행 직후 반응 ──
+
+
+def test_장중_리포트도_같은_기준선_규칙을_쓴다():
+    # 일간과 같은 판정이어야 한다 — 지평 단위만 다르다.
+    samples = [_s(event="실적", ret=-0.1) for _ in range(10)] + [
+        _s(event="규제·소송", ret=-0.3) for _ in range(10)
+    ]
+    r = aggregate_intraday(samples, horizon_minutes=30, coverage_note="")
+
+    assert r.horizon_minutes == 30
+    assert r.baseline_pct == -0.2
+    by = {b.key: b for b in r.by_event}
+    assert by["실적"].excess_pct == 0.1
+
+
+def test_장중_표본이_없으면_경고와_함께_빈_리포트():
+    r = aggregate_intraday([], horizon_minutes=60, coverage_note="5분봉 없음")
+    assert r.total == 0 and r.by_event == [] and r.warnings
+    # 표본이 없어도 커버리지 사유는 남는다 — "왜 없는가"가 리포트의 답이다
+    assert r.coverage_note == "5분봉 없음"
+
+
+def test_커버리지_문장은_호출자가_넣은_그대로_실린다():
+    # 5분봉 보유 시작일은 DB가 아는 사실이라 순수 도메인이 만들 수 없다.
+    note = "5분봉은 2026-04-16부터 있어 그 이전 발행은 측정 대상에서 빠진다"
+    assert aggregate_intraday([_s()], 30, note).coverage_note == note

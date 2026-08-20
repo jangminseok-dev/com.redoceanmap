@@ -7,7 +7,7 @@ stock(구현)과 admin(소비)을 잇는다. 원시 수치만 담고 판정 문�
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 
@@ -19,6 +19,24 @@ class EventBucketRow:
     excess_pct: float      # 기준선 대비 — 이 값으로 읽는다
     positive_rate: float
     reliable: bool         # 표본 100건 이상
+
+
+@dataclass(frozen=True)
+class ShortHorizonRow:
+    """분 단위 지평 — 5분봉으로 잰 발행 직후 반응(E1).
+
+    일간과 판정 규칙은 같고 지평 단위만 다르다. `coverage_note`는 5분봉 보유 구간이라
+    표본 수를 일간과 직접 비교하면 안 되는 이유를 담는다.
+    """
+
+    horizon_minutes: int
+    total: int
+    baseline_pct: float
+    top_week_share: float
+    warnings: list[str]
+    coverage_note: str
+    by_event: list[EventBucketRow]
+    by_sentiment: list[EventBucketRow]
 
 
 @dataclass(frozen=True)
@@ -34,3 +52,5 @@ class NewsEventStudyInfo:
     warnings: list[str]
     by_event: list[EventBucketRow]
     by_sentiment: list[EventBucketRow]
+    # 구버전 리포트에는 없다 — 기본값 없이 두면 과거 행 매핑이 깨진다
+    short_horizon: list[ShortHorizonRow] = field(default_factory=list)

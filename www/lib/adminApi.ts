@@ -355,6 +355,18 @@ export type AdminEventBucket = {
   reliable: boolean;
 };
 
+// 분 단위 지평(E1) — 5분봉으로 잰 발행 직후 반응. 구버전 리포트에는 없다.
+export type AdminShortHorizon = {
+  horizon_minutes: number;
+  total: number;
+  baseline_pct: number;
+  top_week_share: number;
+  warnings: string[];
+  coverage_note: string; // 5분봉 보유 구간 — 표본 수를 일간과 직접 비교하면 안 되는 이유
+  by_event: AdminEventBucket[];
+  by_sentiment: AdminEventBucket[];
+};
+
 export type AdminNewsEventStudyReport = {
   ran_at: string;
   params: Record<string, unknown>;
@@ -365,6 +377,7 @@ export type AdminNewsEventStudyReport = {
   warnings: string[];
   by_event: AdminEventBucket[];
   by_sentiment: AdminEventBucket[];
+  short_horizon?: AdminShortHorizon[]; // 구버전 응답에는 필드 자체가 없다
 };
 
 export const fetchAdminNewsEventStudy = (): Promise<{

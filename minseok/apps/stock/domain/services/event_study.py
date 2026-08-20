@@ -77,15 +77,37 @@ def _sentiment_band(sentiment: float) -> str:
     return "강한 부정"
 
 
-def aggregate(samples: list[EventSample], horizon_days: int) -> EventStudyReport:
-    """이벤트 유형·감성대별 사후 수익률을 기준선 대비로 집계한다."""
-    if not samples:
-        return EventStudyReport(
-            horizon_days=horizon_days, total=0, baseline_pct=0.0,
-            by_event=[], by_sentiment=[], top_week_share=0.0,
-            warnings=["표본이 없습니다."],
-        )
+@dataclass(frozen=True)
+class _Core:
+    """일간·장중이 공유하는 집계 결과 — 지평 단위만 다르고 판정 규칙은 같다."""
 
+    total: int
+    baseline_pct: float
+    by_event: list[EventBucket]
+    by_sentiment: list[EventBucket]
+    top_week_share: float
+    warnings: list[str]
+
+
+@dataclass(frozen=True)
+class ShortHorizonReport:
+    """분 단위 지평 — 5분봉으로 재는 발행 직후 반응.
+
+    일간 리포트와 같은 규칙(기준선 대비·표본 집중도)으로 읽는다. 다른 것은 지평 단위와,
+    **측정 가능한 구간이 5분봉 보유 기간에 갇힌다**는 점뿐이다(`coverage_note`).
+    """
+
+    horizon_minutes: int
+    total: int
+    baseline_pct: float
+    by_event: list[EventBucket]
+    by_sentiment: list[EventBucket]
+    top_week_share: float
+    warnings: list[str]
+    coverage_note: str
+
+
+def _core(samples: list[EventSample]) -> _Core:
     returns = [s.return_pct for s in samples]
     baseline = sum(returns) / len(returns)
 
@@ -107,8 +129,7 @@ def aggregate(samples: list[EventSample], horizon_days: int) -> EventStudyReport
     if not any(len(v) >= MIN_BUCKET_SAMPLES for v in by_event_raw.values()):
         warnings.append(f"모든 이벤트 유형의 표본이 {MIN_BUCKET_SAMPLES}건 미만입니다.")
 
-    return EventStudyReport(
-        horizon_days=horizon_days,
+    return _Core(
         total=len(samples),
         baseline_pct=round(baseline, 3),
         by_event=sorted(
@@ -121,4 +142,51 @@ def aggregate(samples: list[EventSample], horizon_days: int) -> EventStudyReport
         ),
         top_week_share=round(top_week_share, 3),
         warnings=warnings,
+    )
+
+
+def aggregate(samples: list[EventSample], horizon_days: int) -> EventStudyReport:
+    """이벤트 유형·감성대별 사후 수익률을 기준선 대비로 집계한다(일 단위 지평)."""
+    if not samples:
+        return EventStudyReport(
+            horizon_days=horizon_days, total=0, baseline_pct=0.0,
+            by_event=[], by_sentiment=[], top_week_share=0.0,
+            warnings=["표본이 없습니다."],
+        )
+    c = _core(samples)
+    return EventStudyReport(
+        horizon_days=horizon_days,
+        total=c.total,
+        baseline_pct=c.baseline_pct,
+        by_event=c.by_event,
+        by_sentiment=c.by_sentiment,
+        top_week_share=c.top_week_share,
+        warnings=c.warnings,
+    )
+
+
+def aggregate_intraday(
+    samples: list[EventSample], horizon_minutes: int, coverage_note: str
+) -> ShortHorizonReport:
+    """발행 직후 분 단위 반응 — 5분봉 기준.
+
+    `coverage_note`는 호출자가 만든다(어느 날짜부터 5분봉이 있는지는 DB가 아는 사실이라
+    순수 도메인이 알 수 없다). 이 문장이 리포트에 남아야 "왜 표본이 이것뿐인가"에 답이 된다.
+    """
+    if not samples:
+        return ShortHorizonReport(
+            horizon_minutes=horizon_minutes, total=0, baseline_pct=0.0,
+            by_event=[], by_sentiment=[], top_week_share=0.0,
+            warnings=["표본이 없습니다."], coverage_note=coverage_note,
+        )
+    c = _core(samples)
+    return ShortHorizonReport(
+        horizon_minutes=horizon_minutes,
+        total=c.total,
+        baseline_pct=c.baseline_pct,
+        by_event=c.by_event,
+        by_sentiment=c.by_sentiment,
+        top_week_share=c.top_week_share,
+        warnings=c.warnings,
+        coverage_note=coverage_note,
     )

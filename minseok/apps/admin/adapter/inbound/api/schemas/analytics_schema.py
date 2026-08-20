@@ -107,6 +107,19 @@ class EventBucketRowSchema(BaseModel):
     reliable: bool
 
 
+class ShortHorizonSchema(BaseModel):
+    """분 단위 지평(5분봉) — 구버전 리포트에는 없어 기본값을 둔다."""
+
+    horizon_minutes: int
+    total: int
+    baseline_pct: float
+    top_week_share: float
+    warnings: list[str]
+    coverage_note: str
+    by_event: list[EventBucketRowSchema]
+    by_sentiment: list[EventBucketRowSchema]
+
+
 class NewsEventStudyReportSchema(BaseModel):
     ran_at: datetime
     params: dict
@@ -117,6 +130,7 @@ class NewsEventStudyReportSchema(BaseModel):
     warnings: list[str]
     by_event: list[EventBucketRowSchema]
     by_sentiment: list[EventBucketRowSchema]
+    short_horizon: list[ShortHorizonSchema] = []
 
 
 class NewsEventStudyResponseSchema(BaseModel):
