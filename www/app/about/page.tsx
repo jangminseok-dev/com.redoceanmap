@@ -9,7 +9,11 @@ export const metadata: Metadata = {
 };
 
 /**
- * 서비스 소개 — 제품 목소리로 쓴다. 이력·경력·연락처를 나열하지 않는다.
+ * 서비스 소개 — 제품 목소리로 쓴다. 이력·경력을 나열하지 않는다.
+ *
+ * 연락처는 9절에만 둔다(사용자 결정, 2026-08-21). 처리방침 8항·약관 5항과 **같은 주소**이므로
+ * 바꿀 때 세 곳을 함께 고친다 — 한 곳만 고치면 탈퇴 요청이 죽은 주소로 간다.
+ * 푸터에는 넣지 않는다(모든 문서 페이지에 반복 노출될 자리다).
  *
  * **한계를 먼저 놓는 순서가 이 페이지의 결정이다.** 이 서비스는 판정 근거를 백테스트로
  * 검증하고 미달하면 기각하는 방식으로 만들어졌다(펀더멘털 축은 실제로 기각됐다).
@@ -26,8 +30,10 @@ export const metadata: Metadata = {
 
 const MEASURED_ON = "2026년 8월 21일";
 
+const CONTACT_EMAIL = "jang971121@gmail.com";
+
 type Metric = { label: string; value: string; note?: string };
-type Section = { title: string; body: string[]; metrics?: Metric[] };
+type Section = { title: string; body: string[]; metrics?: Metric[]; email?: string };
 
 const SECTIONS: Section[] = [
   {
@@ -130,8 +136,10 @@ const SECTIONS: Section[] = [
   {
     title: "9. 문의",
     body: [
-      "개인정보 관련 문의와 회원 탈퇴 요청은 개인정보처리방침에 안내된 연락처로 받습니다.",
+      "서비스 문의, 데이터 오류 제보, 개인정보 관련 요청과 회원 탈퇴를 아래 주소로 받습니다.",
+      "답변이 틀렸거나 수치가 이상하다고 느끼셨다면 어떤 질문이었는지 함께 알려주세요. 골든셋에 추가해 회귀 검사로 고정합니다.",
     ],
+    email: CONTACT_EMAIL,
   },
 ];
 
@@ -166,6 +174,14 @@ export default function AboutPage() {
             </p>
           ))}
           {s.metrics && <MetricList metrics={s.metrics} />}
+          {s.email && (
+            <a
+              href={`mailto:${s.email}`}
+              className="mt-3 inline-block text-sm font-medium text-brand hover:underline"
+            >
+              {s.email}
+            </a>
+          )}
         </section>
       ))}
       <AppFooter />
