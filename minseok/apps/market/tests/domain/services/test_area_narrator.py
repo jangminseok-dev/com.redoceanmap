@@ -596,3 +596,42 @@ def test_순증은_중간이어도_교체가_빠르면_말한다():
 def test_경계값은_말한다():
     assert _churn_text(_churn(opened=5, closed=0, active=100)).tone == "positive"   # 정확히 +5%
     assert _churn_text(_churn(opened=0, closed=10, active=100)).tone == "warning"   # 정확히 -10%
+
+
+# ── 자치구 상가 매매 평단가 (asset_price) ─────────────────────────────────────
+# 자치구 단위 사실 서술 — 구 이름·매매 명시, YoY 없음(구성 잡음)을 여기서 고정한다.
+
+def _asset(n=200, median=1238.0, rank=3, total=25):
+    from market.domain.value_objects.area_profile_vo import AssetPrice
+    return AssetPrice(
+        gu_name="강남구", months=12, n=n,
+        median_price_per_m2=median, seoul_rank=rank, seoul_total=total,
+    )
+
+
+def _asset_text(asset):
+    said = [i for i in narrate(None, None, None, None, asset_price=asset) if i.key == "asset_price"]
+    return said[0] if said else None
+
+
+def test_실거래_데이터가_없으면_침묵한다():
+    assert _asset_text(None) is None
+
+
+def test_거래가_적으면_침묵한다():
+    assert _asset_text(_asset(n=29)) is None  # ASSET_TRADES_MIN 경계 아래
+
+
+def test_평단가는_구_이름과_매매_기준을_명시해_말한다():
+    got = _asset_text(_asset())
+    assert got is not None and got.tone == "neutral"
+    # 자치구 단위임이 구 이름으로 드러나고, 임대로 오독되지 않게 매매를 명시한다
+    assert "강남구" in got.text and "매매" in got.text
+    # 1,238만원/㎡ × 3.3058 = 평당 4,092.6만원 → 반올림 4,093만원
+    assert "4,093만원" in got.text
+    assert "3번째" in got.text
+
+
+def test_평단가가_1억을_넘으면_억_단위로_말한다():
+    got = _asset_text(_asset(median=3300.0))  # 평당 1.09억
+    assert got is not None and "억원" in got.text

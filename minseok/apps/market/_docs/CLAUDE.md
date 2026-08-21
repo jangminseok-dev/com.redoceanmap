@@ -19,7 +19,7 @@
 market의 모든 테이블(3NF 15 + market_news_articles + area_score_backtest_reports)은
 **전용 DB(market-pgvector, pg17+pgvector, 호스트 :5434)**에 산다. 접근은 market 프로바이더가
 `core.database.get_market_db`(엔진은 `MARKET_DATABASE_URL`, 미설정 시 메인 폴백)로만 한다 —
-앱별 DB 불가침. 스키마 진실은 `apps/market/alembic` 독립 체인(7c5cfbd1c35f → 8d6efce2a41b → 9a1b2c3d4e5f → f3e4d5c6b7a8 → f4e5d6c7b8a9 → b5c6d7e8f9a0),
+앱별 DB 불가침. 스키마 진실은 `apps/market/alembic` 독립 체인(7c5cfbd1c35f → 8d6efce2a41b → 9a1b2c3d4e5f → f3e4d5c6b7a8 → f4e5d6c7b8a9 → b5c6d7e8f9a0 → c7d8e9f0a1b2),
 루트 체인의 market 리비전들은 이력 동결(루트 env.py에서 ORM 제거 + include_name 필터).
 컨테이너 접속: 실운영 backend는 `host.docker.internal:5434`(네트워크 분리, extra_hosts).
 백업: `scripts/backup_db.sh`의 market 블록(market-*.dump 7세대). 배치(ingest·backtest)도
@@ -123,6 +123,30 @@ market의 모든 테이블(3NF 15 + market_news_articles + area_score_backtest_r
   "순증=좋다"가 아니라 양 끝(p10 -10.3% / p90 +4.8%)만 말하고, 영업중 20곳 미만은 침묵한다.
 - **영업중 수를 `store`의 점포 수와 나란히 두지 않는다** — 출처도 집계 기준도 다르다.
   사용자가 검산하려 들면 반드시 어긋난다.
+
+## 상가 매매 실거래 (진입 비용 축)
+
+분기 팩트는 매출·인구만 있고 부동산 가격이 없다 — 상권 축의 비용 공백을 국토부
+실거래(`commercial_trades`, 리비전 `c7d8e9f0a1b2`)로 메운다.
+
+- **임대는 없다.** 국토부 공개 API에 상업업무용 전월세가 존재하지 않는다(2026-08-21 확인 —
+  `RTMSDataSvcNrgRent` 등 NO_OPENAPI_SERVICE). 매매만 적재하며, 임대료 축은 한국부동산원
+  R-ONE 임대동향조사(별도 인증키)가 후속 후보다.
+- **수집**: `scripts/collect_commercial_trades.py`(매월 3일 04:30 cron, `DATA_GO_KR_API_KEY`).
+  원본에 거래 고유 ID가 없어 **(자치구, 거래 연월) 단위 DELETE 후 INSERT 교체**가 멱등
+  규칙이다. 해제 신고(cdealType='O')는 거래 몇 달 뒤 붙기도 하므로 기본 실행이 최근 3개월을
+  재수집한다(해제 거래는 적재 제외). 백필 2024-01~ 27,726건(집합 22,072).
+- **상권 매칭 없음 — 자치구 단위다.** 원본에 좌표가 없다(법정동·지번뿐, 일반건물은 지번
+  마스킹). 법정동 시군구코드(sggCd)가 region 자치구 코드와 동일 체계(11680=강남구 확인)라
+  자치구로 집계한다. `umd_nm`(법정동명)은 향후 좁힐 때를 위해 원문 보존.
+- **노출**: `area_detail`의 `find_asset_price` → 서술 `asset_price` 한 줄(구조 필드 없음 —
+  문장이 전부다). **집합건물만** 집계한다(호실 = 창업자가 실제 사고 파는 단위, 일반 통건물은
+  토지 비중이 커서 다른 모집단). 기준일은 오늘이 아니라 데이터 최신 거래일(신고 지연 방어,
+  permit 선례). 25개 구 전부 최근 12개월 n=90~1,473이라 표본 걱정은 없다.
+- **전년 대비(YoY)를 말하지 않는다** — 구 중앙 평단가의 YoY는 실측 ±130%까지 튀는
+  **구성 잡음**(고가 신축 분양 믹스)이라 "올랐다/내렸다"가 허위가 된다. 절대 평단가(평당
+  중앙)와 서울 내 순위만 사실 서술한다. 구 이름·"매매"를 문장에 명시한다(상권 시세·임대료로
+  오독 방지).
 
 ## 상권 뉴스 (RAG 코퍼스)
 

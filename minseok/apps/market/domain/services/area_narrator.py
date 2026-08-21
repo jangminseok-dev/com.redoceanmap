@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from market.domain.value_objects.area_profile_vo import (
     ApartmentProfile,
+    AssetPrice,
     FacilityProfile,
     FloatingRhythm,
     PermitChurn,
@@ -58,6 +59,11 @@ CHURN_NET_HIGH = 0.05     # 순증률 p90 = +0.048 — 상위 10%
 CHURN_NET_LOW = -0.10     # 순증률 p10 = -0.103 — 하위 10%
 CHURN_TURNOVER_HIGH = 0.38  # 교체율((개업+폐업)/영업중) p90 = 0.381. 중앙 0.200
 
+# 자치구 상가 매매 평단가 — 실측(2026-08-21, 2024-01~ 적재분): 25개 구 전부 최근 12개월
+# 집합건물 거래 n=90~1,473이라 표본 걱정은 없지만, 창을 좁혀 재수집하는 경우를 방어한다.
+ASSET_TRADES_MIN = 30
+PYEONG_PER_M2 = 3.3058  # 평 ↔ ㎡ — 상가 시세는 평당 표기가 관례
+
 _HIGH_PRICE_KEYS = ("b4", "b5", "over6b")
 _LARGE_AREA_KEYS = ("a132", "a165")
 
@@ -89,6 +95,7 @@ def narrate(
     facility: FacilityProfile | None = None,
     apartment: ApartmentProfile | None = None,
     permit_churn: PermitChurn | None = None,
+    asset_price: AssetPrice | None = None,
 ) -> list[Insight]:
     """최신 분기 구조 수치 → 초보자용 해석 문장. 결측 축은 해당 문장을 생략한다."""
     insights: list[Insight] = []
@@ -119,6 +126,9 @@ def narrate(
     churn = _permit_churn_insight(permit_churn)
     if churn is not None:
         insights.append(churn)
+    asset = _asset_price_insight(asset_price)
+    if asset is not None:
+        insights.append(asset)
     return insights
 
 
@@ -510,6 +520,26 @@ def _facility_character(facility: FacilityProfile | None) -> Insight | None:
                  "동네 생활 동선이 지나는 상권입니다.",
         )
     return None
+
+
+def _asset_price_insight(asset: AssetPrice | None) -> Insight | None:
+    """자치구 상가 매매 평단가 — 분기 팩트에 없는 진입 비용 축을 한 줄로 말한다.
+
+    avg_ticket처럼 사실 서술로 항상 말한다(양끝 규칙은 판정 문장에만 적용). 단:
+    - **자치구 단위임을 구 이름으로 드러낸다** — 상권 시세로 오독되면 안 된다.
+    - **매매임을 명시한다** — 임대 실거래는 공개 API에 없다(창업자는 보통 임대를 묻는다).
+    - **전년 대비는 말하지 않는다** — 구 중앙 평단가 YoY는 실측 ±130%까지 튀는 구성
+      잡음(신축 분양 믹스)이라 "올랐다/내렸다"가 허위가 된다.
+    """
+    if asset is None or asset.n < ASSET_TRADES_MIN:
+        return None
+    per_pyeong = asset.median_price_per_m2 * PYEONG_PER_M2  # 만원/평
+    return Insight(
+        key="asset_price", tone="neutral",
+        text=(f"{asset.gu_name} 상가(집합건물) 매매 실거래가는 최근 {asset.months}개월 "
+              f"평당 중앙 {_money(per_pyeong * 10_000)} — "
+              f"서울 {asset.seoul_total}개 구 중 {asset.seoul_rank}번째로 높습니다."),
+    )
 
 
 def _won(v: float) -> str:

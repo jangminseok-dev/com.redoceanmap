@@ -23,7 +23,9 @@ def _sales_mix():
 class _StubRepo:
     def __init__(self, header=None, service=None, sales_mix=None,
                  resident=None, working=None, apartment=None, spending=None,
-                 floating=None, facility=None, service_ranking=None, permit_churn=None):
+                 floating=None, facility=None, service_ranking=None, permit_churn=None,
+                 asset_price=None):
+        self.asset_price = asset_price
         self.header = header
         self.service = service
         self.sales_mix = sales_mix
@@ -72,6 +74,9 @@ class _StubRepo:
 
     async def find_permit_churn(self, trdar_code, months=12, sample=5):
         return self.permit_churn
+
+    async def find_asset_price(self, trdar_code, months=12):
+        return self.asset_price
 
 
 _HEADER = AreaHeader(trdar_code=1000123, trdar_name="성수동 카페거리", district_name="성동구")

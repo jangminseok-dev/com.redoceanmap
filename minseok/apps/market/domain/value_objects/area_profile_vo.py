@@ -146,6 +146,26 @@ class PermitChurn:
 
 
 @dataclass(frozen=True)
+class AssetPrice:
+    """자치구 상가·업무용 매매 평단가 — 상권 진입 비용 축(국토부 실거래, 집합건물 호실 기준).
+
+    상권 단위가 아니라 **자치구 단위**다 — 원본에 좌표가 없어 상권에 직접 붙지 않는다.
+    같은 구의 모든 상권이 같은 값을 받으므로 문장에 구 이름을 명시해 좌표계를 드러낸다.
+    임대료가 아니라 매매가다(임대 실거래는 공개 API에 없다, 2026-08-21 확인).
+    """
+
+    gu_name: str
+    months: int                    # 집계 창(개월)
+    n: int                         # 창 안의 거래 건수(집합건물)
+    median_price_per_m2: float     # 만원/㎡ 중앙값
+    seoul_rank: int                # 서울 자치구 중 몇 번째로 높은가(1=최고가)
+    seoul_total: int               # 집계된 자치구 수
+
+    # 전년 대비(YoY)는 싣지 않는다 — 자치구 중앙 평단가의 YoY는 실측 ±130%까지 튀는
+    # **구성 잡음**(고가 신축 분양 유무로 믹스가 바뀐다)이라 "가격이 올랐다"가 허위가 된다.
+
+
+@dataclass(frozen=True)
 class SpendingCategory:
     key: str
     label: str

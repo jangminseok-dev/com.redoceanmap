@@ -8,6 +8,7 @@ from sqlalchemy.orm import aliased
 
 from market.adapter.outbound.orm.apartment_orm import ApartmentOrm
 from market.adapter.outbound.orm.business_permit_orm import BusinessPermitOrm
+from market.adapter.outbound.orm.commercial_trade_orm import CommercialTradeOrm
 from market.adapter.outbound.orm.consumption_orm import ConsumptionOrm
 from market.adapter.outbound.orm.estimated_sales_orm import EstimatedSalesOrm
 from market.adapter.outbound.orm.facility_orm import FacilityOrm
@@ -23,6 +24,7 @@ from market.app.ports.output.area_detail_repository import AreaDetailRepositoryP
 from market.domain.value_objects.area_profile_vo import (
     AgeBand,
     ApartmentProfile,
+    AssetPrice,
     FacilityProfile,
     FloatingRhythm,
     PermitChurn,
@@ -310,6 +312,55 @@ class AreaDetailPgRepository(AreaDetailRepositoryPort):
             nightlife=r.theater_count + r.lodging_count,
             convenience=(r.bank_count + r.pharmacy_count
                          + r.supermarket_count + r.public_office_count),
+        )
+
+    async def find_asset_price(self, trdar_code: int, months: int = 12) -> AssetPrice | None:
+        # 상권 → 행정동 → 자치구. 자치구 코드는 국토부 sggCd와 동일 체계(11680=강남구 확인).
+        dong, gu = aliased(RegionOrm), aliased(RegionOrm)
+        gu_row = (await self._session.execute(
+            select(gu.code, gu.name)
+            .select_from(TradeAreaOrm)
+            .join(dong, TradeAreaOrm.region_code == dong.code)
+            .join(gu, dong.parent_code == gu.code)
+            .where(TradeAreaOrm.code == trdar_code)
+        )).one_or_none()
+        if gu_row is None:
+            return None
+
+        # 기준일은 "오늘"이 아니라 **데이터 최신 거래일** — 신고 지연(30일)로 최근 1~2개월이
+        # 비어 있는데 오늘 기준 창을 잡으면 그 공백이 그대로 표본 급감으로 보인다(permit 선례).
+        anchor = (await self._session.execute(
+            select(func.max(CommercialTradeOrm.deal_date))
+        )).scalar()
+        if anchor is None:
+            return None  # 수집 전 — 문장을 통째로 생략한다
+        since = anchor - timedelta(days=months * 30)
+
+        # 전 자치구를 한 번에 집계해야 서울 내 순위가 나온다(25행 — 상권마다 재계산해도 가볍다).
+        # 집합건물만: 호실 단위 = 창업자가 실제 사고 파는 단위. 일반(통건물)은 토지 비중이 커서
+        # 평단가 분포가 다른 모집단이다.
+        rows = (await self._session.execute(
+            select(
+                CommercialTradeOrm.sgg_cd,
+                func.count(),
+                func.percentile_cont(0.5).within_group(
+                    CommercialTradeOrm.deal_amount / CommercialTradeOrm.building_ar
+                ),
+            )
+            .where(
+                CommercialTradeOrm.building_type == "집합",
+                CommercialTradeOrm.deal_date > since,
+            )
+            .group_by(CommercialTradeOrm.sgg_cd)
+        )).all()
+        by_gu = {r[0]: (r[1], float(r[2])) for r in rows}
+        mine = by_gu.get(str(gu_row.code))
+        if mine is None:
+            return None
+        rank = 1 + sum(1 for n, med in by_gu.values() if med > mine[1])
+        return AssetPrice(
+            gu_name=gu_row.name, months=months, n=mine[0],
+            median_price_per_m2=mine[1], seoul_rank=rank, seoul_total=len(by_gu),
         )
 
     async def find_permit_churn(

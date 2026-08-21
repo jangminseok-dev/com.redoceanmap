@@ -70,6 +70,14 @@ class AreaDetailRepositoryPort(ABC):
         ...
 
     @abstractmethod
+    async def find_asset_price(self, trdar_code: int, months: int = 12) -> "AssetPrice | None":
+        """상권이 속한 자치구의 상가·업무용 매매 평단가(실거래) — 진입 비용 축.
+
+        원본에 좌표가 없어 자치구 단위 집계다. 데이터 없으면 None(문장 생략).
+        """
+        ...
+
+    @abstractmethod
     async def find_permit_churn(
         self, trdar_code: int, months: int = 12, sample: int = 5
     ) -> PermitChurn | None:
