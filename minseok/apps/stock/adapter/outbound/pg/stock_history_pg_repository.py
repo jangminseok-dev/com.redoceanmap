@@ -84,7 +84,11 @@ class StockHistoryPgRepository(StockHistoryRepositoryPort):
     async def find_latest_fundamentals(self, symbol: str) -> list[FundamentalSnapshot]:
         rows = (await self._session.execute(
             select(FundamentalSnapshotOrm)
-            .where(_ticker_match(FundamentalSnapshotOrm.ticker, symbol))
+            .where(
+                _ticker_match(FundamentalSnapshotOrm.ticker, symbol),
+                # yf-hist는 백테스트용 과거 백필 — "지금" 스냅샷이 아니라 화면·채팅에서 제외
+                FundamentalSnapshotOrm.source != "yf-hist",
+            )
             .order_by(FundamentalSnapshotOrm.as_of.desc())
             .limit(20)  # 주간 스냅샷 — 소스별 최신만 남기는 python dedupe에 충분한 창
         )).scalars().all()

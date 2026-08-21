@@ -45,7 +45,12 @@
   허브 `/automation/fundamentals`로 적재(허브 `FundamentalStoragePort`를 `FundamentalStorageGateway`가
   구현, `fundamental_snapshots` 테이블·(ticker, as_of, source) 유니크). PER/PBR/ROE/부채비율/FCF/EPS/BPS —
   버핏식 가치·체력 축. 한국 종목은 DART 연간 재무제표로 EPS/BPS→PER/PBR 자체 계산(source=dart 별도 행).
-  판정(OutlookPredictor) 편입은 분기 지평 백테스트 설계 후 — 축적이 먼저(뉴스 감성과 동일 원칙).
+  판정(OutlookPredictor) 편입은 **백테스트로 기각됨(2026-08-21, E2)** — `backfill_fundamentals.py`
+  (yfinance 연간 재무 4개년 → `source='yf-hist'` 백필, as_of = 회계연도말 + 90일 공시 시차) +
+  `backtest_fundamentals.py`(PER/PBR 횡단 분위 × 60/120거래일 워크포워드)에서 전 조합
+  게이트 미달·역방향. **펀더멘털은 서술 축으로만 유지**, yf-hist 행은 화면·채팅 조회에서
+  제외된다(`find_latest_fundamentals`) →
+  [[minseok/apps/stock/_docs/FUNDAMENTAL_BACKTEST_2026-08|FUNDAMENTAL_BACKTEST]].
 - **뉴스 LLM 라벨(DB)**: 야간 cron(`scripts/label_news.py`, EXAONE 7.8B Ollama 경유 —
   도메인 내부 추론 계층 준수)이 허브 `/automation/news-labels`로 적재(허브 `NewsLabelStoragePort`를
   `NewsLabelStorageGateway`가 구현, `news_labels` 테이블·(news_id, labeler) 유니크).

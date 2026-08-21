@@ -3,7 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
-SOURCES = ("yfinance", "dart")
+# yf-hist: 연간 재무제표 소급 백필(backfill_fundamentals.py) — as_of가 과거(공시 추정일)인
+# 행이라 "지금" 스냅샷(yfinance·dart 주간 수집)과 소스로 구분한다. 백테스트(E2) 전용 원료.
+SOURCES = ("yfinance", "dart", "yf-hist")
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,7 +18,7 @@ class FundamentalSnapshot:
 
     ticker: str
     as_of: date
-    source: str  # yfinance | dart
+    source: str  # yfinance | dart | yf-hist
     per: float | None = None             # 주가수익비율
     pbr: float | None = None             # 주가순자산비율
     roe: float | None = None             # 자기자본이익률 (0.15 = 15%)
