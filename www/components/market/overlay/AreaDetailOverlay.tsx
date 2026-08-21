@@ -137,13 +137,13 @@ export default function AreaDetailOverlay({
             )}
             {/* 인허가는 분기 팩트보다 시의성이 높다(어제 연 가게가 보인다) — 업종 랭킹 앞에 둔다 */}
             {data.permitChurn && (
-              <Section icon={DoorOpen} title="요즘 뭐가 열고 닫나">
+              <Section icon={DoorOpen} title="인허가 업소 교체">
                 <PermitChurnSection churn={data.permitChurn} />
               </Section>
             )}
             {/* 업종 랭킹은 매출 분해와 별개다 — 기준 업종이 안 잡혀도 목록은 뜬다 */}
             {data.serviceRanking.length > 0 && (
-              <Section icon={Store} title="이 자리에서 뭐가 되나 (업종별)">
+              <Section icon={Store} title="업종 랭킹">
                 <ServiceRankingSection
                   ranking={data.serviceRanking}
                   currentCode={data.serviceCode}
