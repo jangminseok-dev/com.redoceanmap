@@ -12,10 +12,12 @@ from stock.app.dtos.stock_forecast_dto import (
     ProbabilityInfo,
     StockForecastView,
 )
+from stock.app.dtos.signal_config_dto import ActiveSignalConfig
 from stock.app.exceptions import MarketDataUnavailableError
 from stock.app.ports.input.stock_forecast_use_case import StockForecastUseCase
 from stock.app.ports.output.earnings_calendar_port import EarningsCalendarPort
 from stock.app.ports.output.forecast_history_port import ForecastHistoryPort
+from stock.app.ports.output.signal_config_port import SignalConfigPort
 from stock.domain.entities.analysis_config import AnalysisConfig
 from stock.domain.services import forecast_narrator
 from stock.domain.services.backtester import Backtester
@@ -37,11 +39,12 @@ VIX_TICKER = "^VIX"
 EARNINGS_VETO_DAYS = 2  # 실적 발표 ±N 캘린더일 — 기술지표가 무의미해지는 구간
 
 # 워크포워드가 평가일당 지표를 재계산해 종목당 수 초 걸린다 —
-# (티커, horizon)별 최신 봉 기준 1건만 캐시한다(봉은 일 1회 적재라 ts가 바뀌면 자연 무효).
-_CACHE: dict[tuple[str, int], tuple[str, StockForecastView]] = {}
+# (티커, horizon, 조합 키)별 최신 봉 기준 1건만 캐시한다(봉은 일 1회 적재라 ts가 바뀌면
+# 자연 무효, 재적합 승격으로 조합 키가 바뀌어도 자연 무효).
+_CACHE: dict[tuple[str, int, str], tuple[str, StockForecastView]] = {}
 # 라이브 모드 전용 — 벤더 2y 다운로드 자체를 막아야 하므로 봉 ts가 아니라 UTC 날짜로
 # 신선도를 판단한다(같은 날 재요청이면 다운로드 없이 반환).
-_LIVE_CACHE: dict[tuple[str, int], tuple[str, StockForecastView]] = {}
+_LIVE_CACHE: dict[tuple[str, int, str], tuple[str, StockForecastView]] = {}
 # 레짐 달력 — 지수(SPY·VIX) 일봉으로 전 종목이 공유, 마지막 SPY 봉 ts 기준 1건 캐시.
 # SPY가 하루 늦게 적재돼도 다음 봉에서 자연 회복(뷰 _CACHE도 종목 봉 ts 키라 동일 성질).
 _REGIME_CACHE: tuple[str, RegimeCalendar] | None = None
@@ -61,10 +64,12 @@ class StockForecastInteractor(StockForecastUseCase):
         history: ForecastHistoryPort,
         market_data: MarketDataPort | None = None,
         earnings: EarningsCalendarPort | None = None,
+        configs: SignalConfigPort | None = None,
     ) -> None:
         self._history = history
         self._market_data = market_data
         self._earnings = earnings
+        self._configs = configs
         self._calculator = IndicatorCalculator()
         self._predictor = OutlookPredictor()
         self._backtester = Backtester(self._calculator, self._predictor)
@@ -72,12 +77,15 @@ class StockForecastInteractor(StockForecastUseCase):
     async def forecast(self, query: ForecastQuery) -> StockForecastView:
         symbol = query.symbol.strip().upper()
         live = False
+        # 활성 조합은 캐시 검사보다 먼저 — 재적합 승격이 캐시 키를 바꿔 즉시 반영되게 한다
+        # (요청당 1행 SELECT, 별도 캐시 없음)
+        active = await self._active_config()
         # 캐시 검사는 마지막 봉 1행만 읽어서 — 히트면 수년치 일봉 풀로드를 건너뛴다
         latest = await self._history.find_latest_daily_bar(symbol)
         if latest is None and self._market_data is not None:
             # 미수집 종목 — 다운로드 전에 일 단위 라이브 캐시부터(2y 벤더 호출 자체를 막는다)
             today = datetime.now(UTC).date().isoformat()
-            live_cached = _LIVE_CACHE.get((symbol, query.horizon))
+            live_cached = _LIVE_CACHE.get((symbol, query.horizon, active.key))
             if live_cached is not None and live_cached[0] == today:
                 return live_cached[1]
             # 시세 벤더 라이브 이력으로 동일 계산(2y ≈ 500봉, 저장 안 함)
@@ -89,7 +97,7 @@ class StockForecastInteractor(StockForecastUseCase):
                 f"수집된 일봉이 없습니다(수집 대상 아님): {query.symbol}"
             )
 
-        cache_key = (latest.ticker, query.horizon)
+        cache_key = (latest.ticker, query.horizon, active.key)
         last_ts = latest.ts.isoformat()
         cached = _CACHE.get(cache_key)
         if cached is not None and cached[0] == last_ts:
@@ -108,9 +116,9 @@ class StockForecastInteractor(StockForecastUseCase):
         lows = [b.low for b in bars]
         highs = [b.high for b in bars]
         volumes = [float(b.volume) for b in bars]
-        # 감성 중립 경로 전용 조합 — default()는 감성 가중치 0.5를 전제해 이 경로에서
+        # 감성 중립 경로 전용 활성 조합(DB) — default()는 감성 가중치 0.5를 전제해 이 경로에서
         # 임계값에 산술적으로 도달하지 못한다(config docstring 참고). 스냅샷 캡처도 같은 것을 쓴다.
-        config = AnalysisConfig.forecast_signal()
+        config = active.config
 
         calendar = await self._regime_calendar()
         veto_dates = await self._earnings_veto_dates(symbol)
@@ -213,7 +221,7 @@ class StockForecastInteractor(StockForecastUseCase):
             earnings_veto=earnings_veto,
         )
         if live:
-            _LIVE_CACHE[(symbol, query.horizon)] = (
+            _LIVE_CACHE[(symbol, query.horizon, active.key)] = (
                 datetime.now(UTC).date().isoformat(), view,
             )
         _CACHE[cache_key] = (last_ts, view)
@@ -223,6 +231,14 @@ class StockForecastInteractor(StockForecastUseCase):
             regime, regime_conditional, earnings_veto,
         )
         return view
+
+    async def _active_config(self) -> ActiveSignalConfig:
+        """활성 판정 조합 — 포트 미주입(구 조립·일부 테스트)이면 코드 상수 폴백."""
+        if self._configs is None:
+            return ActiveSignalConfig(
+                key="forecast_signal", config=AnalysisConfig.forecast_signal()
+            )
+        return await self._configs.active()
 
     async def _regime_calendar(self) -> RegimeCalendar | None:
         """지수(SPY·VIX) 일봉 → 레짐 달력. 지수 미수집이면 None(무레짐 폴백)."""

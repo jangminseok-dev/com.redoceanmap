@@ -120,6 +120,38 @@ async def test_같은_날은_캐시로_재계산하지_않는다():
     assert port.full_loads == 1  # 캐시 히트면 일봉 풀로드도 생략(마지막 봉 1행만 조회)
 
 
+class _StubSignalConfigs:
+    """활성 조합 스텁 — key를 바꿔 재적합 승격을 흉내낸다."""
+
+    def __init__(self, key: str = "forecast_signal"):
+        from stock.domain.entities.analysis_config import AnalysisConfig
+        self.key = key
+        self.config = AnalysisConfig.forecast_signal()
+
+    async def active(self):
+        from stock.app.dtos.signal_config_dto import ActiveSignalConfig
+        return ActiveSignalConfig(key=self.key, config=self.config)
+
+    async def activate(self, key, config):  # pragma: no cover - 미사용
+        raise NotImplementedError
+
+    async def history(self):  # pragma: no cover - 미사용
+        raise NotImplementedError
+
+
+async def test_조합_키가_바뀌면_캐시가_무효화된다():
+    """재적합 승격(활성 키 교체)이 다음 요청부터 즉시 반영돼야 한다 — 캐시 키에 조합 키 포함."""
+    port = _StubPort(_bars(120))
+    configs = _StubSignalConfigs(key="forecast_signal")
+    interactor = StockForecastInteractor(history=port, configs=configs)
+    await interactor.forecast(ForecastQuery(symbol="TEST"))
+    assert port.full_loads == 1
+
+    configs.key = "refit-20260905"  # 승격 — 파라미터가 같아도 키가 다르면 재계산
+    await interactor.forecast(ForecastQuery(symbol="TEST"))
+    assert port.full_loads == 2
+
+
 async def test_DOWN_신호는_상승률이_기준선보다_낮아야_유의하다(monkeypatch):
     interactor = StockForecastInteractor(history=_StubPort(_bars(120)))
     monkeypatch.setattr(

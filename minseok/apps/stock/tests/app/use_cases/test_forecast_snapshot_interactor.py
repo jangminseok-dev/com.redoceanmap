@@ -138,8 +138,29 @@ class _StubRepo:
         return len(pool), len([s for s in pool if s.evaluated_at is not None])
 
 
-def _interactor(forecaster, history, repo) -> ForecastSnapshotInteractor:
-    return ForecastSnapshotInteractor(forecaster=forecaster, history=history, snapshots=repo)
+class _StubSignalConfigs:
+    """활성 조합 스텁 — 재적합 승격 후의 키를 흉내낸다."""
+
+    def __init__(self, key: str):
+        from stock.domain.entities.analysis_config import AnalysisConfig
+        self.key = key
+        self.config = AnalysisConfig.forecast_signal()
+
+    async def active(self):
+        from stock.app.dtos.signal_config_dto import ActiveSignalConfig
+        return ActiveSignalConfig(key=self.key, config=self.config)
+
+    async def activate(self, key, config):  # pragma: no cover - 미사용
+        raise NotImplementedError
+
+    async def history(self):  # pragma: no cover - 미사용
+        raise NotImplementedError
+
+
+def _interactor(forecaster, history, repo, configs=None) -> ForecastSnapshotInteractor:
+    return ForecastSnapshotInteractor(
+        forecaster=forecaster, history=history, snapshots=repo, configs=configs
+    )
 
 
 async def test_capture_maps_view_and_breakdown():
@@ -356,3 +377,30 @@ async def test_summary_excludes_previous_signal_config():
     assert view.kpi.scored == 1 and view.kpi.hit_rate == 1.0  # 구 조합 오답이 섞이면 0.5가 된다
     assert view.by_direction[0].avg_realized_return_pct == pytest.approx(0.02)
     assert [r.ticker for r in view.recent] == ["TEST.KS"] and len(view.recent) == 1
+
+
+async def test_capture_stamps_active_config_key():
+    """재적합 승격 뒤 캡처는 새 활성 키를 스탬프한다 — 이력이 조합별로 갈린다."""
+    forecaster = _StubForecaster({("TEST", 5): _view("TEST", 5)})
+    repo = _StubRepo()
+    await _interactor(
+        forecaster, _StubHistory({"TEST": _bars(60)}), repo,
+        configs=_StubSignalConfigs(key="refit-20260905"),
+    ).capture(CaptureCommand(tickers=["TEST"], horizons=[5]))
+    assert repo.saved[0].signal_config == "refit-20260905"
+
+
+async def test_summary_narrows_by_active_config_key():
+    """요약 집계도 활성 키 기준 — 승격 직후 0부터 재시작하는 것이 의도된 동작이다."""
+    scored = [
+        _snapshot(1, direction="UP", evaluated=True, realized_return_pct=0.02, hit=True,
+                  signal_config="refit-20260905"),
+        _snapshot(2, direction="UP", evaluated=True, realized_return_pct=-0.05, hit=False),
+    ]
+    repo = _StubRepo(scored=scored)
+    view = await _interactor(
+        _StubForecaster({}), _StubHistory({}), repo,
+        configs=_StubSignalConfigs(key="refit-20260905"),
+    ).summary(horizon=None, recent_limit=10)
+    assert repo.asked_configs == ["refit-20260905"]
+    assert view.kpi.scored == 1 and view.kpi.hit_rate == 1.0

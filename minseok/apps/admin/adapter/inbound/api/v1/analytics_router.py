@@ -3,11 +3,14 @@ from dataclasses import asdict
 from fastapi import APIRouter, Depends, Query
 
 from admin.adapter.inbound.api.schemas.analytics_schema import (
+    ForecastRefitResponseSchema,
     ForecastReportSchema,
     MarketBacktestReportSchema,
     MarketBacktestResponseSchema,
     NewsEventStudyReportSchema,
     NewsEventStudyResponseSchema,
+    RefitReportSchema,
+    SignalConfigRowSchema,
 )
 from admin.app.ports.input.analytics_use_case import AnalyticsUseCase
 from admin.dependencies.analytics_provider import get_analytics_use_case
@@ -62,4 +65,22 @@ async def news_event_study_report(
     return NewsEventStudyResponseSchema(
         report=NewsEventStudyReportSchema(**asdict(result.report))
         if result.report is not None else None
+    )
+
+
+@analytics_router.get(
+    "/forecast-refit",
+    response_model=ForecastRefitResponseSchema,
+    dependencies=[Depends(require_permission("analytics:read"))],
+    summary="판정 가중치 재적합 — 최신 리더보드 + 활성 조합 이력",
+)
+async def forecast_refit_report(
+    use_case: AnalyticsUseCase = Depends(get_analytics_use_case),
+) -> ForecastRefitResponseSchema:
+    # 승격은 주 1회 배치(/automation/forecast-refit)가 한다 — 이 화면은 조회 전용.
+    result = await use_case.forecast_refit()
+    return ForecastRefitResponseSchema(
+        report=RefitReportSchema(**asdict(result.report))
+        if result.report is not None else None,
+        history=[SignalConfigRowSchema(**asdict(row)) for row in result.history],
     )

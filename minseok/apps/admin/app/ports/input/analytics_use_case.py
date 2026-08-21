@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from admin.app.dtos.analytics_dto import (
+    ForecastRefitResponse,
     ForecastReportResponse,
     MarketBacktestResponse,
     NewsEventStudyResponse,
@@ -25,4 +26,9 @@ class AnalyticsUseCase(ABC):
     @abstractmethod
     async def news_event_study(self) -> NewsEventStudyResponse:
         """뉴스 이벤트 사후 수익률 최신 연구 리포트 — 없으면 report=None."""
+        ...
+
+    @abstractmethod
+    async def forecast_refit(self) -> ForecastRefitResponse:
+        """가중치 재적합 최신 리포트 + 판정 조합 이력 — 실행 전이면 report=None."""
         ...

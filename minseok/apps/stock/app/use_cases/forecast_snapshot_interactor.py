@@ -17,12 +17,14 @@ from stock.app.dtos.forecast_snapshot_dto import (
     SnapshotSummaryView,
     SummaryKpi,
 )
+from stock.app.dtos.signal_config_dto import ActiveSignalConfig
 from stock.app.dtos.stock_forecast_dto import ForecastQuery
 from stock.app.exceptions import MarketDataUnavailableError
 from stock.app.ports.input.forecast_snapshot_use_case import ForecastSnapshotUseCase
 from stock.app.ports.input.stock_forecast_use_case import StockForecastUseCase
 from stock.app.ports.output.forecast_history_port import ForecastHistoryPort
 from stock.app.ports.output.forecast_snapshot_repository import ForecastSnapshotRepositoryPort
+from stock.app.ports.output.signal_config_port import SignalConfigPort
 from stock.domain.entities.analysis_config import AnalysisConfig
 from stock.domain.entities.forecast_snapshot import ForecastSnapshot
 from stock.domain.services.indicator_calculator import IndicatorCalculator
@@ -34,10 +36,6 @@ logger = logging.getLogger(__name__)
 # 요약 집계에 쓰는 채점분 상한 — 일 ~160건(80종목×2 horizon) 기준 수개월치
 SUMMARY_SCORED_CAP = 2000
 
-# 스냅샷에 남기는 판정 조합 식별자. 조합을 바꾸면 이 값도 바꿔서 이력을 구분한다 —
-# NULL 행은 2026-07-30 이전의 default() 조합(전량 NEUTRAL 구간)이다.
-_SIGNAL_CONFIG_KEY = "forecast_signal"
-
 
 class ForecastSnapshotInteractor(ForecastSnapshotUseCase):
     """예측 스냅샷 대장 — forecast 재사용(재계산 금지) + 신호 분해를 함께 동결하고 사후 채점한다."""
@@ -47,21 +45,26 @@ class ForecastSnapshotInteractor(ForecastSnapshotUseCase):
         forecaster: StockForecastUseCase,
         history: ForecastHistoryPort,
         snapshots: ForecastSnapshotRepositoryPort,
+        configs: SignalConfigPort | None = None,
     ) -> None:
         # forecaster는 라이브 폴백 없는 조립(market_data=None)이어야 한다 —
         # 스냅샷은 수집 종목의 저장 봉 기준 기록이지 즉석 벤더 호출이 아니다.
+        # configs는 forecaster와 **같은 인스턴스**를 주입해야 breakdown과 direction이
+        # 같은 조합으로 계산된다(승격 직후 요청이 갈라지는 것 방지).
         self._forecaster = forecaster
         self._history = history
         self._snapshots = snapshots
+        self._configs = configs
         self._calculator = IndicatorCalculator()
         self._predictor = OutlookPredictor()
 
     async def capture(self, command: CaptureCommand) -> CaptureResult:
+        active = await self._active_config()  # 실행당 1회 — 전 티커가 같은 조합으로 캡처된다
         entities: list[ForecastSnapshot] = []
         skipped: list[str] = []
         for ticker in dict.fromkeys(t.strip().upper() for t in command.tickers if t.strip()):
             try:
-                entities.extend(await self._capture_one(ticker, command.horizons))
+                entities.extend(await self._capture_one(ticker, command.horizons, active))
             except MarketDataUnavailableError:
                 skipped.append(ticker)  # 미수집·봉 부족 — 수집이 따라오면 다음 실행에 포함
             except Exception:
@@ -74,20 +77,23 @@ class ForecastSnapshotInteractor(ForecastSnapshotUseCase):
         )
         return CaptureResult(captured=captured, skipped=skipped)
 
-    async def _capture_one(self, ticker: str, horizons: list[int]) -> list[ForecastSnapshot]:
+    async def _capture_one(
+        self, ticker: str, horizons: list[int], active: ActiveSignalConfig
+    ) -> list[ForecastSnapshot]:
         bars = await self._history.find_all_daily_bars(ticker)
         if not bars:
             raise MarketDataUnavailableError(f"수집된 일봉이 없습니다: {ticker}")
 
-        # 신호 분해는 뷰에 없어 여기서 1회 계산 — forecast와 동일 조건(감성 중립·기본 config)
+        # 신호 분해는 뷰에 없어 여기서 1회 계산 — forecast와 동일 조건(감성 중립·활성 config)
         indicators = self._calculator.compute(
             [b.close for b in bars], [b.low for b in bars],
             [b.high for b in bars], [float(b.volume) for b in bars],
         )
         # 뷰(StockForecastInteractor)와 **같은 조합**이어야 한다 — 갈라지면 저장된 score와
-        # direction이 서로 다른 config로 계산된다(감성 중립 경로 전용 조합).
-        config = AnalysisConfig.forecast_signal()
-        contributions = self._predictor.breakdown(indicators, SentimentScore(value=0.0), config)
+        # direction이 서로 다른 config로 계산된다(감성 중립 경로 전용 활성 조합).
+        contributions = self._predictor.breakdown(
+            indicators, SentimentScore(value=0.0), active.config
+        )
         score = self._predictor.score(contributions)
 
         out: list[ForecastSnapshot] = []
@@ -117,7 +123,7 @@ class ForecastSnapshotInteractor(ForecastSnapshotUseCase):
                 regime_conditional=view.regime_conditional,
                 earnings_veto=view.earnings_veto,
                 # 어느 조합으로 낸 판정인지 남긴다 — 조합이 바뀌면 이력을 섞어 읽으면 안 된다
-                signal_config=_SIGNAL_CONFIG_KEY,
+                signal_config=active.key,
                 rsi=pos.rsi if pos else None,
                 bb_percent_b=indicators.bb_percent_b,
                 momentum_12_1=indicators.momentum_12_1,
@@ -169,15 +175,16 @@ class ForecastSnapshotInteractor(ForecastSnapshotUseCase):
         return result
 
     async def summary(self, horizon: int | None, recent_limit: int) -> SnapshotSummaryView:
-        # 현재 판정 조합으로 낸 스냅샷만 집계한다 — 2026-07-30 이전 default() 조합(NULL)은
-        # 규칙이 다른 판정이라 같은 적중률·신호 일치율 분모에 넣으면 서로 다른 성적을 합친
-        # 숫자가 된다. 특히 by_signal은 hit이 아니라 실현 수익률 부호로 계산해 구 조합
-        # 채점분이 그대로 섞인다(구 조합은 전량 NEUTRAL이라 hit_rate에는 안 섞였다).
-        total, scored_count = await self._snapshots.counts(horizon, _SIGNAL_CONFIG_KEY)
+        # 현재 활성 조합으로 낸 스냅샷만 집계한다 — 구 조합(NULL 포함)은 규칙이 다른 판정이라
+        # 같은 적중률·신호 일치율 분모에 넣으면 서로 다른 성적을 합친 숫자가 된다.
+        # 특히 by_signal은 hit이 아니라 실현 수익률 부호로 계산해 구 조합 채점분이 그대로
+        # 섞인다. 승격 직후 요약이 0부터 재시작하는 것은 이력 분리의 의도된 동작이다.
+        active = await self._active_config()
+        total, scored_count = await self._snapshots.counts(horizon, active.key)
         scored = await self._snapshots.find_scored(
-            horizon, SUMMARY_SCORED_CAP, _SIGNAL_CONFIG_KEY
+            horizon, SUMMARY_SCORED_CAP, active.key
         )
-        recent = await self._snapshots.find_recent(horizon, recent_limit, _SIGNAL_CONFIG_KEY)
+        recent = await self._snapshots.find_recent(horizon, recent_limit, active.key)
         return SnapshotSummaryView(
             kpi=self._kpi(total, scored_count, scored),
             by_horizon=self._by_horizon(scored),
@@ -186,6 +193,14 @@ class ForecastSnapshotInteractor(ForecastSnapshotUseCase):
             by_signal=self._by_signal(scored),
             recent=[self._row(s) for s in recent],
         )
+
+    async def _active_config(self) -> ActiveSignalConfig:
+        """활성 판정 조합 — 포트 미주입(구 조립·일부 테스트)이면 코드 상수 폴백."""
+        if self._configs is None:
+            return ActiveSignalConfig(
+                key="forecast_signal", config=AnalysisConfig.forecast_signal()
+            )
+        return await self._configs.active()
 
     # ---- 순수 집계 헬퍼 ----
 

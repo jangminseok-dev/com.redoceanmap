@@ -98,8 +98,12 @@
   PER/PBR/ROE, dart 우선 병합, debt_to_equity는 단위 혼재로 해석 제외). 분석(yfinance 라이브)과
   달리 DB 축적분만 읽는다. 거래소 접미 매칭(005930 ↔ 005930.KS)은 PG 리포지토리가 맡고,
   실제 저장 티커는 `resolvedTicker`로 노출한다.
-- **판정 조합(2026-07-30)**: forecast·스냅샷 슬라이스는 `AnalysisConfig.forecast_signal()`
-  (RSI+BB+MOM 0.4/0.4/0.2 ±0.35)을 쓴다. `analyze` 경로의 `default()`는 **불변**이다.
+- **판정 조합(2026-07-30, 2026-08-21 DB화)**: forecast·스냅샷 슬라이스는 **활성 판정 조합**
+  (`forecast_signal_configs` 테이블, `SignalConfigPort.active()` — 행 부재 시
+  `AnalysisConfig.forecast_signal()` 폴백, 시드 = RSI+BB+MOM 0.4/0.4/0.2 ±0.35)을 쓴다.
+  활성 조합의 키가 forecast 캐시 키와 스냅샷 `signal_config` 스탬프에 들어가므로
+  재적합 승격이 다음 요청부터 즉시 반영되고 이력이 조합별로 갈린다.
+  `analyze` 경로의 `default()`는 **불변**이다.
   이유: `default()`는 감성 가중치 0.5를 전제하는데 이 슬라이스는 감성 중립이라 그 예산이
   사장되고, RSI 신호가 30~70 구간에서 0이어서(실측 94%) 도달 가능한 |score| 상한이 0.2 —
   임계 0.3에 **산술적으로 못 미쳐 스냅샷 814건이 전부 NEUTRAL이었다**(2026-07-30 발견).
@@ -153,6 +157,20 @@
   **실행 시각 14:00 KST는 일봉 적재 시각에 맞춘 것**(2026-07-23 변경) — 세션 D의 일봉은
   D+1 13:05 KST에 들어오는데 기존 07:30은 그보다 6시간 일러, 매일 한 세션 묵은 봉으로
   as_of가 잡혔다(보드가 "기준 7/21"인데 가격은 7/22인 화면의 원인).
+- **가중치 재적합·자동 승격(`forecast_refit` 슬라이스, 2026-08-21)**: 주 1회 배치
+  (`scripts/refit_forecast_weights.py`, 토 15:00)가 허브 `POST /automation/forecast-refit`으로
+  채점 완료 스냅샷의 **동결 원신호 × 실현 수익률**을 재채점한다(순수 도메인
+  `weight_refit.py` — 후보 32조합 명시 열거, 저장된 `hit`은 옛 direction 기준이라 재사용
+  금지, `realized_return_pct > 0`으로 재판정). 표본은 전 조합(NULL 포함 — 원신호는 config
+  무관) · `earnings_veto` 제외. 게이트 = n≥100 + Wilson 95% 하한 > 기준선 + **현행 재채점
+  하한 대비 마진 0.02**(히스테리시스) + 파라미터 동일 시 무승격(멱등). 통과 시
+  `forecast_signal_configs`에 `refit-YYYYMMDD` 행을 활성으로 교체하고, 미달이어도
+  `forecast_refit_reports`에 리포트를 남긴다(payload 정의처는 `RefitReport.to_payload()`).
+  게이트는 5일 지평만 보고 20일은 참고 병기. `w_sentiment=0` 고정(감성 재적합은 ROADMAP
+  E3의 몫) · 하락 무발화(`down_threshold=-1.01`) 유지. 허브 `ForecastRefitPort`를
+  `ForecastRefitGateway`가 구현, admin `/admin/forecast-refit`이 리더보드·조합 이력을 소비.
+  승격 직후 채점 요약(`summary`)이 새 키 기준 0부터 재시작하는 것은 이력 분리의 의도된
+  동작이다(구 키 미채점분 채점은 config 무관이라 계속 진행).
 - **현재가 폴링(`stock_quote` 슬라이스)**: `GET /stock/{symbol}/quote` — `MarketDataPort.quote()`
   (yfinance fast_info, 이력 미조회)로 지연 시세 현재가만 경량 반환(`delayed: true`). 프론트
   30초 폴링용. 진짜 실시간은 KIS 등 벤더 어댑터 교체 경로(계약 동일)로 후속.

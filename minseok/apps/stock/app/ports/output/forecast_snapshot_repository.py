@@ -43,6 +43,15 @@ class ForecastSnapshotRepositoryPort(ABC):
         ...
 
     @abstractmethod
+    async def find_scored_all(self, horizon: int) -> list[ForecastSnapshot]:
+        """채점 완료 전량(전 조합·limit 없음) — 재적합 표본.
+
+        조합을 좁히지 않는 이유: 재적합은 저장된 판정이 아니라 동결 원신호(config 무관)로
+        재채점하므로, NULL 조합(2026-07-30 이전) 표본을 빼면 표본 절반을 유실한다.
+        """
+        ...
+
+    @abstractmethod
     async def counts(
         self, horizon: int | None, signal_config: str | None = None
     ) -> tuple[int, int]:

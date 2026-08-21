@@ -147,7 +147,7 @@ apps/hub/dependencies/stock_analysis_provider.py  # get_stock_analysis_port (Not
 
 | prefix | 라우터 (슬라이스) |
 |--------|------------------|
-| /automation/* | `news_ingest` · `market_news_ingest` · `price_bar_ingest` · `news_label_ingest` · `fundamental_ingest` · `forecast_snapshot`(캡처·채점) · `mail_ingest` · `signal_scan` · `stock_demand`(수요 조회) · `dispatcher`(/myself) — 웹훅 토큰 공용 의존성은 `v1/webhook_token.py` |
+| /automation/* | `news_ingest` · `market_news_ingest` · `price_bar_ingest` · `news_label_ingest` · `fundamental_ingest` · `forecast_snapshot`(캡처·채점) · `forecast_refit`(가중치 재적합) · `mail_ingest` · `signal_scan` · `stock_demand`(수요 조회) · `dispatcher`(/myself) — 웹훅 토큰 공용 의존성은 `v1/webhook_token.py` |
 | /email/* | `email_request` · `postmaster`(/myself) |
 | /semantic/* · /langchain-semantic/* | `semantic`(ROM 1.0 — 단발 질의) · `langchain_semantic`(ROM 2.0 — 세션 멀티턴, LCEL 체인). 분류기(`SemanticLlmPort`)는 공유하고 답변 생성만 갈린다 — 계약이 달라(세션 id) 라우터를 나눴다 |
 | /vision/* | `vision`(/myself·/images) · `face_recognition`(/faces) · `image_classifier`(/classifications) |
@@ -264,6 +264,7 @@ apps/hub/
 | 상권 뉴스 수집 | cron(`scripts/collect_market_news.py`, 매일 01:30, Google News RSS "지역 어간 × 상권") → `POST /automation/market-news` → MarketNewsIngestInteractor → `MarketNewsStoragePort` → market 저장(+bge-m3 임베딩) |
 | 펀더멘털 수집 | cron(`scripts/collect_fundamentals.py`, 주 1회, yfinance+DART) → `POST /automation/fundamentals` → FundamentalIngestInteractor → `FundamentalStoragePort` → stock 저장 |
 | 예측 스냅샷 | cron(`scripts/snapshot_forecasts.py`, 매일 14:00) → `POST /automation/forecast-snapshots`(캡처) + `POST /automation/forecast-snapshots/score`(채점) → ForecastSnapshotInteractor → `ForecastSnapshotPort` → stock 저장·채점 |
+| 가중치 재적합 | cron(`scripts/refit_forecast_weights.py`, 매주 토 15:00) → `POST /automation/forecast-refit` → ForecastRefitInteractor → `ForecastRefitPort` → stock 재채점·게이트 통과 시 활성 조합 교체 |
 
 - n8n 워크플로: [[minseok/apps/hub/_docs/n8n_news_collector_workflow.json]] ·
   [[minseok/apps/hub/_docs/n8n_stock_signal_alert_workflow.json]] — n8n UI에서 임포트,
@@ -353,6 +354,16 @@ stock(구현·영속: `forecast_snapshots` 테이블, (ticker, horizon_days, as_
 실현 수익률로 채점 — UP→상승, DOWN→비상승, NEUTRAL은 NULL) · `accuracy_report(horizon,
 recent_limit)`(적중률 요약+신호별 일치율+최근 목록 — admin analytics가 소비,
 PriceBarStoragePort.coverage()를 admin이 같이 소비하는 선례와 동일).
+
+## 소유 계약 — ForecastRefitPort
+
+가중치 재적합 협력. 재적합 배치(`scripts/refit_forecast_weights.py`, 매주 토 15:00)·
+admin(소비)과 stock(구현·영속: `forecast_signal_configs` 활성 조합 + `forecast_refit_reports`
+실행당 1행 payload)을 잇는다. `run(promote)`(동결 원신호 × 실현 수익률 재채점 — 게이트
+n≥100 + Wilson 하한 > 기준선 + 현행 대비 마진 0.02 통과 시 활성 조합 자동 교체, promote=False면
+리포트만) · `latest()`(최신 리더보드 리포트) · `config_history()`(조합 승격 이력) —
+자동화 트리거와 admin 조회를 한 계약에 담는 ForecastSnapshotPort 선례를 따른다.
+payload 스키마 정의처는 stock `weight_refit.RefitReport.to_payload()`.
 
 ## 소유 계약 — NewsEventStudyPort
 

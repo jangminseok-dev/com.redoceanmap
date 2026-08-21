@@ -120,6 +120,17 @@ class ForecastSnapshotPgRepository(ForecastSnapshotRepositoryPort):
         )).scalars().all()
         return [self._to_entity(r) for r in rows]
 
+    async def find_scored_all(self, horizon: int) -> list[ForecastSnapshot]:
+        rows = (await self._session.execute(
+            select(ForecastSnapshotOrm)
+            .where(
+                ForecastSnapshotOrm.evaluated_at.is_not(None),
+                ForecastSnapshotOrm.horizon_days == horizon,
+            )
+            .order_by(ForecastSnapshotOrm.as_of.asc(), ForecastSnapshotOrm.id.asc())
+        )).scalars().all()
+        return [self._to_entity(r) for r in rows]
+
     async def counts(
         self, horizon: int | None, signal_config: str | None = None
     ) -> tuple[int, int]:

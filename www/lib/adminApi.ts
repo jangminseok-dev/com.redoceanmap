@@ -384,6 +384,62 @@ export const fetchAdminNewsEventStudy = (): Promise<{
   report: AdminNewsEventStudyReport | null;
 }> => request("/admin/news-event-study");
 
+// ── GET /admin/forecast-refit (가중치 재적합 — 리더보드 + 조합 이력) ──
+
+export type AdminRefitCandidate = {
+  up_threshold: number;
+  w_rsi: number;
+  w_trend: number;
+  w_bb: number;
+  w_obv: number;
+  w_momentum: number;
+  n: number;
+  hits: number;
+  hit_rate: number | null;
+  wilson_lower: number;
+  is_current: boolean;
+  gate_passed: boolean; // n≥100 + Wilson 하한 > 기준선
+};
+
+export type AdminRefitBoard = {
+  horizon_days: number;
+  total: number;
+  baseline_up_rate: number;
+  current: AdminRefitCandidate | null;
+  rows: AdminRefitCandidate[];
+};
+
+export type AdminRefitReport = {
+  ran_at: string;
+  params: Record<string, unknown>;
+  gate_horizon: number;
+  promote: boolean;
+  winner: AdminRefitCandidate | null;
+  reasons: string[];
+  boards: AdminRefitBoard[];
+};
+
+export type AdminSignalConfig = {
+  key: string;
+  is_active: boolean;
+  source: string; // seed | refit
+  up_threshold: number;
+  down_threshold: number;
+  w_sentiment: number;
+  w_rsi: number;
+  w_trend: number;
+  w_bb: number;
+  w_obv: number;
+  w_momentum: number;
+  created_at: string;
+  activated_at: string | null;
+};
+
+export const fetchAdminForecastRefit = (): Promise<{
+  report: AdminRefitReport | null;
+  history: AdminSignalConfig[];
+}> => request("/admin/forecast-refit");
+
 export const fetchAdminMarketBacktest = (): Promise<{
   report: AdminMarketBacktestReport | null;
 }> => request("/admin/market-backtest");

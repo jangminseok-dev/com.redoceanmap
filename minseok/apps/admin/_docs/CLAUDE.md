@@ -47,7 +47,7 @@
 | audit | GET /admin/audit | 자체 AuditLogPort (member 슬라이스가 write, audit 슬라이스가 열람) |
 | pdf_loader | POST /admin/pdf-documents(업로드·요약, documents:write) · GET /admin/pdf-documents[/{id}](documents:read) — PDF 텍스트 추출(neo4j-graphrag `PdfLoader`) → EXAONE 요약 → `admin_pdf_documents` 저장, 감사 `pdf.summarize`. 원본 PDF는 미보관(임시파일 즉시 삭제), 요약 입력은 앞 6000자 단발 | 자체 PdfDocumentRepository + PdfTextExtractorPort + PdfSummarizerPort + AuditLogPort |
 | image_upload | POST /admin/images(멀티파트 업로드, documents:write) — 바이트 매직 넘버로 형식 판정(jpeg/png/webp/gif, 10MB) → `admin/images/YYYY/MM/<uuid>.<ext>` 키로 S3 저장 → 사전서명 조회 URL(15분) 반환, 감사 `image.upload`. DB 영속 없음(객체 + 감사 기록만), 원본 파일명은 키에 쓰지 않는다. 버킷 env `ADMIN_IMAGE_S3_BUCKET` 미설정 시 이 엔드포인트만 503 | 자체 ImageStoragePort(S3) + AuditLogPort |
-| analytics | GET /admin/forecasts · GET /admin/market-backtest · GET /admin/news-event-study — 예측 스냅샷 채점 현황(적중률·신호별 일치율·최근 목록) + 상권 점수 백테스트 최신 리포트. 권한 analytics:read 공용 | ForecastSnapshotPort (accuracy_report) + AreaBacktestReportPort (latest) + NewsEventStudyPort (latest) |
+| analytics | GET /admin/forecasts · GET /admin/market-backtest · GET /admin/news-event-study · GET /admin/forecast-refit — 예측 스냅샷 채점 현황(적중률·신호별 일치율·최근 목록) + 상권 점수 백테스트 최신 리포트 + 가중치 재적합 리더보드·판정 조합 이력. 권한 analytics:read 공용 | ForecastSnapshotPort (accuracy_report) + AreaBacktestReportPort (latest) + NewsEventStudyPort (latest) + ForecastRefitPort (latest·config_history) |
 | question_insight | GET /admin/questions — 무엇을 묻는가(수요 신호): 기간 내 질문 총량·답변 종류 분포·**서울 외 지역 수요**(가드 차단 건 — 전국 확장 우선순위 근거)·최근 질문. 권한 analytics:read 재사용(질문 분포 = 분석 성격) | QuestionInsightPort (stats · recent_questions) |
 
 인터랙터는 허브 포트를 생성자 주입받고, 프로바이더는 허브 스텁 프로바이더를 `Depends`로 받는다

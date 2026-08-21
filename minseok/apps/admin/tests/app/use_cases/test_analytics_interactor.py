@@ -44,25 +44,41 @@ class _StubBacktestPort:
         return self.info
 
 
+class _StubRefitPort:
+    def __init__(self, report=None, history=None):
+        self.report = report
+        self.history = history or []
+
+    async def run(self, promote):  # pragma: no cover - 미사용
+        raise NotImplementedError
+
+    async def latest(self):
+        return self.report
+
+    async def config_history(self):
+        return self.history
+
+
+def _interactor(
+    forecasts=None, area_backtests=None, news_events=None, refits=None
+) -> AnalyticsInteractor:
+    return AnalyticsInteractor(
+        forecasts=forecasts or _StubForecastPort(),
+        area_backtests=area_backtests or _StubBacktestPort(),
+        news_events=news_events or _StubEventStudyPort(),
+        refits=refits or _StubRefitPort(),
+    )
+
+
 async def test_forecast_report_delegates_with_args():
     port = _StubForecastPort()
-    interactor = AnalyticsInteractor(
-        forecasts=port,
-        area_backtests=_StubBacktestPort(),
-        news_events=_StubEventStudyPort(),
-    )
-    result = await interactor.forecast_report(horizon=5, limit=30)
+    result = await _interactor(forecasts=port).forecast_report(horizon=5, limit=30)
     assert port.args == (5, 30)
     assert result.report.kpi.total == 10
 
 
 async def test_market_backtest_none_when_no_run():
-    interactor = AnalyticsInteractor(
-        forecasts=_StubForecastPort(),
-        area_backtests=_StubBacktestPort(info=None),
-        news_events=_StubEventStudyPort(),
-    )
-    result = await interactor.market_backtest_report()
+    result = await _interactor(area_backtests=_StubBacktestPort(info=None)).market_backtest_report()
     assert result.report is None
 
 
@@ -72,27 +88,34 @@ async def test_market_backtest_passthrough():
         n_observations=100, n_areas=50, base_quarters=[20192],
         grade_outcomes=[], component_predictiveness=[],
     )
-    interactor = AnalyticsInteractor(
-        forecasts=_StubForecastPort(),
-        area_backtests=_StubBacktestPort(info=info),
-        news_events=_StubEventStudyPort(),
-    )
-    result = await interactor.market_backtest_report()
+    result = await _interactor(area_backtests=_StubBacktestPort(info=info)).market_backtest_report()
     assert result.report is info
 
 
 async def test_뉴스_이벤트_연구_실행_이력이_없으면_None():
-    interactor = AnalyticsInteractor(
-        forecasts=_StubForecastPort(), area_backtests=_StubBacktestPort(),
-        news_events=_StubEventStudyPort(report=None),
-    )
-    assert (await interactor.news_event_study()).report is None
+    assert (await _interactor(
+        news_events=_StubEventStudyPort(report=None)
+    ).news_event_study()).report is None
 
 
 async def test_뉴스_이벤트_연구_리포트를_그대로_전달한다():
     sentinel = object()
-    interactor = AnalyticsInteractor(
-        forecasts=_StubForecastPort(), area_backtests=_StubBacktestPort(),
-        news_events=_StubEventStudyPort(report=sentinel),
-    )
-    assert (await interactor.news_event_study()).report is sentinel
+    assert (await _interactor(
+        news_events=_StubEventStudyPort(report=sentinel)
+    ).news_event_study()).report is sentinel
+
+
+async def test_재적합_리포트와_조합_이력을_한_응답에_담는다():
+    report, history = object(), [object()]
+    result = await _interactor(
+        refits=_StubRefitPort(report=report, history=history)
+    ).forecast_refit()
+    assert result.report is report
+    assert result.history == history
+
+
+async def test_재적합_실행_이력이_없으면_report_None_이력은_유지():
+    seed = object()  # 시드 조합은 실행 전에도 이력에 있다
+    result = await _interactor(refits=_StubRefitPort(report=None, history=[seed])).forecast_refit()
+    assert result.report is None
+    assert result.history == [seed]

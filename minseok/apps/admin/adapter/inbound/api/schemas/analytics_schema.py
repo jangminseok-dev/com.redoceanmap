@@ -135,3 +135,57 @@ class NewsEventStudyReportSchema(BaseModel):
 
 class NewsEventStudyResponseSchema(BaseModel):
     report: NewsEventStudyReportSchema | None
+
+
+class RefitCandidateRowSchema(BaseModel):
+    up_threshold: float
+    w_rsi: float
+    w_trend: float
+    w_bb: float
+    w_obv: float
+    w_momentum: float
+    n: int
+    hits: int
+    hit_rate: float | None
+    wilson_lower: float
+    is_current: bool
+    gate_passed: bool   # n≥100 + Wilson 하한 > 기준선
+
+
+class RefitHorizonBoardSchema(BaseModel):
+    horizon_days: int
+    total: int
+    baseline_up_rate: float
+    current: RefitCandidateRowSchema | None
+    rows: list[RefitCandidateRowSchema]
+
+
+class RefitReportSchema(BaseModel):
+    ran_at: datetime
+    params: dict
+    gate_horizon: int
+    promote: bool
+    winner: RefitCandidateRowSchema | None
+    reasons: list[str]
+    boards: list[RefitHorizonBoardSchema]
+
+
+class SignalConfigRowSchema(BaseModel):
+    key: str
+    is_active: bool
+    source: str         # seed | refit
+    up_threshold: float
+    down_threshold: float
+    w_sentiment: float
+    w_rsi: float
+    w_trend: float
+    w_bb: float
+    w_obv: float
+    w_momentum: float
+    created_at: datetime
+    activated_at: datetime | None
+
+
+class ForecastRefitResponseSchema(BaseModel):
+    report: RefitReportSchema | None
+    history: list[SignalConfigRowSchema]
