@@ -31,6 +31,7 @@ const SECTIONS: { title: string; body: string[] }[] = [
     title: "제4조 (회원가입)",
     body: [
       "회원가입은 이메일 가입 또는 소셜 로그인(구글·카카오·네이버)으로 할 수 있으며, 두 경우 모두 이 약관과 개인정보 수집·이용에 대한 필수 동의를 거쳐야 합니다.",
+      "회원가입은 만 14세 이상만 할 수 있습니다.",
       "소셜 로그인의 경우 각 제공자(구글·카카오·네이버)는 로그인 기능만 제공하며, 서비스에 대한 의무와 책임은 서비스 제공자에게 있습니다.",
     ],
   },
@@ -80,7 +81,9 @@ export default function TermsPage() {
   return (
     <main className="max-w-2xl mx-auto px-6 py-12">
       <h1 className="text-2xl font-bold">redoceanmap 이용약관</h1>
-      <p className="mt-2 text-sm text-foreground-muted">시행일: 2026년 7월 20일</p>
+      <p className="mt-2 text-sm text-foreground-muted">
+        시행일: 2026년 8월 28일 · 직전 개정: 2026년 7월 20일
+      </p>
       {SECTIONS.map((s) => (
         <section key={s.title} className="mt-8">
           <h2 className="font-semibold">{s.title}</h2>

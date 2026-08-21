@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import AppFooter from "@/components/shell/AppFooter";
+import Disclaimer from "@/components/stock/Disclaimer";
 
 export const metadata: Metadata = {
   title: "서비스 소개 — redoceanmap",
@@ -33,7 +34,14 @@ const MEASURED_ON = "2026년 8월 21일";
 const CONTACT_EMAIL = "jang971121@gmail.com";
 
 type Metric = { label: string; value: string; note?: string };
-type Section = { title: string; body: string[]; metrics?: Metric[]; email?: string };
+type Section = {
+  title: string;
+  body: string[];
+  metrics?: Metric[];
+  email?: string;
+  /** 성과 수치를 실은 절에 면책을 인접 배치한다 — 종목 페이지가 결론 아래 두는 것과 같은 처리. */
+  disclaimer?: boolean;
+};
 
 const SECTIONS: Section[] = [
   {
@@ -114,6 +122,7 @@ const SECTIONS: Section[] = [
       { label: "같은 기간 기준선", value: "53.6%", note: "판정 없이 올랐을 비율 — 이 값을 넘어야 의미가 있습니다" },
       { label: "자체 판정 기준", value: "표본 100건 이상", note: "미달 — 현재 확률 제시 보류 중" },
     ],
+    disclaimer: true,
   },
   {
     title: "7. 어떻게 만들었는가",
@@ -174,6 +183,7 @@ export default function AboutPage() {
             </p>
           ))}
           {s.metrics && <MetricList metrics={s.metrics} />}
+          {s.disclaimer && <Disclaimer className="mt-3" />}
           {s.email && (
             <a
               href={`mailto:${s.email}`}
