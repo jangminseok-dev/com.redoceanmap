@@ -41,7 +41,7 @@
 | # | 마일스톤 | 기간 | 핵심 |
 |---|---------|------|------|
 | M1 | **공개 접점** — Cloudflare Tunnel(무료, 고정IP 불요) + HTTPS + rate limit(slowapi) | 2-3일 | 외부망 HTTPS 접속, 무차별 로그인 차단 |
-| M2 | **북마크/관심종목** — recommendation 확장(새 스포크 아님) + 마이페이지 | 3-4일 | 등록→조회→삭제 E2E |
+| M2 | ~~**북마크/관심종목**~~ — **완료(2026-08-21)**. recommendation 확장: `bookmarks` 테이블(h7a8b9c0d1e2, (user, type, key) 유니크) + `/bookmarks` CRUD(재등록 멱등·종목 키 대문자 정규화·상한 200) + 프론트 `/bookmarks` 페이지·주식 히어로/상권 오버레이 토글 버튼(서버 목록 단일 진실). 상세는 recommendation CLAUDE 정본 | - | ✅ 등록→조회→삭제 E2E + 인터랙터 테스트 7종 |
 | M3 | **알림 v1(이메일)** — 관심 종목 신호 발생 시 발송. hub signal_scan_interactor 확장(교차 도메인 = 허브의 존재 이유) | 3-5일 | 신호→메일 수신 E2E |
 | M4 | **운영 관측** — JSON 구조화 로깅 + Uptime Kuma(무료 self-host) + 장애 알림 | 2-3일 | 강제 다운 시 5분 내 알림 |
 | M5 | **데이터 갱신 자동화 + LLM 라이선스 정리** — 상권 신규 분기 자동 적재, **EXAONE 라이선스 실사(연구용 한정 가능성 → 상용 전 Apache-2.0 계열 교체 검토)**. 교체 지점은 `core/llm/llm_orchestrator.py`로 국소화됨 | 4-6일 | chat 품질 회귀 10문항 비교 |

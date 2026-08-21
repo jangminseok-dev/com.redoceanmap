@@ -142,6 +142,7 @@ from stock.dependencies.stock_provider import (
     get_stock_analysis_gateway,
     get_stock_analysis_gateway_batch,
 )
+from recommendation.adapter.inbound.api.v1.bookmark_router import bookmark_router
 from recommendation.adapter.inbound.api.v1.curator_router import curator_router
 from recommendation.adapter.inbound.api.v1.recommendation_router import recommendation_router
 from recommendation.dependencies.recommendation_provider import (
@@ -227,6 +228,7 @@ app.include_router(store_action_router, dependencies=_authenticated)
 app.include_router(settlement_router, dependencies=_authenticated)
 app.include_router(rulebook_router, dependencies=_authenticated)
 app.include_router(recommendation_router, dependencies=_authenticated)
+app.include_router(bookmark_router, dependencies=_authenticated)
 app.include_router(curator_router, dependencies=_authenticated)
 app.include_router(email_request_router, dependencies=_authenticated)  # 허브 — 이메일 발송 요청
 app.include_router(postmaster_router, dependencies=_authenticated)

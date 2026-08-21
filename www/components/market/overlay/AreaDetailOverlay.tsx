@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { fetchAreaDetail } from "@/lib/api";
+import BookmarkButton from "@/components/common/BookmarkButton";
 import InsightList from "@/components/common/InsightList";
 import CustomerProfileSection from "./CustomerProfileSection";
 import DemandSection from "./DemandSection";
@@ -98,6 +99,14 @@ export default function AreaDetailOverlay({
             </p>
           )}
         </div>
+        {data && (
+          <BookmarkButton
+            targetType="area"
+            targetKey={trdarCode}
+            label={data.trdarName}
+            className="mt-0.5"
+          />
+        )}
         <button
           type="button"
           onClick={onClose}

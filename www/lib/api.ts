@@ -1,6 +1,7 @@
 import type {
   AreaDetail,
   AreaRanking,
+  Bookmark,
   AreaScoreDetail,
   AreaShowcase,
   AreaStatsDetail,
@@ -248,3 +249,31 @@ export const fetchGameStoreDaily = (storeId: number, days = 14): Promise<GameSto
 // 멱등하므로 여러 번 불러도 안전하다.
 export const fetchGameSettlements = (): Promise<GameSettlementList> =>
   getJson(`/game/settlements`);
+
+// ── 북마크 — 관심 종목·상권. 인증은 httpOnly 쿠키가 자동 동행한다. ──
+async function sendJson<T>(path: string, method: "POST" | "DELETE", body?: unknown): Promise<T> {
+  const res = await fetch(`/api/backend${path}`, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => null);
+    throw new ApiError(res.status, detail?.detail ?? "요청에 실패했습니다.");
+  }
+  return res.json();
+}
+
+export const fetchBookmarks = (): Promise<{ items: Bookmark[] }> => getJson("/bookmarks");
+
+export const addBookmark = (body: {
+  target_type: Bookmark["target_type"];
+  target_key: string;
+  label: string;
+}): Promise<Bookmark> => sendJson("/bookmarks", "POST", body);
+
+export const removeBookmark = (
+  targetType: Bookmark["target_type"],
+  targetKey: string,
+): Promise<{ deleted: boolean }> =>
+  sendJson(`/bookmarks/${targetType}/${encodeURIComponent(targetKey)}`, "DELETE");

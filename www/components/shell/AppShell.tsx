@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Bookmark,
   CandlestickChart,
   Compass,
   Gamepad2,
@@ -47,6 +48,7 @@ const PRIMARY: NavItem[] = [
 // 더보기 시트에만 있는 부 항목. 매일 쓰지 않는 것과 하위 화면을 여기로 내린다.
 const SECONDARY: NavItem[] = [
   { icon: MessageSquare, label: "지난 대화", href: "/history", key: "history" },
+  { icon: Bookmark, label: "북마크", href: "/bookmarks" },
   { icon: Compass, label: "상권 둘러보기", href: "/areas", key: "market" },
   { icon: ScanEye, label: "비전처리", href: "/vision", key: "vision" },
   { icon: ScanFace, label: "얼굴 인식", href: "/vision/faces", key: "vision" },

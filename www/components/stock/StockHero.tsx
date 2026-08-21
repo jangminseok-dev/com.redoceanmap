@@ -4,6 +4,7 @@ import { Minus, ShieldCheck, TrendingDown, TrendingUp } from "lucide-react";
 import type { StockAnalyzeResult } from "@/lib/types";
 import { formatPrice } from "@/lib/currency";
 import { strength } from "@/lib/verdict";
+import BookmarkButton from "@/components/common/BookmarkButton";
 import SymbolMark from "@/components/common/SymbolMark";
 
 type Props = {
@@ -64,6 +65,7 @@ export default function StockHero({
           {ticker !== symbol && (
             <span className="text-xs text-foreground-muted shrink-0">{ticker}</span>
           )}
+          <BookmarkButton targetType="stock" targetKey={ticker} label={symbol} />
         </div>
 
         <div className="flex items-baseline gap-2">
