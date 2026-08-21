@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import AppFooter from "@/components/shell/AppFooter";
+
 export const metadata: Metadata = {
   title: "개인정보처리방침 — redoceanmap",
 };
@@ -88,6 +90,7 @@ export default function PrivacyPage() {
           ))}
         </section>
       ))}
+      <AppFooter />
     </main>
   );
 }

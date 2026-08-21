@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import AppFooter from "@/components/shell/AppFooter";
+
 export const metadata: Metadata = {
   title: "이용약관 — redoceanmap",
 };
@@ -89,6 +91,7 @@ export default function TermsPage() {
           ))}
         </section>
       ))}
+      <AppFooter />
     </main>
   );
 }
