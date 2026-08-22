@@ -40,6 +40,10 @@ def jwt_private_key() -> str:
 # 실행 환경 — 쿠키 Secure 속성 분기(bff-cloudflared-harness 규칙 2)에만 사용.
 ENV = _secrets.get("ENV", "development")
 
+# 구조화 로깅(③-M4) — "json"이면 전 로그가 한 줄 JSON(운영 검색용), 기본 plain(로컬 가독성).
+# prod compose가 environment로 json을 켠다.
+LOG_FORMAT = _secrets.get("LOG_FORMAT", "plain")
+
 # 배포 식별 — Dockerfile ARG로 이미지에 굽는 값이다(.env 키가 아니다).
 # 소스 마운트로 도는 dev나 --build-arg 없이 만든 이미지에서는 "unknown"이 맞다.
 GIT_SHA = _secrets.get("GIT_SHA", "unknown")

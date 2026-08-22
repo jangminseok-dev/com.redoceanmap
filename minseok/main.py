@@ -36,7 +36,8 @@ from auth.dependencies.member_contact_provider import get_member_contact_gateway
 from auth.dependencies.member_directory_provider import get_member_directory_gateway
 from chat.adapter.inbound.api.v1.chat_router import chat_router
 from chat.adapter.inbound.api.v1.concierge_router import concierge_router
-from core.config import BUILT_AT, GIT_SHA
+from core.config import BUILT_AT, GIT_SHA, LOG_FORMAT
+from core.logging_setup import setup_logging
 from core.database import dispose_engine, dispose_market_engine, init_engine, init_market_engine
 from core.database import ping as database_ping
 from core.redis import dispose_redis
@@ -162,6 +163,9 @@ from recommendation.dependencies.recommendation_provider import (
 )
 from hub.adapter.inbound.api.v1.vision_router import vision_router
 
+# 구조화 로깅(③-M4) — LOG_FORMAT=json이면 전 로그가 한 줄 JSON(운영 검색용)
+setup_logging(LOG_FORMAT)
+
 logger = logging.getLogger("uvicorn.error")
 
 
@@ -192,6 +196,30 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+if LOG_FORMAT == "json":
+    # 요청 단위 구조화 액세스 로그(③-M4) — uvicorn access는 setup_logging이 껐다
+    # (여기가 method·path·status에 duration까지 실어 상위호환). 쿼리스트링은 싣지 않는다
+    # (검색어 등 사용자 입력 최소화). /health는 업타임 모니터가 분 단위로 두드려 제외.
+    import time as _time
+
+    _access_logger = logging.getLogger("access")
+
+    @app.middleware("http")
+    async def access_log(request, call_next):
+        start = _time.perf_counter()
+        response = await call_next(request)
+        if request.url.path != "/health":
+            _access_logger.info(
+                "%s %s %d", request.method, request.url.path, response.status_code,
+                extra={"http": {
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status": response.status_code,
+                    "duration_ms": round((_time.perf_counter() - start) * 1000, 1),
+                }},
+            )
+        return response
 
 # 인증 가드 — 공개 화이트리스트 방식: automation(웹훅 토큰)·/·/health만 공개,
 # 나머지 라우터는 전부 JWT 필수(core/security — 스포크는 auth를 모른다).

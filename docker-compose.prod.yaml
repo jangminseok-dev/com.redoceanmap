@@ -56,6 +56,7 @@ services:
       # 루트 .env의 MARKET_DATABASE_URL은 localhost — 호스트 cron용이라 컨테이너에선
       # 자기 자신을 가리켜 메인 DB로 조용히 폴백한다(2026-07-24 실장애). 컨테이너 형태로 덮어쓴다.
       - MARKET_DATABASE_URL=${MARKET_DATABASE_URL_DOCKER:?루트 .env에 설정 필요}
+      - LOG_FORMAT=json   # 구조화 로깅(③-M4) — docker logs에서 필드 검색 가능
       - AWS_DEFAULT_REGION=ap-northeast-2
       - VISION_S3_BUCKET=redoceanmap.com-752767405178-ap-northeast-2-an
     # 없으면 host.docker.internal이 해석되지 않는다 — Ollama(11434)뿐 아니라
@@ -100,6 +101,7 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-redocean}:${POSTGRES_PASSWORD:-redocean}@pgvector:5432/${POSTGRES_DB:-redoceanmap}
       - REDIS_URL=redis://redis:6379/0
       - REDIS_URL_MOBILE=redis://redis:6379/1
+      - LOG_FORMAT=json   # 구조화 로깅(③-M4) — backend와 같은 스위치
     depends_on:
       pgvector:
         condition: service_healthy
@@ -151,6 +153,21 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # 운영 관측(③-M4) — 가동 감시 + 장애 알림. 데이터는 신규 볼륨(external 아님 — 첫 기동이 만든다).
+  # 첫 접속(http://127.0.0.1:3001, ssh 포워딩 경유)에서 관리자 계정을 만들고 모니터를 등록한다:
+  #   ① http://backend:8000/health  ② http://auth:9000/health  (컨테이너 네트워크 안 — 60초 주기)
+  #   ③ https://api.redoceanmap.com/health  (터널 포함 공개 경로 검증)
+  # 알림은 UI에서 설정 — 게이트 "강제 다운 시 5분 내"는 주기 60s × 재시도 3이면 여유 있게 든다.
+  # 주의: 이 감시도 백엔드 PC 안에서 돈다 — PC 자체가 꺼지면 알림도 없다(.env.example 운영 알림
+  # 절과 같은 한계). 호스트 다운까지 잡으려면 외부 무료 모니터(예: UptimeRobot)가 ③을 겸감시한다.
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    ports:
+      - "127.0.0.1:3001:3001"   # 루프백 잠금 — 대시보드는 ssh 포워딩으로만 접근
+    volumes:
+      - uptime_kuma_data:/app/data
+    restart: unless-stopped
+
   # 공개 접점 — 이게 빠지면 redoceanmap.com·auth.redoceanmap.com이 통째로 죽는다.
   # 구 스택 정의를 그대로 옮겼다(자격증명은 호스트 ~/.cloudflared를 ro 마운트).
   cloudflared:
@@ -175,7 +192,9 @@ networks:
 
 
 volumes:
-  # 전부 external — 구 스택의 데이터를 이어받는다. 이름이 실제와 다르면 기동이 실패한다
+  # 업타임 모니터 설정·이력(③-M4) — 구 스택에 없던 신규 볼륨이라 external이 아니다
+  uptime_kuma_data:
+  # 아래는 전부 external — 구 스택의 데이터를 이어받는다. 이름이 실제와 다르면 기동이 실패한다
   # (빈 볼륨으로 조용히 뜨는 것보다 낫다). 백엔드 PC에서 docker volume ls로 확인 후 수정.
   redis_data:
     external: true

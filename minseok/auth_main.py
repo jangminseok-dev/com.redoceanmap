@@ -23,8 +23,14 @@ from auth.adapter.inbound.api.v1.gatekeeper_router import gatekeeper_router
 from auth.adapter.inbound.api.v1.mobile_auth_router import mobile_auth_router
 from auth.adapter.inbound.api.v1.mobile_gatekeeper_router import mobile_gatekeeper_router
 from auth.adapter.inbound.api.v1.social_router import social_router
+from core.config import LOG_FORMAT
 from core.database import dispose_engine, init_engine
+from core.logging_setup import setup_logging
 from core.redis import dispose_redis
+
+# 구조화 로깅(③-M4) — 백엔드(main.py)와 같은 스위치. 액세스 미들웨어는 트래픽이 적어
+# 백엔드에만 둔다(여기는 포맷 통일까지).
+setup_logging(LOG_FORMAT)
 
 
 @asynccontextmanager
