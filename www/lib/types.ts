@@ -999,6 +999,34 @@ export type Bookmark = {
   created_at: string;
 };
 
+// ── GET /bookmarks/board (직접 호출 — snake_case DTO) — 관심 보드(③-M7) ──
+export type BookmarkStockStatus = {
+  ticker: string; // 실제 저장 티커 — 딥링크·통화 판별용
+  as_of: string; // 신호 기준일(일일 동결 스냅샷)
+  direction: "UP" | "DOWN" | "NEUTRAL";
+  price: number; // 최신 수집 종가 — 준실시간 아님
+  change_pct: number | null; // 전일 대비 비율(0.02 = +2%)
+  ready: boolean; // 검증 참고 신호(통계적 유의) 여부
+  price_as_of: string | null; // 가격 기준일 — 신호 기준일보다 최신일 수 있다
+};
+
+export type BookmarkAreaStatus = {
+  total: number; // 종합점수(50점 = 서울 평균 수준)
+  grade: string; // 우수 / 양호 / 보통 / 주의 / 위험
+  sales_qoq_pct: number | null; // 매출 전분기 대비 — 이미 % 단위(3.2 = +3.2%)
+  seoul_qoq_pct: number | null; // 같은 기간 서울 평균(%)
+};
+
+export type BookmarkBoardItem = {
+  id: number;
+  target_type: "stock" | "area";
+  target_key: string;
+  label: string;
+  created_at: string;
+  stock: BookmarkStockStatus | null; // 상태 없으면 null(열화 — 목록은 항상 뜬다)
+  area: BookmarkAreaStatus | null;
+};
+
 // ── /profile (직접 호출 — snake_case DTO) — 투자·창업 프로파일 설문(밴드 기반) ──
 export type InvestorProfile = {
   purpose: "startup" | "invest" | "both";

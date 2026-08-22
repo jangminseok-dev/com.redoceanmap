@@ -2,14 +2,24 @@
 
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bookmark as BookmarkIcon, CandlestickChart, MapPin, Trash2 } from "lucide-react";
-import { fetchBookmarks, removeBookmark } from "@/lib/api";
-import type { Bookmark } from "@/lib/types";
+import {
+  Bookmark as BookmarkIcon,
+  CandlestickChart,
+  MapPin,
+  Minus,
+  Trash2,
+  TrendingDown,
+  TrendingUp,
+  type LucideIcon,
+} from "lucide-react";
+import { fetchBookmarkBoard, removeBookmark } from "@/lib/api";
+import { formatPrice } from "@/lib/currency";
+import type { BookmarkBoardItem, BookmarkStockStatus } from "@/lib/types";
 import { useUIStore } from "@/lib/uiStore";
 import { Button } from "@/components/ui/button";
 
 const SECTION_META: Record<
-  Bookmark["target_type"],
+  BookmarkBoardItem["target_type"],
   { title: string; icon: typeof MapPin; href: (key: string) => string }
 > = {
   stock: {
@@ -25,24 +35,87 @@ const SECTION_META: Record<
   },
 };
 
+// 방향은 신호 관측이지 매수 추천이 아니다 — 라벨·색은 주식 보드(MarketBoard)와 동일
+const DIRECTION_META: Record<
+  BookmarkStockStatus["direction"],
+  { label: string; icon: LucideIcon; className: string }
+> = {
+  UP: { label: "상승 신호", icon: TrendingUp, className: "text-up bg-up-weak" },
+  DOWN: { label: "하락 신호", icon: TrendingDown, className: "text-down bg-down-weak" },
+  NEUTRAL: { label: "중립", icon: Minus, className: "text-foreground-muted bg-border/40" },
+};
+
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" });
 }
 
-/** 북마크 — 찜해둔 종목·상권으로 바로 돌아가는 재개 지점. 등록은 각 화면의 북마크 버튼이 한다. */
+// change_pct는 비율(0.012), 상권 QoQ는 이미 % 단위(3.2) — 호출부가 구분해 넘긴다
+const signedPct = (percent: number) => `${percent > 0 ? "+" : ""}${percent.toFixed(1)}%`;
+
+const pctTone = (v: number) => (v > 0 ? "text-up" : v < 0 ? "text-down" : "text-foreground-muted");
+
+function StockStatusLine({ status }: { status: BookmarkStockStatus }) {
+  const meta = DIRECTION_META[status.direction] ?? DIRECTION_META.NEUTRAL;
+  const Icon = meta.icon;
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+      <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium ${meta.className}`}>
+        <Icon size={12} /> {meta.label}
+      </span>
+      {status.ready && (
+        <span className="rounded-md border border-border px-1.5 py-0.5 text-foreground-muted">
+          검증 참고 신호
+        </span>
+      )}
+      <span className="tabular-nums font-medium">{formatPrice(status.price, status.ticker)}</span>
+      {status.change_pct != null && (
+        <span className={`tabular-nums font-medium ${pctTone(status.change_pct)}`}>
+          {signedPct(status.change_pct * 100)}
+        </span>
+      )}
+      <span className="text-foreground-muted">
+        신호 {new Date(status.as_of).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })} 기준
+      </span>
+    </div>
+  );
+}
+
+function AreaStatusLine({ status }: { status: NonNullable<BookmarkBoardItem["area"]> }) {
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+      <span className="rounded-md bg-border/40 px-1.5 py-0.5 font-medium">
+        종합 {Math.round(status.total)}점 · {status.grade}
+      </span>
+      {status.sales_qoq_pct != null && (
+        <span className={`tabular-nums font-medium ${pctTone(status.sales_qoq_pct)}`}>
+          매출 전분기 대비 {signedPct(status.sales_qoq_pct)}
+        </span>
+      )}
+      {status.seoul_qoq_pct != null && (
+        <span className="text-foreground-muted tabular-nums">서울 {signedPct(status.seoul_qoq_pct)}</span>
+      )}
+    </div>
+  );
+}
+
+/** 관심 보드 — 찜한 종목·상권의 "지금"(신호·점수)을 한눈에. 등록은 각 화면의 북마크 버튼이 한다. */
 export default function BookmarksPage() {
   const user = useUIStore((s) => s.user);
   const openAuth = useUIStore((s) => s.openAuth);
   const queryClient = useQueryClient();
   const { data, isPending, isError } = useQuery({
-    queryKey: ["bookmarks"],
-    queryFn: fetchBookmarks,
+    queryKey: ["bookmark-board"],
+    queryFn: fetchBookmarkBoard,
     enabled: !!user,
   });
   const remove = useMutation({
-    mutationFn: ({ target_type, target_key }: Pick<Bookmark, "target_type" | "target_key">) =>
+    mutationFn: ({ target_type, target_key }: Pick<BookmarkBoardItem, "target_type" | "target_key">) =>
       removeBookmark(target_type, target_key),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["bookmarks"] }),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["bookmark-board"] });
+      // 다른 화면의 북마크 토글 버튼이 보는 목록도 함께 갱신한다
+      queryClient.invalidateQueries({ queryKey: ["bookmarks"] });
+    },
   });
 
   const items = data?.items ?? [];
@@ -54,7 +127,8 @@ export default function BookmarksPage() {
           <h1 className="text-xl font-bold tracking-tight">북마크</h1>
           <p className="mt-1 text-sm text-foreground-muted">
             주식·상권 화면의 <BookmarkIcon size={13} className="inline -mt-0.5" /> 버튼으로 찜한
-            종목과 상권입니다.
+            항목의 지금 상태입니다. 신호·가격은 일일 수집 기준이라 준실시간이 아니며, 매수·매도
+            추천이 아닙니다.
           </p>
         </div>
 
@@ -66,7 +140,7 @@ export default function BookmarksPage() {
         ) : isPending ? (
           <div className="space-y-2">
             {[0, 1, 2].map((i) => (
-              <div key={i} className="skeleton h-14 rounded-xl" />
+              <div key={i} className="skeleton h-16 rounded-xl" />
             ))}
           </div>
         ) : isError ? (
@@ -101,6 +175,15 @@ export default function BookmarksPage() {
                         <p className="text-xs text-foreground-muted">
                           {b.target_key} · {formatDate(b.created_at)} 저장
                         </p>
+                        {b.stock ? (
+                          <StockStatusLine status={b.stock} />
+                        ) : b.area ? (
+                          <AreaStatusLine status={b.area} />
+                        ) : (
+                          <p className="mt-1 text-xs text-foreground-muted">
+                            상태 준비 중 — 수집 데이터가 쌓이면 표시됩니다
+                          </p>
+                        )}
                       </Link>
                       <button
                         type="button"

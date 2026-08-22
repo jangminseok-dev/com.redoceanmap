@@ -141,6 +141,25 @@ apps/hub/dependencies/user_profile_provider.py  # get_user_profile_port (NotImpl
   (조회 실패는 None으로 열화 — 답변 무손상).
 - **배선**: `main.py`에서 `app.dependency_overrides[get_user_profile_port] = get_user_profile_gateway`.
 
+## 소유 계약 — StockStatusPort
+
+지정 종목들의 최신 신호 상태 조회 협력(③-M7 관심 보드). recommendation(소비)과
+stock(구현)을 잇는다. 워치리스트 전체를 훑는 stock 내부 보드(stock_board)와 달리
+**심볼 집합을 지정해** 묻고, 구현은 동결 스냅샷(forecast_snapshots)+최근 종가 2봉만 읽는다
+(심볼마다 analyze를 부르면 벤더 호출이 심볼 수만큼 — stock_board와 같은 이유).
+
+```
+apps/hub/app/
+├── ports/output/stock_status_port.py   # StockStatusPort (ABC) — latest_statuses(symbols)
+│     스냅샷 없는 심볼은 결과에서 빠진다(오류 아님 — 소비자는 상태 없이 표시)
+└── dtos/stock_status_dto.py            # StockStatusInfo(direction·price·change_pct·ready·기준일)
+apps/hub/dependencies/stock_status_provider.py  # get_stock_status_port (NotImplementedError 스텁)
+```
+
+- **구현**: `stock`의 `StockStatusGateway`(거래소 접미 변형 005930↔005930.KS 흡수).
+- **소비**: `recommendation`의 `BookmarkBoardInteractor`(`GET /bookmarks/board`).
+- **배선**: `main.py`에서 `app.dependency_overrides[get_stock_status_port] = get_stock_status_gateway`.
+
 ## 소유 계약 — StockAnalysisPort
 
 주식 분석 협력. chat(소비)과 stock(구현)을 잇는다.

@@ -192,6 +192,10 @@
   아니라 "신호가 뚜렷한 순"이다. 표시용 한글명은 `SymbolDirectoryPort`(`AliasSymbolDirectory` —
   `symbol_resolver`의 별칭 사전을 역인덱싱, 네트워크 조회 없음). 스냅샷이 없으면 404가 아니라
   빈 `rows`(수집 전에도 화면이 떠야 한다).
+- **관심 보드 상태 제공(2026-08-23, ③-M7)**: 허브 `StockStatusPort`를 `StockStatusGateway`가
+  구현 — 지정 심볼 집합의 최신 스냅샷+최근 종가 2봉을 일괄 조회해 recommendation의
+  `/bookmarks/board`에 준다. stock_board와 같은 원칙(스냅샷만 읽기·10일 초과 제외)이며
+  거래소 접미 변형(005930↔005930.KS)을 흡수한다. 스냅샷 없는 심볼은 결과에서 빠진다(열화).
 
 ## 레이어
 

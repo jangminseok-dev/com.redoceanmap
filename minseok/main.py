@@ -91,6 +91,7 @@ from hub.dependencies.stock_analysis_provider import (
     get_stock_analysis_port_batch,
 )
 from hub.dependencies.stock_forecast_provider import get_stock_forecast_port
+from hub.dependencies.stock_status_provider import get_stock_status_port
 from hub.dependencies.fundamental_read_provider import get_fundamental_read_port
 from hub.dependencies.stock_demand_provider import get_stock_demand_port
 from hub.dependencies.stock_dataset_stats_provider import get_stock_dataset_stats_port
@@ -138,11 +139,13 @@ from stock.dependencies.stock_demand_provider import get_stock_demand_gateway
 from stock.dependencies.stock_dataset_stats_provider import get_stock_dataset_stats_gateway
 from stock.dependencies.news_event_study_provider import get_news_event_study_gateway
 from stock.dependencies.stock_forecast_provider import get_stock_forecast_gateway
+from stock.dependencies.stock_status_provider import get_stock_status_gateway
 from stock.dependencies.stock_history_provider import get_fundamental_read_gateway
 from stock.dependencies.stock_provider import (
     get_stock_analysis_gateway,
     get_stock_analysis_gateway_batch,
 )
+from recommendation.adapter.inbound.api.v1.bookmark_board_router import bookmark_board_router
 from recommendation.adapter.inbound.api.v1.bookmark_router import bookmark_router
 from recommendation.adapter.inbound.api.v1.curator_router import curator_router
 from recommendation.adapter.inbound.api.v1.profile_router import profile_router
@@ -232,6 +235,7 @@ app.include_router(settlement_router, dependencies=_authenticated)
 app.include_router(rulebook_router, dependencies=_authenticated)
 app.include_router(recommendation_router, dependencies=_authenticated)
 app.include_router(bookmark_router, dependencies=_authenticated)
+app.include_router(bookmark_board_router, dependencies=_authenticated)
 app.include_router(profile_router, dependencies=_authenticated)
 app.include_router(curator_router, dependencies=_authenticated)
 app.include_router(email_request_router, dependencies=_authenticated)  # 허브 — 이메일 발송 요청
@@ -269,6 +273,7 @@ app.dependency_overrides[get_recommendation_record_port] = get_recommendation_re
 app.dependency_overrides[get_stock_analysis_port] = get_stock_analysis_gateway
 app.dependency_overrides[get_stock_analysis_port_batch] = get_stock_analysis_gateway_batch
 app.dependency_overrides[get_stock_forecast_port] = get_stock_forecast_gateway
+app.dependency_overrides[get_stock_status_port] = get_stock_status_gateway
 app.dependency_overrides[get_fundamental_read_port] = get_fundamental_read_gateway
 app.dependency_overrides[get_news_storage_port] = get_news_storage_gateway
 app.dependency_overrides[get_price_bar_storage_port] = get_price_bar_storage_gateway

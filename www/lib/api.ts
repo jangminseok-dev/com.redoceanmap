@@ -22,6 +22,7 @@ import type {
   GameTradeReceipt,
   GameWallet,
   InvestorProfile,
+  BookmarkBoardItem,
   MarketArea,
   PriceHistory,
   RecommendationItem,
@@ -278,6 +279,10 @@ export const removeBookmark = (
   targetKey: string,
 ): Promise<{ deleted: boolean }> =>
   sendJson(`/bookmarks/${targetType}/${encodeURIComponent(targetKey)}`, "DELETE");
+
+// 관심 보드(③-M7) — 북마크에 종목 신호·상권 점수를 붙여 한 번에 준다(등록 최신순 고정)
+export const fetchBookmarkBoard = (): Promise<{ items: BookmarkBoardItem[] }> =>
+  getJson("/bookmarks/board");
 
 // ── 투자·창업 프로파일 — 자기신고 설문(밴드 기반), 사용자당 1건. ──
 export const fetchProfile = (): Promise<{ profile: InvestorProfile | null }> =>
