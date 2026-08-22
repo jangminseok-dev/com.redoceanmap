@@ -1,0 +1,57 @@
+{
+  "name": "redoceanmap 관심 종목 북마크 알림",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "days", "daysInterval": 1, "triggerAtHour": 15, "triggerAtMinute": 30 }] }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0],
+      "name": "매일 15:30"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/automation/bookmark-alerts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "X-Webhook-Token", "value": "={{ $env.REDOCEAN_WEBHOOK_TOKEN }}" }]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0],
+      "name": "북마크 알림 스캔"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 응답의 emails 배열을 개별 아이템으로 펼친다 — 메일이 없으면 빈 배열(발송 없음)\nreturn ($input.first().json.emails || []).map(e => ({ json: e }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0],
+      "name": "메일 목록 펼치기"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [660, 0],
+      "name": "Gmail 발송"
+    }
+  ],
+  "connections": {
+    "매일 15:30": { "main": [[{ "node": "북마크 알림 스캔", "type": "main", "index": 0 }]] },
+    "북마크 알림 스캔": { "main": [[{ "node": "메일 목록 펼치기", "type": "main", "index": 0 }]] },
+    "메일 목록 펼치기": { "main": [[{ "node": "Gmail 발송", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

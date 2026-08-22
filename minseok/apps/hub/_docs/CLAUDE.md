@@ -141,6 +141,19 @@ apps/hub/dependencies/user_profile_provider.py  # get_user_profile_port (NotImpl
   (조회 실패는 None으로 열화 — 답변 무손상).
 - **배선**: `main.py`에서 `app.dependency_overrides[get_user_profile_port] = get_user_profile_gateway`.
 
+## 소유 계약 — BookmarkDirectoryPort · MemberContactPort (③-M3 알림)
+
+관심 종목 알림(`bookmark_alert`)이 쓰는 열람 전용 계약 2종.
+
+- **BookmarkDirectoryPort** — 전 사용자 종목 북마크 횡단 조회(`stock_bookmarks()`).
+  구현: `recommendation`의 `BookmarkDirectoryGateway`(직접 조회 — Directory 선례).
+  상권 북마크는 계약에 없다(상권 점수는 분기 단위 — '신호 발생' 알림 대상 아님, v1 판정).
+- **MemberContactPort** — `emails_by_ids(user_ids)` → user_id→이메일. 구현: `auth`의
+  `MemberContactGateway`. 정지·탈퇴·이메일 없는 계정은 키 자체가 없다(발송 대상 아님).
+  MemberDirectoryPort(회원 관리·RBAC)와 별개인 발송 목적 전용(Record↔Directory 분리 선례).
+- **소비**: 허브 자신의 `BookmarkAlertInteractor`(아래 자동화 창구) — StockStatusPort 재사용.
+- **배선**: `main.py` overrides — recommendation·auth 게이트웨이 주입.
+
 ## 소유 계약 — StockStatusPort
 
 지정 종목들의 최신 신호 상태 조회 협력(③-M7 관심 보드). recommendation(소비)과
@@ -186,7 +199,7 @@ apps/hub/dependencies/stock_analysis_provider.py  # get_stock_analysis_port (Not
 
 | prefix | 라우터 (슬라이스) |
 |--------|------------------|
-| /automation/* | `news_ingest` · `market_news_ingest` · `price_bar_ingest` · `news_label_ingest` · `fundamental_ingest` · `forecast_snapshot`(캡처·채점) · `forecast_refit`(가중치 재적합) · `mail_ingest` · `signal_scan` · `stock_demand`(수요 조회) · `dispatcher`(/myself) — 웹훅 토큰 공용 의존성은 `v1/webhook_token.py` |
+| /automation/* | `news_ingest` · `market_news_ingest` · `price_bar_ingest` · `news_label_ingest` · `fundamental_ingest` · `forecast_snapshot`(캡처·채점) · `forecast_refit`(가중치 재적합) · `mail_ingest` · `signal_scan` · `bookmark_alert`(③-M3 관심 종목 알림) · `stock_demand`(수요 조회) · `dispatcher`(/myself) — 웹훅 토큰 공용 의존성은 `v1/webhook_token.py` |
 | /email/* | `email_request` · `postmaster`(/myself) |
 | /semantic/* · /langchain-semantic/* | `semantic`(ROM 1.0 — 단발 질의) · `langchain_semantic`(ROM 2.0 — 세션 멀티턴, LCEL 체인). 분류기(`SemanticLlmPort`)는 공유하고 답변 생성만 갈린다 — 계약이 달라(세션 id) 라우터를 나눴다 |
 | /vision/* | `vision`(/myself·/images) · `face_recognition`(/faces) · `image_classifier`(/classifications) |
@@ -297,6 +310,7 @@ apps/hub/
 |------|------|
 | 뉴스 수집 | n8n(스케줄+RSS) → `POST /automation/news` → NewsIngestInteractor → `NewsStoragePort` → stock 저장 |
 | 시그널 알림 | n8n(스케줄) → `POST /automation/stock-scan` → SignalScanInteractor → 기존 `StockAnalysisPort` 재사용 → n8n이 중립 제외 후 Gmail 발송 |
+| 관심 종목 알림(③-M3) | n8n(매일 15:30 — 스냅샷 cron 14:00 뒤) → `POST /automation/bookmark-alerts` → BookmarkAlertInteractor(북마크×신호×이메일 조합, 비중립만, 메일 조립은 순수 도메인 `bookmark_alert_composer` — LLM 미사용·권유 금지·고지 필수) → 응답 `emails[]`를 n8n이 사용자별 Gmail 발송. 워크플로: [[minseok/apps/hub/_docs/n8n_bookmark_alert_workflow.json]]. v1 한계: 신호 유지 시 주기마다 반복 발송(dedupe 후속) |
 | 메일 수신 | n8n(Gmail Push/폴링) → `POST /automation/mail` → MailIngestInteractor → `MailStoragePort` → mail 저장(조회: `GET /mail/list`) |
 | OHLCV 수집 | cron(`scripts/collect_prices.py`) → `POST /automation/prices` (+`GET /automation/prices/coverage`) → PriceBarIngestInteractor → `PriceBarStoragePort` → stock 저장 |
 | 뉴스 라벨링 | cron(`scripts/label_news.py`, EXAONE 7.8B Ollama) → `GET /automation/news-labels/pending` → 라벨 → `POST /automation/news-labels` → NewsLabelIngestInteractor → `NewsLabelStoragePort` → stock 저장 |

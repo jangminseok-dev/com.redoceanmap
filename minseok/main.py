@@ -32,6 +32,7 @@ from admin.adapter.inbound.api.v1.question_insight_router import (
 )
 from admin.adapter.inbound.api.v1.steward_router import steward_router
 from auth.dependencies.grade_policy_provider import get_grade_policy_gateway
+from auth.dependencies.member_contact_provider import get_member_contact_gateway
 from auth.dependencies.member_directory_provider import get_member_directory_gateway
 from chat.adapter.inbound.api.v1.chat_router import chat_router
 from chat.adapter.inbound.api.v1.concierge_router import concierge_router
@@ -58,6 +59,7 @@ from hub.adapter.inbound.api.v1.news_ingest_router import news_ingest_router
 from hub.adapter.inbound.api.v1.news_label_ingest_router import news_label_ingest_router
 from hub.adapter.inbound.api.v1.postmaster_router import postmaster_router
 from hub.adapter.inbound.api.v1.price_bar_ingest_router import price_bar_ingest_router
+from hub.adapter.inbound.api.v1.bookmark_alert_router import bookmark_alert_router
 from hub.adapter.inbound.api.v1.signal_scan_router import signal_scan_router
 from hub.adapter.inbound.api.v1.stock_demand_router import stock_demand_router
 from hub.dependencies.area_backtest_report_provider import get_area_backtest_report_port
@@ -86,6 +88,8 @@ from hub.dependencies.news_search_provider import get_news_search_port
 from hub.dependencies.recommendation_directory_provider import get_recommendation_directory_port
 from hub.dependencies.recommendation_record_provider import get_recommendation_record_port
 from hub.dependencies.user_profile_provider import get_user_profile_port
+from hub.dependencies.bookmark_directory_provider import get_bookmark_directory_port
+from hub.dependencies.member_contact_provider import get_member_contact_port
 from hub.dependencies.stock_analysis_provider import (
     get_stock_analysis_port,
     get_stock_analysis_port_batch,
@@ -150,6 +154,7 @@ from recommendation.adapter.inbound.api.v1.bookmark_router import bookmark_route
 from recommendation.adapter.inbound.api.v1.curator_router import curator_router
 from recommendation.adapter.inbound.api.v1.profile_router import profile_router
 from recommendation.adapter.inbound.api.v1.recommendation_router import recommendation_router
+from recommendation.dependencies.bookmark_provider import get_bookmark_directory_gateway
 from recommendation.dependencies.profile_provider import get_user_profile_gateway
 from recommendation.dependencies.recommendation_provider import (
     get_recommendation_directory_gateway,
@@ -204,6 +209,7 @@ app.include_router(forecast_snapshot_router)
 app.include_router(forecast_refit_router)
 app.include_router(mail_ingest_router)
 app.include_router(signal_scan_router)
+app.include_router(bookmark_alert_router)  # 허브 — 관심 종목 알림 스캔(웹훅 토큰, ③-M3)
 app.include_router(dispatcher_router)
 # 공개 — 비로그인 첫 화면 쇼케이스(읽기 전용·최소 필드). 데이터 라우터 중 유일하게
 # 인증 없이 열린다. 여기에 라우터를 더 얹기 전에 tests/test_public_routes.py를 볼 것.
@@ -287,6 +293,8 @@ app.dependency_overrides[get_member_directory_port] = get_member_directory_gatew
 app.dependency_overrides[get_grade_policy_port] = get_grade_policy_gateway
 app.dependency_overrides[get_recommendation_directory_port] = get_recommendation_directory_gateway
 app.dependency_overrides[get_user_profile_port] = get_user_profile_gateway
+app.dependency_overrides[get_bookmark_directory_port] = get_bookmark_directory_gateway
+app.dependency_overrides[get_member_contact_port] = get_member_contact_gateway
 app.dependency_overrides[get_mail_storage_port] = get_mail_storage_gateway
 app.dependency_overrides[get_stock_demand_port] = get_stock_demand_gateway
 app.dependency_overrides[get_game_ops_port] = get_game_ops_gateway

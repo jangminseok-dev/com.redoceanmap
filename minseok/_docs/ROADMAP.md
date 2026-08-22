@@ -86,7 +86,7 @@ hnsw 재검토"로 유예 — 73k라 곧 닿는다) · `pg_trgm` 사용 가능(�
 |---|---------|------|------|
 | M1 | **공개 접점** — Cloudflare Tunnel(무료, 고정IP 불요) + HTTPS + rate limit(slowapi) | 2-3일 | 외부망 HTTPS 접속, 무차별 로그인 차단 |
 | M2 | ~~**북마크/관심종목**~~ — **완료(2026-08-21)**. recommendation 확장: `bookmarks` 테이블(h7a8b9c0d1e2, (user, type, key) 유니크) + `/bookmarks` CRUD(재등록 멱등·종목 키 대문자 정규화·상한 200) + 프론트 `/bookmarks` 페이지·주식 히어로/상권 오버레이 토글 버튼(서버 목록 단일 진실). 상세는 recommendation CLAUDE 정본 | - | ✅ 등록→조회→삭제 E2E + 인터랙터 테스트 7종 |
-| M3 | **알림 v1(이메일)** — 관심 종목 신호 발생 시 발송. hub signal_scan_interactor 확장(교차 도메인 = 허브의 존재 이유) | 3-5일 | 신호→메일 수신 E2E |
+| M3 | **알림 v1(이메일)** — **구현 완료(2026-08-23) · E2E 잔여**. 허브 새 슬라이스 `bookmark_alert`(signal_scan 확장 대신 1:1 슬라이스 신설 — 사용자별 북마크 알림은 계약이 다르다): n8n(매일 15:30, 스냅샷 cron 뒤) → `POST /automation/bookmark-alerts`(웹훅 토큰) → 북마크(허브 **BookmarkDirectoryPort 신설**, recommendation 구현) × 신호(M7의 `StockStatusPort` 재사용 — 메일과 보드가 같은 값) × 이메일(허브 **MemberContactPort 신설**, auth 구현 — 정지·탈퇴·무이메일 제외) 조합, **비중립만** 알림. 메일은 순수 도메인 `bookmark_alert_composer` 결정론 템플릿(LLM 미사용 — 권유 어휘 금지·책임 고지 필수·"일일 수집 기준" 명시, 회귀 테스트로 고정). 발송은 n8n Gmail(자격증명 백엔드 무보유 원칙 유지) — 워크플로 JSON 동봉, n8n UI 임포트 필요. 테스트 8종(조합·제외 4 + 컴포저 4). **잔여**: 백엔드 PC 배포 + n8n 워크플로 임포트 후 신호→메일 수신 E2E. v1 한계: 신호 유지 시 반복 발송(dedupe 후속) | 3-5일 | 신호→메일 수신 E2E |
 | M4 | **운영 관측** — JSON 구조화 로깅 + Uptime Kuma(무료 self-host) + 장애 알림 | 2-3일 | 강제 다운 시 5분 내 알림 |
 | M5 | **데이터 갱신 자동화 + LLM 라이선스 정리** — 상권 신규 분기 자동 적재, **EXAONE 라이선스 실사(연구용 한정 가능성 → 상용 전 Apache-2.0 계열 교체 검토)**. 교체 지점은 `core/llm/llm_orchestrator.py`로 국소화됨 | 4-6일 | chat 품질 회귀 10문항 비교 |
 | M6 | **listing 스포크** — 실수요 확인 게이트 통과 시에만 | 6-8일 | 수요 게이트 통과가 착수 조건 |
