@@ -41,6 +41,14 @@
   키워드(`pg_trgm similarity`, 루트 체인 `j9c0d1e2f3a4`) 채널을 RRF(`domain/services/rrf_fusion.py`,
   k=60)로 결합하는 **실험 경로**. 유스케이스는 현행 순수 코사인 유지 — R1 baseline 대비
   nDCG@5 +0.03 게이트 통과 시에만 전환(미달이면 기각, ROADMAP R2).
+- **공시 청킹 실험(R3, 2026-08-23)**: DART 사업보고서(한국 10사 × 최신 1건)를 3전략으로
+  청킹해 `disclosure_chunks`(루트 체인 `k0d1e2f3a4b5`, strategy 컬럼으로 병렬 저장)에
+  적재하고 검색 품질을 비교한다 — 수집·임베딩은 `scripts/collect_disclosures.py`(교체 멱등),
+  파서는 `adapter/outbound/dart/disclosure_parser.py`(비정형 `&`·`<` 전처리, 각주는 표 안
+  `※` 행·다음 한 줄 안내 표·직후 P 3경로 승계 — `(주)상호`는 각주 아님), 청킹 규칙은
+  순수 도메인 `disclosure_chunker.py`(a 고정 512자 대조군 / b 섹션 / c 표 행+헤더=값
+  페어링+각주 인라인). 프로덕션 미편입 — 게이트((c)가 (a) 대비 표 질의 recall@5 +0.10)
+  판정까지 실험 전용(ROADMAP R3).
 - **수집 OHLCV(DB)**: cron(`scripts/collect_prices.py`, 뉴스와 워치리스트 공유)이 허브
   `/automation/prices`로 적재(허브 `PriceBarStoragePort`를 `PriceBarStorageGateway`가 구현,
   `price_bars` 테이블·(ticker, timeframe, ts) 유니크). 5분봉(60일 소급)·일봉(전체) —

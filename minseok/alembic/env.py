@@ -41,6 +41,7 @@ import stock.adapter.outbound.orm.price_bar_orm  # noqa: F401
 import stock.adapter.outbound.orm.news_label_orm  # noqa: F401
 import stock.adapter.outbound.orm.fundamental_snapshot_orm  # noqa: F401
 import stock.adapter.outbound.orm.news_event_study_report_orm  # noqa: F401
+import stock.adapter.outbound.orm.disclosure_chunk_orm  # noqa: F401
 import mail.adapter.outbound.orm.inbound_mail_orm  # noqa: F401
 import hub.adapter.outbound.orm.langchain_session_orm  # noqa: F401
 import game.adapter.outbound.orm.game_wallet_orm  # noqa: F401

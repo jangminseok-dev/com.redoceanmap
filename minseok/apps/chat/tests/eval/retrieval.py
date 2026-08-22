@@ -14,11 +14,19 @@ RETRIEVAL_TRACE_HYBRID_PATH = EVAL_DIR / "retrieval_trace_hybrid.jsonl"
 RETRIEVAL_POOL_PATH = EVAL_DIR / "retrieval_pool.jsonl"      # 사람 라벨링용 후보 시트(두 시스템 합집합)
 RETRIEVAL_BASELINE_PATH = EVAL_DIR / "retrieval_baseline.json"
 
+# R3 공시 청킹 실험 — 뉴스 골든셋과 파일을 분리한다(러너·게이트가 서로를 모르게)
+RETRIEVAL_GOLDEN_DISCLOSURE_PATH = EVAL_DIR / "retrieval_golden_disclosure.jsonl"
+DISCLOSURE_STRATEGIES = ("a", "b", "c")  # a 고정 토큰(대조군) / b 섹션 / c 표 인지
+RETRIEVAL_TRACE_DISCLOSURE_PATHS = {
+    s: EVAL_DIR / f"retrieval_trace_disclosure_{s}.jsonl" for s in DISCLOSURE_STRATEGIES
+}
+RETRIEVAL_POOL_DISCLOSURE_PATH = EVAL_DIR / "retrieval_pool_disclosure.jsonl"
 
-def load_retrieval_cases() -> list[RetrievalCase]:
+
+def load_retrieval_cases(path: Path = RETRIEVAL_GOLDEN_PATH) -> list[RetrievalCase]:
     return [
         RetrievalCase.from_dict(json.loads(line))
-        for line in RETRIEVAL_GOLDEN_PATH.read_text(encoding="utf-8").splitlines()
+        for line in path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
 
