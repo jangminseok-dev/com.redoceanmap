@@ -37,6 +37,10 @@
   허브 `NewsSearchPort`를 `NewsSearchGateway`가 구현 — pgvector 코사인 + 티커 하이브리드 필터 +
   news_labels 라벨 조인 + 제목 dedupe. 소비자는 chat(종목 질문 보강 + 시장 횡단 질문).
   백필은 `POST /automation/news-embeddings/backfill`. 벡터 인덱스는 10만 건+에서 hnsw 재검토.
+  **하이브리드 검색(R2, 2026-08-23)**: `NewsPgRepository.search_hybrid` — 벡터 + trigram
+  키워드(`pg_trgm similarity`, 루트 체인 `j9c0d1e2f3a4`) 채널을 RRF(`domain/services/rrf_fusion.py`,
+  k=60)로 결합하는 **실험 경로**. 유스케이스는 현행 순수 코사인 유지 — R1 baseline 대비
+  nDCG@5 +0.03 게이트 통과 시에만 전환(미달이면 기각, ROADMAP R2).
 - **수집 OHLCV(DB)**: cron(`scripts/collect_prices.py`, 뉴스와 워치리스트 공유)이 허브
   `/automation/prices`로 적재(허브 `PriceBarStoragePort`를 `PriceBarStorageGateway`가 구현,
   `price_bars` 테이블·(ticker, timeframe, ts) 유니크). 5분봉(60일 소급)·일봉(전체) —

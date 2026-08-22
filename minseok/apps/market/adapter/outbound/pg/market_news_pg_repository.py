@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,8 +12,12 @@ from market.adapter.outbound.orm.market_news_article_orm import MarketNewsArticl
 from market.app.dtos.market_news_search_dto import MarketNewsSearchRow
 from market.app.ports.output.market_news_repository import MarketNewsRepositoryPort
 from market.domain.entities.market_news_article import MarketNewsArticle
+from market.domain.services.rrf_fusion import rrf_merge
 
 logger = logging.getLogger(__name__)
+
+# 하이브리드 검색(R2) — 채널별 후보 폭. 라벨 확정 후 파라미터 스윕(R2 ③)의 조정 대상.
+HYBRID_CHANNEL_LIMIT = 30
 
 
 class MarketNewsPgRepository(MarketNewsRepositoryPort):
@@ -110,6 +114,58 @@ class MarketNewsPgRepository(MarketNewsRepositoryPort):
                 id=orm.id, title=orm.title, area_tag=orm.area_tag,
                 source=orm.source, published_at=orm.published_at,
             ))
+            if len(rows) >= limit:
+                break
+        return rows
+
+    async def search_hybrid(
+        self, embedding: list[float], query: str, limit: int = 4,
+    ) -> list[MarketNewsSearchRow]:
+        """벡터 코사인 + trigram 키워드 채널을 RRF로 결합한 검색 — R2 실험 경로.
+
+        ⚠ 아직 프로덕션 경로가 아니다 — 유스케이스는 현행 search_similar(순수 코사인)를
+        쓰고, 이 메서드는 평가 러너가 하이브리드 트레이스를 만드는 데 쓴다(stock
+        news_pg_repository.search_hybrid와 같은 규칙 — 게이트 통과 시에만 전환).
+        """
+        title_sim = func.similarity(MarketNewsArticleOrm.title, query)
+        channel_stmts = (
+            select(MarketNewsArticleOrm)
+            .where(MarketNewsArticleOrm.embedding.is_not(None))
+            .order_by(MarketNewsArticleOrm.embedding.cosine_distance(embedding))
+            .limit(HYBRID_CHANNEL_LIMIT * 2),
+            # trigram 겹침이 전혀 없는 행(similarity 0)은 순위 잡음이라 거른다
+            select(MarketNewsArticleOrm)
+            .where(title_sim > 0)
+            .order_by(title_sim.desc())
+            .limit(HYBRID_CHANNEL_LIMIT * 2),
+        )
+        row_by_id: dict[int, MarketNewsSearchRow] = {}
+        channels: list[list[int]] = []
+        for stmt in channel_stmts:
+            result = await self._session.execute(stmt)
+            ids: list[int] = []
+            seen: set[str] = set()
+            for orm in result.scalars().all():
+                if orm.title in seen:  # (url, area_tag) 유니크 구조상 같은 제목 다행 — 채널 내 dedupe
+                    continue
+                seen.add(orm.title)
+                row_by_id[orm.id] = MarketNewsSearchRow(
+                    id=orm.id, title=orm.title, area_tag=orm.area_tag,
+                    source=orm.source, published_at=orm.published_at,
+                )
+                ids.append(orm.id)
+                if len(ids) >= HYBRID_CHANNEL_LIMIT:
+                    break
+            channels.append(ids)
+        # 채널 간 같은 제목이 다른 id로 올 수 있다 — 최종 조립에서 제목 dedupe
+        rows: list[MarketNewsSearchRow] = []
+        seen_titles: set[str] = set()
+        for doc_id in rrf_merge(channels):
+            row = row_by_id[doc_id]
+            if row.title in seen_titles:
+                continue
+            seen_titles.add(row.title)
+            rows.append(row)
             if len(rows) >= limit:
                 break
         return rows

@@ -160,6 +160,10 @@ market이 소유하는 두 번째 데이터 축 — 분기 공공데이터의 �
 - **슬라이스**: `market_news_interactor`(적재+배치 임베딩+의미 검색) ← 허브 게이트웨이 2종
   (`market_news_storage_gateway` · `market_news_search_gateway`)이 위임. 소비는 chat(허브
   `MarketNewsSearchPort` 경유, 상권 답변 기사 근거). → hub CLAUDE
+- **하이브리드 검색(R2, 2026-08-23)**: `MarketNewsPgRepository.search_hybrid` — 벡터 +
+  trigram 키워드(`pg_trgm similarity`, market 체인 `d8e9f0a1b2c3`) 채널을
+  RRF(`domain/services/rrf_fusion.py`, k=60)로 결합하는 **실험 경로**(stock과 같은 규칙).
+  유스케이스는 현행 순수 코사인 유지 — 게이트 통과 시에만 전환(ROADMAP R2).
 
 ## 점수 백테스트 (워크포워드 검증)
 

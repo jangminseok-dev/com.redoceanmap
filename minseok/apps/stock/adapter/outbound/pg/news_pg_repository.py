@@ -14,10 +14,14 @@ from stock.adapter.outbound.orm.news_label_orm import NewsLabelOrm
 from stock.app.dtos.news_search_dto import NewsSearchRow
 from stock.app.ports.output.news_repository import NewsRepositoryPort
 from stock.domain.entities.news_article import NewsArticle
+from stock.domain.services.rrf_fusion import rrf_merge
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_LABELER = "exaone-7.8b"  # 검색 히트에 동반할 라벨 버전 — 상위 모델 도입 시 교체 지점
+
+# 하이브리드 검색(R2) — 채널별 후보 폭. 라벨 확정 후 파라미터 스윕(R2 ③)의 조정 대상.
+HYBRID_CHANNEL_LIMIT = 30
 
 
 class NewsPgRepository(NewsRepositoryPort):
@@ -158,6 +162,71 @@ class NewsPgRepository(NewsRepositoryPort):
                 id=orm.id, title=orm.title, ticker=orm.ticker, source=orm.source,
                 published_at=orm.published_at, sentiment=sentiment, event_type=event_type,
             ))
+            if len(rows) >= limit:
+                break
+        return rows
+
+    async def search_hybrid(
+        self, embedding: list[float], query: str,
+        ticker: str | None = None, limit: int = 5,
+    ) -> list[NewsSearchRow]:
+        """벡터 코사인 + trigram 키워드 채널을 RRF로 결합한 검색 — R2 실험 경로.
+
+        ⚠ 아직 프로덕션 경로가 아니다 — 유스케이스는 현행 search_similar(순수 코사인)를
+        쓰고, 이 메서드는 평가 러너가 하이브리드 트레이스를 만드는 데 쓴다. R1 baseline
+        대비 nDCG@5 +0.03 게이트 통과 시 포트·유스케이스 전환, 미달이면 기각(ROADMAP R2).
+        키워드 채널은 문자 trigram(pg_trgm similarity)이라 형태소 분석이 아니다 —
+        조사·띄어쓰기 변형에 강할 뿐 의미 확장은 벡터 채널 몫이다.
+        """
+        conditions = []
+        if ticker:
+            conditions.append(or_(
+                NewsArticleOrm.ticker == ticker,
+                NewsArticleOrm.ticker.like(f"{ticker}.%"),
+            ))
+        base = select(NewsArticleOrm, NewsLabelOrm.sentiment, NewsLabelOrm.event_type).outerjoin(
+            NewsLabelOrm, and_(
+                NewsLabelOrm.news_id == NewsArticleOrm.id,
+                NewsLabelOrm.labeler == DEFAULT_LABELER,
+            )
+        )
+        title_sim = func.similarity(NewsArticleOrm.title, query)
+        channel_stmts = (
+            base.where(NewsArticleOrm.embedding.is_not(None), *conditions)
+            .order_by(NewsArticleOrm.embedding.cosine_distance(embedding))
+            .limit(HYBRID_CHANNEL_LIMIT * 2),
+            # trigram 겹침이 전혀 없는 행(similarity 0)은 순위 잡음이라 거른다
+            base.where(title_sim > 0, *conditions)
+            .order_by(title_sim.desc())
+            .limit(HYBRID_CHANNEL_LIMIT * 2),
+        )
+        row_by_id: dict[int, NewsSearchRow] = {}
+        channels: list[list[int]] = []
+        for stmt in channel_stmts:
+            result = await self._session.execute(stmt)
+            ids: list[int] = []
+            seen: set[str] = set()
+            for orm, sentiment, event_type in result.all():
+                if orm.title in seen:  # (url, ticker) 유니크 구조상 같은 제목 다행 — 채널 내 dedupe
+                    continue
+                seen.add(orm.title)
+                row_by_id[orm.id] = NewsSearchRow(
+                    id=orm.id, title=orm.title, ticker=orm.ticker, source=orm.source,
+                    published_at=orm.published_at, sentiment=sentiment, event_type=event_type,
+                )
+                ids.append(orm.id)
+                if len(ids) >= HYBRID_CHANNEL_LIMIT:
+                    break
+            channels.append(ids)
+        # 채널 간 같은 제목이 다른 id로 올 수 있다(점수가 갈라지는 소폭 손해) — 최종 조립에서 제목 dedupe
+        rows: list[NewsSearchRow] = []
+        seen_titles: set[str] = set()
+        for doc_id in rrf_merge(channels):
+            row = row_by_id[doc_id]
+            if row.title in seen_titles:
+                continue
+            seen_titles.add(row.title)
+            rows.append(row)
             if len(rows) >= limit:
                 break
         return rows
