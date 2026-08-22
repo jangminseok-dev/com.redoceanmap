@@ -1,0 +1,40 @@
+{"case_id": "RS01", "category": "stock", "query": "삼성전자 반도체 실적 관련 소식", "labels": {}}
+{"case_id": "RS02", "category": "stock", "query": "SK하이닉스 HBM 메모리 뉴스", "labels": {}}
+{"case_id": "RS03", "category": "stock", "query": "엔비디아 AI 칩 수요 어떤가", "labels": {}}
+{"case_id": "RS04", "category": "stock", "query": "애플 아이폰 판매 소식", "labels": {}}
+{"case_id": "RS05", "category": "stock", "query": "테슬라 전기차 판매량 뉴스", "labels": {}}
+{"case_id": "RS06", "category": "stock", "query": "마이크로소프트 AI 투자 소식", "labels": {}}
+{"case_id": "RS07", "category": "stock", "query": "아마존 클라우드 사업 실적", "labels": {}}
+{"case_id": "RS08", "category": "stock", "query": "구글 검색 광고 매출 동향", "labels": {}}
+{"case_id": "RS09", "category": "stock", "query": "메타 광고 실적 뉴스", "labels": {}}
+{"case_id": "RS10", "category": "stock", "query": "인텔 파운드리 사업 소식", "labels": {}}
+{"case_id": "RS11", "category": "stock", "query": "AMD 서버 칩 경쟁 뉴스", "labels": {}}
+{"case_id": "RS12", "category": "stock", "query": "브로드컴 AI 반도체 매출", "labels": {}}
+{"case_id": "RS13", "category": "stock", "query": "반도체 업황 회복 조짐", "labels": {}}
+{"case_id": "RS14", "category": "stock", "query": "미국 금리 인하가 증시에 주는 영향", "labels": {}}
+{"case_id": "RS15", "category": "stock", "query": "AI 관련주 분위기 어때", "labels": {}}
+{"case_id": "RS16", "category": "stock", "query": "전기차 배터리 업계 동향", "labels": {}}
+{"case_id": "RS17", "category": "stock", "query": "유가 변동이 에너지 기업에 미친 영향", "labels": {}}
+{"case_id": "RS18", "category": "stock", "query": "미국 고용지표 발표 후 시장 반응", "labels": {}}
+{"case_id": "RS19", "category": "stock", "query": "달러 환율 움직임 뉴스", "labels": {}}
+{"case_id": "RS20", "category": "stock", "query": "빅테크 실적 시즌 분위기", "labels": {}}
+{"case_id": "RS21", "category": "stock", "query": "넷플릭스 구독자 성장 소식", "labels": {}}
+{"case_id": "RS22", "category": "stock", "query": "스타벅스 실적 뉴스", "labels": {}}
+{"case_id": "RS23", "category": "stock", "query": "보잉 항공기 관련 이슈", "labels": {}}
+{"case_id": "RS24", "category": "stock", "query": "제약 바이오 임상 결과 소식", "labels": {}}
+{"case_id": "RS25", "category": "stock", "query": "은행 금융주 실적 동향", "labels": {}}
+{"case_id": "RM01", "category": "market", "query": "성수동 상권 카페 트렌드", "labels": {}}
+{"case_id": "RM02", "category": "market", "query": "홍대 상권 요즘 분위기", "labels": {}}
+{"case_id": "RM03", "category": "market", "query": "강남역 상권 임대료 소식", "labels": {}}
+{"case_id": "RM04", "category": "market", "query": "이태원 상권 회복 뉴스", "labels": {}}
+{"case_id": "RM05", "category": "market", "query": "명동 관광객 상권 소식", "labels": {}}
+{"case_id": "RM06", "category": "market", "query": "잠실 상권 개발 소식", "labels": {}}
+{"case_id": "RM07", "category": "market", "query": "연남동 골목상권 뉴스", "labels": {}}
+{"case_id": "RM08", "category": "market", "query": "여의도 직장인 상권 점심 장사", "labels": {}}
+{"case_id": "RM09", "category": "market", "query": "신촌 대학가 상권 침체", "labels": {}}
+{"case_id": "RM10", "category": "market", "query": "익선동 상권이 뜨는 이유", "labels": {}}
+{"case_id": "RM11", "category": "market", "query": "북촌 한옥마을 상권 소식", "labels": {}}
+{"case_id": "RM12", "category": "market", "query": "압구정 로데오 상권 부활", "labels": {}}
+{"case_id": "RM13", "category": "market", "query": "문래동 창작촌 상권 소식", "labels": {}}
+{"case_id": "RM14", "category": "market", "query": "소상공인 지원 정책 뉴스", "labels": {}}
+{"case_id": "RM15", "category": "market", "query": "서울 상가 공실 동향", "labels": {}}
