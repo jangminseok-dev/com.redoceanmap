@@ -998,3 +998,13 @@ export type Bookmark = {
   label: string;
   created_at: string;
 };
+
+// ── /profile (직접 호출 — snake_case DTO) — 투자·창업 프로파일 설문(밴드 기반) ──
+export type InvestorProfile = {
+  purpose: "startup" | "invest" | "both";
+  risk_level: 1 | 2 | 3 | 4 | 5;
+  budget_band: "under_30m" | "30m_50m" | "50m_100m" | "100m_300m" | "over_300m";
+  debt_burden: "none" | "manageable" | "heavy";
+  horizon: "short" | "mid" | "long";
+  updated_at: string;
+};

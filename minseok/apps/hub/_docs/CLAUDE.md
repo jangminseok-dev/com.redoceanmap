@@ -121,6 +121,26 @@ apps/hub/dependencies/recommendation_record_provider.py  # get_recommendation_re
 - **소비**: `chat`의 `ChatInteractor`가 phase2 추천 생성 직후 `record()` 호출.
 - **배선**: `main.py`에서 `app.dependency_overrides[get_recommendation_record_port] = get_recommendation_record_gateway`.
 
+## 소유 계약 — UserProfilePort
+
+사용자 투자·창업 프로파일 조회 협력. chat(소비)과 recommendation(구현·영속:
+`user_profiles`)을 잇는다. DTO는 프롬프트에 그대로 실을 **문장 라벨**을 나른다 —
+라벨 매핑의 소유자는 recommendation 도메인(`profile_entity.py`)이다
+(AreaScoreInfo.grade 선례 — 원시 코드로 내리면 매핑이 소비자마다 중복 구현된다).
+
+```
+apps/hub/app/
+├── ports/output/user_profile_port.py   # UserProfilePort (ABC) — get_profile(user_id)
+│     미작성 사용자는 None(오류 아님 — 소비자는 주입 생략)
+└── dtos/user_profile_dto.py            # UserProfileSummary(purpose 원시값 + 라벨 5종)
+apps/hub/dependencies/user_profile_provider.py  # get_user_profile_port (NotImplementedError 스텁)
+```
+
+- **구현**: `recommendation`의 `UserProfileGateway`(도메인 엔티티 → 라벨 DTO 변환).
+- **소비**: `chat`의 `ChatInteractor` — stock·market 의도일 때만 조회해 서술 컨텍스트에 주입
+  (조회 실패는 None으로 열화 — 답변 무손상).
+- **배선**: `main.py`에서 `app.dependency_overrides[get_user_profile_port] = get_user_profile_gateway`.
+
 ## 소유 계약 — StockAnalysisPort
 
 주식 분석 협력. chat(소비)과 stock(구현)을 잇는다.

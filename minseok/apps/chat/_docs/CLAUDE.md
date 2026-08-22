@@ -21,6 +21,7 @@ chat은 다른 스포크를 **직접 import하지 않는다**. 허브 `hub`가 �
 | `NewsSearchPort` | stock (`NewsSearchGateway`) | 수집 뉴스 의미 검색(RAG, bge-m3+pgvector) |
 | `MarketNewsSearchPort` | market (`MarketNewsSearchGateway`) | 상권 뉴스 의미 검색(지역 기사 근거) |
 | `GeminiAnswerPort` | hub 자체 구현 (`GeminiApiAdapter`) | 일반 질문(general) 외부 Gemini 답변 |
+| `UserProfilePort` | recommendation (`UserProfileGateway`) | 투자·창업 프로파일(개인화 ⓪ — 서술 관점 조정) |
 
 ## 의도 라우팅 — phase0 (4분류)
 

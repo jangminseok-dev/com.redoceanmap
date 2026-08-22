@@ -35,6 +35,7 @@ import admin.adapter.outbound.orm.pdf_document_orm  # noqa: F401
 # include_name 필터로 오토젠에서 제외한다(사본 drop 후 필터도 함께 제거할 것).
 import chat.adapter.outbound.orm.conversation_orm  # noqa: F401
 import recommendation.adapter.outbound.orm.recommendation_orm  # noqa: F401
+import recommendation.adapter.outbound.orm.profile_orm  # noqa: F401
 import stock.adapter.outbound.orm.news_article_orm  # noqa: F401
 import stock.adapter.outbound.orm.price_bar_orm  # noqa: F401
 import stock.adapter.outbound.orm.news_label_orm  # noqa: F401

@@ -28,6 +28,7 @@ from hub.app.dtos.market_news_dto import MarketNewsHit
 from hub.app.dtos.news_dto import NewsHit
 from hub.app.dtos.stock_analysis_dto import StockAnalysisResult
 from hub.app.dtos.stock_forecast_dto import StockForecastSummary
+from hub.app.dtos.user_profile_dto import UserProfileSummary
 from hub.app.ports.output.stock_analysis_port import StockAnalysisUnavailable
 
 _NOW = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
@@ -206,6 +207,26 @@ class _StubRecorder:
         self.recorded.append((conversation_id, areas))
 
 
+class _StubProfiles:
+    def __init__(self, summary: UserProfileSummary | None = None, fail: bool = False):
+        self.summary = summary
+        self.fail = fail
+        self.calls: list[int] = []
+
+    async def get_profile(self, user_id: int) -> UserProfileSummary | None:
+        self.calls.append(user_id)
+        if self.fail:
+            raise RuntimeError("프로파일 저장소 불가")
+        return self.summary
+
+
+def _profile() -> UserProfileSummary:
+    return UserProfileSummary(
+        purpose="startup", purpose_label="창업 준비", risk_label="안정추구형",
+        budget_label="5천만~1억원", debt_label="부채 없음", horizon_label="중기(1~3년)",
+    )
+
+
 def _raw_stat(**overrides) -> AreaRawStat:
     base = dict(
         has_sales=False, monthly_sales_amount=None, weekday_sales_amount=None,
@@ -252,7 +273,8 @@ def _area_score() -> AreaScoreInfo:
 
 
 def _build(monkeypatch, llm_responses, *, stocks=None, news=None, conversations=None,
-           market=None, market_news=None, gemini=None, forecaster=None, fundamentals=None):
+           market=None, market_news=None, gemini=None, forecaster=None, fundamentals=None,
+           profiles=None):
     llm = _StubLLM(llm_responses)
     monkeypatch.setattr("chat.app.use_cases.chat_interactor.llm_orchestrator", llm)
     market, recorder = market or _StubMarket(), _StubRecorder()
@@ -266,12 +288,12 @@ def _build(monkeypatch, llm_responses, *, stocks=None, news=None, conversations=
     interactor = ChatInteractor(
         market=market, recorder=recorder, conversations=conversations,
         stocks=stocks, news=news, market_news=market_news, gemini=gemini,
-        forecaster=forecaster, fundamentals=fundamentals,
+        forecaster=forecaster, fundamentals=fundamentals, profiles=profiles,
     )
     return interactor, llm, dict(market=market, recorder=recorder,
                                  conversations=conversations, stocks=stocks, news=news,
                                  market_news=market_news, gemini=gemini, forecaster=forecaster,
-                                 fundamentals=fundamentals)
+                                 fundamentals=fundamentals, profiles=profiles)
 
 
 # --- phase0 3분류 라우팅 ---
@@ -1090,3 +1112,59 @@ async def test_절대건수가_없으면_율만_쓴다(monkeypatch):  # 열화
 
     context = llm.calls[2][0]
     assert "분기 폐업률 8.3% " in context and "8.3%(" not in context
+
+
+# --- 프로파일 개인화 주입 (개인화 ⓪) ---
+
+async def test_market_경로에_프로파일_블록이_주입된다(monkeypatch):
+    profiles = _StubProfiles(summary=_profile())
+    interactor, llm, _ = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON], profiles=profiles,
+    )
+    await interactor.ask("역삼동 카페 어때?", user_id=7)
+
+    assert profiles.calls == [7]
+    context = llm.calls[2][0]  # phase2 프롬프트
+    assert "[질문자 프로파일" in context
+    assert "안정추구형" in context and "5천만~1억원" in context
+    assert "단정하지 말 것" in context  # 예산 적합 단정 금지 규칙 동반
+
+
+async def test_stock_경로에_프로파일_라인이_주입된다(monkeypatch):
+    profiles = _StubProfiles(summary=_profile())
+    interactor, llm, _ = _build(
+        monkeypatch, [INTENT_STOCK, "주식 서술"], profiles=profiles,
+    )
+    await interactor.ask("삼성전자 어때?", user_id=7)
+
+    context = llm.calls[1][0]  # 서술 프롬프트
+    assert "질문자 투자 프로파일(참고): 안정추구형" in context
+    assert "매수/매도 권유" in context  # 투자자문 경계 규칙 동반
+
+
+async def test_비로그인_미작성_실패는_주입_없이_기존과_동일하다(monkeypatch):  # 열화 3종
+    # 비로그인(user_id=None) — 포트 호출 자체가 없다
+    profiles = _StubProfiles(summary=_profile())
+    interactor, llm, _ = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON], profiles=profiles,
+    )
+    await interactor.ask("역삼동 카페 어때?")
+    assert profiles.calls == []
+    assert "[질문자 프로파일" not in llm.calls[2][0]
+
+    # 미작성(None) — 블록 생략
+    interactor, llm, _ = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON],
+        profiles=_StubProfiles(summary=None),
+    )
+    await interactor.ask("역삼동 카페 어때?", user_id=7)
+    assert "[질문자 프로파일" not in llm.calls[2][0]
+
+    # 조회 실패 — 답변 자체는 살린다
+    interactor, llm, _ = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON],
+        profiles=_StubProfiles(fail=True),
+    )
+    result = await interactor.ask("역삼동 카페 어때?", user_id=7)
+    assert len(result.recommendations) == 1
+    assert "[질문자 프로파일" not in llm.calls[2][0]

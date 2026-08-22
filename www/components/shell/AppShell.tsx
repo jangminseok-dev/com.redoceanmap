@@ -15,6 +15,7 @@ import {
   Plus,
   ScanEye,
   ScanFace,
+  UserRound,
   Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -49,6 +50,7 @@ const PRIMARY: NavItem[] = [
 const SECONDARY: NavItem[] = [
   { icon: MessageSquare, label: "지난 대화", href: "/history", key: "history" },
   { icon: Bookmark, label: "북마크", href: "/bookmarks" },
+  { icon: UserRound, label: "내 프로파일", href: "/profile" },
   { icon: Compass, label: "상권 둘러보기", href: "/areas", key: "market" },
   { icon: ScanEye, label: "비전처리", href: "/vision", key: "vision" },
   { icon: ScanFace, label: "얼굴 인식", href: "/vision/faces", key: "vision" },

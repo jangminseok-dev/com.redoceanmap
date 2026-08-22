@@ -85,6 +85,7 @@ from hub.dependencies.member_directory_provider import get_member_directory_port
 from hub.dependencies.news_search_provider import get_news_search_port
 from hub.dependencies.recommendation_directory_provider import get_recommendation_directory_port
 from hub.dependencies.recommendation_record_provider import get_recommendation_record_port
+from hub.dependencies.user_profile_provider import get_user_profile_port
 from hub.dependencies.stock_analysis_provider import (
     get_stock_analysis_port,
     get_stock_analysis_port_batch,
@@ -144,7 +145,9 @@ from stock.dependencies.stock_provider import (
 )
 from recommendation.adapter.inbound.api.v1.bookmark_router import bookmark_router
 from recommendation.adapter.inbound.api.v1.curator_router import curator_router
+from recommendation.adapter.inbound.api.v1.profile_router import profile_router
 from recommendation.adapter.inbound.api.v1.recommendation_router import recommendation_router
+from recommendation.dependencies.profile_provider import get_user_profile_gateway
 from recommendation.dependencies.recommendation_provider import (
     get_recommendation_directory_gateway,
     get_recommendation_record_gateway,
@@ -229,6 +232,7 @@ app.include_router(settlement_router, dependencies=_authenticated)
 app.include_router(rulebook_router, dependencies=_authenticated)
 app.include_router(recommendation_router, dependencies=_authenticated)
 app.include_router(bookmark_router, dependencies=_authenticated)
+app.include_router(profile_router, dependencies=_authenticated)
 app.include_router(curator_router, dependencies=_authenticated)
 app.include_router(email_request_router, dependencies=_authenticated)  # 허브 — 이메일 발송 요청
 app.include_router(postmaster_router, dependencies=_authenticated)
@@ -277,6 +281,7 @@ app.dependency_overrides[get_email_composer] = lambda: EmailComposerN8nGateway()
 app.dependency_overrides[get_member_directory_port] = get_member_directory_gateway
 app.dependency_overrides[get_grade_policy_port] = get_grade_policy_gateway
 app.dependency_overrides[get_recommendation_directory_port] = get_recommendation_directory_gateway
+app.dependency_overrides[get_user_profile_port] = get_user_profile_gateway
 app.dependency_overrides[get_mail_storage_port] = get_mail_storage_gateway
 app.dependency_overrides[get_stock_demand_port] = get_stock_demand_gateway
 app.dependency_overrides[get_game_ops_port] = get_game_ops_gateway

@@ -31,6 +31,25 @@
   `BookmarkButton`(서버 목록이 단일 진실 — 로컬 상태 없음, 비로그인 클릭은 로그인 모달).
   game의 `useFavorites`(localStorage 관심종목)와는 별개다 — 그쪽은 시즌 화면 취향.
 
+## 투자·창업 프로파일 (개인화 ⓪, 2026-08-22)
+
+자기신고 설문(`user_profiles` 테이블, 루트 체인 `i8b9c0d1e2f3`) — 사용자당 1행.
+북마크와 같은 "사용자↔분석대상" 축의 심화라 이 스포크가 소유한다(ROADMAP 판정 —
+개인화는 recommendation 확장). **마이데이터 연동·신용점수 조회는 하지 않는다**
+(본인신용정보관리업 허가·유료 API 필요). 정확한 금액 대신 **밴드(구간)만** 받는다.
+
+- **API**: `GET /profile/myself`(자기소개) · `GET /profile`(내 것 — 미작성이면
+  `profile=null`, 404 아님) · `PUT /profile`(저장/재작성 — 덮어쓰기) · `DELETE /profile`
+  (멱등 — 없는 것 삭제는 200 deleted=false).
+- **어휘**: purpose(startup|invest|both) · risk_level(1~5, 증권사 투자성향 5등급) ·
+  budget_band(under_30m~over_300m) · debt_burden(none|manageable|heavy) ·
+  horizon(short|mid|long). **라벨 문장의 단일 정의처는 `profile_entity.py`** —
+  화면·프롬프트 라벨이 여기서 갈라지지 않는다.
+- **소비 경로**: chat → 허브 `UserProfilePort` → 이 스포크 `UserProfileGateway`.
+  chat이 phase2(상권)·주식 서술 컨텍스트에 라벨을 주입한다 — **서술 관점 조정까지만**,
+  프로파일을 근거로 한 매매 권유·예산 적합 단정은 프롬프트 규칙으로 금지(투자자문 경계).
+- **프론트**: `/profile` 설문 페이지(FormData 패턴, 라디오 밴드 선택·삭제 버튼).
+
 ## 레이어
 
 ```

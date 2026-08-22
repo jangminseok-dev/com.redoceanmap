@@ -35,6 +35,7 @@ from hub.app.dtos.news_dto import NewsHit
 from hub.app.dtos.recommendation_record_dto import RecommendedArea
 from hub.app.dtos.stock_forecast_dto import StockForecastSummary
 from hub.app.dtos.stock_analysis_dto import StockAnalysisResult
+from hub.app.dtos.user_profile_dto import UserProfileSummary
 from hub.app.ports.output.commercial_data_port import CommercialDataPort
 from hub.app.ports.output.gemini_answer_port import GeminiAnswerError, GeminiAnswerPort
 from hub.app.ports.output.market_news_search_port import MarketNewsSearchPort
@@ -43,6 +44,7 @@ from hub.app.ports.output.recommendation_record_port import RecommendationRecord
 from hub.app.ports.output.fundamental_read_port import FundamentalReadPort
 from hub.app.ports.output.stock_analysis_port import StockAnalysisPort, StockAnalysisUnavailable
 from hub.app.ports.output.stock_forecast_port import StockForecastPort
+from hub.app.ports.output.user_profile_port import UserProfilePort
 
 logger = logging.getLogger(__name__)
 
@@ -278,6 +280,7 @@ class ChatInteractor(ChatUseCase):
         gemini: GeminiAnswerPort,
         forecaster: StockForecastPort | None = None,
         fundamentals: FundamentalReadPort | None = None,
+        profiles: UserProfilePort | None = None,
     ) -> None:
         self._market = market
         self._recorder = recorder
@@ -288,6 +291,7 @@ class ChatInteractor(ChatUseCase):
         self._gemini = gemini
         self._forecaster = forecaster
         self._fundamentals = fundamentals
+        self._profiles = profiles
 
     def _history_block(self, history: list[Message]) -> str:
         if not history:
@@ -493,8 +497,10 @@ class ChatInteractor(ChatUseCase):
         # phase0(의도 분류 = 도메인 판단) — 단일 모델(7.8B) 정책
         self._notify(on_stage, "intent", "질문 의도를 파악하고 있어요")
         intent, stock_query = await self._classify_intent(prompt, history)
+        # 프로파일은 데이터 근거 서술(stock·market)에만 주입한다 — 미작성·실패는 None(무손상)
+        profile = await self._load_profile(user_id) if intent in ("stock", "market") else None
         if intent == "stock":
-            return await self._answer_stock(conversation_id, prompt, stock_query, on_stage)
+            return await self._answer_stock(conversation_id, prompt, stock_query, on_stage, profile)
         if intent == "market_news":
             return await self._answer_market_news(conversation_id, prompt, on_stage)
         if intent == "general":
@@ -611,6 +617,8 @@ class ChatInteractor(ChatUseCase):
             )
         if area_articles:
             stats_context_lines.append(self._format_area_articles(area_articles))
+        if profile is not None:
+            stats_context_lines.append(self._profile_market_block(profile))
 
         # phase2(최종 서술 = 최종 사용자 답변) → 오케스트레이터 기본 모델(7.8B)
         self._notify(on_stage, "narrate", "추천 이유를 정리하고 있어요")
@@ -698,6 +706,33 @@ class ChatInteractor(ChatUseCase):
 
         return AskResponse(
             text=text, recommendations=recommendations, conversationId=conversation_id,
+        )
+
+    async def _load_profile(self, user_id: int | None) -> UserProfileSummary | None:
+        """프로파일 조회 — 비로그인·미작성·조회 실패는 전부 None(주입 생략, 답변 무손상)."""
+        if user_id is None or self._profiles is None:
+            return None
+        try:
+            return await self._profiles.get_profile(user_id)
+        except Exception:
+            logger.warning("[chat] 프로파일 조회 실패: user=%s", user_id, exc_info=True)
+            return None
+
+    @staticmethod
+    def _profile_market_block(p: UserProfileSummary) -> str:
+        """질문자 프로파일 블록 — phase2 서술의 관점 조정용(미작성 사용자는 블록 자체가 없다).
+
+        프로파일은 근거 데이터가 아니다 — 유의점의 강조점만 조정하게 하고, 이를 근거로
+        수치를 창작하거나 "이 예산으로 가능하다"고 단정하지 못하게 규칙을 함께 싣는다
+        (임대료·권리금 데이터가 없어 예산 적합 판정 자체가 불가능하다).
+        """
+        return (
+            "[질문자 프로파일 — 서술 관점 조정용]\n"
+            f"- {p.purpose_label} · 투자성향 {p.risk_label} · 가용 예산 {p.budget_label}"
+            f" · {p.debt_label} · {p.horizon_label} 관점\n"
+            "- 이 프로파일에 맞춰 유의점의 강조점만 조정할 것(예: 예산이 작거나 부채 부담이"
+            " 있으면 폐업률·경쟁 같은 리스크를 먼저). 프로파일을 근거로 수치를 창작하거나"
+            " 특정 상권이 이 예산으로 가능하다고 단정하지 말 것(임대료·권리금 데이터 없음)"
         )
 
     async def _orchestrate_json(self, prompt: str, phase_label: str) -> dict:
@@ -797,6 +832,7 @@ class ChatInteractor(ChatUseCase):
 
     async def _answer_stock(
         self, conversation_id: int, prompt: str, stock_query: str, on_stage=None,
+        profile: UserProfileSummary | None = None,
     ) -> AskResponse:
         self._notify(on_stage, "analyze", "종목 지표를 분석하고 있어요")
         try:
@@ -829,7 +865,7 @@ class ChatInteractor(ChatUseCase):
         # 둘 다 서술 '앞'에서 조회한다 — 예전엔 답변을 만든 뒤에 조회해 카드에만 실렸고,
         # 그래서 본문이 밸류에이션·과거 통계를 근거로 말하지 못했다.
         self._notify(on_stage, "narrate", "분석 내용을 정리하고 있어요")
-        context = self._format_stock_context(prompt, analysis, hits, forecast, value_notes)
+        context = self._format_stock_context(prompt, analysis, hits, forecast, value_notes, profile)
         # 최종 서술(최종 사용자 답변) → 오케스트레이터 기본 모델(7.8B)
         text = await llm_orchestrator.orchestrate(f"{STOCK_ANSWER_PROMPT}\n\n{context}")
 
@@ -1075,6 +1111,7 @@ class ChatInteractor(ChatUseCase):
         hits: list[NewsHit] | None = None,
         forecast: StockForecastSummary | None = None,
         value_notes: list[str] | None = None,
+        profile: UserProfileSummary | None = None,
     ) -> str:
         headlines = "\n".join(f"- {h}" for h in r.headlines) if r.headlines else "- (없음)"
         unit = cls._currency_unit(r.symbol)
@@ -1105,6 +1142,16 @@ class ChatInteractor(ChatUseCase):
             # 가치·체력(펀더멘털) — 예전엔 카드에만 실려 본문이 "싼가/튼튼한가"를 말하지 못했다.
             lines += "- 가치·체력(펀더멘털):\n"
             lines += "".join(f"  - {n}\n" for n in value_notes)
+        if profile is not None:
+            # 개인화는 서술의 강조점까지다 — 프로파일을 근거로 한 매매 권유는
+            # 투자자문 경계를 넘으므로 규칙을 컨텍스트에 함께 싣는다.
+            lines += (
+                f"- 질문자 투자 프로파일(참고): {profile.risk_label} · {profile.debt_label}"
+                f" · {profile.horizon_label}\n"
+                "  → 서술의 강조점만 조정할 것(안정 성향이면 변동성·리스크 지표를 먼저,"
+                " 공격 성향이면 추세·모멘텀을 먼저). 프로파일을 이유로 매수/매도 권유나"
+                " 특정 상품 추천을 하지 말 것\n"
+            )
         lines += f"- 뉴스 감성: {r.sentiment:+.2f} ({r.sentiment_label})\n- 최근 헤드라인:\n{headlines}"
         related = [h for h in (hits or []) if h.title not in r.headlines]  # 헤드라인과 제목 중복 제거
         if related:

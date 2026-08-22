@@ -21,6 +21,7 @@ import type {
   GameOrderReceipt,
   GameTradeReceipt,
   GameWallet,
+  InvestorProfile,
   MarketArea,
   PriceHistory,
   RecommendationItem,
@@ -251,7 +252,7 @@ export const fetchGameSettlements = (): Promise<GameSettlementList> =>
   getJson(`/game/settlements`);
 
 // ── 북마크 — 관심 종목·상권. 인증은 httpOnly 쿠키가 자동 동행한다. ──
-async function sendJson<T>(path: string, method: "POST" | "DELETE", body?: unknown): Promise<T> {
+async function sendJson<T>(path: string, method: "POST" | "PUT" | "DELETE", body?: unknown): Promise<T> {
   const res = await fetch(`/api/backend${path}`, {
     method,
     headers: body ? { "Content-Type": "application/json" } : undefined,
@@ -277,3 +278,14 @@ export const removeBookmark = (
   targetKey: string,
 ): Promise<{ deleted: boolean }> =>
   sendJson(`/bookmarks/${targetType}/${encodeURIComponent(targetKey)}`, "DELETE");
+
+// ── 투자·창업 프로파일 — 자기신고 설문(밴드 기반), 사용자당 1건. ──
+export const fetchProfile = (): Promise<{ profile: InvestorProfile | null }> =>
+  getJson("/profile");
+
+export const saveProfile = (
+  body: Omit<InvestorProfile, "updated_at">,
+): Promise<InvestorProfile> => sendJson("/profile", "PUT", body);
+
+export const removeProfile = (): Promise<{ deleted: boolean }> =>
+  sendJson("/profile", "DELETE");
