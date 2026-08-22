@@ -13,7 +13,9 @@ LLM-as-judge를 쓰지 않는다(단일 모델 정책상 7.8B가 자기 답을 �
 - inherit_rate / inherit_focus_rate  : 멀티턴 승계율(하나라도 이어받음) / 집중률(그것만 답함)
 - volume_verdict_rate                : 주식 답변의 거래량 신뢰/의심 판정 포함률(C1 골격 준수)
 - risk_mention_rate                  : 상권 추천 이유의 "유의할 점" 포함률(C2 리스크 의무 준수)
-- violations                         : 절대 규칙 위반(환각 숫자·금지 표현·고지 누락·입지 창작)
+- citation_coverage                  : 수치 주장 문장 중 인용 마커([n]) 포함 비율(R4 출처 인용)
+- violations                         : 절대 규칙 위반(환각 숫자·금지 표현·고지 누락·입지 창작·
+                                       유령 인용 dangling_citation — 컨텍스트에 없는 근거 번호)
 - latency_p50/p95_ms                 : phase별 지연
 """
 from __future__ import annotations
@@ -67,11 +69,41 @@ _LOCATION_CLAIM_TOKENS = ("호선", "환승", "관문")
 
 _NUM = re.compile(r"\d[\d,]*(?:\.\d+)?")
 
+# 출처 인용(R4) — 컨텍스트의 근거 번호 표기('근거 [n]', chat_interactor가 단일 정의처)와
+# 답변의 인용 마커([n]). phase2(market)는 마커 미도입이라 대상이 아니다(기사 근거가
+# 프론트 카드로 노출되지 않아 앵커가 성립하지 않는다 — ROADMAP R4 판정).
+_CITED_PHASES = ("stock_answer", "market_news_answer")
+_SOURCE_NUM = re.compile(r"근거 \[(\d+)\]")
+_MARKER_NUM = re.compile(r"\[(\d+)\]")
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?…])\s+|\n+")
+_LEADING_MARKERS = re.compile(r"^\s*((?:\[\d+\]\s*)+)")
+
+
+def _sentences_with_markers(text: str) -> list[str]:
+    """문장 분할 — 문장 첫머리로 밀린 마커는 앞 문장에 귀속시킨다.
+
+    모델이 마커를 마침표 뒤에 쓰면("…입니다. [1]") 단순 분할로는 다음 문장 소유가 되어
+    커버리지가 이중으로 틀린다(앞 문장은 미커버, 뒤 문장은 무임 커버).
+    """
+    out: list[str] = []
+    for part in _SENTENCE_SPLIT.split(text or ""):
+        if not part.strip():
+            continue
+        lead = _LEADING_MARKERS.match(part)
+        if lead and out:
+            out[-1] += lead.group(1)
+            part = part[lead.end():]
+        if part.strip():
+            out.append(part)
+    return out
+
 
 @dataclass(frozen=True)
 class RuleViolation:
     case_id: str
-    rule: str      # hallucinated_number | forbidden_phrase | missing_disclaimer | location_claim
+    # hallucinated_number | forbidden_phrase | missing_disclaimer | location_claim
+    # | truncated_answer | dangling_citation
+    rule: str
     detail: str
 
 
@@ -90,6 +122,7 @@ class EvalReport:
     inherit_focus_rate: float | None  # 이어받은 것만으로 답했나(부분집합)
     volume_verdict_rate: float | None  # 주식 답변의 거래량 '신뢰/의심' 판정 포함률
     risk_mention_rate: float | None    # 상권 추천 전체 이유에 "유의" 문장 포함률
+    citation_coverage: float | None    # 수치 주장 문장 중 인용 마커 포함 비율(마커 도입 경로만)
     violations: tuple[RuleViolation, ...]
     latency_p50_ms: dict[str, float]
     latency_p95_ms: dict[str, float]
@@ -262,8 +295,31 @@ def score(cases: list[EvalCase], traces: list[CaseTrace]) -> EvalReport:
     )
     risk_mention_rate = _rate(risk_mentions, len(market_recs))
 
-    # --- 절대 규칙 위반 ---
+    # --- 출처 인용(R4) — 커버리지 + 유령 인용 ---
+    citation_pool = 0
+    citation_covered = 0
     violations: list[RuleViolation] = []
+    for c, t in scored:
+        gen = _generative_call(t)
+        if gen is None or gen.phase not in _CITED_PHASES or not t.answer_text:
+            continue
+        sources = {int(n) for n in _SOURCE_NUM.findall(gen.prompt)}
+        # 유령 인용 — 컨텍스트가 표시하지 않은 근거 번호를 지어낸 것(새 환각 유형, 절대 규칙)
+        marker_nums = {int(n) for n in _MARKER_NUM.findall(t.answer_text)}
+        for n in sorted(marker_nums - sources):
+            violations.append(RuleViolation(c.case_id, "dangling_citation", f"[{n}]"))
+        if not sources:
+            continue  # 마커 도입 전 트레이스 — 커버리지 표본에서 제외
+        for sentence in _sentences_with_markers(t.answer_text):
+            # 마커 자체의 숫자([12])가 문장을 '수치 주장'으로 만들지 않게 벗겨내고 센다
+            if not _numbers(_MARKER_NUM.sub("", sentence)):
+                continue
+            citation_pool += 1
+            if _MARKER_NUM.search(sentence):
+                citation_covered += 1
+    citation_coverage = _rate(citation_covered, citation_pool)
+
+    # --- 절대 규칙 위반 ---
     for c, t in scored:
         # 잘린 답변에는 고지 유무를 물을 수 없다 — 끊긴 뒤에 올 문장을 없다고 셀 수는 없다.
         # 잘림으로 따로 세고 고지 판정에서는 면제한다(같은 결함을 두 번 세지 않는다).
@@ -323,6 +379,7 @@ def score(cases: list[EvalCase], traces: list[CaseTrace]) -> EvalReport:
         inherit_focus_rate=inherit_focus_rate,
         volume_verdict_rate=volume_verdict_rate,
         risk_mention_rate=risk_mention_rate,
+        citation_coverage=citation_coverage,
         violations=tuple(violations),
         latency_p50_ms=latency_p50,
         latency_p95_ms=latency_p95,

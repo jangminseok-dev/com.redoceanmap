@@ -105,7 +105,7 @@ export default function ChatPanel({
               </div>
               <div className="min-w-0">
                 <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
-                  {m.content}
+                  {withCitations(m.content)}
                 </p>
 
                 {m.stock && (
@@ -293,13 +293,36 @@ function StockSummaryCard({ stock, onClick }: { stock: StockAnalysis; onClick: (
   );
 }
 
+// 답변 본문의 인용 마커 [n]을 근거 배지로 렌더 — 번호는 아래 근거 뉴스 목록의 [n]과 대응한다
+// (백엔드가 컨텍스트에 '근거 [n]'으로 번호를 부여하고 모델이 문장 끝에 인용한다 — R4).
+function withCitations(text: string): React.ReactNode {
+  return text.split(/(\[\d+\])/g).map((part, i) => {
+    const marker = /^\[(\d+)\]$/.exec(part);
+    if (!marker) return part;
+    return (
+      <sup
+        key={i}
+        title={`근거 ${marker[1]}번`}
+        className="ml-0.5 text-[10px] font-semibold text-brand tabular-nums"
+      >
+        [{marker[1]}]
+      </sup>
+    );
+  });
+}
+
 function NewsEvidenceList({ items }: { items: NewsCardItem[] }) {
   return (
     <div className="mt-3 flex flex-col gap-1.5">
-      <p className="text-xs font-medium text-foreground-muted">근거 뉴스 {items.length}건</p>
+      <p className="text-xs font-medium text-foreground-muted">
+        근거 뉴스 {items.length}건 — 본문의 [n]이 아래 번호입니다
+      </p>
       {items.map((n, i) => (
         <div key={i} className="bg-background border border-border rounded-xl px-3 py-2">
-          <p className="text-xs font-medium leading-snug">{n.title}</p>
+          <p className="text-xs font-medium leading-snug">
+            <span className="mr-1 font-semibold text-brand tabular-nums">[{i + 1}]</span>
+            {n.title}
+          </p>
           <p className="text-xs text-foreground-muted mt-0.5">
             {n.publishedAt ?? "날짜 미상"} · {n.ticker ?? "종목 무관"} · {sentimentText(n)}
           </p>

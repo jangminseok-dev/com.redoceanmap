@@ -255,6 +255,55 @@ def test_입지_창작은_market_추천_답변에서_잡는다():
     assert any(v.rule == "location_claim" for v in report.violations)
 
 
+# --- 출처 인용 (R4) ---
+
+def _stock_answer_call(prompt: str) -> LlmCall:
+    return LlmCall(phase="stock_answer", prompt=prompt, response="r", latency_ms=1.0)
+
+
+_CITED_PROMPT = (
+    "[TSLA 분석 데이터] — 근거 [1] (가격 단위)\n- 현재가: 230.00달러\n"
+    "- 근거 [2] 과거 통계: 과거 120건 중 62%가 상승\n"
+    "- 관련 뉴스(감성 라벨):\n  - 근거 [5] (2026-08-01 | 호재) 실적 서프라이즈"
+)
+
+
+def test_citation_coverage는_수치_문장_중_마커_비율이다():
+    cases = [_case("C1", category="stock_us", prompt="테슬라?",
+                   expected_intent="stock", accepted_queries=("TSLA",))]
+    # 수치 문장 3개 중 2개에 마커, 고지 문장은 숫자가 없어 표본 제외
+    answer = ("현재가는 230달러입니다. [1] 과거 120건 중 62%가 상승했습니다. [2][5] "
+              "거래량은 20일 평균 수준입니다. 투자 판단의 책임은 본인에게 있습니다.")
+    traces = [_trace("C1", final_intent="stock", stock_query="TSLA", answer_text=answer,
+                     calls=(_stock_answer_call(_CITED_PROMPT),))]
+    report = score(cases, traces)
+    assert report.citation_coverage == 2 / 3
+    assert not any(v.rule == "dangling_citation" for v in report.violations)
+
+
+def test_없는_근거_번호는_dangling_citation_위반이다():
+    cases = [_case("C1", category="stock_us", prompt="테슬라?",
+                   expected_intent="stock", accepted_queries=("TSLA",))]
+    answer = "현재가는 230달러입니다. [7] 투자 판단의 책임은 본인에게 있습니다."
+    traces = [_trace("C1", final_intent="stock", stock_query="TSLA", answer_text=answer,
+                     calls=(_stock_answer_call(_CITED_PROMPT),))]
+    report = score(cases, traces)
+    assert [(v.rule, v.detail) for v in report.violations
+            if v.rule == "dangling_citation"] == [("dangling_citation", "[7]")]
+
+
+def test_마커_도입_전_트레이스는_커버리지_표본에서_빠진다():
+    cases = [_case("C1", category="stock_us", prompt="테슬라?",
+                   expected_intent="stock", accepted_queries=("TSLA",))]
+    # 프롬프트에 '근거 [n]' 표기가 없다 — 구 트레이스. 마커 없는 수치 문장이 있어도 표본 아님
+    traces = [_trace("C1", final_intent="stock", stock_query="TSLA",
+                     answer_text="현재가는 230달러입니다. 투자 판단은 본인 책임입니다.",
+                     calls=(_stock_answer_call("[TSLA 분석 데이터]\n- 현재가: 230.00달러"),))]
+    report = score(cases, traces)
+    assert report.citation_coverage is None
+    assert not any(v.rule == "dangling_citation" for v in report.violations)
+
+
 # --- 지연 ---
 
 def test_지연_백분위는_phase별로_집계():

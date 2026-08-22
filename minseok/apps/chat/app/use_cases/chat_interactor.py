@@ -152,7 +152,9 @@ STOCK_ANSWER_PROMPT = """당신은 주식 분석 상담사입니다.
 - 주식 초보자도 이해할 수 있게 설명 — 전문 용어를 처음 쓸 때는 괄호로 짧은 우리말 풀이를 붙인다
   (예: RSI(최근 상승·하락 힘의 균형을 0~100으로 나타낸 지표), 지지선(주가가 잘 안 내려가는 가격대))
 - 수치가 의미하는 바를 일상적인 말로 해석해 서술 — 전문성은 유지하되 어려운 표현만 나열하지 말 것
-- 마지막에 투자 판단은 본인 책임이라는 고지 한 문장을 포함"""
+- 출처 표기: 수치나 사실을 말하는 문장 끝에 근거 번호를 [1]처럼 붙일 것(복수 근거면 [1][5]).
+  컨텍스트에 '근거 [n]'으로 표시된 번호만 쓰고, 표시되지 않은 번호를 만들지 말 것
+- 마지막에 투자 판단은 본인 책임이라는 고지 한 문장을 포함 — 이 고지 문장에는 근거 번호를 붙이지 않는다"""
 
 MARKET_NEWS_ANSWER_PROMPT = """당신은 시장·업황 분석 상담사입니다.
 제공된 수집 뉴스 헤드라인과 감성 라벨만 근거로 질문한 업황/시장 동향을 한국어 4~6문장으로 설명하세요.
@@ -162,7 +164,10 @@ MARKET_NEWS_ANSWER_PROMPT = """당신은 시장·업황 분석 상담사입니�
 - 헤드라인의 발행일을 감안해 시점을 명시 (오래된 뉴스는 그렇게 안내)
 - 초보자도 이해할 수 있게 어려운 경제 용어는 괄호로 짧은 우리말 풀이를 곁들여 설명
 - 개별 종목 매수/매도 지시 금지, 방향 단정 금지
-- 근거가 헤드라인(제목) 수준임을 감안해 단정을 피하고, 마지막에 투자 판단 책임 고지 한 문장"""
+- 출처 표기: 수치나 사실을 말하는 문장 끝에 근거가 된 뉴스 번호를 [1]처럼 붙일 것(복수면 [1][3]).
+  컨텍스트에 '근거 [n]'으로 표시된 번호만 쓰고, 표시되지 않은 번호를 만들지 말 것
+- 근거가 헤드라인(제목) 수준임을 감안해 단정을 피하고, 마지막에 투자 판단 책임 고지 한 문장
+  (고지 문장에는 근거 번호를 붙이지 않는다)"""
 
 PHASE1_PROMPT = """당신은 서울 상권 분석 전문가입니다.
 사용자 질문을 보고 다음을 결정하세요:
@@ -819,7 +824,7 @@ class ChatInteractor(ChatUseCase):
                 " 데이터 부재를 안내하세요."
             )
         lines = [f"사용자 질문: {prompt}\n", "[관련 수집 뉴스 — 의미 유사도 상위]"]
-        for h in hits:
+        for i, h in enumerate(hits, start=1):
             date_text = f"{h.published_at:%Y-%m-%d}" if h.published_at else "날짜 미상"
             ticker_text = h.ticker or "종목 무관"
             if h.sentiment is None:
@@ -827,7 +832,8 @@ class ChatInteractor(ChatUseCase):
             else:
                 direction = "호재" if h.sentiment > 0 else "악재" if h.sentiment < 0 else "중립"
                 label_text = f"감성 {h.sentiment:+.1f}({direction})·{h.event_type or '기타'}"
-            lines.append(f"- ({date_text} | {ticker_text} | {label_text}) {h.title}")
+            # '근거 [n]' 표기가 인용 마커의 단일 정의처 — 채점기(eval_scorer)가 같은 패턴을 읽는다
+            lines.append(f"- 근거 [{i}] ({date_text} | {ticker_text} | {label_text}) {h.title}")
         return "\n".join(lines)
 
     async def _answer_stock(
@@ -1092,13 +1098,13 @@ class ChatInteractor(ChatUseCase):
             return ""
         if not f.ready:
             return (
-                f"- 과거 통계: 같은 신호가 났던 사례가 {f.sample_size}건뿐이라"
+                f"- 근거 [2] 과거 통계: 같은 신호가 났던 사례가 {f.sample_size}건뿐이라"
                 " 통계적으로 유의하지 않음 — 확률을 말하지 말 것\n"
             )
         base = f" (평소 {f.baseline_up_rate:.0%})" if f.baseline_up_rate is not None else ""
         ci = f", 95% 구간 {f.ci_low:.0%}~{f.ci_high:.0%}" if f.ci_low is not None else ""
         return (
-            f"- 과거 통계: 같은 신호가 났던 과거 {f.sample_size}건 중"
+            f"- 근거 [2] 과거 통계: 같은 신호가 났던 과거 {f.sample_size}건 중"
             f" {f.up_rate:.0%}가 상승{base}{ci}."
             " 이는 과거 빈도일 뿐 미래 확률이 아니며, 단정적으로 말하지 말 것\n"
         )
@@ -1115,9 +1121,13 @@ class ChatInteractor(ChatUseCase):
     ) -> str:
         headlines = "\n".join(f"- {h}" for h in r.headlines) if r.headlines else "- (없음)"
         unit = cls._currency_unit(r.symbol)
+        # 근거 번호는 고정 배정(블록 없으면 결번) — [1] 시세·지표, [2] 과거 통계,
+        # [3] 가치·체력, [4] 뉴스 감성·헤드라인, [5]부터 관련 뉴스 개별.
+        # '근거 [n]' 표기가 인용 마커의 단일 정의처 — 채점기(eval_scorer)가 같은 패턴을 읽는다.
         lines = (
             f"사용자 질문: {prompt}\n\n"
-            f"[{r.symbol} 분석 데이터] (가격 단위는 모두 {unit} — 다른 통화로 바꿔 쓰지 말 것)\n"
+            f"[{r.symbol} 분석 데이터] — 근거 [1]"
+            f" (가격 단위는 모두 {unit} — 다른 통화로 바꿔 쓰지 말 것)\n"
             f"- 현재가: {r.price:,.2f}{unit}\n"
             f"- 방향 신호: {r.direction} (확신도 {r.confidence:.2f})\n"
             f"- RSI(14): {r.rsi:.1f} (30↓ 과매도 / 70↑ 과매수)\n"
@@ -1140,7 +1150,7 @@ class ChatInteractor(ChatUseCase):
         lines += cls._forecast_text(forecast)
         if value_notes:
             # 가치·체력(펀더멘털) — 예전엔 카드에만 실려 본문이 "싼가/튼튼한가"를 말하지 못했다.
-            lines += "- 가치·체력(펀더멘털):\n"
+            lines += "- 근거 [3] 가치·체력(펀더멘털):\n"
             lines += "".join(f"  - {n}\n" for n in value_notes)
         if profile is not None:
             # 개인화는 서술의 강조점까지다 — 프로파일을 근거로 한 매매 권유는
@@ -1152,18 +1162,21 @@ class ChatInteractor(ChatUseCase):
                 " 공격 성향이면 추세·모멘텀을 먼저). 프로파일을 이유로 매수/매도 권유나"
                 " 특정 상품 추천을 하지 말 것\n"
             )
-        lines += f"- 뉴스 감성: {r.sentiment:+.2f} ({r.sentiment_label})\n- 최근 헤드라인:\n{headlines}"
+        lines += (
+            f"- 근거 [4] 뉴스 감성: {r.sentiment:+.2f} ({r.sentiment_label})"
+            f"\n- 최근 헤드라인(근거 [4]):\n{headlines}"
+        )
         related = [h for h in (hits or []) if h.title not in r.headlines]  # 헤드라인과 제목 중복 제거
         if related:
             lines += "\n- 관련 뉴스(감성 라벨):"
-            for h in related:
+            for i, h in enumerate(related, start=5):
                 date_text = f"{h.published_at:%Y-%m-%d}" if h.published_at else "날짜 미상"
                 if h.sentiment is None:
                     label_text = "감성 라벨 없음"
                 else:
                     direction = "호재" if h.sentiment > 0 else "악재" if h.sentiment < 0 else "중립"
                     label_text = f"감성 {h.sentiment:+.1f}({direction})·{h.event_type or '기타'}"
-                lines += f"\n  - ({date_text} | {label_text}) {h.title}"
+                lines += f"\n  - 근거 [{i}] ({date_text} | {label_text}) {h.title}"
         return lines
 
     async def list_conversations(self, user_id: int, limit: int = 30) -> list[ConversationSummary]:

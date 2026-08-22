@@ -1168,3 +1168,27 @@ async def test_비로그인_미작성_실패는_주입_없이_기존과_동일�
     result = await interactor.ask("역삼동 카페 어때?", user_id=7)
     assert len(result.recommendations) == 1
     assert "[질문자 프로파일" not in llm.calls[2][0]
+
+
+# --- 출처 인용 주입 (R4) ---
+
+async def test_stock_컨텍스트에_근거_번호와_인용_규칙이_들어간다(monkeypatch):
+    news = _StubNewsSearch(hits=[_hit(title="헤드라인과 다른 새 기사")])
+    interactor, llm, _ = _build(monkeypatch, [INTENT_STOCK, "주식 서술"], news=news)
+    await interactor.ask("삼성전자 어때?")
+
+    ctx = llm.calls[1][0]
+    assert "— 근거 [1]" in ctx                      # 시세·지표 블록
+    assert "- 근거 [4] 뉴스 감성" in ctx            # 감성·헤드라인 블록
+    assert "근거 [5] (" in ctx                      # 관련 뉴스 첫 항목
+    assert "근거 번호를 [1]처럼" in ctx             # 프롬프트 인용 규칙 동반
+
+
+async def test_market_news_컨텍스트에_뉴스별_근거_번호가_붙는다(monkeypatch):
+    news = _StubNewsSearch(hits=[_hit(), _hit(title="두 번째 기사")])
+    interactor, llm, _ = _build(monkeypatch, [INTENT_MARKET_NEWS, "업황 서술"], news=news)
+    await interactor.ask("반도체 업황 어때?")
+
+    ctx = llm.calls[1][0]
+    assert "- 근거 [1] (" in ctx and "- 근거 [2] (" in ctx
+    assert "근거가 된 뉴스 번호를 [1]처럼" in ctx
