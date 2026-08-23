@@ -19,4 +19,5 @@ class BookmarkAlertReport:
     bookmarks_scanned: int
     symbols_scanned: int
     signals_found: int          # 비중립 신호가 잡힌 (사용자, 종목) 쌍 수
+    deduped: int = 0            # 같은 신호 지속으로 발송을 억제한 쌍 수
     emails: list[AlertEmail] = field(default_factory=list)

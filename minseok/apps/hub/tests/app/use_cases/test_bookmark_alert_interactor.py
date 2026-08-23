@@ -1,8 +1,9 @@
-"""BookmarkAlertInteractor 테스트 — 스텁 포트로 조합·제외 규칙을 고정한다."""
+"""BookmarkAlertInteractor 테스트 — 스텁 포트로 조합·제외·dedupe 규칙을 고정한다."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from hub.app.dtos.alert_delivery_dto import DeliveredSignal
 from hub.app.dtos.bookmark_directory_dto import BookmarkedStock
 from hub.app.dtos.stock_status_dto import StockStatusInfo
 from hub.app.use_cases.bookmark_alert_interactor import BookmarkAlertInteractor
@@ -38,6 +39,19 @@ class _StubContacts:
         return {u: e for u, e in self.emails.items() if u in user_ids}
 
 
+class _StubDeliveries:
+    def __init__(self, previous: list[DeliveredSignal] | None = None):
+        self.state = list(previous or [])
+        self.replaced: list[list[DeliveredSignal]] = []
+
+    async def last_signals(self) -> list[DeliveredSignal]:
+        return list(self.state)
+
+    async def replace(self, signals: list[DeliveredSignal]) -> None:
+        self.replaced.append(list(signals))
+        self.state = list(signals)
+
+
 def _status(ticker: str, direction: str = "UP", ready: bool = False) -> StockStatusInfo:
     return StockStatusInfo(
         ticker=ticker, as_of=_NOW, direction=direction, price=100.0,
@@ -46,11 +60,12 @@ def _status(ticker: str, direction: str = "UP", ready: bool = False) -> StockSta
     )
 
 
-def _build(bookmarks, statuses, emails):
+def _build(bookmarks, statuses, emails, deliveries=None):
     return BookmarkAlertInteractor(
         bookmarks=_StubBookmarks(bookmarks),
         statuses=_StubStatuses(statuses),
         contacts=_StubContacts(emails),
+        deliveries=deliveries or _StubDeliveries(),
     )
 
 
@@ -83,15 +98,18 @@ async def test_이메일_없는_사용자는_발송에서_빠지고_나머지는
     assert report.signals_found == 2  # 관측 자체는 집계에 남는다
 
 
-async def test_북마크가_없으면_포트_호출_없이_빈_리포트():
+async def test_북마크가_없으면_빈_리포트에_통지_상태도_비운다():
     statuses = _StubStatuses({})
     contacts = _StubContacts({})
+    deliveries = _StubDeliveries(previous=[DeliveredSignal(1, "AAPL", "UP")])
     interactor = BookmarkAlertInteractor(
         bookmarks=_StubBookmarks([]), statuses=statuses, contacts=contacts,
+        deliveries=deliveries,
     )
     report = await interactor.scan()
     assert report.emails == [] and report.bookmarks_scanned == 0
     assert statuses.calls == [] and contacts.calls == []
+    assert deliveries.state == []  # 잔존 상태가 훗날 첫 알림을 삼키지 않게
 
 
 async def test_신호가_전부_중립이면_연락처_조회조차_하지_않는다():
@@ -100,7 +118,61 @@ async def test_신호가_전부_중립이면_연락처_조회조차_하지_않�
         bookmarks=_StubBookmarks([BookmarkedStock(user_id=1, ticker="TSLA", label="테슬라")]),
         statuses=_StubStatuses({"TSLA": _status("TSLA", "NEUTRAL")}),
         contacts=contacts,
+        deliveries=_StubDeliveries(),
     )
     report = await interactor.scan()
     assert report.emails == [] and report.signals_found == 0
     assert contacts.calls == []
+
+
+# --- dedupe — 같은 신호 반복 발송 방지 ---
+
+async def test_같은_신호가_지속되면_발송을_억제하고_상태는_유지한다():
+    deliveries = _StubDeliveries(previous=[DeliveredSignal(1, "AAPL", "UP")])
+    interactor = _build(
+        [BookmarkedStock(user_id=1, ticker="AAPL", label="애플")],
+        {"AAPL": _status("AAPL", "UP")}, {1: "a@x.com"}, deliveries,
+    )
+    report = await interactor.scan()
+    assert report.emails == [] and report.deduped == 1 and report.signals_found == 1
+    assert deliveries.state == [DeliveredSignal(1, "AAPL", "UP")]  # 다음 스캔에도 억제
+
+
+async def test_방향이_바뀌면_새_알림이_나가고_상태가_갱신된다():
+    deliveries = _StubDeliveries(previous=[DeliveredSignal(1, "AAPL", "UP")])
+    interactor = _build(
+        [BookmarkedStock(user_id=1, ticker="AAPL", label="애플")],
+        {"AAPL": _status("AAPL", "DOWN")}, {1: "a@x.com"}, deliveries,
+    )
+    report = await interactor.scan()
+    assert len(report.emails) == 1 and "하락" in report.emails[0].subject
+    assert deliveries.state == [DeliveredSignal(1, "AAPL", "DOWN")]
+
+
+async def test_신호가_꺼지면_상태가_사라져_재발생_때_새_알림이다():
+    deliveries = _StubDeliveries(previous=[DeliveredSignal(1, "AAPL", "UP")])
+    interactor = _build(
+        [BookmarkedStock(user_id=1, ticker="AAPL", label="애플")],
+        {"AAPL": _status("AAPL", "NEUTRAL")}, {1: "a@x.com"}, deliveries,
+    )
+    await interactor.scan()
+    assert deliveries.state == []  # 소멸 반영
+
+    # 다음 스캔에서 같은 방향이 재발생 — dedupe 없이 발송된다
+    interactor2 = _build(
+        [BookmarkedStock(user_id=1, ticker="AAPL", label="애플")],
+        {"AAPL": _status("AAPL", "UP")}, {1: "a@x.com"}, deliveries,
+    )
+    report = await interactor2.scan()
+    assert len(report.emails) == 1
+
+
+async def test_이메일_없어_못_보낸_신호는_상태에_남기지_않는다():
+    deliveries = _StubDeliveries()
+    interactor = _build(
+        [BookmarkedStock(user_id=1, ticker="AAPL", label="애플")],
+        {"AAPL": _status("AAPL", "UP")}, {}, deliveries,  # 이메일 없음
+    )
+    report = await interactor.scan()
+    assert report.emails == []
+    assert deliveries.state == []  # 이메일이 생기면 그때 첫 알림이 나가야 한다

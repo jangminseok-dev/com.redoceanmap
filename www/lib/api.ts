@@ -22,6 +22,7 @@ import type {
   GameTradeReceipt,
   GameWallet,
   InvestorProfile,
+  AlertSetting,
   BookmarkBoardItem,
   MarketArea,
   PriceHistory,
@@ -283,6 +284,12 @@ export const removeBookmark = (
 // 관심 보드(③-M7) — 북마크에 종목 신호·상권 점수를 붙여 한 번에 준다(등록 최신순 고정)
 export const fetchBookmarkBoard = (): Promise<{ items: BookmarkBoardItem[] }> =>
   getJson("/bookmarks/board");
+
+// ── 관심 종목 이메일 알림 수신 설정 — 미설정이면 백엔드가 기본 수신(true) ──
+export const fetchAlertSetting = (): Promise<AlertSetting> => getJson("/alert-settings");
+
+export const saveAlertSetting = (emailAlerts: boolean): Promise<AlertSetting> =>
+  sendJson("/alert-settings", "PUT", { email_alerts: emailAlerts });
 
 // ── 투자·창업 프로파일 — 자기신고 설문(밴드 기반), 사용자당 1건. ──
 export const fetchProfile = (): Promise<{ profile: InvestorProfile | null }> =>

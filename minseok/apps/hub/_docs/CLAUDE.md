@@ -147,7 +147,12 @@ apps/hub/dependencies/user_profile_provider.py  # get_user_profile_port (NotImpl
 
 - **BookmarkDirectoryPort** — 전 사용자 종목 북마크 횡단 조회(`stock_bookmarks()`).
   구현: `recommendation`의 `BookmarkDirectoryGateway`(직접 조회 — Directory 선례).
-  상권 북마크는 계약에 없다(상권 점수는 분기 단위 — '신호 발생' 알림 대상 아님, v1 판정).
+  **알림 수신을 끈 회원(user_alert_settings)은 여기서 제외**된다 — 발송 대상 열람이라는
+  계약 의미(정지·탈퇴를 빼는 MemberContactPort와 같은 논리). 상권 북마크는 계약에
+  없다(상권 점수는 분기 단위 — '신호 발생' 알림 대상 아님, v1 판정).
+- **AlertDeliveryPort** — dedupe 상태(마지막으로 통지한 사용자·종목·방향).
+  `last_signals()` / `replace()`(전량 스캔 전제의 전체 교체 — 꺼진 신호는 자연 소멸).
+  구현: `recommendation`의 `AlertDeliveryGateway`(`user_alert_deliveries`).
 - **MemberContactPort** — `emails_by_ids(user_ids)` → user_id→이메일. 구현: `auth`의
   `MemberContactGateway`. 정지·탈퇴·이메일 없는 계정은 키 자체가 없다(발송 대상 아님).
   MemberDirectoryPort(회원 관리·RBAC)와 별개인 발송 목적 전용(Record↔Directory 분리 선례).
@@ -310,7 +315,7 @@ apps/hub/
 |------|------|
 | 뉴스 수집 | n8n(스케줄+RSS) → `POST /automation/news` → NewsIngestInteractor → `NewsStoragePort` → stock 저장 |
 | 시그널 알림 | n8n(스케줄) → `POST /automation/stock-scan` → SignalScanInteractor → 기존 `StockAnalysisPort` 재사용 → n8n이 중립 제외 후 Gmail 발송 |
-| 관심 종목 알림(③-M3) | n8n(매일 15:30 — 스냅샷 cron 14:00 뒤) → `POST /automation/bookmark-alerts` → BookmarkAlertInteractor(북마크×신호×이메일 조합, 비중립만, 메일 조립은 순수 도메인 `bookmark_alert_composer` — LLM 미사용·권유 금지·고지 필수) → 응답 `emails[]`를 n8n이 사용자별 Gmail 발송. 워크플로: [[minseok/apps/hub/_docs/n8n_bookmark_alert_workflow.json]]. v1 한계: 신호 유지 시 주기마다 반복 발송(dedupe 후속) |
+| 관심 종목 알림(③-M3) | n8n(매일 15:30 — 스냅샷 cron 14:00 뒤) → `POST /automation/bookmark-alerts` → BookmarkAlertInteractor(북마크×신호×이메일 조합, 비중립만, 메일 조립은 순수 도메인 `bookmark_alert_composer` — LLM 미사용·권유 금지·고지 필수) → 응답 `emails[]`를 n8n이 사용자별 Gmail 발송. 워크플로: [[minseok/apps/hub/_docs/n8n_bookmark_alert_workflow.json]]. **dedupe(2026-08-23)**: 마지막 통지 신호와 같으면 억제(AlertDeliveryPort — 방향 전환·소멸 후 재발생은 새 알림, 이메일 없어 못 보낸 신호는 상태 미기록), **수신 설정**: 끈 회원은 BookmarkDirectoryPort가 스캔에서 제외(`PUT /alert-settings`, 기본 수신) |
 | 메일 수신 | n8n(Gmail Push/폴링) → `POST /automation/mail` → MailIngestInteractor → `MailStoragePort` → mail 저장(조회: `GET /mail/list`) |
 | OHLCV 수집 | cron(`scripts/collect_prices.py`) → `POST /automation/prices` (+`GET /automation/prices/coverage`) → PriceBarIngestInteractor → `PriceBarStoragePort` → stock 저장 |
 | 뉴스 라벨링 | cron(`scripts/label_news.py`, EXAONE 7.8B Ollama) → `GET /automation/news-labels/pending` → 라벨 → `POST /automation/news-labels` → NewsLabelIngestInteractor → `NewsLabelStoragePort` → stock 저장 |

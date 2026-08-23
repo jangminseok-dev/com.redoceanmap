@@ -1027,6 +1027,11 @@ export type BookmarkBoardItem = {
   area: BookmarkAreaStatus | null;
 };
 
+// ── /alert-settings (직접 호출 — snake_case DTO) — 관심 종목 이메일 알림 수신 설정 ──
+export type AlertSetting = {
+  email_alerts: boolean; // 미설정 회원은 백엔드가 true(기본 수신)로 응답
+};
+
 // ── /profile (직접 호출 — snake_case DTO) — 투자·창업 프로파일 설문(밴드 기반) ──
 export type InvestorProfile = {
   purpose: "startup" | "invest" | "both";

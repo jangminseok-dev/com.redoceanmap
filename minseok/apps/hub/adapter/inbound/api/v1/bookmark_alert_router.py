@@ -29,6 +29,7 @@ async def scan_bookmark_alerts(
         bookmarksScanned=report.bookmarks_scanned,
         symbolsScanned=report.symbols_scanned,
         signalsFound=report.signals_found,
+        deduped=report.deduped,
         emails=[
             AlertEmailSchema(to=e.to, subject=e.subject, body=e.body)
             for e in report.emails

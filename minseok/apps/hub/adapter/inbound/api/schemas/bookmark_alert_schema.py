@@ -15,4 +15,5 @@ class BookmarkAlertResponse(BaseModel):
     bookmarksScanned: int
     symbolsScanned: int
     signalsFound: int
+    deduped: int  # 같은 신호 지속으로 발송을 억제한 쌍 수
     emails: list[AlertEmailSchema]

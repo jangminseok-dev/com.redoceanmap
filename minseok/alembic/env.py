@@ -36,6 +36,7 @@ import admin.adapter.outbound.orm.pdf_document_orm  # noqa: F401
 import chat.adapter.outbound.orm.conversation_orm  # noqa: F401
 import recommendation.adapter.outbound.orm.recommendation_orm  # noqa: F401
 import recommendation.adapter.outbound.orm.profile_orm  # noqa: F401
+import recommendation.adapter.outbound.orm.alert_orm  # noqa: F401
 import stock.adapter.outbound.orm.news_article_orm  # noqa: F401
 import stock.adapter.outbound.orm.price_bar_orm  # noqa: F401
 import stock.adapter.outbound.orm.news_label_orm  # noqa: F401

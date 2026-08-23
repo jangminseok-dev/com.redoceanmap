@@ -1,8 +1,14 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { UserRound } from "lucide-react";
-import { fetchProfile, removeProfile, saveProfile } from "@/lib/api";
+import { BellRing, UserRound } from "lucide-react";
+import {
+  fetchAlertSetting,
+  fetchProfile,
+  removeProfile,
+  saveAlertSetting,
+  saveProfile,
+} from "@/lib/api";
 import type { InvestorProfile } from "@/lib/types";
 import { useUIStore } from "@/lib/uiStore";
 import { Button } from "@/components/ui/button";
@@ -78,6 +84,53 @@ function RadioGroup({
   );
 }
 
+/** 관심 종목 이메일 알림 수신 토글 — 미설정은 기본 수신(백엔드 규칙과 동일). */
+function AlertSettingSection() {
+  const queryClient = useQueryClient();
+  const { data, isPending } = useQuery({
+    queryKey: ["alert-setting"],
+    queryFn: fetchAlertSetting,
+  });
+  const save = useMutation({
+    mutationFn: saveAlertSetting,
+    onSuccess: (saved) => queryClient.setQueryData(["alert-setting"], saved),
+  });
+
+  const enabled = data?.email_alerts ?? true;
+
+  return (
+    <section className="rounded-2xl bg-surface border border-border p-6">
+      <h2 className="text-sm font-semibold flex items-center gap-1.5">
+        <BellRing size={15} /> 관심 종목 이메일 알림
+      </h2>
+      <p className="mt-1 text-xs text-foreground-muted">
+        북마크한 종목에 상승·하락 신호가 관측되면 가입 이메일로 알려드립니다(하루 1회 스캔,
+        같은 신호가 이어지면 다시 보내지 않습니다). 끄면 스캔 대상에서 빠집니다.
+      </p>
+      {isPending ? (
+        <div className="mt-3 skeleton h-10 w-40 rounded-xl" />
+      ) : (
+        <div className="mt-3 flex gap-2">
+          {([true, false] as const).map((value) => (
+            <Button
+              key={String(value)}
+              size="md"
+              variant={enabled === value ? "default" : "weak"}
+              loading={save.isPending && save.variables === value}
+              onClick={() => enabled !== value && save.mutate(value)}
+            >
+              {value ? "알림 켬" : "알림 끔"}
+            </Button>
+          ))}
+        </div>
+      )}
+      {save.isError && (
+        <p className="mt-2 text-xs text-brand">저장에 실패했습니다. 다시 시도해 주세요.</p>
+      )}
+    </section>
+  );
+}
+
 /** 투자·창업 프로파일 설문 — 밴드(구간)만 저장하고 채팅 분석 서술의 관점 조정에 쓴다. */
 export default function ProfilePage() {
   const user = useUIStore((s) => s.user);
@@ -142,6 +195,8 @@ export default function ProfilePage() {
             프로파일을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
           </section>
         ) : (
+          <>
+          <AlertSettingSection />
           <form
             key={profile ? profile.updated_at : "empty"} // 조회 결과 도착 시 defaultChecked 재적용
             onSubmit={handleSubmit}
@@ -204,6 +259,7 @@ export default function ProfilePage() {
               )}
             </div>
           </form>
+          </>
         )}
       </div>
     </div>
