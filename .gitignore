@@ -109,3 +109,11 @@ minseok/scripts/dart_corp_codes.json
 
 # pgAdmin·DB 접속 정보 (평문 비밀번호 — 로컬 전용)
 minseok/_docs/pgadmin_infomation.md
+
+# ============================================================
+# Jekyll (blog/)
+# ============================================================
+blog/_site/
+blog/.jekyll-cache/
+blog/.jekyll-metadata
+blog/vendor/

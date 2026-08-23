@@ -1,0 +1,178 @@
+---
+layout: page
+title: 단계별 진행 현황
+permalink: /roadmap/
+---
+
+목표는 단계적이다: **① 개인 투자/분석 도구 → ② 운영·품질 기반 완성 → ③ 실사용자 서비스.**
+
+<style>
+.st { display: inline-block; padding: 1px 10px; border-radius: 10px; font-size: 0.8rem; white-space: nowrap; }
+.st-done { background: #e6f6ec; color: #046c4e; }
+.st-wip { background: #e3f0ff; color: #1a56db; }
+.st-wait { background: #f3f4f6; color: #6b7280; }
+.st-drop { background: #fdf2f2; color: #9b1c1c; }
+</style>
+
+## 운영 방식 — 마일스톤 · 게이트
+
+- **마일스톤 단위**로 운영한다. 1인 개발이라 스크럼 의식(儀式) 대신, 마일스톤마다
+  **검증 게이트**(테스트·실측 기준)를 먼저 정의하고 통과해야만 완료로 표기한다.
+- **"구현 완료"와 "완료"를 구분한다** — 코드가 끝나도 실행·판정(E2E·사람 라벨링)이 남으면
+  완료가 아니다. 아래 표의 "구현 완료 · 잔여" 표기가 그 상태다.
+- 게이트 미달 실험은 **기각하고 근거를 남긴다** — 기각도 결과다.
+- 마일스톤을 끝낼 때마다 리뷰 포스트(무엇을 / 왜 / 어떻게 / 아쉬운 점)를 남긴다.
+
+## 작업 영역 <span style="color:#828282;font-size:0.9rem;">(1인 개발 — 역할이 아니라 영역으로 나눈다)</span>
+
+| 영역 | 범위 | 주요 산출물 |
+| --- | --- | --- |
+| <span class="st st-wip">백엔드</span> | FastAPI 모듈러 모놀리식 — 앱 9개(허브·스포크), 헥사고날 내부 구조 | API·유스케이스·인터랙터 테스트 |
+| <span class="st" style="background:#ede9fe;color:#5b21b6;">프론트</span> | Next.js 워크스페이스 — 지도·채팅·자료 3패널, 어드민 화면 | 주식/상권 워크스페이스, 북마크 보드 |
+| <span class="st st-done">데이터·ML</span> | 수집 배치 6종, 백테스트, 평가 하네스(생성·검색), 임베딩 | 골든셋, baseline 리포트, 채택/기각 판정 문서 |
+| <span class="st" style="background:#fff3e0;color:#b45309;">운영</span> | 도커 컴포즈 배포, 백업 3계층, 로깅·모니터링, 공개 접점 | 배포 체계, 복원 리허설, 업타임 알림 |
+
+## Phase ① — 개인 투자/분석 도구 <span class="st st-done">완료</span>
+
+| 마일스톤 | 상태 |
+| --- | --- |
+| 인증 가드 전면 적용 + 리프레시 토큰 | <span class="st st-done">완료 2026-07</span> |
+| 주식 피처 확장 + 백테스트 재채점 | <span class="st st-done">완료 2026-07</span> |
+| 상권 시계열·스코어링 v1 (종합점수 4컴포넌트) | <span class="st st-done">완료 2026-07</span> |
+| 뉴스 수집 상시화 | <span class="st st-done">완료 2026-07</span> |
+| 채팅 실데이터 결합 — 지표 해석 + 뉴스 RAG + 상권 근거 주입 | <span class="st st-done">완료 2026-07</span> |
+| 프론트-백엔드 정합 (스코어 카드·뉴스 근거 카드) | <span class="st st-done">완료 2026-07</span> |
+
+## Phase ② — 운영·품질 기반 완성
+
+| 마일스톤 | 상태 |
+| --- | --- |
+| 프로덕션 컴포즈 + 배포 스크립트 (컷오버 검증) | <span class="st st-done">완료 2026-08</span> |
+| 백업 3계층 — 로컬 일간 · 오프사이트 주간 · 복원 리허설 | <span class="st st-wip">구현 완료 · 첫 실행 잔여</span> |
+| RBAC + 어드민 실구현 | <span class="st st-done">완료 2026-07</span> |
+| 상권 전용 DB 런타임 전환 (60만+ 행 이관) | <span class="st st-done">완료 2026-07</span> |
+| GitHub Actions CI / n8n 탈피 / 문서 정합 | <span class="st st-drop">취소 (사용자 결정)</span> |
+
+<h2 id="r-track">R 트랙 — 검색(RAG) 품질</h2>
+
+생성 품질만 재던 평가 하네스에 **검색 품질 축**(recall@k·nDCG·MRR)을 추가하는 트랙.
+라벨링은 사람이 한다 — LLM이 자기 검색을 심판하는 순환은 금지.
+
+| 마일스톤 | 상태 |
+| --- | --- |
+| R1 검색 품질 계측 기반 — 골든셋·채점기·회귀 게이트 | <span class="st st-wip">하네스 완료 · 라벨 대기</span> |
+| R2 하이브리드 검색 (trigram + 벡터 RRF) | <span class="st st-wip">구현 완료 · 판정 대기</span> |
+| R3 청킹 전략 3종 비교 (공시 원문·표·각주) | <span class="st st-wip">구현 완료 · 판정 대기</span> |
+| R4 문장 단위 출처 인용 + dangling citation 절대 규칙 | <span class="st st-done">완료 2026-08</span> |
+
+※ R2·R3는 게이트 미달 시 **기각하고 현행 유지**한다 — 측정해서 기각한 이력도 결과다.
+
+## Phase ③ — 실사용자 서비스
+
+| 마일스톤 | 상태 |
+| --- | --- |
+| 공개 접점 — HTTPS + rate limit (무차별 로그인 차단 실측) | <span class="st st-done">완료 2026-08</span> |
+| 북마크/관심종목 | <span class="st st-done">완료 2026-08</span> |
+| 알림 v1(이메일) — dedupe + 회원별 수신 설정 | <span class="st st-wip">구현 완료 · E2E 잔여</span> |
+| 운영 관측 — 구조화 로깅 + 업타임 모니터링 | <span class="st st-wip">구현 완료 · E2E 잔여</span> |
+| 데이터 갱신 자동화 + LLM 교체 스위치 | <span class="st st-wip">구현 완료 · 판정 잔여</span> |
+| 개인화 ⓪ 투자·창업 프로파일 / ① 관심 목록 상태 보드 | <span class="st st-done">완료 2026-08</span> |
+| 개인화 ② 선호 프로파일 | <span class="st st-wait">수요 게이트 뒤</span> |
+| 매물(listing) 스포크 | <span class="st st-wait">수요 게이트 뒤</span> |
+
+## 데이터·모델 트랙 (발췌)
+
+| 실험 | 결과 |
+| --- | --- |
+| 5분봉 이벤트 연구 — 뉴스 후 30·60분 초과수익 | <span class="st st-done">완료</span> 초과수익 사실상 없음 — 값은 되돌림에서 나온다 |
+| 가중치 재적합·자동 승격 루프 | <span class="st st-done">완료</span> 채점→재적합→승격 자동화 |
+| 펀더멘털 → 판정 편입 | <span class="st st-drop">측정 후 기각</span> 전 조합 게이트 미달(역방향) — 서술 축 유지 |
+| LLM 라이선스 실사 | <span class="st st-done">완료</span> 공개 서비스 전 모델 교체 필수 판정 |
+
+<h2 id="risks">위험 관리 방안</h2>
+
+1인 개발·온프레미스 운영에서 실제로 발생했거나 발생 가능한 위험과 대응이다.
+
+| 위험 | 대응 |
+| --- | --- |
+| 데이터 유실 | 백업 3계층 — 일간 로컬 로테이션 + 주간 오프사이트 미러 + 분기 복원 리허설(실복원으로 검증, 백업 파일 존재만 믿지 않는다) |
+| 서비스 다운을 모르고 지나감 | 구조화 로깅 + 업타임 모니터링, 강제 다운 시 5분 내 알림을 게이트로 검증 |
+| LLM 라이선스 리스크 | 현행 모델은 연구 전용(비상용) — 실사로 확인했고, 공개 서비스 전 상용 가능 모델로 교체하는 스위치·회귀 절차를 준비해뒀다 |
+| 잘못된 통계로 인한 오도 | 표본 기준 미달 통계는 확률 주장 금지, 백테스트 게이트(유효표본 보정·Wilson 하한) 미달 시 기각 |
+| 품질 저하를 모르고 배포 | 평가 하네스 baseline 회귀 게이트 — 프롬프트·모델 변경은 골든셋 대조 후에만 |
+
+<h2 id="next">작업 보드 <span style="color:#828282;font-size:0.9rem;">(2026-08-23 기준)</span></h2>
+
+<style>
+.kb-wrap { overflow-x: auto; }
+.kb { display: flex; gap: 12px; min-width: 720px; align-items: flex-start; }
+.kb-col { flex: 1; background: #f6f8fa; border-radius: 8px; padding: 10px; }
+.kb-col h4 { margin: 4px 4px 10px; font-size: 0.95rem; }
+.kb-card { background: #fff; border: 1px solid #e1e4e8; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; font-size: 0.85rem; line-height: 1.45; }
+.kb-tag { display: inline-block; margin-top: 4px; padding: 1px 8px; border-radius: 10px; font-size: 0.75rem; }
+.kb-be { background: #e3f0ff; color: #1a56db; }
+.kb-ml { background: #e6f6ec; color: #046c4e; }
+.kb-op { background: #fff3e0; color: #b45309; }
+.kb-fe { background: #ede9fe; color: #5b21b6; }
+</style>
+
+<div class="kb-wrap">
+<div class="kb">
+
+<div class="kb-col">
+<h4>📋 Backlog <span style="color:#828282;font-weight:400;font-size:0.8rem;">게이트 대기</span></h4>
+<div class="kb-card">개인화 ② 선호 프로파일 — 실사용자 확보가 착수 조건<span class="kb-tag kb-be">백엔드</span></div>
+<div class="kb-card">매물(listing) 스포크 — 수요 게이트 뒤<span class="kb-tag kb-be">백엔드</span></div>
+<div class="kb-card">GraphRAG 게이트 답안 문서 — 그래프로만 답하는 질문 정의<span class="kb-tag kb-ml">데이터·ML</span></div>
+<div class="kb-card">뉴스 감성 피처 재채점 — 라벨 3개월 축적 후(~10월)<span class="kb-tag kb-ml">데이터·ML</span></div>
+</div>
+
+<div class="kb-col">
+<h4>🗂 To Do <span style="color:#828282;font-weight:400;font-size:0.8rem;">실행·판정만 잔여</span></h4>
+<div class="kb-card">오프사이트 백업 첫 미러 + 복원 리허설 1회 (게이트)<span class="kb-tag kb-op">운영</span></div>
+<div class="kb-card">알림 v1 — 신호 발생 → 메일 수신 E2E<span class="kb-tag kb-op">운영</span></div>
+<div class="kb-card">업타임 모니터·알림 채널 등록 → 강제 다운 알림 확인<span class="kb-tag kb-op">운영</span></div>
+<div class="kb-card">상권 신규 분기 첫 자동 적재<span class="kb-tag kb-ml">데이터·ML</span></div>
+<div class="kb-card">LLM 교체 후보 pull → 120문항 회귀 비교<span class="kb-tag kb-ml">데이터·ML</span></div>
+</div>
+
+<div class="kb-col">
+<h4>🔄 In Progress</h4>
+<div class="kb-card">검색 골든셋 사람 라벨링 → baseline 기록<span class="kb-tag kb-ml">데이터·ML</span></div>
+<div class="kb-card">하이브리드 검색·청킹 전략 채택/기각 판정 (라벨 확정 대기)<span class="kb-tag kb-ml">데이터·ML</span></div>
+<div class="kb-card">개발 기록 블로그 구축·소급 리뷰 계획<span class="kb-tag kb-op">운영</span></div>
+</div>
+
+<div class="kb-col">
+<h4>✅ Done <span style="color:#828282;font-weight:400;font-size:0.8rem;">최근 완료</span></h4>
+<div class="kb-card">공개 접점 — HTTPS + 무차별 로그인 차단 실측<span class="kb-tag kb-op">운영</span></div>
+<div class="kb-card">알림 dedupe + 회원별 수신 설정<span class="kb-tag kb-be">백엔드</span></div>
+<div class="kb-card">관심 목록 상태 보드<span class="kb-tag kb-fe">프론트</span></div>
+<div class="kb-card">JSON 구조화 로깅 + 업타임 모니터링 구성<span class="kb-tag kb-op">운영</span></div>
+<div class="kb-card">문장 단위 출처 인용 + dangling citation 절대 규칙<span class="kb-tag kb-ml">데이터·ML</span></div>
+</div>
+
+</div>
+</div>
+
+※ 보드는 마일스톤 진행에 따라 갱신한다. 마일스톤 종료 시점의 보드 스냅샷은 리뷰 포스트에 기록한다.
+
+<h2 id="rejected">탈락 아이디어 검토 근거</h2>
+
+**측정 후 기각** — 실험해서 숫자로 확인하고 버린 것들. 기각 근거는 문서로 남긴다.
+
+- 펀더멘털(PER/PBR) 판정 편입 — 워크포워드 백테스트 전 조합 게이트 미달(역방향). 서술 축으로만 유지
+- 뉴스 후 30·60분 단기 반응 매매 — 이벤트 연구 결과 초과수익 사실상 없음
+- 지역지 RSS 별도 수집 — 기존 수집원 키워드 조합으로 충분함을 dry-run으로 확인
+
+**명시적 비추천 (과설계 방지 목록)** — 이력서용 기술 나열이 되지 않도록, 규모에 맞지 않는
+도입을 목록으로 막아둔다.
+
+- 메시지 브로커 · MSA 분리 · K8s/클라우드 전환
+- MLflow · Airflow · DVC (배치 스크립트 + git 태그로 충분)
+- GraphQL · BFF · 벡터 DB 교체(Qdrant 등) · 청킹 라이브러리 · 실험 관리 도구
+- 결제/유료 기능 — 무료 범위 원칙과 충돌
+
+---
+
+[← 목차로]({{ '/toc/' | relative_url }}) · [프로젝트 개요]({{ '/overview/' | relative_url }})
