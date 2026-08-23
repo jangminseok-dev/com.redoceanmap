@@ -3,7 +3,8 @@
 #
 # 대상: 백엔드 PC D드라이브(/mnt/d/redoceanmap-backups) — 로드맵 ②-M3의 로컬 1차 계층.
 #   막아주는 것: DB 손상·실수 삭제·볼륨 소실·C:(WSL) 단일 디스크 고장.
-#   못 막는 것: PC 통째 사고·랜섬웨어 — 오프사이트(rclone→Google Drive 주 1회)는 후속 계층.
+#   못 막는 것: PC 통째 사고·랜섬웨어 — 그건 오프사이트 계층(backup_offsite.sh,
+#   rclone→Google Drive 주 1회 미러)이 맡는다. 복원 가능성 증명은 restore_rehearsal.sh(분기 1회).
 #
 # 덤프 직후 pg_restore --list로 무결성을 자가 검증한다(깨진 백업의 조용한 축적 방지).
 # 검증 실패 시 해당 덤프를 지우고 비정상 종료 — 기존 세대는 건드리지 않는다.
