@@ -44,6 +44,10 @@ ENV = _secrets.get("ENV", "development")
 # prod compose가 environment로 json을 켠다.
 LOG_FORMAT = _secrets.get("LOG_FORMAT", "plain")
 
+# 기본 LLM 모델 태그(③-M5 교체 스위치) — 실소비처는 core/llm/llm_orchestrator.py
+# (그쪽은 DATABASE_URL 없는 환경 지원을 위해 관리자를 직접 읽는다). 여기는 상수 등록 규칙 준수용.
+LLM_MODEL = _secrets.get("LLM_MODEL", "exaone3.5:7.8b")
+
 # 배포 식별 — Dockerfile ARG로 이미지에 굽는 값이다(.env 키가 아니다).
 # 소스 마운트로 도는 dev나 --build-arg 없이 만든 이미지에서는 "unknown"이 맞다.
 GIT_SHA = _secrets.get("GIT_SHA", "unknown")

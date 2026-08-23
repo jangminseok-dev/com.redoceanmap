@@ -1,10 +1,17 @@
 """LLM 오케스트레이터.
 
 등록된 LLM 모델 중 하나를 선택해 추론을 수행하는 중앙 LLM 오케스트레이터.
-단일 모델 정책(2026-07-15): 오케스트레이터는 EXAONE 7.8B 하나만 보유하며,
+단일 모델 정책(2026-07-15): 오케스트레이터는 기본 모델 **하나만** 보유하며,
 의도 분류·도메인 내부 추론·최종 사용자 답변이 전부 이 모델로 수행된다.
 시스템 전체에 인스턴스는 하나(llm_orchestrator)이며, LLM 추론이 필요한
 모든 지점이 이 오케스트레이터로 수렴한다.
+
+③-M5(2026-08-23): 기본 모델 태그는 `LLM_MODEL` env로 갈아끼운다 — '동시 보유'가 아니라
+'교체' 스위치다(단일 모델 정책 유지). 미설정 기본은 EXAONE 3.5 7.8B.
+⚠ EXAONE 3.5는 NC 라이선스(연구 전용 — E5 실사 2026-08-17). 공개 서비스 전 상용 가능
+모델(Llama 3.x·Gemma 3·카카오 Kanana — 중국 모델·중국 베이스 파인튜닝 배제)로 교체 필수.
+교체 절차: ollama pull → `.env`의 LLM_MODEL 교체 → chat 품질 회귀(eval 하네스 120문항,
+`LLM_MODEL=<후보>`로 러너 재실행 → test_quality_gate baseline 대조)로 판정 후 확정.
 """
 from __future__ import annotations
 
@@ -108,12 +115,17 @@ class LLMOrchestrator:
                 yield chunk
 
 
-# --- LLM 오케스트레이터는 하나. 기본 모델로 7.8B를 보유한다. ---
-# 최종 사용자 답변은 이 기본 모델(7.8B)로 나간다.
-EXAONE_3_5_7_8B = ModelSpec(name="exaone3.5:7.8b", label="EXAONE 3.5 7.8B (기본)")
+# --- LLM 오케스트레이터는 하나. 기본 모델도 하나만 보유한다(단일 모델 정책). ---
+# 태그는 LLM_MODEL env가 정한다(③-M5 교체 스위치 — 모듈 docstring 참고).
+# core.config가 아니라 관리자를 직접 쓰는 이유: 이 모듈은 DATABASE_URL 없는 환경
+# (학습·연구 스크립트)에서도 import돼야 한다 — core.config는 그 키를 필수로 요구한다.
+from core.key.secret_manager import get_secret_manager
+
+_MODEL_TAG = get_secret_manager().get("LLM_MODEL", "exaone3.5:7.8b")
+DEFAULT_MODEL = ModelSpec(name=_MODEL_TAG, label=f"기본 모델 ({_MODEL_TAG})")
 
 llm_orchestrator = LLMOrchestrator()
-llm_orchestrator.register("exaone-7.8b", EXAONE_3_5_7_8B, default=True)  # 기본 모델(7.8B)
+llm_orchestrator.register("default", DEFAULT_MODEL, default=True)
 
 
 if __name__ == "__main__":

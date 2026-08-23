@@ -50,6 +50,13 @@ market의 모든 테이블(3NF 15 + market_news_articles + area_score_backtest_r
   2021년 공간 단위 변경 이력이 있어 코드 체계가 다른 데이터를 섞으면 시계열이 조용히 오염된다.
   **분기 범위(2026-07-27 기준)**: 매출·점포 20211~20254(20분기, 2021~2024 백필 완료),
   나머지 6팩트 20191~20254. 2021년 이전 매출·점포는 서울시가 제공을 중단해 확보 불가.
+- `scripts/collect_seoul_quarter.py` — **신규 분기 자동 적재(③-M5, 2026-08-23)**. 주 1회
+  폴링(공개 시점 불규칙): DB 팩트별 최신 분기 → 후보 분기를 OpenAPI로 수집 → API 코드를
+  한글 CSV 헤더로 변환(`*_API_COLUMN_MAP` 6종 — CSV 맵과의 ORM 컬럼 동등성은
+  `tests/adapter/test_column_maps.py`가 고정) → 연도별 CSV 병합(같은 분기 교체 멱등) →
+  `ingest_seoul_3nf.py` 재사용. ⚠ 분기 필터는 서비스마다 갈린다(매출·점포·유동·상권변화만
+  서버 필터, 상주·직장·집객은 무시 → 전량 후 분기 분해 — 2026-08-23 실측) · INFO-200은
+  미공개 분기의 정상 응답. 소득소비·아파트는 API ERROR-500이라 제외(CSV 수동 유지).
 - CSV→ORM 매핑은 `adapter/outbound/csv/column_maps.py`(스크립트 전용).
 - 개별 `/admin/ingest/*` 라우터는 제거됨(스크립트로 대체).
 
