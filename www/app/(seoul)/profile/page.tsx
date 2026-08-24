@@ -12,6 +12,8 @@ import {
 import type { InvestorProfile } from "@/lib/types";
 import { useUIStore } from "@/lib/uiStore";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 // 선택지 라벨은 백엔드 도메인(profile_entity.py)의 매핑과 같은 문구를 쓴다 —
 // 채팅 답변에 주입되는 라벨과 화면 표기가 어긋나지 않게.
@@ -84,7 +86,7 @@ function RadioGroup({
   );
 }
 
-/** 관심 종목 이메일 알림 수신 토글 — 미설정은 기본 수신(백엔드 규칙과 동일). */
+/** 관심 대상(종목·상권) 알림 설정 — 수신 토글 + 텔레그램 채널(I-7). 미설정은 기본 수신. */
 function AlertSettingSection() {
   const queryClient = useQueryClient();
   const { data, isPending } = useQuery({
@@ -97,32 +99,73 @@ function AlertSettingSection() {
   });
 
   const enabled = data?.email_alerts ?? true;
+  const chatId = data?.telegram_chat_id ?? null;
+
+  // 텔레그램 등록/해제 — 폼 제출 흐름이라 FormData 패턴(REACT_RULES 패턴 A)
+  const handleTelegramSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const value = String(formData.get("telegram_chat_id") ?? "").trim();
+    save.mutate({ email_alerts: enabled, telegram_chat_id: value || null });
+  };
 
   return (
     <section className="rounded-2xl bg-surface border border-border p-6">
       <h2 className="text-sm font-semibold flex items-center gap-1.5">
-        <BellRing size={15} /> 관심 종목 이메일 알림
+        <BellRing size={15} /> 관심 종목·상권 알림
       </h2>
       <p className="mt-1 text-xs text-foreground-muted">
-        북마크한 종목에 상승·하락 신호가 관측되면 가입 이메일로 알려드립니다(하루 1회 스캔,
-        같은 신호가 이어지면 다시 보내지 않습니다). 끄면 스캔 대상에서 빠집니다.
+        북마크한 종목의 상승·하락 신호, 북마크한 상권의 새 분기 반영·등급 변동을
+        알려드립니다(하루 1회 스캔, 같은 상태가 이어지면 다시 보내지 않습니다).
+        끄면 이메일·텔레그램 모두 스캔 대상에서 빠집니다.
       </p>
       {isPending ? (
         <div className="mt-3 skeleton h-10 w-40 rounded-xl" />
       ) : (
-        <div className="mt-3 flex gap-2">
-          {([true, false] as const).map((value) => (
-            <Button
-              key={String(value)}
-              size="md"
-              variant={enabled === value ? "default" : "weak"}
-              loading={save.isPending && save.variables === value}
-              onClick={() => enabled !== value && save.mutate(value)}
-            >
-              {value ? "알림 켬" : "알림 끔"}
-            </Button>
-          ))}
-        </div>
+        <>
+          <div className="mt-3 flex gap-2">
+            {([true, false] as const).map((value) => (
+              <Button
+                key={String(value)}
+                size="md"
+                variant={enabled === value ? "default" : "weak"}
+                loading={save.isPending && save.variables?.email_alerts === value}
+                onClick={() =>
+                  enabled !== value &&
+                  save.mutate({ email_alerts: value, telegram_chat_id: chatId })
+                }
+              >
+                {value ? "알림 켬" : "알림 끔"}
+              </Button>
+            ))}
+          </div>
+          <form onSubmit={handleTelegramSubmit} className="mt-4 space-y-2">
+            <Label htmlFor="telegram_chat_id" className="text-xs font-medium">
+              텔레그램으로도 받기 (선택)
+            </Label>
+            <p className="text-xs text-foreground-muted">
+              봇(@redoceanmap_bot)에게 /start를 보낸 뒤 안내받은 chat ID를 입력하세요.
+              비워서 저장하면 해제됩니다.
+            </p>
+            <div className="flex gap-2">
+              <Input
+                id="telegram_chat_id"
+                name="telegram_chat_id"
+                defaultValue={chatId ?? ""}
+                key={chatId ?? "empty"} // 조회 결과 도착 시 defaultValue 재적용
+                placeholder="예: 123456789"
+                inputMode="numeric"
+                className="flex-1"
+              />
+              <Button type="submit" size="md" variant="weak" loading={save.isPending}>
+                저장
+              </Button>
+            </div>
+            {chatId && (
+              <p className="text-xs text-foreground-muted">현재 등록됨: {chatId}</p>
+            )}
+          </form>
+        </>
       )}
       {save.isError && (
         <p className="mt-2 text-xs text-brand">저장에 실패했습니다. 다시 시도해 주세요.</p>

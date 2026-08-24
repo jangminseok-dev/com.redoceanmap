@@ -18,7 +18,10 @@ type SortKey =
   | "storeDensity"
   | "salesDensity";
 
-type Grouping = "area" | "gu" | "division";
+type Grouping = "area" | "gu" | "dong" | "division";
+
+// 상권변화지표 필터 어휘(I-1) — 서버 차원 테이블 값 그대로(임의 창작 금지)
+const CHANGE_INDICATORS = ["전체", "다이나믹", "상권확장", "상권축소", "정체"];
 
 const SORT_COLUMNS: { key: SortKey; label: string; hint: string }[] = [
   { key: "salesPerStore", label: "점포당 매출", hint: "규모가 아니라 '돈이 되는가'" },
@@ -54,6 +57,7 @@ export default function AreasDirectoryPage() {
     text: string;
     gu: string;
     division: string;
+    change: string;
     serviceCode: string;
     grouping: Grouping;
     compare: number[];
@@ -62,6 +66,7 @@ export default function AreasDirectoryPage() {
     text: "",
     gu: "전체",
     division: "전체",
+    change: "전체",
     serviceCode: "",
     grouping: "area",
     compare: [],
@@ -94,6 +99,8 @@ export default function AreasDirectoryPage() {
       (r) =>
         (q.gu === "전체" || r.districtName === q.gu) &&
         (q.division === "전체" || r.divisionName === q.division) &&
+        // 변화지표 필터(I-1) — 지표 결측 상권은 어떤 분류에도 잡히지 않는다(백엔드와 동일 규칙)
+        (q.change === "전체" || r.changeIndicatorName === q.change) &&
         (!q.text || r.trdarName.includes(q.text) || r.dongName.includes(q.text)),
     );
     const { key, dir } = q.sort;
@@ -112,7 +119,8 @@ export default function AreasDirectoryPage() {
   // sum(매출)/sum(점포)다. 비율의 평균 ≠ 합의 비율.
   const groups = useMemo(() => {
     if (q.grouping === "area") return null;
-    const key = q.grouping === "gu" ? "districtName" : "divisionName";
+    const key =
+      q.grouping === "gu" ? "districtName" : q.grouping === "dong" ? "dongName" : "divisionName";
     const acc = new Map<string, { name: string; n: number; sales: number; stores: number; area: number }>();
     for (const r of rows) {
       const k = r[key] || "미분류";
@@ -246,6 +254,16 @@ export default function AreasDirectoryPage() {
             <option key={d}>{d}</option>
           ))}
         </select>
+        <select
+          value={q.change}
+          onChange={(e) => setQ((p) => ({ ...p, change: e.target.value }))}
+          title="상권변화지표 — 서울시가 운영·폐업 영업개월로 분류한 상권 생멸의 방향"
+          className="px-3 py-2 rounded-xl bg-surface border border-border text-sm"
+        >
+          {CHANGE_INDICATORS.map((c) => (
+            <option key={c}>{c === "전체" ? "변화지표 전체" : c}</option>
+          ))}
+        </select>
       </div>
 
       <div className="flex items-center gap-1">
@@ -254,6 +272,7 @@ export default function AreasDirectoryPage() {
           [
             ["area", "상권"],
             ["gu", "자치구"],
+            ["dong", "행정동"],
             ["division", "상권 유형"],
           ] as [Grouping, string][]
         ).map(([g, label]) => (
@@ -385,6 +404,7 @@ function AreaCard({
           </p>
           <p className="text-xs text-foreground-muted truncate">
             {row.districtName} {row.dongName} · {row.divisionName}
+            {row.changeIndicatorName && ` · ${row.changeIndicatorName}`}
           </p>
         </div>
       </div>

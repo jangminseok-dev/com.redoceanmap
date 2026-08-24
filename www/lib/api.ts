@@ -285,11 +285,13 @@ export const removeBookmark = (
 export const fetchBookmarkBoard = (): Promise<{ items: BookmarkBoardItem[] }> =>
   getJson("/bookmarks/board");
 
-// ── 관심 종목 이메일 알림 수신 설정 — 미설정이면 백엔드가 기본 수신(true) ──
+// ── 관심 대상 알림 수신 설정 — 미설정이면 백엔드가 기본 수신(true)·텔레그램 미등록 ──
 export const fetchAlertSetting = (): Promise<AlertSetting> => getJson("/alert-settings");
 
-export const saveAlertSetting = (emailAlerts: boolean): Promise<AlertSetting> =>
-  sendJson("/alert-settings", "PUT", { email_alerts: emailAlerts });
+export const saveAlertSetting = (body: {
+  email_alerts: boolean;
+  telegram_chat_id: string | null; // null·빈 문자열 = 텔레그램 채널 해제(I-7)
+}): Promise<AlertSetting> => sendJson("/alert-settings", "PUT", body);
 
 // ── 투자·창업 프로파일 — 자기신고 설문(밴드 기반), 사용자당 1건. ──
 export const fetchProfile = (): Promise<{ profile: InvestorProfile | null }> =>

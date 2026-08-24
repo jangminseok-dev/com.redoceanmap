@@ -60,6 +60,7 @@ export type StockAnalysis = {
   watch?: string | null;
   strength?: string; // 신호 세기(약/보통/강)
   value?: string[]; // 가치·체력 해석(펀더멘털) 대표 1~2줄 — 미수집이면 빈 배열
+  keywords?: string[]; // 영향 키워드 Top-N(B2, 헤드라인 빈도 — 예측 아님). 표본 미달이면 빈 배열
 };
 
 // ── POST /stock/analyze (직접 호출 — snake_case DTO) ──
@@ -504,6 +505,17 @@ export type AreaRankingRow = {
   salesQoq: number | null;
   closureRate: number | null;
   areaSize: number | null; // ㎡ — 밀도 정규화용(절대량 비교의 규모 착시 제거)
+  changeIndicatorName: string | null; // 상권변화지표(다이나믹/상권확장/상권축소/정체) — 결측이면 null
+};
+
+export type DongRollupRow = {
+  districtName: string;
+  dongName: string;
+  areaCount: number;
+  monthlySales: number | null;
+  storeCount: number | null;
+  salesPerStore: number | null;
+  salesQoq: number | null; // 동 합계 기준 — 소속 상권 하나라도 직전 분기 결측이면 null
 };
 
 export type AreaRanking = {
@@ -511,6 +523,7 @@ export type AreaRanking = {
   rows: AreaRankingRow[];
   // 이 엔드포인트 자신의 필터 어휘(최신 분기에 실적 있는 업종)
   services: { code: string; name: string }[];
+  dongRollup: DongRollupRow[]; // 행정동 롤업(I-3) — 필터 반영 부분집합의 서버 집계
 };
 
 // 쇼케이스 — 비로그인 첫 화면. 랭킹과 달리 필드가 6개뿐이다(공개 응답이라 의도적으로 줄였다).
@@ -1030,6 +1043,7 @@ export type BookmarkBoardItem = {
 // ── /alert-settings (직접 호출 — snake_case DTO) — 관심 종목 이메일 알림 수신 설정 ──
 export type AlertSetting = {
   email_alerts: boolean; // 미설정 회원은 백엔드가 true(기본 수신)로 응답
+  telegram_chat_id: string | null; // 텔레그램 채널(I-7) — 미등록이면 null
 };
 
 // ── /profile (직접 호출 — snake_case DTO) — 투자·창업 프로파일 설문(밴드 기반) ──

@@ -287,6 +287,16 @@ function StockSummaryCard({ stock, onClick }: { stock: StockAnalysis; onClick: (
         {stock.sentimentLabel && (
           <span className="text-xs text-foreground-muted">뉴스 감성 {stock.sentimentLabel}</span>
         )}
+        {/* 영향 키워드(B2) — 최근 헤드라인 빈도의 관측 요약(예측 아님, 구버전 payload엔 없음) */}
+        {stock.keywords && stock.keywords.length > 0 &&
+          stock.keywords.map((k) => (
+            <span
+              key={k}
+              className="inline-flex px-2 py-0.5 rounded-full bg-accent text-brand text-xs font-medium"
+            >
+              #{k}
+            </span>
+          ))}
       </div>
       <p className="mt-2 text-xs text-foreground-muted">차트에 반영하려면 클릭</p>
     </button>
