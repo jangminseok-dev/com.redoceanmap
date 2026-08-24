@@ -13,7 +13,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://host.docker.internal:8000/automation/bookmark-alerts",
+        "url": "http://backend:8000/automation/bookmark-alerts",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [{ "name": "X-Webhook-Token", "value": "={{ $env.REDOCEAN_WEBHOOK_TOKEN }}" }]
