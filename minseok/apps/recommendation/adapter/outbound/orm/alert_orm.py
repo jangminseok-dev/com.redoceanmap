@@ -17,6 +17,9 @@ class AlertSettingOrm(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(Integer, index=True)
     email_alerts: Mapped[bool] = mapped_column(Boolean, server_default=true())
+    # 텔레그램 chat_id(I-7) — 등록한 회원만 텔레그램으로도 받는다(이메일과 별개 채널,
+    # 수신 토글은 email_alerts 하나가 전 채널을 다스린다). NULL = 미등록.
+    telegram_chat_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

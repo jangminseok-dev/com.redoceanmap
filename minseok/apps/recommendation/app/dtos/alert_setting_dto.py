@@ -5,7 +5,8 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class AlertSettingDraft:
-    """수신 설정 저장 입력 — 회원당 1행 upsert."""
+    """수신 설정 저장 입력 — 회원당 1행 upsert. telegram_chat_id None = 채널 해제."""
 
     user_id: int
     email_alerts: bool
+    telegram_chat_id: str | None = None

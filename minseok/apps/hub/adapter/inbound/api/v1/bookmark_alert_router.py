@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends
 from hub.adapter.inbound.api.schemas.bookmark_alert_schema import (
     AlertEmailSchema,
     BookmarkAlertResponse,
+    TelegramMessageSchema,
 )
 from hub.adapter.inbound.api.v1.webhook_token import verify_webhook_token
 from hub.app.ports.input.bookmark_alert_use_case import BookmarkAlertUseCase
@@ -30,8 +31,14 @@ async def scan_bookmark_alerts(
         symbolsScanned=report.symbols_scanned,
         signalsFound=report.signals_found,
         deduped=report.deduped,
+        areaBookmarksScanned=report.area_bookmarks_scanned,
+        areaUpdatesFound=report.area_updates_found,
         emails=[
             AlertEmailSchema(to=e.to, subject=e.subject, body=e.body)
             for e in report.emails
+        ],
+        telegrams=[
+            TelegramMessageSchema(chatId=m.chat_id, text=m.text)
+            for m in report.telegrams
         ],
     )

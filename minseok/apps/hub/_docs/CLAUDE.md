@@ -145,11 +145,12 @@ apps/hub/dependencies/user_profile_provider.py  # get_user_profile_port (NotImpl
 
 관심 종목 알림(`bookmark_alert`)이 쓰는 열람 전용 계약 2종.
 
-- **BookmarkDirectoryPort** — 전 사용자 종목 북마크 횡단 조회(`stock_bookmarks()`).
-  구현: `recommendation`의 `BookmarkDirectoryGateway`(직접 조회 — Directory 선례).
+- **BookmarkDirectoryPort** — 전 사용자 북마크 횡단 조회(`stock_bookmarks()` ·
+  `area_bookmarks()` — B1, 2026-08-24). 구현: `recommendation`의
+  `BookmarkDirectoryGateway`(직접 조회 — Directory 선례).
   **알림 수신을 끈 회원(user_alert_settings)은 여기서 제외**된다 — 발송 대상 열람이라는
-  계약 의미(정지·탈퇴를 빼는 MemberContactPort와 같은 논리). 상권 북마크는 계약에
-  없다(상권 점수는 분기 단위 — '신호 발생' 알림 대상 아님, v1 판정).
+  계약 의미(정지·탈퇴를 빼는 MemberContactPort와 같은 논리). 상권 북마크는 '신호 발생'이
+  아니라 **신규 분기 반영·등급 변동** 알림 대상이다(분기 단위 — v1의 "계약에 없다" 판정 갱신).
 - **AlertDeliveryPort** — dedupe 상태(마지막으로 통지한 사용자·종목·방향).
   `last_signals()` / `replace()`(전량 스캔 전제의 전체 교체 — 꺼진 신호는 자연 소멸).
   구현: `recommendation`의 `AlertDeliveryGateway`(`user_alert_deliveries`).
@@ -315,7 +316,7 @@ apps/hub/
 |------|------|
 | 뉴스 수집 | n8n(스케줄+RSS) → `POST /automation/news` → NewsIngestInteractor → `NewsStoragePort` → stock 저장 |
 | 시그널 알림 | n8n(스케줄) → `POST /automation/stock-scan` → SignalScanInteractor → 기존 `StockAnalysisPort` 재사용 → n8n이 중립 제외 후 Gmail 발송 |
-| 관심 종목 알림(③-M3) | n8n(매일 15:30 — 스냅샷 cron 14:00 뒤) → `POST /automation/bookmark-alerts` → BookmarkAlertInteractor(북마크×신호×이메일 조합, 비중립만, 메일 조립은 순수 도메인 `bookmark_alert_composer` — LLM 미사용·권유 금지·고지 필수) → 응답 `emails[]`를 n8n이 사용자별 Gmail 발송. 워크플로: [[minseok/apps/hub/_docs/n8n_bookmark_alert_workflow.json]]. **dedupe(2026-08-23)**: 마지막 통지 신호와 같으면 억제(AlertDeliveryPort — 방향 전환·소멸 후 재발생은 새 알림, 이메일 없어 못 보낸 신호는 상태 미기록), **수신 설정**: 끈 회원은 BookmarkDirectoryPort가 스캔에서 제외(`PUT /alert-settings`, 기본 수신) |
+| 관심 대상 알림(③-M3 + B1) | n8n(매일 15:30 — 스냅샷 cron 14:00 뒤) → `POST /automation/bookmark-alerts` → BookmarkAlertInteractor(종목: 북마크×신호 비중립만 · 상권(B1, 2026-08-24): 북마크×분기+등급 상태 변화(CommercialDataPort — chat·지도와 같은 원천, 상태 인코딩 "20254양호" 7자 ≤ direction String(8)), 메일 조립은 순수 도메인 `bookmark_alert_composer`(compose_alert·compose_area_alert) — LLM 미사용·권유 금지·고지 필수) → 응답 `emails[]`를 n8n이 사용자별 Gmail 발송. 워크플로: [[minseok/apps/hub/_docs/n8n_bookmark_alert_workflow.json]]. **dedupe(2026-08-23)**: 마지막 통지 신호와 같으면 억제(AlertDeliveryPort — 방향 전환·소멸 후 재발생은 새 알림, 이메일 없어 못 보낸 신호는 상태 미기록), **수신 설정**: 끈 회원은 BookmarkDirectoryPort가 스캔에서 제외(`PUT /alert-settings`, 기본 수신) |
 | 메일 수신 | n8n(Gmail Push/폴링) → `POST /automation/mail` → MailIngestInteractor → `MailStoragePort` → mail 저장(조회: `GET /mail/list`) |
 | OHLCV 수집 | cron(`scripts/collect_prices.py`) → `POST /automation/prices` (+`GET /automation/prices/coverage`) → PriceBarIngestInteractor → `PriceBarStoragePort` → stock 저장 |
 | 뉴스 라벨링 | cron(`scripts/label_news.py`, EXAONE 7.8B Ollama) → `GET /automation/news-labels/pending` → 라벨 → `POST /automation/news-labels` → NewsLabelIngestInteractor → `NewsLabelStoragePort` → stock 저장 |

@@ -3,11 +3,23 @@
   "nodes": [
     {
       "parameters": {
-        "rule": { "interval": [{ "field": "days", "daysInterval": 1, "triggerAtHour": 15, "triggerAtMinute": 30 }] }
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 15,
+              "triggerAtMinute": 30
+            }
+          ]
+        }
       },
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [0, 0],
+      "position": [
+        0,
+        0
+      ],
       "name": "매일 15:30"
     },
     {
@@ -16,13 +28,21 @@
         "url": "http://backend:8000/automation/bookmark-alerts",
         "sendHeaders": true,
         "headerParameters": {
-          "parameters": [{ "name": "X-Webhook-Token", "value": "={{ $env.REDOCEAN_WEBHOOK_TOKEN }}" }]
+          "parameters": [
+            {
+              "name": "X-Webhook-Token",
+              "value": "={{ $env.REDOCEAN_WEBHOOK_TOKEN }}"
+            }
+          ]
         },
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [220, 0],
+      "position": [
+        220,
+        0
+      ],
       "name": "북마크 알림 스캔"
     },
     {
@@ -31,7 +51,10 @@
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [440, 0],
+      "position": [
+        440,
+        0
+      ],
       "name": "메일 목록 펼치기"
     },
     {
@@ -44,14 +67,91 @@
       },
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
-      "position": [660, 0],
+      "position": [
+        660,
+        0
+      ],
       "name": "Gmail 발송"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 응답의 telegrams 배열을 개별 아이템으로 펼친다 — 없으면 빈 배열(발송 없음)\nreturn ($input.first().json.telegrams || []).map(m => ({ json: m }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        200
+      ],
+      "name": "텔레그램 목록 펼치기"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        660,
+        200
+      ],
+      "name": "Telegram 발송"
     }
   ],
   "connections": {
-    "매일 15:30": { "main": [[{ "node": "북마크 알림 스캔", "type": "main", "index": 0 }]] },
-    "북마크 알림 스캔": { "main": [[{ "node": "메일 목록 펼치기", "type": "main", "index": 0 }]] },
-    "메일 목록 펼치기": { "main": [[{ "node": "Gmail 발송", "type": "main", "index": 0 }]] }
+    "매일 15:30": {
+      "main": [
+        [
+          {
+            "node": "북마크 알림 스캔",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "북마크 알림 스캔": {
+      "main": [
+        [
+          {
+            "node": "메일 목록 펼치기",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "텔레그램 목록 펼치기",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "메일 목록 펼치기": {
+      "main": [
+        [
+          {
+            "node": "Gmail 발송",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "텔레그램 목록 펼치기": {
+      "main": [
+        [
+          {
+            "node": "Telegram 발송",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": { "executionOrder": "v1" }
+  "settings": {
+    "executionOrder": "v1"
+  }
 }

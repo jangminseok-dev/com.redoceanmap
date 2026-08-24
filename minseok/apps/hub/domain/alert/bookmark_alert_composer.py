@@ -61,3 +61,47 @@ def compose_alert(lines: list[AlertLine]) -> tuple[str, str]:
         + DISCLAIMER
     )
     return subject, body
+
+
+# ── 상권 알림(B1) — 종목과 같은 결정론 템플릿, 어휘만 상권 규범 ─────────────
+
+AREA_DISCLAIMER = (
+    "등급은 서울시 공공데이터 기반 참고 지표이며 창업 판단의 책임은 본인에게 있습니다."
+)
+
+
+@dataclass(frozen=True)
+class AreaAlertLine:
+    """상권 알림 한 줄의 재료 — 인터랙터가 허브 DTO(AreaScoreInfo)에서 내려 만든다."""
+
+    label: str              # 북마크 저장 시점 상권 표시명
+    quarter_label: str      # "2025년 4분기" — 반영된 데이터 기준 분기
+    grade: str              # 우수 | 양호 | 보통 | 주의 | 위험
+    total: float            # 종합점수(0~100, 50=서울 평균)
+    prev_grade: str | None  # 직전 통지 등급 — 등급이 바뀌었을 때만(같으면 None)
+
+
+def compose_area_alert(lines: list[AreaAlertLine]) -> tuple[str, str]:
+    """(제목, 본문). 입력 순서 그대로 — 순위 매김은 권유로 읽힌다(종목 규칙 승계)."""
+    changed = sum(1 for line in lines if line.prev_grade)
+    suffix = f" (등급 변동 {changed})" if changed else ""
+    subject = f"[redoceanmap] 관심 상권 업데이트 {len(lines)}건{suffix}"
+
+    rows = []
+    for line in lines:
+        row = (
+            f"- {line.label}: {line.quarter_label} 데이터 반영"
+            f" · 종합 {line.total:.0f}점 '{line.grade}' (50점=서울 평균)"
+        )
+        if line.prev_grade:
+            row += f" · 직전 통지 '{line.prev_grade}' → '{line.grade}'"
+        rows.append(row)
+
+    body = (
+        "찜해둔 상권에 새 분기 데이터가 반영되었거나 등급이 바뀌었습니다."
+        " (서울시 분기 공공데이터 기준)\n\n"
+        + "\n".join(rows)
+        + "\n\n자세한 지표는 redoceanmap 지도에서 상권을 확인하세요.\n\n"
+        + AREA_DISCLAIMER
+    )
+    return subject, body
