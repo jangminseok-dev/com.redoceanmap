@@ -25,7 +25,7 @@ from hub.app.dtos.commercial_data_dto import (
 from chat.domain.services.verdict import strength, verdict
 from hub.app.dtos.fundamental_dto import FundamentalInsightItem
 from hub.app.dtos.market_news_dto import MarketNewsHit
-from hub.app.dtos.news_dto import NewsHit
+from hub.app.dtos.news_dto import NewsHit, NewsKeyword
 from hub.app.dtos.stock_analysis_dto import StockAnalysisResult
 from hub.app.dtos.stock_forecast_dto import StockForecastSummary
 from hub.app.dtos.user_profile_dto import UserProfileSummary
@@ -99,13 +99,19 @@ class _StubStocks:
 
 
 class _StubNewsSearch:
-    def __init__(self, hits: list[NewsHit] | None = None):
+    def __init__(self, hits: list[NewsHit] | None = None, keywords=None):
         self.hits = hits or []
+        self.keywords = keywords or []
         self.calls: list[tuple[str, str | None, int]] = []
+        self.keyword_calls: list[str] = []
 
     async def search(self, query: str, ticker: str | None = None, limit: int = 5) -> list[NewsHit]:
         self.calls.append((query, ticker, limit))
         return self.hits
+
+    async def top_keywords(self, ticker: str, limit: int = 5):
+        self.keyword_calls.append(ticker)
+        return self.keywords
 
 
 class _StubForecast:
@@ -133,7 +139,8 @@ class _StubMarket:
                  insights: dict[int, tuple[AreaInsight, ...]] | None = None,
                  raw: AreaRawStat | None = None,
                  permit_churn: dict[int, PermitChurnInfo] | None = None,
-                 areas: list[AreaInfo] | None = None):
+                 areas: list[AreaInfo] | None = None,
+                 yoy: dict[int, float | None] | None = None):
         self.summary_calls = 0
         self.scores = scores or {}
         self.score_calls: list[list[int]] = []
@@ -143,6 +150,7 @@ class _StubMarket:
         self.permit_churn = permit_churn or {}
         self.permit_calls: list[list[int]] = []
         self._areas = areas  # None이면 기존 단일 상권(무손상)
+        self._yoy = yoy or {}
 
     async def get_area_summary(self) -> AreaSummary:
         self.summary_calls += 1
@@ -153,6 +161,7 @@ class _StubMarket:
         return AreaSummary(
             areas=areas, latest_quarter=20254,
             sales_by_code={a.trdar_code: 100_000_000 for a in areas},
+            yoy_by_code=self._yoy,
         )
 
     async def get_service_codes(self) -> list[ServiceCode]:
@@ -1192,3 +1201,114 @@ async def test_market_news_컨텍스트에_뉴스별_근거_번호가_붙는다(
     ctx = llm.calls[1][0]
     assert "- 근거 [1] (" in ctx and "- 근거 [2] (" in ctx
     assert "근거가 된 뉴스 번호를 [1]처럼" in ctx
+
+
+# --- I-10 반경·전년대비 질의 가드 ---
+
+
+def test_반경_파싱은_거리와_단위_표현만_인정한다():
+    parse = ChatInteractor._parse_radius_m
+    assert parse("강남역 반경 500m 카페") == 500
+    assert parse("성수역 1km 이내 카페 어때") == 1000
+    assert parse("500미터 근처 샐러드 가게") == 500
+    assert parse("홍대 근처 카페 어때") is None      # 단위 없는 근접 표현은 반경이 아니다
+    assert parse("30m 도로변 상가 어때") is None      # 50m 미만 — 도로 폭 오탐 차단
+    assert parse("2호선 성수역 어때") is None
+
+
+async def test_반경_질의는_중심_상권_반경_안으로_후보를_제한한다(monkeypatch):
+    areas = [
+        AreaInfo(trdar_code=1, trdar_name="성수역 골목", district_name="성동구",
+                 adm_dong_name="성수동", lat=37.5, lng=127.0,
+                 x_coord=200_000, y_coord=450_000),
+        AreaInfo(trdar_code=2, trdar_name="가까운골목", district_name="성동구",
+                 adm_dong_name="성수동", lat=37.5, lng=127.0,
+                 x_coord=200_300, y_coord=450_000),   # 300m — 반경 안
+        AreaInfo(trdar_code=3, trdar_name="먼동네", district_name="성동구",
+                 adm_dong_name="성수동", lat=37.5, lng=127.0,
+                 x_coord=203_000, y_coord=450_000),   # 3,000m — 반경 밖
+    ]
+    phase1 = '{"service_code": "CS100010", "service_name": "커피-음료", "trdar_codes": [3]}'
+    phase2 = ('{"text": "요약", "areas": ['
+              '{"trdar_code": 1, "reason": "이유. 유의할 점: 경쟁."},'
+              '{"trdar_code": 2, "reason": "이유. 유의할 점: 경쟁."}]}')
+    interactor, llm, deps = _build(
+        monkeypatch, [INTENT_MARKET, phase1, phase2], market=_StubMarket(areas=areas))
+
+    res = await interactor.ask("성수역 반경 500m 카페 어때?")
+
+    codes = {int(r.id) for r in res.recommendations}
+    assert codes == {1, 2}                      # phase1이 고른 3(3km 밖)은 코드로 제거
+    assert res.text.startswith("※ '성수역 골목' 중심 반경 500m")  # 결정론 안내 문두
+
+
+async def test_반경_기준점을_못_찾으면_미적용을_명시하고_기존_흐름을_유지한다(monkeypatch):
+    # 자치구 어간("강남")만 매칭되고 상권명 낱말 매칭이 없다 — 중심 특정 불가
+    areas = [AreaInfo(trdar_code=1000001, trdar_name="테스트상권", district_name="강남구",
+                      adm_dong_name="역삼동", lat=37.5, lng=127.0,
+                      x_coord=200_000, y_coord=450_000)]
+    interactor, llm, deps = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON],
+        market=_StubMarket(areas=areas))
+
+    res = await interactor.ask("강남 반경 500m 카페 어때?")
+
+    assert res.text.startswith("※ 반경 500m 조건은 기준 지점을")   # 미적용 명시
+    assert [r.id for r in res.recommendations] == ["1000001"]      # 기존 흐름 무손상
+
+
+async def test_phase1_표에_전년동분기_대비_열이_들어간다(monkeypatch):
+    interactor, llm, deps = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON],
+        market=_StubMarket(yoy={1000001: 12.5}))
+
+    await interactor.ask("역삼동 카페 어때?")
+
+    phase1_prompt = llm.calls[1][0]
+    assert "매출전년동분기대비(%)" in phase1_prompt
+    assert "|+12.5|" in phase1_prompt
+
+
+async def test_상권변화지표_해석이_상권_성격에_주입된다(monkeypatch):  # I-1
+    insights = {1000001: (
+        AreaInsight(key="customer_gender", tone="neutral", text="성별 문장"),
+        AreaInsight(key="change_indicator", tone="warning",
+                    text="상권변화지표 '상권축소' — 신규 진입에 불리합니다."),
+    )}
+    interactor, llm, deps = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON],
+        market=_StubMarket(insights=insights))
+
+    await interactor.ask("역삼동 카페 어때?")
+
+    phase2_prompt = llm.calls[2][0]
+    assert "상권변화지표 '상권축소'" in phase2_prompt
+
+
+# --- B2 영향 키워드 ---
+
+
+async def test_영향_키워드가_컨텍스트와_카드에_실린다(monkeypatch):
+    keywords = [
+        NewsKeyword(keyword="실적", count=5, sentiment_avg=0.4, sample_title="실적 서프라이즈"),
+        NewsKeyword(keyword="리콜", count=3, sentiment_avg=-0.5, sample_title="리콜 발표"),
+        NewsKeyword(keyword="합병", count=2, sentiment_avg=0.05, sample_title="합병 검토"),
+    ]
+    interactor, llm, deps = _build(
+        monkeypatch, [INTENT_STOCK, "주식 답변"], news=_StubNewsSearch(keywords=keywords))
+
+    res = await interactor.ask("삼성전자 어때?")
+
+    context = llm.calls[1][0]
+    assert "영향 키워드(근거 [4]" in context
+    assert "실적(5건·호재쪽)" in context
+    assert "리콜(3건·악재쪽)" in context
+    assert "합병(2건)" in context          # 감성 기울기 미달 — 방향 표기 없음
+    assert res.stock.keywords == ["실적", "리콜", "합병"]
+
+
+async def test_키워드_표본_미달이면_라인과_카드가_비어있다(monkeypatch):  # 열화
+    interactor, llm, deps = _build(monkeypatch, [INTENT_STOCK, "주식 답변"])
+    res = await interactor.ask("삼성전자 어때?")
+    assert "영향 키워드" not in llm.calls[1][0]
+    assert res.stock.keywords == []

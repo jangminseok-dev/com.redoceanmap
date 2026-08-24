@@ -118,3 +118,7 @@
 {"case_id": "MT08", "category": "multiturn", "prompt": "그럼 거기서 김밥집 말고 카페는 어때?", "expected_intent": "market", "history_regions": ["여의도"]}
 {"case_id": "MT09", "category": "multiturn", "prompt": "방금 추천한 곳 경쟁이 얼마나 심해?", "expected_intent": "market", "history_regions": ["노원역"]}
 {"case_id": "MT10", "category": "multiturn", "prompt": "거기 20대 비중은 어때?", "expected_intent": "market", "history_regions": ["신촌"]}
+{"case_id": "MR21", "category": "market_region", "prompt": "강남역 반경 500m 안에 있는 카페 상권 중 작년 대비 매출 증가율이 높은 5곳 추천해줘", "expected_intent": "market", "region": "강남역"}
+{"case_id": "MR22", "category": "market_region", "prompt": "대치동에서 치킨 배달이 제일 많은 요일이 언제야?", "expected_intent": "market", "region": "대치동"}
+{"case_id": "MR23", "category": "market_region", "prompt": "삼청동 카페 경쟁 현황이 어때? 몇 개나 있고 프랜차이즈 비중은?", "expected_intent": "market", "region": "삼청동"}
+{"case_id": "MR24", "category": "market_region", "prompt": "성수동 미용실은 평균 몇 개월 영업하고 생존율이 어떻게 돼?", "expected_intent": "market", "region": "성수동"}

@@ -31,7 +31,7 @@ from hub.app.dtos.commercial_data_dto import (
     PermitChurnInfo,
 )
 from hub.app.dtos.market_news_dto import MarketNewsHit
-from hub.app.dtos.news_dto import NewsHit
+from hub.app.dtos.news_dto import NewsHit, NewsKeyword
 from hub.app.dtos.recommendation_record_dto import RecommendedArea
 from hub.app.dtos.stock_forecast_dto import StockForecastSummary
 from hub.app.dtos.stock_analysis_dto import StockAnalysisResult
@@ -91,6 +91,7 @@ NON_SEOUL_REGIONS = (
 _INSIGHT_PRIORITY = (
     "demand_type",          # 오피스형/주거형/혼합 — 상권 성격의 뼈대
     "facility_anchor",      # 역·대학·백화점 — "여기 사람이 왜 오는가"
+    "change_indicator",     # 상권 생멸의 방향(서울시 1급 축) — 이름만으론 의미가 없어 해석 문장으로(I-1)
     "traffic_vs_sales",     # 통행↔매출 괴리 — 부정 신호가 추천 신뢰도를 가장 크게 올린다
     "avg_ticket",           # 객단가 — 창업 판단에 직결
     "avg_ticket_age",       # 가장 비싸게 쓰는 연령대(방문층과 다를 때 특히 값어치)
@@ -183,7 +184,8 @@ PHASE1_PROMPT = """당신은 서울 상권 분석 전문가입니다.
 - trdar_code는 반드시 상권 데이터에 있는 값 사용
 - 질문에 특정 지역(동·역·상권명)이 언급되면 '질문지역' 칸에 ★ 표시된 상권을 반드시 우선 선택
 - 제공된 상권 데이터는 모두 서울이다 — 질문 지역이 표에 없으면 비슷한 이름의 다른 상권을 임의로 고르지 말 것
-- 상권 전체 월매출 규모와 위치(자치구, 행정동)를 기준으로 사용자 질문에 맞는 곳 선택"""
+- 상권 전체 월매출 규모와 위치(자치구, 행정동)를 기준으로 사용자 질문에 맞는 곳 선택
+- 질문이 "작년 대비"·"성장"·"매출 오른"을 물으면 '매출전년동분기대비(%)' 열이 큰 상권을 우선 선택 ('-'는 산출 불가)"""
 
 PHASE2_PROMPT = """당신은 서울 창업 컨설턴트입니다.
 제공된 각 상권의 공공데이터 수치를 기반으로 창업자에게 유용한 설명을 작성하세요.
@@ -259,6 +261,21 @@ def _has_deixis(prompt: str) -> bool:
     return any(token in prompt for token in DEICTIC_TOKENS)
 
 
+# 반경 질의 가드(I-10) — "반경 500m"·"1km 이내" 같은 거리 제약을 결정론으로 처리한다.
+# 실측(2026-08-24): "강남역 반경 500m" 질문에 어간 매칭이 강남구 104곳을 후보로 올려
+# 추천 5곳 중 3곳이 3km 밖이었다. 좌표 필터가 성립하면 코드로 자르고, 중심을 못 찾으면
+# 필터한 척하지 않고 미적용을 답변 문두에 명시한다.
+_RADIUS_PATTERN = re.compile(
+    r"(?:반경\s*)?(\d+(?:\.\d+)?)\s*(km|㎞|킬로미터|킬로|미터|m)(?![a-zA-Z])"
+)
+
+# 중심 상권 매칭에서 제외하는 상권명 일반 어휘 — 이런 낱말 하나로 중심을 잡으면
+# "먹자골목 반경 500m"이 엉뚱한 골목 상권을 중심으로 삼는다.
+_RADIUS_NAME_STOPWORDS = frozenset(
+    {"상권", "시장", "거리", "골목", "공원", "광장", "상가", "단지", "타운", "프라자", "먹자골목"}
+)
+
+
 def _parse_llm_json(raw: str) -> dict:
     raw = raw.strip()
     # 마크다운 코드펜스 제거
@@ -331,6 +348,57 @@ class ChatInteractor(ChatUseCase):
         return codes
 
     @staticmethod
+    def _parse_radius_m(prompt: str) -> int | None:
+        """질문의 반경 제약(m) — 거리+단위 표현이 없으면 None.
+
+        50m 미만·20km 초과는 상권 반경 질의로 보지 않는다(도로 폭·행정 단위 오탐 차단).
+        """
+        match = _RADIUS_PATTERN.search(prompt)
+        if not match:
+            return None
+        value = float(match.group(1))
+        if match.group(2) in ("km", "㎞", "킬로미터", "킬로"):
+            value *= 1000
+        meters = int(round(value))
+        return meters if 50 <= meters <= 20_000 else None
+
+    @staticmethod
+    def _radius_center(summary: AreaSummary, prompt: str) -> AreaInfo | None:
+        """반경 질의의 중심 상권 — 상권명 낱말이 질문에 그대로 있는 가장 긴 매칭.
+
+        자치구·행정동 어간 매칭(_mentioned_codes)은 중심 '점'이 못 된다("강남" → 강남구
+        104곳). 상권명 낱말(예: "성수역")이 질문에 있을 때만 중심으로 삼고, 없으면 None —
+        호출부가 "반경 미적용"을 명시한다(틀린 중심으로 자신 있게 답하는 것보다 낫다).
+        """
+        best: tuple[int, int, AreaInfo] | None = None  # (낱말 길이, 매출, 상권)
+        for a in summary.areas:
+            if a.x_coord is None or a.y_coord is None:
+                continue
+            for word in re.findall(r"[가-힣]{2,}", a.trdar_name):
+                if word in _RADIUS_NAME_STOPWORDS:
+                    continue
+                # "건대입구역" 낱말은 "건대입구"로도 본다(_mentioned_codes와 같은 논리)
+                variants = {word}
+                if word.endswith("역") and len(word) >= 4:
+                    variants.add(word[:-1])
+                hit = max((len(v) for v in variants if v in prompt), default=0)
+                if hit == 0:
+                    continue
+                sales = summary.sales_by_code.get(a.trdar_code) or 0
+                if best is None or (hit, sales) > (best[0], best[1]):
+                    best = (hit, sales, a)
+        return best[2] if best else None
+
+    @staticmethod
+    def _within_radius(center: AreaInfo, area: AreaInfo, radius_m: int) -> bool:
+        """좌표(EPSG:5174 TM, m)가 있는 상권만 중심과의 유클리드 거리로 판정한다."""
+        if area.x_coord is None or area.y_coord is None:
+            return False
+        dx = area.x_coord - center.x_coord
+        dy = area.y_coord - center.y_coord
+        return dx * dx + dy * dy <= radius_m * radius_m
+
+    @staticmethod
     def _previous_area_codes(
         history: list[Message], area_map: dict[int, AreaInfo]
     ) -> list[int]:
@@ -370,13 +438,17 @@ class ChatInteractor(ChatUseCase):
                 picked.append(a)
                 seen.add(a.trdar_code)
 
-        lines = ["상권코드|상권명|자치구|행정동|상권전체월매출합계(만원)|질문지역"]
+        # YoY 열(I-10) — "작년 대비" 질의를 표가 지원하지 않으면 모델이 근거 없이
+        # "증가율이 높다"고 서술한다(실측). 산출 불가 상권은 '-'로 정직하게 남긴다.
+        lines = ["상권코드|상권명|자치구|행정동|상권전체월매출합계(만원)|매출전년동분기대비(%)|질문지역"]
         for a in picked:
             sales = summary.sales_by_code.get(a.trdar_code)
             wan = round(sales / 10000) if sales else None
+            yoy = summary.yoy_by_code.get(a.trdar_code)
             lines.append(
                 f"{a.trdar_code}|{a.trdar_name}|{a.district_name}|{a.adm_dong_name}"
                 f"|{wan if wan is not None else '데이터없음'}"
+                f"|{f'{yoy:+.1f}' if yoy is not None else '-'}"
                 f"|{'★' if a.trdar_code in mentioned_codes else ''}"
             )
         return "\n".join(lines)
@@ -532,6 +604,28 @@ class ChatInteractor(ChatUseCase):
                     text=text, recommendations=[], conversationId=conversation_id,
                 )
 
+        # 반경 질의 가드(I-10) — 중심 상권을 좌표로 특정할 수 있으면 반경 안 상권 집합을
+        # 만들어 phase1 결과를 자르고, 못 하면 "미적용"을 답변 문두에 결정론으로 명시한다.
+        radius_m = self._parse_radius_m(prompt)
+        radius_codes: set[int] | None = None
+        radius_note = ""
+        if radius_m is not None:
+            center = self._radius_center(summary, prompt)
+            if center is None:
+                radius_note = (
+                    f"※ 반경 {radius_m:,}m 조건은 기준 지점을 좌표로 특정하지 못해 적용하지"
+                    " 못했어요. 아래 추천은 지역명 기준이에요.\n\n"
+                )
+            else:
+                radius_codes = {
+                    a.trdar_code for a in summary.areas
+                    if self._within_radius(center, a, radius_m)
+                }
+                radius_note = (
+                    f"※ '{center.trdar_name}' 중심 반경 {radius_m:,}m 안의 상권"
+                    f" {len(radius_codes)}곳으로 후보를 제한했어요.\n\n"
+                )
+
         area_map = {a.trdar_code: a for a in summary.areas}
         area_context = self._build_area_context(summary, prompt)
 
@@ -583,6 +677,13 @@ class ChatInteractor(ChatUseCase):
                 # 지역 미언급 후속 질문 — 직전 추천 상권을 이어받아 맥락을 유지한다.
                 # (phase1 LLM이 이전 대화에서 상권을 못 이어받아 후보가 빈 경우만 보정)
                 valid_codes = previous
+        if radius_codes is not None:
+            # 지역·지시어 가드를 거친 후보를 반경으로 자른다. 반경 안 후보가 하나도 없으면
+            # 반경 안 매출 상위로 대체한다(중심 상권 자신이 항상 포함되므로 공집합이 아니다).
+            kept = [c for c in valid_codes if c in radius_codes]
+            valid_codes = kept or sorted(
+                radius_codes, key=lambda c: summary.sales_by_code.get(c) or 0, reverse=True,
+            )[:3]
         if not valid_codes:
             raise NoValidAreaError("유효한 상권을 찾지 못했습니다.")
 
@@ -685,7 +786,7 @@ class ChatInteractor(ChatUseCase):
                 ),
             ))
 
-        text = p2.get("text", "")
+        text = radius_note + p2.get("text", "")
         # 구조화 카드를 payload로 동반 저장 — 히스토리 재진입 시 카드 복원용
         await self._conversations.add_message(
             conversation_id, "assistant", text,
@@ -851,6 +952,14 @@ class ChatInteractor(ChatUseCase):
         # RAG 보강: 해당 종목 뉴스를 의미 검색(라벨 동반). 빈 결과면 섹션 생략 — 기존 출력 무손상
         hits = await self._news.search(prompt, ticker=analysis.symbol, limit=5)
 
+        # 영향 키워드(B2) — 최근 헤드라인 빈도의 결정론 요약. 실패·표본 미달은 빈 리스트로
+        # 열화(라인 생략) — forecast·펀더멘털과 같은 무손상 규칙.
+        keywords: list[NewsKeyword] = []
+        try:
+            keywords = await self._news.top_keywords(analysis.symbol)
+        except Exception:
+            logger.warning("[chat] 키워드 추출 실패: %s", analysis.symbol, exc_info=True)
+
         # forecast(확률 요약)는 표본이 있어야 강한 결론이 되고, 조회 실패는 표본 없음으로 열화.
         forecast = None
         if self._forecaster is not None:
@@ -871,7 +980,9 @@ class ChatInteractor(ChatUseCase):
         # 둘 다 서술 '앞'에서 조회한다 — 예전엔 답변을 만든 뒤에 조회해 카드에만 실렸고,
         # 그래서 본문이 밸류에이션·과거 통계를 근거로 말하지 못했다.
         self._notify(on_stage, "narrate", "분석 내용을 정리하고 있어요")
-        context = self._format_stock_context(prompt, analysis, hits, forecast, value_notes, profile)
+        context = self._format_stock_context(
+            prompt, analysis, hits, forecast, value_notes, profile, keywords,
+        )
         # 최종 서술(최종 사용자 답변) → 오케스트레이터 기본 모델(7.8B)
         text = await llm_orchestrator.orchestrate(f"{STOCK_ANSWER_PROMPT}\n\n{context}")
 
@@ -902,6 +1013,7 @@ class ChatInteractor(ChatUseCase):
             ),
             strength=verdict_strength(analysis.score, analysis.up_threshold),
             value=value_notes,
+            keywords=[k.keyword for k in keywords],
         )
         # 구조화 카드를 payload로 동반 저장 — 히스토리 재진입 시 카드 복원용
         await self._conversations.add_message(
@@ -1118,6 +1230,7 @@ class ChatInteractor(ChatUseCase):
         forecast: StockForecastSummary | None = None,
         value_notes: list[str] | None = None,
         profile: UserProfileSummary | None = None,
+        keywords: list[NewsKeyword] | None = None,
     ) -> str:
         headlines = "\n".join(f"- {h}" for h in r.headlines) if r.headlines else "- (없음)"
         unit = cls._currency_unit(r.symbol)
@@ -1161,6 +1274,21 @@ class ChatInteractor(ChatUseCase):
                 "  → 서술의 강조점만 조정할 것(안정 성향이면 변동성·리스크 지표를 먼저,"
                 " 공격 성향이면 추세·모멘텀을 먼저). 프로파일을 이유로 매수/매도 권유나"
                 " 특정 상품 추천을 하지 말 것\n"
+            )
+        if keywords:
+            # 영향 키워드(B2) — 헤드라인 단어 빈도라는 관측 팩트. 방향 표기는 동반 감성
+            # 라벨 평균이 뚜렷할 때만(±0.15) — 없는 방향을 만들지 않는다.
+            parts = []
+            for k in keywords:
+                tone = ""
+                if k.sentiment_avg is not None and k.sentiment_avg > 0.15:
+                    tone = "·호재쪽"
+                elif k.sentiment_avg is not None and k.sentiment_avg < -0.15:
+                    tone = "·악재쪽"
+                parts.append(f"{k.keyword}({k.count}건{tone})")
+            lines += (
+                "- 영향 키워드(근거 [4], 최근 헤드라인 단어 빈도 — 예측 아님): "
+                + " · ".join(parts) + "\n"
             )
         lines += (
             f"- 근거 [4] 뉴스 감성: {r.sentiment:+.2f} ({r.sentiment_label})"
