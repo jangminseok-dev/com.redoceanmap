@@ -26,10 +26,21 @@ _FOOTNOTE_HEAD = re.compile(r"^(?:※|주\d{0,2}\s*\))")
 _CELL_TAGS = ("TD", "TH", "TU", "TE")
 
 
+# 실제 태그로 살릴 `<`의 전부 — 태그명(영문+하이픈) + 따옴표 값 속성들 + `>`. 그 밖의
+# `<영문 …>`(예: "<ACI 세미나>", SK하이닉스 2026-08-24 실측)은 장식 텍스트라 이스케이프한다
+# — "`<` 뒤 비영문자만 이스케이프" 1차 규칙이 놓치던 꼴.
+_TAG_RE = re.compile(
+    r"</?[A-Za-z][A-Za-z0-9:._-]*"
+    r"(?:\s+[A-Za-z0-9:._-]+\s*=\s*(?:\"[^\"]*\"|'[^']*'))*"
+    r"\s*/?>"
+    r"|<[!?]"
+)
+
+
 def _sanitize(xml_text: str) -> str:
     """DART 원문의 비정형 토큰 2종을 살린다 — 실측 근거는 모듈 docstring."""
     fixed = re.sub(r"&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)", "&amp;", xml_text)
-    return re.sub(r"<(?![a-zA-Z/!?])", "&lt;", fixed)
+    return re.sub(r"<", lambda m: "<" if _TAG_RE.match(m.string, m.start()) else "&lt;", fixed)
 
 
 def _text_of(el: ET.Element) -> str:
@@ -60,7 +71,19 @@ def _parse_table(table: ET.Element) -> TableBlock | None:
 
 
 def parse_document(xml_text: str) -> list[DocElement]:
-    root = ET.fromstring(_sanitize(xml_text))
+    sanitized = _sanitize(xml_text)
+    try:
+        root = ET.fromstring(sanitized)
+    except ET.ParseError:
+        # 전처리로 못 살리는 깨진 원문이 실재한다(2026-08-24 실측 — NAVER `ENG=""…"` 깨진
+        # 속성, POSCO 본문 장식 태그). lxml recover로 복구 파싱한다 — 오류 인접 텍스트
+        # 일부 유실 감수. 정상 문서는 표준 ET 경로 유지.
+        from lxml import etree
+
+        root = etree.fromstring(
+            sanitized.encode("utf-8"),
+            parser=etree.XMLParser(recover=True, huge_tree=True),
+        )
     body = root.find("BODY")
     if body is None:
         return []
@@ -69,6 +92,8 @@ def parse_document(xml_text: str) -> list[DocElement]:
     def walk(el: ET.Element, path: list[str]) -> None:
         for child in el:
             tag = child.tag
+            if not isinstance(tag, str):
+                continue  # lxml recover 경로의 주석 노드 — tag가 문자열이 아니다
             if tag == "TITLE":
                 continue  # 섹션 진입 시 이미 소비
             if tag.startswith("SECTION-"):

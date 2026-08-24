@@ -47,6 +47,19 @@ def test_비정형_토큰과_표지_메타를_흡수하고_구조를_뽑는다()
     assert "R&D 역량" in elements[0].text  # bare & 전처리 생존
 
 
+def test_영문으로_시작하는_장식_토큰도_본문으로_살린다():
+    # SK하이닉스 실측(2026-08-24) — "<ACI 세미나>"는 태그 꼴이 아니라 장식 텍스트다
+    xml = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        "<DOCUMENT><BODY><SECTION-1><TITLE>I. 회사의 개요</TITLE>"
+        "<P>- 제11회 <ACI 세미나> 개최</P>"
+        "</SECTION-1></BODY></DOCUMENT>"
+    )
+    elements = parse_document(xml)
+    assert [e.kind for e in elements] == ["text"]
+    assert "<ACI 세미나>" in elements[0].text
+
+
 def test_표는_캡션_헤더_각주가_승계된다():
     table = parse_document(_XML)[1].table
     assert table.caption == "< 사업부문별 매출 >"      # bare < 전처리 생존

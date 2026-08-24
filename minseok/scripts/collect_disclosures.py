@@ -59,6 +59,13 @@ EMBED_BATCH = 100
 
 def latest_annual_rcept(corp_code: str) -> str | None:
     """최신 사업보고서(A001) 접수번호 — 없으면 None."""
+    rcepts = annual_rcepts(corp_code)
+    return rcepts[0] if rcepts else None
+
+
+def annual_rcepts(corp_code: str) -> list[str]:
+    """사업보고서(A001) 접수번호 후보 — 최신순. 정정본에는 원본파일이 없을 수 있어
+    (DART status 014 — KB금융 2026-08-24 실측) 복수 후보를 돌려준다."""
     res = requests.get(f"{DART_URL}/list.json", params={
         "crtfc_key": DART_API_KEY, "corp_code": corp_code,
         "pblntf_detail_ty": "A001", "bgn_de": "20230101", "end_de": "20991231",
@@ -67,12 +74,13 @@ def latest_annual_rcept(corp_code: str) -> str | None:
     res.raise_for_status()
     body = res.json()
     if body.get("status") != "000":
-        return None
-    # 최신순 목록에서 정정 포함 첫 '사업보고서'
-    for row in body.get("list", []):
-        if "사업보고서" in row.get("report_nm", ""):
-            return row["rcept_no"]
-    return None
+        return []
+    # 최신순 목록의 '사업보고서' 전부(정정 포함)
+    return [
+        row["rcept_no"]
+        for row in body.get("list", [])
+        if "사업보고서" in row.get("report_nm", "")
+    ]
 
 
 def download_document(rcept_no: str) -> str:
@@ -102,11 +110,19 @@ async def ingest(dry_run: bool) -> None:
             if not corp_code:
                 print(f"[disclosure] {name}({stock_code}) corp_code 없음 — 건너뜀")
                 continue
-            rcept_no = latest_annual_rcept(corp_code)
-            if not rcept_no:
+            rcepts = annual_rcepts(corp_code)
+            if not rcepts:
                 print(f"[disclosure] {name} 사업보고서 없음 — 건너뜀")
                 continue
-            elements = parse_document(download_document(rcept_no))
+            elements = None
+            for rcept_no in rcepts:  # 원본파일 없는 정정본은 다음 후보로 폴백
+                try:
+                    elements = parse_document(download_document(rcept_no))
+                    break
+                except Exception as exc:  # 한 회사의 깨진 문서가 배치 전체를 죽이지 않게 격리
+                    print(f"[disclosure] {name} {rcept_no}: 실패 — {type(exc).__name__}: {exc}")
+            if elements is None:
+                continue
             tables = sum(1 for e in elements if e.kind == "table")
             print(f"[disclosure] {name} {rcept_no}: 요소 {len(elements)}개(표 {tables})")
             for strategy, chunk_fn in STRATEGIES.items():
