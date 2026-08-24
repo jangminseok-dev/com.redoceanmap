@@ -22,7 +22,9 @@ def _meta(
 
 
 class _StubRepo:
-    def __init__(self, latest=20254, areas=None, sales=None, stores=None, first=20211):
+    def __init__(self, latest=20254, areas=None, sales=None, stores=None, first=20211,
+                 changes=None):
+        self._changes = changes or {}
         self._latest = latest
         self._first = first
         self._areas = areas if areas is not None else [_meta(1)]
@@ -41,8 +43,8 @@ class _StubRepo:
         self.range_calls += 1
         return None if self._latest is None else (self._first, self._latest)
 
-    async def find_areas(self, district_name, division_code):
-        self.area_filters = (district_name, division_code)
+    async def find_areas(self, district_name, division_code, dong_name=None):
+        self.area_filters = (district_name, division_code, dong_name)
         self.area_calls += 1
         return self._areas
 
@@ -56,6 +58,9 @@ class _StubRepo:
 
     async def list_service_codes(self, year_quarter):
         return [ServiceRef(code="CS100010", name="커피-음료")]
+
+    async def find_change_indicators(self):
+        return self._changes
 
 
 async def test_점포당_매출과_전분기_대비_변화율을_계산한다():
@@ -106,7 +111,7 @@ async def test_필터가_저장소로_그대로_전달된다():
     await AreaRankingInteractor(repo=repo).list_ranking(AreaRankingQuery(
         district_name="성동구", division_code="A", service_code="CS100010",
     ))
-    assert repo.area_filters == ("성동구", "A")
+    assert repo.area_filters == ("성동구", "A", None)
     assert repo.sales_args[1] == "CS100010"
     assert repo.store_args == (20254, "CS100010")
 
@@ -256,3 +261,77 @@ async def test_데이터가_없으면_캐시하지_않는다():
 
     await interactor.showcase()
     assert mod._SHOWCASE_CACHE is None
+
+
+# --- 상권변화지표 필터 (I-1) ---
+
+
+async def test_상권변화지표가_행에_실린다():
+    repo = _StubRepo(areas=[_meta(1), _meta(2)], changes={1: "상권확장"})
+    view = await AreaRankingInteractor(repo=repo).list_ranking(AreaRankingQuery())
+    by_code = {r.trdar_code: r for r in view.rows}
+    assert by_code[1].change_indicator_name == "상권확장"
+    assert by_code[2].change_indicator_name is None  # 변화 팩트 결측 — None 그대로
+
+
+async def test_상권변화지표_필터는_해당_분류만_남긴다():
+    repo = _StubRepo(areas=[_meta(1), _meta(2)], changes={1: "상권확장", 2: "정체"})
+    view = await AreaRankingInteractor(repo=repo).list_ranking(
+        AreaRankingQuery(change_indicator="상권확장"))
+    assert [r.trdar_code for r in view.rows] == [1]
+
+
+async def test_지표_결측_상권은_필터에_잡히지_않는다():
+    repo = _StubRepo(areas=[_meta(1)], changes={})
+    view = await AreaRankingInteractor(repo=repo).list_ranking(
+        AreaRankingQuery(change_indicator="정체"))
+    assert view.rows == []
+
+
+# --- 행정동 필터·롤업 (I-3) ---
+
+
+async def test_행정동_필터가_저장소로_전달된다():
+    repo = _StubRepo()
+    await AreaRankingInteractor(repo=repo).list_ranking(AreaRankingQuery(dong_name="성수동"))
+    assert repo.area_filters == (None, None, "성수동")
+
+
+async def test_행정동_롤업이_동_단위로_합산된다():
+    repo = _StubRepo(
+        areas=[_meta(1), _meta(2)],  # 둘 다 성동구 성수동
+        sales=[
+            SalesAgg(1, 20254, 1_000), SalesAgg(1, 20253, 800),
+            SalesAgg(2, 20254, 2_000), SalesAgg(2, 20253, 1_200),
+        ],
+        stores=[StoreAgg(1, store_count=10, closure_rate=1.0),
+                StoreAgg(2, store_count=30, closure_rate=2.0)],
+    )
+    view = await AreaRankingInteractor(repo=repo).list_ranking(AreaRankingQuery())
+    assert len(view.dong_rollup) == 1
+    d = view.dong_rollup[0]
+    assert (d.district_name, d.dong_name, d.area_count) == ("성동구", "성수동", 2)
+    assert d.monthly_sales == 3_000 and d.store_count == 40
+    assert d.sales_per_store == 75          # 3000 ÷ 40
+    assert d.sales_qoq == 50.0              # (3000-2000)/2000 — 동 합계 기준
+
+
+async def test_롤업_QoQ는_소속_상권_하나라도_직전_결측이면_None():
+    repo = _StubRepo(
+        areas=[_meta(1), _meta(2)],
+        sales=[SalesAgg(1, 20254, 1_000), SalesAgg(1, 20253, 800),
+               SalesAgg(2, 20254, 2_000)],  # 2번은 직전 분기 결측
+    )
+    view = await AreaRankingInteractor(repo=repo).list_ranking(AreaRankingQuery())
+    assert view.dong_rollup[0].monthly_sales == 3_000
+    assert view.dong_rollup[0].sales_qoq is None  # 커버리지 다른 분기를 나누지 않는다
+
+
+async def test_롤업은_상권변화지표_필터를_반영한다():
+    repo = _StubRepo(
+        areas=[_meta(1), _meta(2)], changes={1: "상권확장", 2: "정체"},
+        sales=[SalesAgg(1, 20254, 1_000), SalesAgg(2, 20254, 2_000)],
+    )
+    view = await AreaRankingInteractor(repo=repo).list_ranking(
+        AreaRankingQuery(change_indicator="상권확장"))
+    assert view.dong_rollup[0].monthly_sales == 1_000  # 필터로 남은 부분집합만 합산

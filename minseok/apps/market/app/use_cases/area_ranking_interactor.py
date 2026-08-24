@@ -9,6 +9,7 @@ from market.app.dtos.area_ranking_dto import (
     AreaShowcaseRow,
     AreaShowcaseView,
     DivisionMedian,
+    DongRollupRow,
     ServiceOption,
 )
 from market.app.ports.input.area_ranking_use_case import AreaRankingUseCase
@@ -41,7 +42,9 @@ class AreaRankingInteractor(AreaRankingUseCase):
 
     async def list_ranking(self, query: AreaRankingQuery) -> AreaRankingView:
         latest = await self._repo.latest_quarter()
-        areas = await self._repo.find_areas(query.district_name, query.division_code)
+        areas = await self._repo.find_areas(
+            query.district_name, query.division_code, query.dong_name,
+        )
         if latest is None or not areas:
             return AreaRankingView(year_quarter=latest, rows=[], services=[])
 
@@ -52,6 +55,7 @@ class AreaRankingInteractor(AreaRankingUseCase):
         prev = _prev_quarter(latest)
         sales = await self._repo.find_sales([latest, prev], query.service_code)
         stores = await self._repo.find_stores(latest, query.service_code)
+        changes = await self._repo.find_change_indicators()
 
         latest_sales = {s.trdar_code: s.monthly_sales for s in sales if s.year_quarter == latest}
         prev_sales = {s.trdar_code: s.monthly_sales for s in sales if s.year_quarter == prev}
@@ -59,6 +63,9 @@ class AreaRankingInteractor(AreaRankingUseCase):
 
         rows = []
         for a in areas:
+            # 상권변화지표 필터(I-1) — 지표 결측 상권은 어떤 분류 필터에도 잡히지 않는다
+            if query.change_indicator and changes.get(a.trdar_code) != query.change_indicator:
+                continue
             sale = latest_sales.get(a.trdar_code)
             st = store_map.get(a.trdar_code)
             rows.append(AreaRankingRow(
@@ -76,8 +83,12 @@ class AreaRankingInteractor(AreaRankingUseCase):
                 sales_qoq=_qoq(sale, prev_sales.get(a.trdar_code)),
                 closure_rate=st.closure_rate if st else None,
                 area_size=a.area_size,
+                change_indicator_name=changes.get(a.trdar_code),
             ))
-        return AreaRankingView(year_quarter=latest, rows=rows, services=services)
+        return AreaRankingView(
+            year_quarter=latest, rows=rows, services=services,
+            dong_rollup=_dong_rollup(rows, prev_sales),
+        )
 
     async def showcase(self) -> AreaShowcaseView:
         global _SHOWCASE_CACHE
@@ -135,6 +146,49 @@ class AreaRankingInteractor(AreaRankingUseCase):
         )
         _SHOWCASE_CACHE = (version, view)
         return view
+
+
+def _dong_rollup(
+    rows: list[AreaRankingRow], prev_sales: dict[int, int]
+) -> list[DongRollupRow]:
+    """행정동 단위 합산(I-3) — 이미 만든 행의 재집계라 추가 쿼리가 없다.
+
+    QoQ는 동 합계로 내되 소속 상권 중 하나라도 직전 분기 결측이면 None —
+    커버리지가 다른 두 분기를 나누면 허위 성장률이 된다(정직한 결측 유지).
+    """
+    acc: dict[tuple[str, str], dict] = {}
+    for r in rows:
+        if not r.dong_name:
+            continue  # 행정동 미매핑 상권 — 어느 동에도 넣을 수 없다
+        a = acc.setdefault((r.district_name, r.dong_name), {
+            "n": 0, "sales": 0, "sales_any": False,
+            "prev": 0, "prev_all": True, "stores": 0, "stores_any": False,
+        })
+        a["n"] += 1
+        if r.monthly_sales is not None:
+            a["sales"] += r.monthly_sales
+            a["sales_any"] = True
+            prev = prev_sales.get(r.trdar_code)
+            if prev:
+                a["prev"] += prev
+            else:
+                a["prev_all"] = False
+        if r.store_count is not None:
+            a["stores"] += r.store_count
+            a["stores_any"] = True
+
+    out = []
+    for (gu, dong), a in acc.items():
+        sales = a["sales"] if a["sales_any"] else None
+        stores = a["stores"] if a["stores_any"] else None
+        qoq = _qoq(sales, a["prev"]) if a["sales_any"] and a["prev_all"] else None
+        out.append(DongRollupRow(
+            district_name=gu, dong_name=dong, area_count=a["n"],
+            monthly_sales=sales, store_count=stores,
+            sales_per_store=_per_store(sales, stores), sales_qoq=qoq,
+        ))
+    out.sort(key=lambda d: d.monthly_sales or 0, reverse=True)
+    return out
 
 
 def _division_medians(rows: list[AreaRankingRow]) -> list[DivisionMedian]:

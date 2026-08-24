@@ -4,6 +4,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from market.adapter.outbound.orm.change_indicator_orm import ChangeIndicatorOrm
+from market.adapter.outbound.orm.commercial_change_orm import CommercialChangeOrm
 from market.adapter.outbound.orm.estimated_sales_orm import EstimatedSalesOrm
 from market.adapter.outbound.orm.region_orm import RegionOrm
 from market.adapter.outbound.orm.store_orm import StoreOrm
@@ -45,7 +47,10 @@ class AreaRankingPgRepository(AreaRankingRepositoryPort):
         return None if lo is None else (int(lo), int(hi))
 
     async def find_areas(
-        self, district_name: str | None, division_code: str | None
+        self,
+        district_name: str | None,
+        division_code: str | None,
+        dong_name: str | None = None,
     ) -> list[AreaMeta]:
         dong = aliased(RegionOrm)  # 행정동(level2)
         gu = aliased(RegionOrm)    # 자치구(level1)
@@ -60,6 +65,8 @@ class AreaRankingPgRepository(AreaRankingRepositoryPort):
             stmt = stmt.where(gu.name == district_name)
         if division_code:
             stmt = stmt.where(TradeAreaOrm.division_code == division_code)
+        if dong_name:
+            stmt = stmt.where(dong.name == dong_name)
 
         rows = (await self._session.execute(stmt)).all()
         out = []
@@ -102,6 +109,22 @@ class AreaRankingPgRepository(AreaRankingRepositoryPort):
             .order_by(ServiceCategoryOrm.name)
         )).all()
         return [ServiceRef(code=code, name=name) for code, name in rows]
+
+    async def find_change_indicators(self) -> dict[int, str]:
+        latest = (await self._session.execute(
+            select(func.max(CommercialChangeOrm.year_quarter))
+        )).scalar()
+        if latest is None:
+            return {}
+        rows = (await self._session.execute(
+            select(CommercialChangeOrm.trdar_code, ChangeIndicatorOrm.name)
+            .join(
+                ChangeIndicatorOrm,
+                CommercialChangeOrm.change_indicator == ChangeIndicatorOrm.code,
+            )
+            .where(CommercialChangeOrm.year_quarter == latest)
+        )).all()
+        return {code: name for code, name in rows}
 
     async def find_stores(
         self, year_quarter: int, service_code: str | None

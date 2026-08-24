@@ -2,6 +2,7 @@ from market.app.dtos.area_detail_dto import AreaDetailQuery
 from market.app.dtos.area_stats_dto import AreaHeader, ServiceRef
 from market.app.use_cases.area_detail_interactor import AreaDetailInteractor
 from market.domain.value_objects.area_profile_vo import (
+    ChangeProfile,
     ResidentProfile,
     SalesMix,
     WorkingProfile,
@@ -24,8 +25,9 @@ class _StubRepo:
     def __init__(self, header=None, service=None, sales_mix=None,
                  resident=None, working=None, apartment=None, spending=None,
                  floating=None, facility=None, service_ranking=None, permit_churn=None,
-                 asset_price=None):
+                 asset_price=None, change=None):
         self.asset_price = asset_price
+        self.change = change
         self.header = header
         self.service = service
         self.sales_mix = sales_mix
@@ -77,6 +79,9 @@ class _StubRepo:
 
     async def find_asset_price(self, trdar_code, months=12):
         return self.asset_price
+
+    async def find_change(self, trdar_code):
+        return self.change
 
 
 _HEADER = AreaHeader(trdar_code=1000123, trdar_name="성수동 카페거리", district_name="성동구")
@@ -195,3 +200,16 @@ async def test_업종_실적이_없으면_빈_랭킹():  # 열화
         AreaDetailQuery(trdar_code=1000123)
     )
     assert view.service_ranking == []
+
+
+async def test_상권변화지표가_해석_문장으로_뷰에_실린다():  # I-1
+    repo = _StubRepo(
+        header=AreaHeader(trdar_code=1, trdar_name="테스트", district_name="성동구"),
+        change=ChangeProfile(
+            year_quarter=20254, indicator_name="상권확장", operating_months=None,
+            closure_months=None, region_operating_months=None, region_closure_months=None,
+        ),
+    )
+    view = await AreaDetailInteractor(detail=repo).get_detail(AreaDetailQuery(trdar_code=1))
+    keys = {i.key for i in view.insights}
+    assert "change_indicator" in keys

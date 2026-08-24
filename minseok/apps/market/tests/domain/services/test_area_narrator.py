@@ -1,6 +1,7 @@
 from market.domain.services.area_narrator import narrate
 from market.domain.value_objects.area_profile_vo import (
     ApartmentProfile,
+    ChangeProfile,
     FacilityProfile,
     FloatingRhythm,
     PermitChurn,
@@ -635,3 +636,39 @@ def test_평단가는_구_이름과_매매_기준을_명시해_말한다():
 def test_평단가가_1억을_넘으면_억_단위로_말한다():
     got = _asset_text(_asset(median=3300.0))  # 평당 1.09억
     assert got is not None and "억원" in got.text
+
+
+# --- 상권변화지표 해석 (I-1) ---
+
+
+def _change(name="상권축소", op=52.0, rop=48.0):
+    return ChangeProfile(
+        year_quarter=20254, indicator_name=name, operating_months=op,
+        closure_months=10.0, region_operating_months=rop, region_closure_months=12.0,
+    )
+
+
+def test_상권변화지표_해석_문장과_영업개월_병기():
+    got = _by_key(narrate(None, None, None, None, change=_change()))["change_indicator"]
+    assert got.tone == "warning"
+    assert "상권축소" in got.text and "신규 진입에 불리" in got.text
+    assert "평균 영업 52개월" in got.text and "서울 48개월" in got.text
+
+
+def test_상권변화지표_4분류_톤_매핑():
+    tones = {
+        name: _by_key(narrate(None, None, None, None, change=_change(name=name)))[
+            "change_indicator"].tone
+        for name in ("다이나믹", "상권확장", "상권축소", "정체")
+    }
+    assert tones == {"다이나믹": "neutral", "상권확장": "positive",
+                     "상권축소": "warning", "정체": "neutral"}
+
+
+def test_미정의_지표명은_침묵():  # 원천 개편 방어 — 틀린 해석보다 없는 문장
+    assert narrate(None, None, None, None, change=_change(name="신규분류")) == []
+
+
+def test_영업개월_결측이면_괄호를_생략한다():
+    got = _by_key(narrate(None, None, None, None, change=_change(op=None)))["change_indicator"]
+    assert "개월" not in got.text

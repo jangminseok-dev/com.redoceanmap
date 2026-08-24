@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -10,6 +10,8 @@ class AreaRankingQuery:
     district_name: str | None = None
     division_code: str | None = None  # 골목/발달/전통시장/관광특구
     service_code: str | None = None   # 지정 시 해당 업종만 집계("카페 하기 좋은 상권")
+    change_indicator: str | None = None  # 상권변화지표명(다이나믹/상권확장/상권축소/정체) — 지정 시 해당 분류만
+    dong_name: str | None = None      # 행정동명 (예: 성수동) — gu와 같은 결의 필터(I-3)
 
 
 @dataclass(frozen=True)
@@ -31,6 +33,24 @@ class AreaRankingRow:
     sales_qoq: float | None       # 직전 분기 대비 %, 직전 분기 결측이면 None
     closure_rate: float | None
     area_size: float | None  # ㎡ — 밀도 정규화용
+    change_indicator_name: str | None = None  # 상권변화지표명 — 변화 팩트 결측이면 None(I-1)
+
+
+@dataclass(frozen=True)
+class DongRollupRow:
+    """행정동 1개의 롤업 집계 — 상권 단위가 못 답하는 "동 전체" 질문용(I-3).
+
+    QoQ는 동 합계 기준이되, 소속 상권 중 하나라도 직전 분기 매출이 결측이면 None —
+    커버리지가 다른 분기를 나누면 허위 성장률이 된다.
+    """
+
+    district_name: str
+    dong_name: str
+    area_count: int
+    monthly_sales: int | None
+    store_count: int | None
+    sales_per_store: int | None
+    sales_qoq: float | None
 
 
 @dataclass(frozen=True)
@@ -45,6 +65,9 @@ class AreaRankingView:
     rows: list[AreaRankingRow]
     # 이 엔드포인트 자신의 필터 어휘 — 목록 하나 때문에 라우터를 새로 만들지 않는다
     services: list[ServiceOption]
+    # 행정동 롤업(I-3) — 이미 받은 행의 재집계라 추가 쿼리가 없다. 필터(gu·업종·변화지표)를
+    # 그대로 반영한 부분집합 위에서 계산된다.
+    dong_rollup: list[DongRollupRow] = field(default_factory=list)
 
 
 # ── 쇼케이스 — 비로그인 첫 화면용 공개 뷰 ────────────────────────────────

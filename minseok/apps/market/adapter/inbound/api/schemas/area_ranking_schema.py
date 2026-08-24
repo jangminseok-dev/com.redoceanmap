@@ -16,6 +16,17 @@ class AreaRankingRowSchema(BaseModel):
     salesQoq: float | None
     closureRate: float | None
     areaSize: float | None
+    changeIndicatorName: str | None
+
+
+class DongRollupRowSchema(BaseModel):
+    districtName: str
+    dongName: str
+    areaCount: int
+    monthlySales: int | None
+    storeCount: int | None
+    salesPerStore: int | None
+    salesQoq: float | None
 
 
 class ServiceOptionSchema(BaseModel):
@@ -27,3 +38,4 @@ class AreaRankingResponse(BaseModel):
     yearQuarter: int | None
     rows: list[AreaRankingRowSchema]
     services: list[ServiceOptionSchema]
+    dongRollup: list[DongRollupRowSchema]

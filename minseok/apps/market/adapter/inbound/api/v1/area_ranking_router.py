@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, Query
 from market.adapter.inbound.api.schemas.area_ranking_schema import (
     AreaRankingResponse,
     AreaRankingRowSchema,
+    DongRollupRowSchema,
     ServiceOptionSchema,
 )
 from market.app.dtos.area_ranking_dto import AreaRankingQuery
@@ -15,13 +16,17 @@ area_ranking_router = APIRouter(prefix="/market", tags=["market"])
 @area_ranking_router.get("/areas/ranking", response_model=AreaRankingResponse)
 async def list_area_ranking(
     gu: str | None = Query(default=None, description="자치구명 (예: 성동구)"),
+    dong: str | None = Query(default=None, description="행정동명 (예: 성수1가1동)"),
     division: str | None = Query(default=None, description="상권 구분 코드"),
     service_code: str | None = Query(default=None, description="업종 코드 — 지정 시 해당 업종만 집계"),
+    change: str | None = Query(
+        default=None, description="상권변화지표명 (다이나믹/상권확장/상권축소/정체)"),
     use_case: AreaRankingUseCase = Depends(get_area_ranking_use_case),
 ) -> AreaRankingResponse:
     # 조건에 맞는 상권이 없어도 404가 아니다 — 목록 화면은 빈 상태로라도 떠야 한다.
     view = await use_case.list_ranking(AreaRankingQuery(
         district_name=gu, division_code=division, service_code=service_code,
+        change_indicator=change, dong_name=dong,
     ))
     return AreaRankingResponse(
         yearQuarter=view.year_quarter,
@@ -41,8 +46,21 @@ async def list_area_ranking(
                 salesQoq=r.sales_qoq,
                 closureRate=r.closure_rate,
                 areaSize=r.area_size,
+                changeIndicatorName=r.change_indicator_name,
             )
             for r in view.rows
         ],
         services=[ServiceOptionSchema(code=s.code, name=s.name) for s in view.services],
+        dongRollup=[
+            DongRollupRowSchema(
+                districtName=d.district_name,
+                dongName=d.dong_name,
+                areaCount=d.area_count,
+                monthlySales=d.monthly_sales,
+                storeCount=d.store_count,
+                salesPerStore=d.sales_per_store,
+                salesQoq=d.sales_qoq,
+            )
+            for d in view.dong_rollup
+        ],
     )

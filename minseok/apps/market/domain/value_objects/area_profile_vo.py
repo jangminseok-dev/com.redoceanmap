@@ -166,6 +166,22 @@ class AssetPrice:
 
 
 @dataclass(frozen=True)
+class ChangeProfile:
+    """상권변화지표 — 운영·폐업 영업개월을 시도 평균과 비교한 2×2 분류(서울시 1급 축).
+
+    지표 이름(다이나믹/상권확장/상권축소/정체)은 원천 차원 테이블 값 그대로다.
+    해석 문장은 narrator가 만든다 — 값은 있는데 이름만 노출되던 축(I-1).
+    """
+
+    year_quarter: int
+    indicator_name: str                     # 다이나믹 | 상권확장 | 상권축소 | 정체
+    operating_months: float | None          # 이 상권 생존 점포 평균 영업개월
+    closure_months: float | None            # 폐업 점포가 버틴 평균 영업개월
+    region_operating_months: float | None   # 시도(서울) 벤치마크
+    region_closure_months: float | None
+
+
+@dataclass(frozen=True)
 class SpendingCategory:
     key: str
     label: str

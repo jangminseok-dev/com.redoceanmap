@@ -31,6 +31,7 @@ class AreaDetailInteractor(AreaDetailUseCase):
         service_ranking = await self._detail.find_service_ranking(query.trdar_code)
         permit_churn = await self._detail.find_permit_churn(query.trdar_code)
         asset_price = await self._detail.find_asset_price(query.trdar_code)
+        change = await self._detail.find_change(query.trdar_code)
 
         return AreaDetailView(
             trdar_code=header.trdar_code,
@@ -49,6 +50,6 @@ class AreaDetailInteractor(AreaDetailUseCase):
             service_ranking=service_ranking,
             insights=narrate(
                 sales_mix, resident, working, spending, floating, facility, apartment,
-                permit_churn, asset_price,
+                permit_churn, asset_price, change,
             ),
         )

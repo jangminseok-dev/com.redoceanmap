@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from market.app.dtos.area_stats_dto import AreaHeader, ServiceRef
 from market.domain.value_objects.area_profile_vo import (
     ApartmentProfile,
+    ChangeProfile,
     FacilityProfile,
     FloatingRhythm,
     PermitChurn,
@@ -67,6 +68,11 @@ class AreaDetailRepositoryPort(ABC):
     @abstractmethod
     async def find_facility(self, trdar_code: int) -> FacilityProfile | None:
         """최신 분기 집객시설(역·정류장·대학·백화점·병원) — 외부 유입 동선의 앵커."""
+        ...
+
+    @abstractmethod
+    async def find_change(self, trdar_code: int) -> ChangeProfile | None:
+        """최신 분기 상권변화지표(+시도 벤치마크 영업개월) — 팩트 없으면 None(문장 생략)."""
         ...
 
     @abstractmethod

@@ -65,9 +65,12 @@ class AreaRankingRepositoryPort(ABC):
 
     @abstractmethod
     async def find_areas(
-        self, district_name: str | None, division_code: str | None
+        self,
+        district_name: str | None,
+        division_code: str | None,
+        dong_name: str | None = None,
     ) -> list[AreaMeta]:
-        """조건에 맞는 상권 차원 목록."""
+        """조건에 맞는 상권 차원 목록 — dong_name은 행정동 필터(I-3)."""
         ...
 
     @abstractmethod
@@ -80,6 +83,15 @@ class AreaRankingRepositoryPort(ABC):
     @abstractmethod
     async def list_service_codes(self, year_quarter: int) -> list[ServiceRef]:
         """해당 분기에 매출 실적이 있는 업종 — 화면의 업종 셀렉트 어휘."""
+        ...
+
+    @abstractmethod
+    async def find_change_indicators(self) -> dict[int, str]:
+        """상권별 최신 상권변화지표명 — 변화 팩트 자체의 최신 분기 기준. 없으면 빈 dict.
+
+        매출 최신 분기와 어긋날 수 있다(변화 팩트가 늦게 적재되는 분기) — 지표는
+        상권의 구조 분류라 한 분기 지연이 왜곡이 아니다.
+        """
         ...
 
     @abstractmethod

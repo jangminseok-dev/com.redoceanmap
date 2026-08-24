@@ -3,6 +3,7 @@ from __future__ import annotations
 from market.domain.value_objects.area_profile_vo import (
     ApartmentProfile,
     AssetPrice,
+    ChangeProfile,
     FacilityProfile,
     FloatingRhythm,
     PermitChurn,
@@ -96,6 +97,7 @@ def narrate(
     apartment: ApartmentProfile | None = None,
     permit_churn: PermitChurn | None = None,
     asset_price: AssetPrice | None = None,
+    change: ChangeProfile | None = None,
 ) -> list[Insight]:
     """최신 분기 구조 수치 → 초보자용 해석 문장. 결측 축은 해당 문장을 생략한다."""
     insights: list[Insight] = []
@@ -123,6 +125,9 @@ def narrate(
     character = _facility_character(facility)
     if character is not None:
         insights.append(character)
+    change_fact = _change_insight(change)
+    if change_fact is not None:
+        insights.append(change_fact)
     churn = _permit_churn_insight(permit_churn)
     if churn is not None:
         insights.append(churn)
@@ -520,6 +525,38 @@ def _facility_character(facility: FacilityProfile | None) -> Insight | None:
                  "동네 생활 동선이 지나는 상권입니다.",
         )
     return None
+
+
+# 상권변화지표 해석 — 서울시 정의(운영·폐업 영업개월 × 서울 평균 비교 2×2)를 창업자
+# 언어로 옮긴다. 지표 이름만 노출하면 "다이나믹"이 좋다는 건지 나쁘다는 건지 알 수 없다.
+_CHANGE_MEANINGS: dict[str, tuple[str, str]] = {
+    "다이나믹": ("neutral",
+               "가게가 빨리 들어오고 빨리 바뀝니다 — 자리는 자주 나지만 교체 경쟁도 빠릅니다."),
+    "상권확장": ("positive",
+               "새 가게가 계속 들어오고 기존 가게도 오래 버티는 성장 국면입니다."),
+    "상권축소": ("warning",
+               "기존 점포는 오래 버티지만 새로 연 가게는 빨리 닫습니다 — 신규 진입에 불리합니다."),
+    "정체": ("neutral",
+             "오래된 가게가 자리를 지키고 신규 진입·이탈이 모두 적은 상권입니다."),
+}
+
+
+def _change_insight(change: ChangeProfile | None) -> Insight | None:
+    """상권변화지표 한 줄 — 정의에 없는 지표명(원천 개편 등)은 침묵한다."""
+    if change is None:
+        return None
+    meaning = _CHANGE_MEANINGS.get(change.indicator_name)
+    if meaning is None:
+        return None
+    tone, text = meaning
+    months = ""
+    if change.operating_months and change.region_operating_months:
+        months = (f" (평균 영업 {change.operating_months:.0f}개월,"
+                  f" 서울 {change.region_operating_months:.0f}개월)")
+    return Insight(
+        key="change_indicator", tone=tone,
+        text=f"상권변화지표 '{change.indicator_name}' — {text}{months}",
+    )
 
 
 def _asset_price_insight(asset: AssetPrice | None) -> Insight | None:

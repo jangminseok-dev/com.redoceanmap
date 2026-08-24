@@ -8,6 +8,11 @@ from sqlalchemy.orm import aliased
 
 from market.adapter.outbound.orm.apartment_orm import ApartmentOrm
 from market.adapter.outbound.orm.business_permit_orm import BusinessPermitOrm
+from market.adapter.outbound.orm.change_indicator_orm import ChangeIndicatorOrm
+from market.adapter.outbound.orm.commercial_change_benchmark_orm import (
+    CommercialChangeBenchmarkOrm,
+)
+from market.adapter.outbound.orm.commercial_change_orm import CommercialChangeOrm
 from market.adapter.outbound.orm.commercial_trade_orm import CommercialTradeOrm
 from market.adapter.outbound.orm.consumption_orm import ConsumptionOrm
 from market.adapter.outbound.orm.estimated_sales_orm import EstimatedSalesOrm
@@ -25,6 +30,7 @@ from market.domain.value_objects.area_profile_vo import (
     AgeBand,
     ApartmentProfile,
     AssetPrice,
+    ChangeProfile,
     FacilityProfile,
     FloatingRhythm,
     PermitChurn,
@@ -312,6 +318,47 @@ class AreaDetailPgRepository(AreaDetailRepositoryPort):
             nightlife=r.theater_count + r.lodging_count,
             convenience=(r.bank_count + r.pharmacy_count
                          + r.supermarket_count + r.public_office_count),
+        )
+
+    async def find_change(self, trdar_code: int) -> ChangeProfile | None:
+        row = (await self._session.execute(
+            select(CommercialChangeOrm, ChangeIndicatorOrm.name)
+            .outerjoin(
+                ChangeIndicatorOrm,
+                CommercialChangeOrm.change_indicator == ChangeIndicatorOrm.code,
+            )
+            .where(CommercialChangeOrm.trdar_code == trdar_code)
+            .order_by(CommercialChangeOrm.year_quarter.desc())
+            .limit(1)
+        )).first()
+        if row is None or row[1] is None:
+            return None
+        cc, indicator_name = row[0], row[1]
+
+        # 시도 벤치마크 — 상권 → 행정동 → 자치구 → 시도 (게이트웨이와 같은 해소 경로)
+        dong, gu = aliased(RegionOrm), aliased(RegionOrm)
+        sido = (await self._session.execute(
+            select(gu.parent_code)
+            .select_from(TradeAreaOrm)
+            .join(dong, TradeAreaOrm.region_code == dong.code)
+            .join(gu, dong.parent_code == gu.code)
+            .where(TradeAreaOrm.code == trdar_code)
+        )).scalar()
+        bench = None
+        if sido is not None:
+            bench = (await self._session.execute(
+                select(CommercialChangeBenchmarkOrm).where(
+                    CommercialChangeBenchmarkOrm.region_code == sido,
+                    CommercialChangeBenchmarkOrm.year_quarter == cc.year_quarter,
+                )
+            )).scalar()
+        return ChangeProfile(
+            year_quarter=cc.year_quarter,
+            indicator_name=indicator_name,
+            operating_months=cc.operating_months_avg,
+            closure_months=cc.closure_months_avg,
+            region_operating_months=bench.operating_months_avg if bench else None,
+            region_closure_months=bench.closure_months_avg if bench else None,
         )
 
     async def find_asset_price(self, trdar_code: int, months: int = 12) -> AssetPrice | None:
