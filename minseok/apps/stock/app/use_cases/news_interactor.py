@@ -7,6 +7,11 @@ from stock.app.ports.input.news_use_case import NewsIngestUseCase
 from stock.app.ports.output.embedding_port import EmbeddingPort
 from stock.app.ports.output.news_repository import NewsRepositoryPort
 from stock.domain.entities.news_article import NewsArticle
+from stock.domain.services.keyword_extractor import (
+    HeadlineSample,
+    KeywordInsight,
+    extract_keywords,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,3 +60,12 @@ class NewsInteractor(NewsIngestUseCase):
             logger.warning("[stock-news] 질의 임베딩 실패 — 빈 결과 반환", exc_info=True)
             return []
         return await self._news.search_similar(embedding, ticker=ticker, limit=limit)
+
+    async def top_keywords(self, ticker: str, limit: int = 5) -> list[KeywordInsight]:
+        """최근 헤드라인 표본 → 결정론 키워드 추출(B2). 임베딩과 무관해 항상 동작한다."""
+        rows = await self._news.recent_labeled_titles(ticker)
+        samples = [
+            HeadlineSample(title=title, sentiment=sentiment, published_at=published_at)
+            for title, sentiment, published_at in rows
+        ]
+        return extract_keywords(samples, limit=limit)

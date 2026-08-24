@@ -93,6 +93,37 @@ class NewsPgRepository(NewsRepositoryPort):
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
+    async def recent_labeled_titles(
+        self, ticker: str, days: int = 90, limit: int = 100,
+    ) -> list[tuple[str, float | None, datetime | None]]:
+        since = datetime.now(UTC) - timedelta(days=days)
+        rows = (await self._session.execute(
+            select(NewsArticleOrm.title, NewsLabelOrm.sentiment, NewsArticleOrm.published_at)
+            .outerjoin(NewsLabelOrm, and_(
+                NewsLabelOrm.news_id == NewsArticleOrm.id,
+                NewsLabelOrm.labeler == DEFAULT_LABELER,
+            ))
+            .where(
+                or_(
+                    NewsArticleOrm.ticker == ticker,
+                    NewsArticleOrm.ticker.like(f"{ticker}.%"),  # 접미 매칭(005930 ↔ 005930.KS)
+                ),
+                NewsArticleOrm.published_at >= since,
+            )
+            .order_by(NewsArticleOrm.published_at.desc())
+            .limit(limit * 2)  # (url, ticker) 유니크 구조상 같은 제목 다행 — 여유 조회 후 dedupe
+        )).all()
+        out: list[tuple[str, float | None, datetime | None]] = []
+        seen: set[str] = set()
+        for title, sentiment, published_at in rows:
+            if title in seen:
+                continue
+            seen.add(title)
+            out.append((title, float(sentiment) if sentiment is not None else None, published_at))
+            if len(out) >= limit:
+                break
+        return out
+
     async def sentiment_baseline(self, ticker: str, days: int = 30) -> tuple[float | None, int]:
         since = datetime.now(UTC) - timedelta(days=days)
         avg, count = (await self._session.execute(

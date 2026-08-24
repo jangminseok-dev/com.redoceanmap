@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from hub.app.dtos.news_dto import NewsHit
+from hub.app.dtos.news_dto import NewsHit, NewsKeyword
 
 
 class NewsSearchPort(ABC):
@@ -16,4 +16,11 @@ class NewsSearchPort(ABC):
     @abstractmethod
     async def search(self, query: str, ticker: str | None = None, limit: int = 5) -> list[NewsHit]:
         """질의와 의미가 가까운 수집 뉴스를 반환한다. 검색 불가(임베딩 미가용)면 빈 리스트."""
+        ...
+
+    @abstractmethod
+    async def top_keywords(self, ticker: str, limit: int = 5) -> list[NewsKeyword]:
+        """종목 최근 헤드라인의 영향 키워드 Top-N(B2, 결정론 — LLM 미사용).
+
+        표본 미달·데이터 없음이면 빈 리스트(소비자는 라인 생략 — 열화 동작)."""
         ...

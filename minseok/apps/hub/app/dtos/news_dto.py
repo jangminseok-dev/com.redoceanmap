@@ -28,3 +28,13 @@ class NewsHit:
     sentiment: float | None = None  # -1.0(악재) ~ +1.0(호재), 라벨 없으면 None
     event_type: str | None = None
     source: str = ""
+
+
+@dataclass(frozen=True)
+class NewsKeyword:
+    """영향 키워드 1개(B2) — 최근 헤드라인 단어 빈도의 결정론 요약(예측 아님)."""
+
+    keyword: str
+    count: int                    # 포함 헤드라인 수
+    sentiment_avg: float | None   # 동반 감성 라벨 평균 — 라벨 없으면 None
+    sample_title: str             # 최신 근거 헤드라인

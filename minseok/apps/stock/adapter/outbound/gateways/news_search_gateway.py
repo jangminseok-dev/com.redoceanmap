@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from hub.app.dtos.news_dto import NewsHit
+from hub.app.dtos.news_dto import NewsHit, NewsKeyword
 from hub.app.ports.output.news_search_port import NewsSearchPort
 from stock.app.ports.input.news_use_case import NewsIngestUseCase
 
@@ -18,4 +18,13 @@ class NewsSearchGateway(NewsSearchPort):
                 sentiment=row.sentiment, event_type=row.event_type, source=row.source,
             )
             for row in await self._use_case.search(query, ticker=ticker, limit=limit)
+        ]
+
+    async def top_keywords(self, ticker: str, limit: int = 5) -> list[NewsKeyword]:
+        return [
+            NewsKeyword(
+                keyword=k.keyword, count=k.count,
+                sentiment_avg=k.sentiment_avg, sample_title=k.sample_title,
+            )
+            for k in await self._use_case.top_keywords(ticker, limit=limit)
         ]

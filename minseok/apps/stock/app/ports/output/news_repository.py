@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from datetime import datetime
 
 from stock.app.dtos.news_search_dto import NewsSearchRow
 from stock.domain.entities.news_article import NewsArticle
@@ -34,6 +35,15 @@ class NewsRepositoryPort(ABC):
         self, embedding: list[float], ticker: str | None = None, limit: int = 5,
     ) -> list[NewsSearchRow]:
         """코사인 유사도 상위 뉴스를 라벨(감성·이벤트)과 함께 반환한다. ticker로 범위 제한 가능."""
+        ...
+
+    @abstractmethod
+    async def recent_labeled_titles(
+        self, ticker: str, days: int = 90, limit: int = 100,
+    ) -> list[tuple[str, float | None, datetime | None]]:
+        """종목의 최근 헤드라인 (제목, 감성 라벨, 발행일) — 키워드 추출(B2)의 표본.
+
+        접미 매칭(005930 ↔ 005930.KS)은 구현 몫. 제목 중복은 제거해 반환한다."""
         ...
 
     @abstractmethod

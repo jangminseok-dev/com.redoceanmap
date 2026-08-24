@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 
 from stock.app.dtos.news_search_dto import NewsSearchRow
 from stock.domain.entities.news_article import NewsArticle
+from stock.domain.services.keyword_extractor import KeywordInsight
 
 
 class NewsIngestUseCase(ABC):
@@ -24,4 +25,9 @@ class NewsIngestUseCase(ABC):
         self, query: str, ticker: str | None = None, limit: int = 5,
     ) -> list[NewsSearchRow]:
         """자연어 질의로 의미 검색한다. 임베딩 불가 시 빈 결과."""
+        ...
+
+    @abstractmethod
+    async def top_keywords(self, ticker: str, limit: int = 5) -> list[KeywordInsight]:
+        """종목 최근 헤드라인의 영향 키워드 Top-N(B2, 결정론). 표본 미달이면 빈 리스트."""
         ...

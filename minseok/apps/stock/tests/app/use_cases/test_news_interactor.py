@@ -83,3 +83,42 @@ async def test_질의_임베딩_실패면_빈_결과():
     repo = _StubRepository()
     rows = await NewsInteractor(news=repo, embeddings=_StubEmbeddings(fail=True)).search("질의")
     assert rows == [] and repo.search_args is None
+
+# --- B2 영향 키워드 ---
+
+
+class _KeywordOnlyRepo:
+    """top_keywords 경로가 쓰는 메서드만 — 표본을 그대로 돌려준다."""
+
+    def __init__(self, rows):
+        self.rows = rows
+        self.calls: list[str] = []
+
+    async def recent_labeled_titles(self, ticker, days=90, limit=100):
+        self.calls.append(ticker)
+        return self.rows
+
+
+async def test_top_keywords는_최근_헤드라인_표본으로_결정론_추출한다():
+    from datetime import datetime, timezone
+
+    from stock.app.use_cases.news_interactor import NewsInteractor
+
+    d = datetime(2026, 8, 22, tzinfo=timezone.utc)
+    repo = _KeywordOnlyRepo([
+        ("HBM 수주 확대", 0.5, d),
+        ("HBM 공급 계약", 0.3, d),
+        ("HBM 증설 검토", None, d),
+        ("배당 확대 검토", 0.1, d),
+        ("신제품 공개", None, d),
+    ])
+    got = await NewsInteractor(news=repo).top_keywords("005930.KS")
+    assert repo.calls == ["005930.KS"]
+    assert got[0].keyword == "hbm" and got[0].count == 3
+
+
+async def test_top_keywords_표본_미달이면_빈_리스트():
+    from stock.app.use_cases.news_interactor import NewsInteractor
+
+    got = await NewsInteractor(news=_KeywordOnlyRepo([])).top_keywords("AAPL")
+    assert got == []
