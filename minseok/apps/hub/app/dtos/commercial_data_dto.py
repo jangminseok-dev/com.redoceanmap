@@ -6,7 +6,7 @@ chat(스포크)이 소비한다. 원시 수치만 담으며(텍스트 포맷팅�
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -23,6 +23,10 @@ class AreaInfo:
     adm_dong_name: str
     lat: float
     lng: float
+    # 원본 좌표(EPSG:5181 중부원점, m 단위) — 반경 질의의 유클리드 거리 계산용.
+    # 좌표가 없는 소비자(테스트 스텁 등)는 None — 반경 필터가 성립하지 않는다.
+    x_coord: int | None = None
+    y_coord: int | None = None
 
 
 @dataclass(frozen=True)
@@ -30,6 +34,9 @@ class AreaSummary:
     areas: list[AreaInfo]
     latest_quarter: int | None
     sales_by_code: dict[int, int]
+    # 상권별 월매출 합계의 전년 동분기 대비(%) — 전년 결측·0이면 None.
+    # 계절성 지배 데이터라 QoQ 대신 YoY가 "작년보다 올랐나"의 정답 축이다(area_scorer와 동일 논리).
+    yoy_by_code: dict[int, float | None] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

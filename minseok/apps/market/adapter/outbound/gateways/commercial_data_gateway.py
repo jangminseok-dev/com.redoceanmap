@@ -34,6 +34,7 @@ from market.adapter.outbound.orm.region_orm import RegionOrm
 from market.adapter.outbound.orm.service_category_orm import ServiceCategoryOrm
 from market.adapter.outbound.orm.store_orm import StoreOrm
 from market.adapter.outbound.orm.trade_area_orm import TradeAreaOrm
+from market.domain.services.area_scorer import prev_year_quarter
 from hub.app.ports.output.commercial_data_port import CommercialDataPort
 
 
@@ -88,6 +89,25 @@ class CommercialDataGateway(CommercialDataPort):
             )
             sales_by_code = {r.trdar_code: r.total for r in result.all()}
 
+        # 전년 동분기 대비(%) — phase1 후보 표의 YoY 열(I-10). 전년 결측·0이면 None.
+        yoy_by_code: dict[int, float | None] = {}
+        if latest_quarter:
+            base_quarter = prev_year_quarter(latest_quarter)
+            result = await self._session.execute(
+                select(
+                    EstimatedSalesOrm.trdar_code,
+                    func.sum(EstimatedSalesOrm.monthly_sales_amount).label("total"),
+                )
+                .where(EstimatedSalesOrm.year_quarter == base_quarter)
+                .group_by(EstimatedSalesOrm.trdar_code)
+            )
+            base_by_code = {r.trdar_code: r.total for r in result.all()}
+            for code, current in sales_by_code.items():
+                base = base_by_code.get(code)
+                yoy_by_code[code] = (
+                    round((current - base) / base * 100, 2) if base and base > 0 else None
+                )
+
         area_infos = [
             AreaInfo(
                 trdar_code=t.code,
@@ -96,11 +116,14 @@ class CommercialDataGateway(CommercialDataPort):
                 adm_dong_name=r.dong_name or "",
                 lat=t.lat,
                 lng=t.lng,
+                x_coord=t.x_coord,
+                y_coord=t.y_coord,
             )
             for t, r in ((row[0], row) for row in rows)
         ]
         summary = AreaSummary(
-            areas=area_infos, latest_quarter=latest_quarter, sales_by_code=sales_by_code
+            areas=area_infos, latest_quarter=latest_quarter,
+            sales_by_code=sales_by_code, yoy_by_code=yoy_by_code,
         )
         if latest_quarter is not None:  # 데이터 없는 상태를 캐시하면 적재 후에도 빈 채 남는다
             _SUMMARY_CACHE["area_summary"] = (latest_quarter, summary)

@@ -28,7 +28,7 @@ class CommercialDataPort(ABC):
 
     @abstractmethod
     async def get_area_summary(self) -> AreaSummary:
-        """전체 상권 기본정보 + 최신 분기 + 상권별 월매출 합계를 반환한다."""
+        """전체 상권 기본정보(좌표 포함) + 최신 분기 + 상권별 월매출 합계·전년 동분기 대비(%)를 반환한다."""
         ...
 
     @abstractmethod
