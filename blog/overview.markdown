@@ -4,11 +4,16 @@ title: 프로젝트 개요
 permalink: /overview/
 ---
 
-<h2 id="summary">1. 한 줄 요약</h2>
+<div class="cn-grid">
 
-지도에서 상권을 고르거나 종목을 물으면, **실데이터 근거와 함께 해설하는** 로컬 LLM 대화형 분석 플랫폼.
+<div class="cn-card cn-bg-warm cn-statement cn-wide" id="summary">
+  <p class="cn-label">1 · 한 줄 요약</p>
+  <h2>지도에서 상권을 고르거나 종목을 물으면,<br>실데이터 근거와 함께 해설하는 로컬 LLM 대화형 분석 플랫폼</h2>
+</div>
 
-<h2 id="purpose">2. 프로젝트 목적</h2>
+<div class="cn-card cn-bg-plain cn-body cn-wide" id="purpose" markdown="1">
+
+## 2. 프로젝트 목적
 
 > "이 동네에 카페를 차려도 괜찮을까?"
 > "오늘 이 종목 뉴스, 주가에 의미가 있는 건가?"
@@ -21,17 +26,37 @@ permalink: /overview/
 - 목표는 단계적이다: ① 개인 투자/분석 도구 → ② 운영·품질 기반 완성 → ③ 실사용자 서비스.
 - 제약: 개발 단계 비용 0원(무료 리소스만) · 온프레미스 운영.
 
-<h2 id="features">3. 주요 기능</h2>
+</div>
+
+<div class="cn-card cn-bg-sage cn-statement cn-wide" id="features">
+  <p class="cn-label">3 · 주요 기능</p>
+  <h2>지도에서 고르고, 대화로 묻는다</h2>
+</div>
+
+{% include card.html img="/assets/img/market-map.jpg" bg="sage" title="상권 — 지도 위에서 묻는다"
+   desc="지도에서 지역과 업종을 고르면, 분기별 흐름과 종합점수(매출·유동인구·개폐업·지속성)를 실데이터로 풀어 설명해요." %}
+{% include card.html img="/assets/img/question-home.png" bg="warm" title="대화형 질문 홈"
+   desc="상권이든 주식이든 질문 하나로 시작해요. 질문의 의도를 먼저 읽고, 맞는 데이터로 연결합니다." %}
+{% include card.html img="/assets/img/auth-login.jpg" bg="warm" title="회원 인증 — 자체 + 소셜 3종"
+   desc="카카오·네이버·구글 계정으로 간편하게 로그인해요. 토큰을 만드는 열쇠(JWT 개인키)는 인증 서버만 갖고 있어, 본체가 뚫려도 토큰을 위조할 수 없습니다." %}
+{% include card.html img="/assets/img/dark-mode.png" bg="dark" title="다크 모드"
+   desc="라이트와 다크, 어느 쪽에서도 크림+적색의 분위기가 그대로예요." %}
+
+<div class="cn-card cn-bg-plain cn-body cn-wide" markdown="1">
 
 | 영역 | 기능 |
 | --- | --- |
-| 상권 | 지도에서 지역·업종 선택 → 분기 시계열·종합점수(매출/유동인구/개폐업/지속성) 해설 |
-| 주식 | 지표 9종 해석 + 백테스트 검증 신호 + 뉴스 RAG 근거 주입 대화 |
+| 상권 | 지도에서 지역·업종 선택 → 분기 시계열·종합점수(매출/유동인구/개폐업/지속성) 해설 + 상권변화지표·행정동 축 랭킹, 반경·전년대비(YoY) 질의 가드 |
+| 주식 | 지표 9종 해석 + 백테스트 검증 신호 + 뉴스 RAG 근거 주입 대화 + 주가 영향 키워드 Top-N |
 | 개인화 | 북마크(관심 종목·상권) 상태 보드, 투자·창업 프로파일 기반 서술 조정 |
-| 알림 | 북마크 대상의 신호 변화를 이메일로 통지 (같은 신호 중복 발송 억제) |
+| 알림 | 북마크 대상의 신호 변화를 이메일·텔레그램으로 통지 (같은 신호 중복 발송 억제) |
 | 어드민 | RBAC 권한 기반 운영 화면 (수집 현황·평가 리포트 등) |
 
-<h2 id="effects">4. 기대 효과</h2>
+</div>
+
+<div class="cn-card cn-bg-plain cn-body" id="effects" markdown="1">
+
+## 4. 기대 효과
 
 - **흩어진 데이터의 통합 해석** — 상권·주식·뉴스·공시를 각각 찾아다니는 대신,
   한 대화창에서 실데이터 근거와 함께 묻고 답을 받는다.
@@ -39,7 +64,11 @@ permalink: /overview/
 - **측정 기반 개선 사이클** — 답변·검색 품질을 골든셋 지표로 고정해, 개선이 "느낌"이 아니라
   숫자로 확인된다. 기각된 실험도 근거 문서로 남는다.
 
-<h2 id="stack">5. 기술 스택 및 아키텍처</h2>
+</div>
+
+<div class="cn-card cn-bg-plain cn-body" id="stack" markdown="1">
+
+## 5. 기술 스택 및 아키텍처
 
 | 계층 | 스택 |
 | --- | --- |
@@ -52,7 +81,11 @@ permalink: /overview/
   앱 사이는 스타 토폴로지(허브 + 스포크). 두 구조 모두 import-linter 계약 5종으로 정적 강제.
 - 인증은 별도 프로세스로 분리 — JWT 개인키를 백엔드 본체가 보유하지 않는 경계 설계.
 
-<h2 id="why-stack">6. 왜 이 스택인가</h2>
+</div>
+
+<div class="cn-card cn-bg-plain cn-body" id="why-stack" markdown="1">
+
+## 6. 왜 이 스택인가
 
 **왜 MSA가 아니라 모듈러 모놀리식인가**
 
@@ -71,7 +104,11 @@ permalink: /overview/
 모델이 여러 개면 품질 문제의 원인 추적과 비교 기준이 흐려진다. 추론 모델은 하나로 고정하고,
 교체는 환경 변수 스위치 + **120문항 평가 하네스 회귀 대조**를 통과할 때만 한다.
 
-<h2 id="data">7. 데이터 수집 및 연계</h2>
+</div>
+
+<div class="cn-card cn-bg-plain cn-body" id="data" markdown="1">
+
+## 7. 데이터 수집 및 연계
 
 | 데이터 | 출처 | 주기 |
 | --- | --- | --- |
@@ -85,7 +122,11 @@ permalink: /overview/
 - 수집은 전부 **독립 배치 스크립트** — 서비스 런타임과 분리되어 실패해도 서비스에 영향이 없다.
 - 전 출처가 무료 공공/공개 API다. 약관 리스크가 있는 스크래핑(지도 리뷰·SNS)은 배제했다.
 
-<h2 id="security">8. 보안 및 개인정보 보호</h2>
+</div>
+
+<div class="cn-card cn-bg-plain cn-body" id="security" markdown="1">
+
+## 8. 보안 및 개인정보 보호
 
 - **토큰 발급 경계 분리** — JWT 개인키는 별도 인증 프로세스만 보유. 백엔드 본체는
   공개키 검증만 가능해, 본체가 침해되어도 토큰을 위조할 수 없다.
@@ -96,14 +137,22 @@ permalink: /overview/
   마이데이터·신용점수 연동은 로드맵에서 제외했다.
 - **백업 3계층** — 일간 로컬 + 주간 오프사이트 미러 + 분기 복원 리허설(실복원 검증).
 
-<h2 id="rules">9. 아키텍처 규율</h2>
+</div>
+
+<div class="cn-card cn-bg-plain cn-body" id="rules" markdown="1">
+
+## 9. 아키텍처 규율
 
 - 스포크끼리 직접 import 금지 — 교차 협력은 허브 포트 경유, 허브는 스포크를 모른다.
 - 앱 전용 DB와 공유 DB를 섞지 않는다.
 - 스켈레톤(빈 껍데기) 코드 금지 — 실사용하지 않는 추상을 만들지 않는다.
 - 과설계 명시 배제 — [명시적 비추천 목록]({{ '/roadmap/' | relative_url }}#rejected)으로 관리.
 
-<h2 id="validation">10. 품질 관리 및 테스트</h2>
+</div>
+
+<div class="cn-card cn-bg-plain cn-body" id="validation" markdown="1">
+
+## 10. 품질 관리 및 테스트
 
 - pytest 기반 테스트 (유스케이스는 스텁 포트로 검증), 구조 위반은 import-linter가 잡는다.
 - LLM 답변 품질은 **평가 하네스**로 관리 — 골든셋 + 결정론 채점기 + baseline 회귀 게이트.
@@ -118,15 +167,23 @@ permalink: /overview/
 
 개선 주장이 "느낌"이 아니라 이 문장처럼 숫자로 성립하는 상태를 유지한다.
 
-<h2 id="answer-policy">11. 답변 책임 원칙</h2>
+</div>
+
+<div class="cn-card cn-bg-plain cn-body" id="answer-policy" markdown="1">
+
+## 11. 답변 책임 원칙
 
 - 투자 지시·확률 단정 금지 — 데이터 근거만 제시하고 판단은 사용자에게 남긴다.
 - 표본 기준 미달 통계는 확률 주장에 쓰지 않는다 (참고 정보로만).
 - 개인화는 서술 관점 조정까지 — 프로파일 근거 매매 권유는 프롬프트 규칙으로 금지.
 
----
+</div>
 
-"만들었습니다"에서 끝나지 않고, **"측정했고, 미달이면 기각했습니다"까지 말할 수 있는**
-저장소를 지향한다.
+<div class="cn-card cn-bg-dark cn-statement cn-wide">
+  <h2>"만들었습니다"에서 끝나지 않는다</h2>
+  <p>"측정했고, 미달이면 기각했습니다"까지 말할 수 있는 저장소를 지향한다.</p>
+</div>
+
+</div>
 
 [← 목차로]({{ '/toc/' | relative_url }}) · [진행 현황 보기]({{ '/roadmap/' | relative_url }})

@@ -1,0 +1,16 @@
+{%- comment -%}
+카드뉴스 스크린샷 카드 1장 — .cn-grid 래퍼 안에서 사용.
+파라미터: img(필수) · title(필수) · desc · alt
+  · bg: warm(기본) | sage | dark — 카드 배경 변형
+  · wide: true면 그리드 전체 폭
+예: {% include card.html img="/assets/img/market-map.jpg" bg="sage"
+     title="상권 워크스페이스" desc="지도에서 고르고 채팅으로 묻는다" %}
+{%- endcomment -%}
+{%- assign bg = include.bg | default: "warm" -%}
+<figure class="cn-card cn-bg-{{ bg }}{% if include.wide %} cn-wide{% endif %}">
+  <img src="{{ include.img | relative_url }}" alt="{{ include.alt | default: include.title }}" loading="lazy">
+  <figcaption>
+    <strong>{{ include.title }}</strong>
+    {% if include.desc %}<p>{{ include.desc }}</p>{% endif %}
+  </figcaption>
+</figure>

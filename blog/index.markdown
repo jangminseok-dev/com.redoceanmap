@@ -2,47 +2,40 @@
 layout: home
 ---
 
-<div style="text-align: center; padding: 3rem 0 4rem;">
+<div class="cn-grid">
 
-<p style="letter-spacing: 0.8em; color: #828282; font-size: 0.9rem;">개발 기록</p>
+<div class="cn-card cn-bg-dark cn-statement cn-wide">
+  <p class="cn-label">개발 기록</p>
+  <h1>전국 상권 분석·주식 대화형 플랫폼<br>및 로컬 LLM 기반 실데이터 해설 서비스</h1>
+  <p>혼자 쓰던 분석 도구를 누구나 쓰는 서비스로, 한 단계씩 키워가는 기록이에요.<br>
+  redoceanmap — Nationwide Commercial District Analysis<br>
+  and Conversational Stock Platform with Local-LLM Grounded Explanations</p>
+  <p class="cn-actions">
+    <a class="btn btn--primary" href="{{ '/overview/' | relative_url }}">프로젝트 개요</a>
+    <a class="btn" href="https://redoceanmap.com">서비스 사이트</a>
+  </p>
+</div>
 
-<h1 style="font-size: 2.1rem; line-height: 1.5; font-weight: 700; margin: 2rem 0 1.5rem;">
-전국 상권 분석·주식 대화형 플랫폼<br>및 로컬 LLM 기반 실데이터 해설 서비스<br>
-<span style="white-space: nowrap;">(개인 분석 도구에서 실사용자 서비스까지 — 단계적 고도화)</span>
-</h1>
+{% include card.html img="/assets/img/market-map.jpg" bg="sage" title="상권 워크스페이스"
+   desc="지도에서 동네를 고르면 바로 물어볼 수 있어요. 답은 서울시 상권 데이터를 3NF로 정규화한 실데이터에서 나옵니다." %}
+{% include card.html img="/assets/img/question-home.png" bg="warm" title="대화형 질문 홈"
+   desc="상권이든 주식이든 질문 하나로 시작해요. 질문의 의도를 먼저 읽고(phase0), 맞는 데이터로 연결합니다." %}
 
-<p style="color: #828282; line-height: 1.7;">
-redoceanmap — Nationwide Commercial District Analysis<br>
-and Conversational Stock Platform with Local-LLM Grounded Explanations
-</p>
+<div class="cn-card cn-bg-plain cn-body cn-wide" markdown="1">
 
-<hr style="width: 80px; margin: 3rem auto; border: 0; border-top: 1px solid #ccc;">
-
-<table style="margin: 0 auto; text-align: left; border-collapse: collapse;">
-  <tr>
-    <th style="padding: 0.6rem 1.8rem; vertical-align: top;">개발 기간</th>
-    <td style="padding: 0.6rem 1.8rem;">2026년 5월 ~ 진행 중<br><span style="color: #828282; font-size: 0.9rem;">단계적 고도화 로드맵 3단계 (①·② 대부분 완료, ③ 진행 중)</span></td>
-  </tr>
-  <tr>
-    <th style="padding: 0.6rem 1.8rem; vertical-align: top;">개발</th>
-    <td style="padding: 0.6rem 1.8rem;">장민석<br><span style="color: #828282; font-size: 0.9rem;">1인 개발 · 온프레미스 운영</span></td>
-  </tr>
-  <tr>
-    <th style="padding: 0.6rem 1.8rem; vertical-align: top;">문서 작성일</th>
-    <td style="padding: 0.6rem 1.8rem;">2026년 8월 23일</td>
-  </tr>
-  <tr>
-    <th style="padding: 0.6rem 1.8rem; vertical-align: top;">깃허브 주소</th>
-    <td style="padding: 0.6rem 1.8rem;"><a href="https://github.com/jangminseok-dev/com.redoceanmap">https://github.com/jangminseok-dev/com.redoceanmap</a></td>
-  </tr>
-  <tr>
-    <th style="padding: 0.6rem 1.8rem; vertical-align: top;">서비스 사이트</th>
-    <td style="padding: 0.6rem 1.8rem;"><a href="https://redoceanmap.com">https://redoceanmap.com</a></td>
-  </tr>
-</table>
-
-<br><br>
-
-<p><a href="{{ '/toc/' | relative_url }}">목차 →</a></p>
+| 개발 기간 | 2026년 5월 ~ 진행 중 <span style="color:#9a9aa2;font-size:0.9em;">— 단계적 고도화 로드맵 3단계 (①·② 대부분 완료, ③ 진행 중)</span> |
+| 개발 | 장민석 <span style="color:#9a9aa2;font-size:0.9em;">— 1인 개발 · 온프레미스 운영</span> |
+| 문서 작성일 | 2026년 8월 23일 |
+| 깃허브 주소 | [github.com/jangminseok-dev/com.redoceanmap](https://github.com/jangminseok-dev/com.redoceanmap) |
+| 서비스 사이트 | [redoceanmap.com](https://redoceanmap.com) |
 
 </div>
+
+{% include card.html img="/assets/img/dark-mode.png" bg="dark" title="다크 모드"
+   desc="라이트와 다크, 어느 쪽에서도 크림+적색의 분위기가 그대로예요." %}
+{% include card.html img="/assets/img/auth-login.jpg" bg="warm" title="회원 인증 — 자체 + 소셜 3종"
+   desc="카카오·네이버·구글 계정으로 간편하게 로그인해요. 토큰을 만드는 열쇠(JWT 개인키)는 인증 서버만 갖고 있습니다." %}
+
+</div>
+
+<p style="text-align: center; margin: 2.2rem 0 1rem;"><a class="btn" href="{{ '/toc/' | relative_url }}">목차 보기 →</a></p>

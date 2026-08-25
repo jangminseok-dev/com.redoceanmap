@@ -1,0 +1,347 @@
+---
+# 카드뉴스 × 리퀴드 글래스 테마
+# 구조: 페이지 = 큰 둥근 카드 그리드 (유지) / 스킨: 다크 차콜 배경 + 반투명 유리 카드
+#       (backdrop blur · 상단 하이라이트 보더 · 유리 광택) — 차갑고 감성적인 톤
+---
+
+// ── minima 변수 오버라이드 (!default보다 먼저) ──
+$base-font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Segoe UI", Roboto, sans-serif;
+$base-line-height: 1.75;
+$background-color: #151517;
+$text-color:       #e9e9ec;
+$brand-color:      #ff6b57;      // 다크 위 브랜드 적색 (액센트 전용)
+$grey-color:       #98989f;
+$content-width:    1200px;
+
+@import "minima";
+
+$display: "MaruBuri", "Apple SD Gothic Neo", serif;   // 감성 헤딩 — 네이버 마루부리
+
+// 넓은 화면에서 좌우 여백이 과하지 않게 — 본문 폭을 유동으로 (최대 1560px)
+.wrapper { max-width: min(1560px, 94vw); }
+$ink: #f2f2f4;
+$muted: #b2b2ba;
+$faint: #8e8e96;
+$line: rgba(255, 255, 255, 0.12);
+$radius: 26px;
+
+// 유리 재질 믹스인 — 반투명 + 블러 + 상단 하이라이트 + 광택
+@mixin glass($alpha: 0.055) {
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.02) 42%, rgba(255, 255, 255, 0) 60%),
+    rgba(255, 255, 255, $alpha);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  backdrop-filter: blur(18px) saturate(1.3);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-top-color: rgba(255, 255, 255, 0.28);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+body { word-break: keep-all; }
+
+// 앵커 이동 시 떠 있는 헤더에 소제목이 가려지지 않도록 착지 지점을 내린다
+[id] { scroll-margin-top: 100px; }
+// 고정 배경 레이어 — body에 attachment:fixed를 주면 backdrop-filter·풀페이지 캡처와 충돌한다
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(46% 40% at 82% 4%,  rgba(96, 118, 158, 0.16) 0%, rgba(96, 118, 158, 0) 70%),
+    radial-gradient(38% 34% at 10% 28%, rgba(120, 134, 160, 0.10) 0%, rgba(120, 134, 160, 0) 72%),
+    radial-gradient(44% 38% at 68% 86%, rgba(80, 90, 120, 0.12) 0%, rgba(80, 90, 120, 0) 75%),
+    linear-gradient(180deg, #1a1a1e 0%, #151517 46%, #121214 100%);
+}
+
+// ── 헤더: 떠 있는 유리 캡슐 내비게이션 (스크롤 시 따라옴) ──
+.site-header {
+  border-top: none;
+  border-bottom: none;
+  background: transparent;
+  position: sticky;
+  top: 14px;
+  z-index: 50;
+  min-height: 0;
+  line-height: 56px;
+}
+.site-header > .wrapper {
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0) 55%),
+    rgba(26, 26, 30, 0.55);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-top-color: rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  padding: 0 14px 0 26px;
+}
+.site-title, .site-title:visited {
+  font-family: $display;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: $ink;
+  &:hover { text-decoration: none; }
+  .brand-red { color: $brand-color; }
+}
+.site-nav {
+  background: transparent;
+  line-height: 56px;
+  .page-link {
+    color: $muted;
+    font-weight: 500;
+    padding: 8px 14px;
+    border-radius: 999px;
+    transition: background 0.2s ease, color 0.2s ease;
+    &:hover { color: $ink; text-decoration: none; background: rgba(255, 255, 255, 0.09); }
+    &:not(:last-child) { margin-right: 4px; }
+  }
+  .menu-icon > svg { fill: $ink; }
+  @include media-query($on-palm) {
+    background-color: rgba(32, 32, 37, 0.92);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 18px;
+    top: 8px;
+    right: 8px;
+    .page-link { display: block; padding: 6px 14px; }
+  }
+}
+.site-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  color: $faint;
+  .footer-heading { font-weight: 700; letter-spacing: -0.01em; color: $muted; }
+  .footer-col-wrapper { color: $faint; }
+  a { color: $muted; }
+}
+
+h1, h2, h3, h4 {
+  font-family: $display;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: $ink;
+}
+a { color: $brand-color; &:visited { color: $brand-color; } }
+code { background: rgba(255, 255, 255, 0.08); border: none; color: $ink; }
+pre { background: rgba(0, 0, 0, 0.35); border: 1px solid $line; }
+
+// ══ 카드뉴스 그리드 (구조 유지) ══
+.cn-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 30px;
+  margin: 34px 0;
+}
+.cn-wide { grid-column: 1 / -1; }
+
+.cn-card {
+  margin: 0;
+  border-radius: $radius;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 44px 36px;
+  min-height: 300px;
+  box-sizing: border-box;
+  @include glass(0.055);
+}
+
+// 배경 변형 — 전부 유리 톤 변주 (클래스명은 기존 유지)
+.cn-bg-warm { /* 기본 유리 */ }
+.cn-bg-sage {   // 한 단계 밝은 유리
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.03) 45%, rgba(255, 255, 255, 0) 62%),
+    rgba(255, 255, 255, 0.085);
+}
+.cn-bg-dark {   // 깊은 유리 + 은은한 적색 글로우
+  background:
+    radial-gradient(60% 70% at 50% 0%, rgba(255, 107, 87, 0.10) 0%, rgba(255, 107, 87, 0) 65%),
+    linear-gradient(150deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 50%),
+    rgba(10, 10, 12, 0.45);
+}
+.cn-bg-plain {  // 읽기용 — 살짝 더 불투명한 유리
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0.015) 40%, rgba(255, 255, 255, 0) 58%),
+    rgba(30, 30, 34, 0.55);
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+// ── 스크린샷 카드 ──
+.cn-card > img, .cn-shot {
+  max-width: 86%;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.55);
+}
+// 캡션 — 유리를 겹치지 않고 카드 표면에 글자만 얹는다 (이중 유리 금지)
+.cn-card figcaption, .cn-caption {
+  margin-top: 26px;
+  padding: 0 4px;
+  max-width: 86%;
+  width: 100%;
+  box-sizing: border-box;
+  color: $ink;
+  strong { display: block; font-family: $display; font-size: 1.12rem; font-weight: 700; letter-spacing: 0.01em; }
+  p { margin: 8px 0 0; font-size: 0.89rem; line-height: 1.75; color: $muted; }
+}
+
+// ── 문구(스테이트먼트) 카드 ──
+.cn-statement {
+  text-align: center;
+  padding-top: 64px;
+  padding-bottom: 64px;
+  h1, h2, h3 {
+    font-size: 2.1rem;
+    line-height: 1.55;
+    margin: 0 0 18px;
+    letter-spacing: 0.01em;
+    // 애플 키노트식 실버 그라데이션 헤드라인
+    background: linear-gradient(180deg, #ffffff 0%, #d9d9df 55%, #9d9da6 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: #e6e6ea;   // background-clip 미지원 폴백
+  }
+  p { margin: 0; color: $muted; line-height: 1.9; max-width: 36em; font-size: 1.02rem; }
+  .cn-label {
+    letter-spacing: 0.55em; text-indent: 0.55em;
+    font-size: 0.75rem; font-weight: 700;
+    text-transform: uppercase;
+    color: $faint;
+    margin-bottom: 20px;
+  }
+}
+.cn-wide.cn-statement h1 { font-size: 3.1rem; line-height: 1.45; }
+
+// ── 텍스트/표 카드 (읽기용) ──
+.cn-body {
+  padding: 36px 40px;
+  min-height: 0;
+  line-height: 1.85;
+  h2, h3 { margin-top: 0; margin-bottom: 18px; font-size: 1.4rem; color: $ink; }
+  p, li { line-height: 1.85; }
+  li { margin-bottom: 6px; }
+  ul, ol { margin-bottom: 18px; }
+  > *:last-child { margin-bottom: 0; }
+}
+
+// ── 목차 — 애플 설정 화면식 리스트 행 ──
+.cn-toc .cn-body {
+  h2 { margin-bottom: 10px; }
+  ol { list-style: none; margin: 0; padding: 0; }
+  li { margin: 0; padding: 13px 4px; color: $faint; font-size: 0.95rem; }
+  li + li { border-top: 1px solid rgba(255, 255, 255, 0.07); }
+  li > a {
+    color: $ink;
+    font-weight: 500;
+    text-decoration: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: -13px -4px;
+    padding: 13px 4px;
+    transition: color 0.15s ease;
+    &::after { content: "›"; color: $faint; font-size: 1.15em; transition: transform 0.2s ease, color 0.15s ease; }
+    &:hover { color: $brand-color; &::after { color: $brand-color; transform: translateX(3px); } }
+  }
+}
+
+// 버튼 — 유리 필 (Apple Music 스타일)
+.btn {
+  display: inline-block;
+  padding: 12px 28px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-decoration: none;
+  color: $ink !important;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-top-color: rgba(255, 255, 255, 0.32);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+.btn--primary { background: rgba(255, 107, 87, 0.85); border-color: rgba(255, 140, 120, 0.6); color: #fff !important; }
+.btn:hover { text-decoration: none; background: rgba(255, 255, 255, 0.16); }
+.btn--primary:hover { background: rgba(255, 107, 87, 1); }
+// p.cn-actions — .cn-statement p { margin: 0 }보다 우선하도록 셀렉터 구체화
+p.cn-actions, .cn-actions { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: 44px; }
+
+// minima 홈 레이아웃이 자동 삽입하는 RSS 구독 링크·포스트 목록 숨김 (표지를 쇼케이스로만 유지)
+.rss-subscribe { display: none; }
+.home .post-list-heading, .home .post-list { display: none; }
+
+// 표 — 유리 위 가는 라이트 보더
+table {
+  width: 100%;
+  border: none;
+  border-collapse: collapse;
+  color: $text-color;
+  th { background: none; border: none; border-bottom: 1px solid rgba(255, 255, 255, 0.3); color: $ink; font-weight: 700; }
+  td { background: none; border: none; border-bottom: 1px solid $line; }
+  tr:nth-child(even) { background: transparent; }
+  tr:last-child td { border-bottom: none; }
+}
+
+blockquote {
+  border-left: 2px solid $brand-color;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 0 12px 12px 0;
+  padding: 12px 20px;
+  color: $muted;
+  letter-spacing: 0;
+  font-style: normal;
+}
+
+// ── 상태 배지 · 칸반 — 다크 유리 톤 ──
+.st { display: inline-block; padding: 1px 10px; border-radius: 10px; font-size: 0.8rem; white-space: nowrap; border: 1px solid transparent; }
+.st-done { background: rgba(88, 170, 100, 0.18);  color: #8fd39a; border-color: rgba(88, 170, 100, 0.3); }
+.st-wip  { background: rgba(235, 174, 80, 0.16);  color: #ecc07c; border-color: rgba(235, 174, 80, 0.3); }
+.st-wait { background: rgba(255, 255, 255, 0.07); color: $muted;  border-color: rgba(255, 255, 255, 0.14); }
+.st-drop { background: rgba(226, 92, 70, 0.16);   color: #f2937f; border-color: rgba(226, 92, 70, 0.3); }
+.st-fe   { background: rgba(164, 120, 220, 0.16); color: #c7a6ec; border-color: rgba(164, 120, 220, 0.3); }
+.st-ml   { background: rgba(88, 170, 100, 0.18);  color: #8fd39a; border-color: rgba(88, 170, 100, 0.3); }
+.st-op   { background: rgba(235, 174, 80, 0.16);  color: #ecc07c; border-color: rgba(235, 174, 80, 0.3); }
+.st-be   { background: rgba(90, 150, 220, 0.16);  color: #96c0ee; border-color: rgba(90, 150, 220, 0.3); }
+
+.kb-wrap { overflow-x: auto; }
+.kb { display: flex; gap: 12px; min-width: 720px; align-items: flex-start; }
+.kb-col { flex: 1; background: rgba(255, 255, 255, 0.045); border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 16px; padding: 10px; }
+.kb-col h4 { margin: 4px 4px 10px; font-size: 0.95rem; color: $ink; }
+.kb-card {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-top-color: rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  padding: 8px 10px; margin-bottom: 8px;
+  font-size: 0.85rem; line-height: 1.45;
+}
+.kb-tag { display: inline-block; margin-top: 4px; padding: 1px 8px; border-radius: 10px; font-size: 0.75rem; }
+.kb-be { @extend .st-be; }
+.kb-ml { @extend .st-ml; }
+.kb-op { @extend .st-op; }
+.kb-fe { @extend .st-fe; }
+
+// ── 포스트 목록·본문 (minima 잔여 톤 정리) ──
+.post-meta { color: $faint; }
+.post-link { color: $ink; &:visited { color: $ink; } }
+.post-list-heading, .post-list h3 { color: $ink; }
+
+// ── 모바일 ──
+@include media-query($on-palm) {
+  .cn-grid { grid-template-columns: 1fr; gap: 16px; }
+  .cn-card { padding: 28px 18px; min-height: 0; }
+  .cn-card > img, .cn-shot, .cn-card figcaption, .cn-caption { max-width: 100%; }
+  .cn-statement { padding-top: 44px; padding-bottom: 44px; }
+  .cn-statement h1, .cn-statement h2, .cn-wide.cn-statement h1 { font-size: 1.55rem; }
+  .cn-body { padding: 22px 18px; }
+}

@@ -4,15 +4,15 @@ title: 단계별 진행 현황
 permalink: /roadmap/
 ---
 
-목표는 단계적이다: **① 개인 투자/분석 도구 → ② 운영·품질 기반 완성 → ③ 실사용자 서비스.**
+<div class="cn-grid">
 
-<style>
-.st { display: inline-block; padding: 1px 10px; border-radius: 10px; font-size: 0.8rem; white-space: nowrap; }
-.st-done { background: #e6f6ec; color: #046c4e; }
-.st-wip { background: #e3f0ff; color: #1a56db; }
-.st-wait { background: #f3f4f6; color: #6b7280; }
-.st-drop { background: #fdf2f2; color: #9b1c1c; }
-</style>
+<div class="cn-card cn-bg-warm cn-statement cn-wide">
+  <p class="cn-label">로드맵</p>
+  <h2>① 개인 투자/분석 도구 → ② 운영·품질 기반 완성 → ③ 실사용자 서비스</h2>
+  <p>목표는 단계적이다.</p>
+</div>
+
+<div class="cn-card cn-bg-plain cn-body cn-wide" markdown="1">
 
 ## 운영 방식 — 마일스톤 · 게이트
 
@@ -23,14 +23,22 @@ permalink: /roadmap/
 - 게이트 미달 실험은 **기각하고 근거를 남긴다** — 기각도 결과다.
 - 마일스톤을 끝낼 때마다 리뷰 포스트(무엇을 / 왜 / 어떻게 / 아쉬운 점)를 남긴다.
 
-## 작업 영역 <span style="color:#828282;font-size:0.9rem;">(1인 개발 — 역할이 아니라 영역으로 나눈다)</span>
+</div>
+
+<div class="cn-card cn-bg-plain cn-body cn-wide" markdown="1">
+
+## 작업 영역 <span style="color:#9a9aa2;font-size:0.85rem;font-weight:400;">(1인 개발 — 역할이 아니라 영역으로 나눈다)</span>
 
 | 영역 | 범위 | 주요 산출물 |
 | --- | --- | --- |
-| <span class="st st-wip">백엔드</span> | FastAPI 모듈러 모놀리식 — 앱 9개(허브·스포크), 헥사고날 내부 구조 | API·유스케이스·인터랙터 테스트 |
-| <span class="st" style="background:#ede9fe;color:#5b21b6;">프론트</span> | Next.js 워크스페이스 — 지도·채팅·자료 3패널, 어드민 화면 | 주식/상권 워크스페이스, 북마크 보드 |
-| <span class="st st-done">데이터·ML</span> | 수집 배치 6종, 백테스트, 평가 하네스(생성·검색), 임베딩 | 골든셋, baseline 리포트, 채택/기각 판정 문서 |
-| <span class="st" style="background:#fff3e0;color:#b45309;">운영</span> | 도커 컴포즈 배포, 백업 3계층, 로깅·모니터링, 공개 접점 | 배포 체계, 복원 리허설, 업타임 알림 |
+| <span class="st st-be">백엔드</span> | FastAPI 모듈러 모놀리식 — 앱 9개(허브·스포크), 헥사고날 내부 구조 | API·유스케이스·인터랙터 테스트 |
+| <span class="st st-fe">프론트</span> | Next.js 워크스페이스 — 지도·채팅·자료 3패널, 어드민 화면 | 주식/상권 워크스페이스, 북마크 보드 |
+| <span class="st st-ml">데이터·ML</span> | 수집 배치 6종, 백테스트, 평가 하네스(생성·검색), 임베딩 | 골든셋, baseline 리포트, 채택/기각 판정 문서 |
+| <span class="st st-op">운영</span> | 도커 컴포즈 배포, 백업 3계층, 로깅·모니터링, 공개 접점 | 배포 체계, 복원 리허설, 업타임 알림 |
+
+</div>
+
+<div class="cn-card cn-bg-plain cn-body" markdown="1">
 
 ## Phase ① — 개인 투자/분석 도구 <span class="st st-done">완료</span>
 
@@ -43,6 +51,10 @@ permalink: /roadmap/
 | 채팅 실데이터 결합 — 지표 해석 + 뉴스 RAG + 상권 근거 주입 | <span class="st st-done">완료 2026-07</span> |
 | 프론트-백엔드 정합 (스코어 카드·뉴스 근거 카드) | <span class="st st-done">완료 2026-07</span> |
 
+</div>
+
+<div class="cn-card cn-bg-plain cn-body" markdown="1">
+
 ## Phase ② — 운영·품질 기반 완성
 
 | 마일스톤 | 상태 |
@@ -52,6 +64,10 @@ permalink: /roadmap/
 | RBAC + 어드민 실구현 | <span class="st st-done">완료 2026-07</span> |
 | 상권 전용 DB 런타임 전환 (60만+ 행 이관) | <span class="st st-done">완료 2026-07</span> |
 | GitHub Actions CI / n8n 탈피 / 문서 정합 | <span class="st st-drop">취소 (사용자 결정)</span> |
+
+</div>
+
+<div class="cn-card cn-bg-plain cn-body" markdown="1">
 
 <h2 id="r-track">R 트랙 — 검색(RAG) 품질</h2>
 
@@ -67,18 +83,26 @@ permalink: /roadmap/
 
 ※ R2·R3는 게이트 미달 시 **기각하고 현행 유지**한다 — 측정해서 기각한 이력도 결과다.
 
+</div>
+
+<div class="cn-card cn-bg-plain cn-body" markdown="1">
+
 ## Phase ③ — 실사용자 서비스
 
 | 마일스톤 | 상태 |
 | --- | --- |
 | 공개 접점 — HTTPS + rate limit (무차별 로그인 차단 실측) | <span class="st st-done">완료 2026-08</span> |
 | 북마크/관심종목 | <span class="st st-done">완료 2026-08</span> |
-| 알림 v1(이메일) — dedupe + 회원별 수신 설정 | <span class="st st-wip">구현 완료 · E2E 잔여</span> |
-| 운영 관측 — 구조화 로깅 + 업타임 모니터링 | <span class="st st-wip">구현 완료 · E2E 잔여</span> |
-| 데이터 갱신 자동화 + LLM 교체 스위치 | <span class="st st-wip">구현 완료 · 판정 잔여</span> |
+| 알림 v1 — 이메일 + 텔레그램 채널, dedupe + 회원별 수신 설정 | <span class="st st-done">완료 2026-08</span> |
+| 운영 관측 — 구조화 로깅 + 업타임 모니터링 (강제 다운 → 알림 2분 28초 실측) | <span class="st st-done">완료 2026-08</span> |
+| 데이터 갱신 자동화 + LLM 교체 스위치 | <span class="st st-done">완료 2026-08</span> |
 | 개인화 ⓪ 투자·창업 프로파일 / ① 관심 목록 상태 보드 | <span class="st st-done">완료 2026-08</span> |
 | 개인화 ② 선호 프로파일 | <span class="st st-wait">수요 게이트 뒤</span> |
 | 매물(listing) 스포크 | <span class="st st-wait">수요 게이트 뒤</span> |
+
+</div>
+
+<div class="cn-card cn-bg-plain cn-body cn-wide" markdown="1">
 
 ## 데이터·모델 트랙 (발췌)
 
@@ -88,6 +112,30 @@ permalink: /roadmap/
 | 가중치 재적합·자동 승격 루프 | <span class="st st-done">완료</span> 채점→재적합→승격 자동화 |
 | 펀더멘털 → 판정 편입 | <span class="st st-drop">측정 후 기각</span> 전 조합 게이트 미달(역방향) — 서술 축 유지 |
 | LLM 라이선스 실사 | <span class="st st-done">완료</span> 공개 서비스 전 모델 교체 필수 판정 |
+| Neo4j 그래프 질의 게이트(E4) | <span class="st st-wait">측정 후 보류</span> 실질문 129건 전수 판정 — graph-only 0건, 착수 조건 미달 |
+
+</div>
+
+<div class="cn-card cn-bg-plain cn-body cn-wide" markdown="1">
+
+## 경쟁 벤치마크 트랙 — 5개 서비스 대조 (2026-08-24)
+
+경쟁 서비스 5곳과 기능을 대조해 도출한 개선·신규 항목. **추천 착수 순서 7건을 전부 구현 완료**했다
+(백엔드 테스트 1189 passed · 아키텍처 계약 5 KEPT · 프론트 타입 체크 통과).
+
+| 항목 | 상태 |
+| --- | --- |
+| I-10 반경·전년대비(YoY) 질의 가드 — 좌표 유클리드 필터 + 미적용 시 결정론 명시 | <span class="st st-done">완료 2026-08</span> |
+| I-1 상권변화지표 해석 팩트 — 4분류 톤 서술 + chat 주입 + 랭킹 필터 | <span class="st st-done">완료 2026-08</span> |
+| I-3 랭킹 필터·행정동 롤업 축 | <span class="st st-done">완료 2026-08</span> |
+| I-2 골든셋 경쟁사 예시 질문 편입 (124케이스) | <span class="st st-wip">편입 완료 · 측정 대기</span> |
+| B1 상권 북마크 알림 — 분기·등급 상태 스캔 + dedupe | <span class="st st-done">완료 2026-08</span> |
+| B2 주가 영향 키워드 Top-N 결정론 추출 | <span class="st st-done">완료 2026-08</span> |
+| I-7 알림 채널 텔레그램 추가 — 실발송(이메일+텔레그램 동시 수신) 검증 | <span class="st st-done">완료 2026-08</span> |
+
+</div>
+
+<div class="cn-card cn-bg-plain cn-body cn-wide" markdown="1">
 
 <h2 id="risks">위험 관리 방안</h2>
 
@@ -101,37 +149,28 @@ permalink: /roadmap/
 | 잘못된 통계로 인한 오도 | 표본 기준 미달 통계는 확률 주장 금지, 백테스트 게이트(유효표본 보정·Wilson 하한) 미달 시 기각 |
 | 품질 저하를 모르고 배포 | 평가 하네스 baseline 회귀 게이트 — 프롬프트·모델 변경은 골든셋 대조 후에만 |
 
-<h2 id="next">작업 보드 <span style="color:#828282;font-size:0.9rem;">(2026-08-23 기준)</span></h2>
+</div>
 
-<style>
-.kb-wrap { overflow-x: auto; }
-.kb { display: flex; gap: 12px; min-width: 720px; align-items: flex-start; }
-.kb-col { flex: 1; background: #f6f8fa; border-radius: 8px; padding: 10px; }
-.kb-col h4 { margin: 4px 4px 10px; font-size: 0.95rem; }
-.kb-card { background: #fff; border: 1px solid #e1e4e8; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; font-size: 0.85rem; line-height: 1.45; }
-.kb-tag { display: inline-block; margin-top: 4px; padding: 1px 8px; border-radius: 10px; font-size: 0.75rem; }
-.kb-be { background: #e3f0ff; color: #1a56db; }
-.kb-ml { background: #e6f6ec; color: #046c4e; }
-.kb-op { background: #fff3e0; color: #b45309; }
-.kb-fe { background: #ede9fe; color: #5b21b6; }
-</style>
+<div class="cn-card cn-bg-plain cn-body cn-wide" markdown="1">
+
+<h2 id="next">작업 보드 <span style="color:#9a9aa2;font-size:0.85rem;font-weight:400;">(2026-08-25 기준)</span></h2>
 
 <div class="kb-wrap">
 <div class="kb">
 
 <div class="kb-col">
-<h4>📋 Backlog <span style="color:#828282;font-weight:400;font-size:0.8rem;">게이트 대기</span></h4>
+<h4>📋 Backlog <span style="color:#9a9aa2;font-weight:400;font-size:0.8rem;">게이트 대기</span></h4>
 <div class="kb-card">개인화 ② 선호 프로파일 — 실사용자 확보가 착수 조건<span class="kb-tag kb-be">백엔드</span></div>
 <div class="kb-card">매물(listing) 스포크 — 수요 게이트 뒤<span class="kb-tag kb-be">백엔드</span></div>
-<div class="kb-card">GraphRAG 게이트 답안 문서 — 그래프로만 답하는 질문 정의<span class="kb-tag kb-ml">데이터·ML</span></div>
+<div class="kb-card">상가임대차(lease) 스포크 후보 — 법령 RAG 게이트 검토<span class="kb-tag kb-be">백엔드</span></div>
 <div class="kb-card">뉴스 감성 피처 재채점 — 라벨 3개월 축적 후(~10월)<span class="kb-tag kb-ml">데이터·ML</span></div>
 </div>
 
 <div class="kb-col">
-<h4>🗂 To Do <span style="color:#828282;font-weight:400;font-size:0.8rem;">실행·판정만 잔여</span></h4>
-<div class="kb-card">오프사이트 백업 첫 미러 + 복원 리허설 1회 (게이트)<span class="kb-tag kb-op">운영</span></div>
-<div class="kb-card">알림 v1 — 신호 발생 → 메일 수신 E2E<span class="kb-tag kb-op">운영</span></div>
-<div class="kb-card">업타임 모니터·알림 채널 등록 → 강제 다운 알림 확인<span class="kb-tag kb-op">운영</span></div>
+<h4>🗂 To Do <span style="color:#9a9aa2;font-weight:400;font-size:0.8rem;">실행·판정만 잔여</span></h4>
+<div class="kb-card">오프사이트 백업 첫 미러(Google Drive + USB 이중화) + 복원 리허설 (게이트)<span class="kb-tag kb-op">운영</span></div>
+<div class="kb-card">골든셋 124케이스 측정 — 경쟁사 예시 질문 편입분<span class="kb-tag kb-ml">데이터·ML</span></div>
+<div class="kb-card">제약·근거 결정론 가드(I-11~I-18) — 개수·정렬·시점 제약 집행<span class="kb-tag kb-be">백엔드</span></div>
 <div class="kb-card">상권 신규 분기 첫 자동 적재<span class="kb-tag kb-ml">데이터·ML</span></div>
 <div class="kb-card">LLM 교체 후보 pull → 120문항 회귀 비교<span class="kb-tag kb-ml">데이터·ML</span></div>
 </div>
@@ -144,18 +183,22 @@ permalink: /roadmap/
 </div>
 
 <div class="kb-col">
-<h4>✅ Done <span style="color:#828282;font-weight:400;font-size:0.8rem;">최근 완료</span></h4>
-<div class="kb-card">공개 접점 — HTTPS + 무차별 로그인 차단 실측<span class="kb-tag kb-op">운영</span></div>
-<div class="kb-card">알림 dedupe + 회원별 수신 설정<span class="kb-tag kb-be">백엔드</span></div>
-<div class="kb-card">관심 목록 상태 보드<span class="kb-tag kb-fe">프론트</span></div>
-<div class="kb-card">JSON 구조화 로깅 + 업타임 모니터링 구성<span class="kb-tag kb-op">운영</span></div>
-<div class="kb-card">문장 단위 출처 인용 + dangling citation 절대 규칙<span class="kb-tag kb-ml">데이터·ML</span></div>
+<h4>✅ Done <span style="color:#9a9aa2;font-weight:400;font-size:0.8rem;">최근 완료</span></h4>
+<div class="kb-card">알림 채널 텔레그램 추가 + 상권 북마크 알림 — 실발송 검증<span class="kb-tag kb-be">백엔드</span></div>
+<div class="kb-card">운영 관측 게이트 통과 — 강제 다운 → 알림 2분 28초 실측<span class="kb-tag kb-op">운영</span></div>
+<div class="kb-card">반경·YoY 질의 가드 + 상권변화지표 해석 주입<span class="kb-tag kb-ml">데이터·ML</span></div>
+<div class="kb-card">랭킹 변화지표·행정동 축 + 키워드 칩 + 텔레그램 알림 설정 화면<span class="kb-tag kb-fe">프론트</span></div>
+<div class="kb-card">Neo4j 그래프 질의(E4) — 실질문 전수 판정 후 보류 확정<span class="kb-tag kb-ml">데이터·ML</span></div>
 </div>
 
 </div>
 </div>
 
 ※ 보드는 마일스톤 진행에 따라 갱신한다. 마일스톤 종료 시점의 보드 스냅샷은 리뷰 포스트에 기록한다.
+
+</div>
+
+<div class="cn-card cn-bg-plain cn-body cn-wide" markdown="1">
 
 <h2 id="rejected">탈락 아이디어 검토 근거</h2>
 
@@ -173,6 +216,8 @@ permalink: /roadmap/
 - GraphQL · BFF · 벡터 DB 교체(Qdrant 등) · 청킹 라이브러리 · 실험 관리 도구
 - 결제/유료 기능 — 무료 범위 원칙과 충돌
 
----
+</div>
+
+</div>
 
 [← 목차로]({{ '/toc/' | relative_url }}) · [프로젝트 개요]({{ '/overview/' | relative_url }})
