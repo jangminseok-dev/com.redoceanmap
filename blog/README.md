@@ -41,6 +41,32 @@ bundle exec jekyll serve --port 4100    # http://127.0.0.1:4100 (4000은 타 프
 - 이미지는 `assets/img/`에 두고, 캡션은 기능 나열이 아니라 **"어떤 문제를 어떤 기술로 풀었는지"** 1문장
 - 이 블로그는 취업 포트폴리오 목적 — 스크린샷도 아래 민감정보 규칙을 통과해야 한다
 
+## 공개 호스팅 계획 — blog.redoceanmap.com (백엔드 PC 작업)
+
+블로그는 아직 로컬 전용이다. 공개는 **백엔드 PC의 기존 인프라 재사용**으로 한다
+(비용 0원 · CI 불필요). 절차:
+
+1. **빌드는 개발 기기에서** — 백엔드 PC에 Ruby를 깔지 않는다.
+   `cd blog && bundle exec jekyll build` 후 `_site/`를 백엔드 PC로 복사(rsync/scp).
+   받는 위치 예: 실운영 스택 디렉토리(`/home/host/projects/redoceanmap/`) 아래 `blog_site/`.
+2. **정적 서빙 컨테이너** — 실운영 compose(리포 밖)에 추가:
+   ```yaml
+   blog-static:
+     image: nginx:alpine
+     volumes:
+       - ./blog_site:/usr/share/nginx/html:ro
+     # 포트 발행 불필요 — cloudflared가 같은 도커 네트워크에서 접근
+   ```
+3. **cloudflared 라우트** — 운영 중인 **컨테이너판** cloudflared 설정에 ingress 추가
+   (호스트 systemd판은 롤백 예비 — 건드리지 않는다):
+   `blog.redoceanmap.com → http://blog-static:80`
+   + Cloudflare 대시보드에서 `blog` CNAME(터널) 레코드 추가.
+4. **확인** — `https://blog.redoceanmap.com` 접속, 5페이지·이미지 렌더 확인.
+5. **이후** — www `/about`에 "개발 기록 보기 →" 링크 카드 추가(별도 작업, main push 시 Vercel 배포).
+
+갱신 흐름: 블로그 수정 → 로컬 빌드 → `_site/` 재복사. (자동화가 필요해지면 cron이 아니라
+수동 스크립트 한 줄로 유지 — 과설계 방지.)
+
 ## 민감정보 규칙
 
 이 블로그는 외부 공개를 전제로 쓴다. 포스트·페이지에 다음을 **절대 적지 않는다**:
