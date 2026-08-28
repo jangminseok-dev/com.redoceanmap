@@ -15,10 +15,36 @@
 """
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 
 from ollama import AsyncClient
+
+logger = logging.getLogger(__name__)
+
+# 컨텍스트 창 — **앱 계약으로 명시한다**(서버 기본값에 맡기지 않는다).
+# 2026-08-28 실장애: 기본값이 4,096인데 phase1 프롬프트가 4,042→4,178토큰으로 커지자
+# Ollama가 **앞부분을 조용히 버려** JSON 형식 지시문이 통째로 날아갔다. 모델에는 상권 표만
+# 남아 표를 그대로 옮겨 적었고, phase1의 코드 반환이 40/40 → 0/44로 죽었다. 결정론 지역
+# 가드가 이를 가려 region_hit_rate는 1.0으로 보였다 — 지표로는 안 잡히는 종류의 붕괴다.
+# 모델 자체는 32,768까지 지원한다. 8,192는 여유를 두되 KV 캐시(≈1GB)로 VRAM을 더 쓰는 값이다.
+NUM_CTX = 8192
+# 이 비율을 넘으면 경고 — 잘리기 전에 알아야 한다(잘린 뒤에는 조용하다)
+_CONTEXT_WARN_RATIO = 0.9
+
+
+def _warn_if_near_context(prompt_eval_count: int | None) -> None:
+    """서버가 센 실제 프롬프트 토큰이 창에 근접하면 남긴다.
+
+    사전 추정(글자수÷n)은 한국어에서 신뢰할 수 없어 **서버 카운트**를 쓴다. 사후지만
+    조용한 절단보다 낫다 — 이 로그가 없어서 4일간 프로덕션이 깨진 줄 몰랐다.
+    """
+    if prompt_eval_count and prompt_eval_count >= NUM_CTX * _CONTEXT_WARN_RATIO:
+        logger.warning(
+            "[llm] 프롬프트 %d토큰 — 컨텍스트 창 %d의 %.0f%% 이상. 초과분은 앞에서 잘린다",
+            prompt_eval_count, NUM_CTX, _CONTEXT_WARN_RATIO * 100,
+        )
 
 
 @dataclass(frozen=True)
@@ -81,8 +107,10 @@ class LLMOrchestrator:
         response = await self._client.chat(
             model=self._resolve_model(model),
             messages=self._build_messages(prompt, system, history),
+            options={"num_ctx": NUM_CTX},
             **kwargs,
         )
+        _warn_if_near_context(response.get("prompt_eval_count"))
         return response["message"]["content"]
 
     async def embed(self, text: str, *, model: str = "bge-m3") -> list[float]:
@@ -107,9 +135,12 @@ class LLMOrchestrator:
         stream = await self._client.chat(
             model=self._resolve_model(model),
             messages=self._build_messages(prompt, system, history),
+            options={"num_ctx": NUM_CTX},
             stream=True,
         )
         async for part in stream:
+            if part.get("done"):
+                _warn_if_near_context(part.get("prompt_eval_count"))
             chunk = part["message"]["content"]
             if chunk:
                 yield chunk
