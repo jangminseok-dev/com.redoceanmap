@@ -29,6 +29,7 @@ from stock.domain.entities.analysis_config import AnalysisConfig
 from stock.domain.entities.forecast_snapshot import ForecastSnapshot
 from stock.domain.services.indicator_calculator import IndicatorCalculator
 from stock.domain.services.outlook_predictor import OutlookPredictor
+from stock.domain.value_objects.backtest_report import hit_unit, is_down_hit, is_up_hit
 from stock.domain.value_objects.sentiment_score import SentimentScore
 
 logger = logging.getLogger(__name__)
@@ -158,10 +159,12 @@ class ForecastSnapshotInteractor(ForecastSnapshotUseCase):
                 # 마감가만 남기면 "얼마나 빠졌다 돌아왔는지"를 사후에 물을 수 없다.
                 window = future[: snap.horizon_days]
                 trough = min(b.low for b in window) / snap.base_price - 1.0
+                # 적중은 부호가 아니라 변동성 초과분 — Backtester·재적합과 같은 규칙([1]-①)
+                unit = hit_unit(snap.atr_pct, snap.horizon_days)
                 if snap.direction == "UP":
-                    hit = ret > 0
+                    hit = is_up_hit(ret, unit)
                 elif snap.direction == "DOWN":
-                    hit = ret <= 0
+                    hit = is_down_hit(ret, unit)
                 else:
                     hit = None
                 updates.append(SnapshotScoreUpdate(

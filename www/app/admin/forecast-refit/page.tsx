@@ -129,6 +129,7 @@ function BoardTable({ board, isGate }: { board: AdminRefitBoard; isGate: boolean
                 <th className="text-right font-normal py-1.5">임계</th>
                 <th className="text-right font-normal py-1.5">UP n</th>
                 <th className="text-right font-normal py-1.5">적중</th>
+                <th className="text-right font-normal py-1.5">기준선</th>
                 <th className="text-right font-normal py-1.5">Wilson 하한</th>
                 <th className="text-right font-normal py-1.5">게이트</th>
               </tr>
@@ -151,6 +152,10 @@ function BoardTable({ board, isGate }: { board: AdminRefitBoard; isGate: boolean
                   <td className="text-right tabular-nums py-1.5">{c.n.toLocaleString()}</td>
                   <td className="text-right tabular-nums py-1.5">
                     {c.hit_rate != null ? pct(c.hit_rate) : "—"}
+                  </td>
+                  {/* 게이트가 실제로 비교하는 값 — 후보가 신호를 낸 종목들의 기준선 */}
+                  <td className="text-right tabular-nums py-1.5 text-foreground-muted">
+                    {c.n > 0 ? pct(c.baseline) : "—"}
                   </td>
                   <td className="text-right tabular-nums py-1.5 font-semibold">
                     {pct(c.wilson_lower)}
@@ -213,6 +218,7 @@ function HistoryTable({ rows }: { rows: AdminSignalConfig[] }) {
                     n: 0,
                     hits: 0,
                     hit_rate: null,
+                    baseline: 0,
                     wilson_lower: 0,
                     is_current: false,
                     gate_passed: false,

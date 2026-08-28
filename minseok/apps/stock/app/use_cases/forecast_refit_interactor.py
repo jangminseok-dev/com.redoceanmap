@@ -93,4 +93,6 @@ class ForecastRefitInteractor(ForecastRefitUseCase):
         return RefitSample(
             signals={c.key: c.signal for c in s.signals},
             realized_return_pct=s.realized_return_pct,
+            ticker=s.ticker,
+            atr_pct=s.atr_pct,
         )

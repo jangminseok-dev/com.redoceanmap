@@ -3,17 +3,21 @@
 스냅샷 `signals`에는 6개 정규화 원신호가 config 무관하게 동결돼 있어, 임의 가중치
 조합의 성적을 DB 표본만으로 재계산할 수 있다(백테스트 재실행 불요). 저장된 `hit`은
 쓰지 않는다 — 옛 direction 기준 채점이라 후보 조합의 판정과 무관하다. 재판정은
-`realized_return_pct > 0`으로 한다(Backtester UP 적중 의미론과 동일).
+`is_up_hit(realized_return_pct, ATR% × √horizon)`으로 한다(Backtester UP 적중 의미론과
+동일 — 2026-08-28 [1]-①로 부호 판정에서 변동성 초과 판정으로 함께 바뀌었다. 두 곳이
+갈라지면 재적합이 백테스트와 다른 기준으로 승격을 결정하게 된다).
 
 후보는 명시 열거 ~32조합(재채점 2·3차 관례 — 조합 폭발·다중 비교 억제):
 5신호 가중치 대표 조합 × up_threshold 4종. `w_sentiment=0` 고정(스냅샷 경로는 감성
 중립이라 sentiment 원신호가 항상 0 — 감성 재적합은 ROADMAP E3의 몫),
-`down_threshold=-1.01` 고정(하락 무발화 정책 — 재채점 2·3차 모두 하락 방향은 두 구간
-연속 통과 조합이 없었다), atr_veto·volume_confirm 스윕 없음(기각된 손잡이 +
+`down_threshold=-0.45` 고정(4차 재채점에서 검증된 값 — 상승 가중치만 스윕하고 하락 임계는
+스윕하지 않는다. 하락 재적합은 스냅샷에 DOWN 표본이 쌓인 뒤의 몫이다), atr_veto·volume_confirm 스윕 없음(기각된 손잡이 +
 volume_ratio 미저장).
 
 승격 게이트(전부 gate_horizon 표본 기준):
-  ① n ≥ MIN_SIGNAL_SAMPLES(100) AND Wilson 95% 하한 > 기준선(표본 전체 상승 비율)
+  ① n ≥ MIN_SIGNAL_SAMPLES(100) AND Wilson 95% 하한 > 기준선
+     (기준선은 후보가 신호를 낸 **종목들의 자기 기준선을 신호 수로 가중**한 값 —
+      2026-08-28 [1]-③. 표본 전체 pooled 값을 쓰면 신호를 안 낸 종목이 섞여 왜곡된다)
   ② 후보 하한 ≥ 현행 조합 재채점 하한 + PROMOTION_MARGIN(히스테리시스 — 승격 진동 방지)
   ③ 승자 파라미터 ≠ 현행 파라미터(멱등 — 같은 날 재실행이 재승격하지 않는다)
 
@@ -26,10 +30,15 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from stock.domain.entities.analysis_config import AnalysisConfig
-from stock.domain.value_objects.backtest_report import MIN_SIGNAL_SAMPLES, wilson_lower_bound
+from stock.domain.value_objects.backtest_report import (
+    MIN_SIGNAL_SAMPLES,
+    hit_unit,
+    is_up_hit,
+    wilson_lower_bound,
+)
 
 PROMOTION_MARGIN = 0.02   # 현행 대비 Wilson 하한 개선 최소폭 — 승격 히스테리시스
-DOWN_THRESHOLD = -1.01    # 하락 무발화 고정(score는 [-1,1] 클램프라 도달 불가)
+DOWN_THRESHOLD = -0.45    # 4차 재채점(2026-08-28)에서 두 구간 연속 통과한 하락 임계
 
 # (w_rsi, w_trend, w_bb, w_obv, w_momentum) — 합 1.0 대표 조합 명시 열거
 _WEIGHT_SETS: tuple[tuple[float, float, float, float, float], ...] = (
@@ -47,10 +56,16 @@ _UP_THRESHOLDS: tuple[float, ...] = (0.25, 0.30, 0.35, 0.40)
 
 @dataclass(frozen=True)
 class RefitSample:
-    """재적합 표본 1건 — 동결 원신호(key → signal)와 실현 수익률."""
+    """재적합 표본 1건 — 동결 원신호(key → signal)와 실현 수익률.
+
+    ticker·atr_pct는 적중 판정과 종목별 기준선에 쓴다. atr_pct가 없는 옛 스냅샷은
+    `hit_unit`이 0을 돌려 부호 판정으로 열화한다(표본에서 빼지 않는다).
+    """
 
     signals: Mapping[str, float]
     realized_return_pct: float
+    ticker: str
+    atr_pct: float | None
 
 
 @dataclass(frozen=True)
@@ -64,8 +79,9 @@ class CandidateResult:
     w_obv: float
     w_momentum: float
     n: int                    # UP 판정 표본 수
-    hits: int                 # 그중 실현 수익률 > 0
+    hits: int                 # 그중 적중(변동성 초과 상승)
     hit_rate: float | None
+    baseline: float           # 이 후보가 신호를 낸 종목들의 기준선(신호 수 가중)
     wilson_lower: float
     is_current: bool
     gate_passed: bool         # 게이트 ①(n·Wilson>기준선)만 — ②③은 리포트 수준 판정
@@ -134,6 +150,7 @@ def _candidate_payload(c: CandidateResult) -> dict:
         "w_rsi": c.w_rsi, "w_trend": c.w_trend, "w_bb": c.w_bb,
         "w_obv": c.w_obv, "w_momentum": c.w_momentum,
         "n": c.n, "hits": c.hits, "hit_rate": c.hit_rate,
+        "baseline": c.baseline,
         "wilson_lower": c.wilson_lower,
         "is_current": c.is_current, "gate_passed": c.gate_passed,
     }
@@ -172,7 +189,7 @@ def _judge(
     if not passed:
         return False, None, [
             f"게이트 통과 후보 0개 — n≥{MIN_SIGNAL_SAMPLES} + Wilson 하한 > "
-            f"기준선({board.baseline_up_rate:.3f})을 만족한 조합이 없습니다"
+            f"종목 가중 기준선(표본 전체 {board.baseline_up_rate:.3f})을 만족한 조합이 없습니다"
             f"(표본 {board.total}건).",
         ]
 
@@ -189,9 +206,31 @@ def _judge(
         ]
     return True, winner, [
         f"게이트 통과: n={winner.n}, 하한 {winner.wilson_lower:.3f} > "
-        f"기준선 {board.baseline_up_rate:.3f}, 현행 대비 +"
+        f"기준선 {winner.baseline:.3f}, 현행 대비 +"
         f"{winner.wilson_lower - current_lower:.3f} ≥ 마진 {PROMOTION_MARGIN}.",
     ]
+
+
+@dataclass(frozen=True)
+class _Scored:
+    """표본 1건을 채점해 둔 것 — 적중 여부와 그 종목의 기준선을 미리 붙인다."""
+
+    sample: RefitSample
+    hit: bool
+    ticker_baseline: float
+
+
+def _scored(horizon: int, samples: Sequence[RefitSample]) -> list[_Scored]:
+    """적중 판정(변동성 초과) + 종목별 기준선을 한 번만 계산한다."""
+    hits = [
+        (s, is_up_hit(s.realized_return_pct, hit_unit(s.atr_pct, horizon)))
+        for s in samples
+    ]
+    by_ticker: dict[str, list[bool]] = {}
+    for s, hit in hits:
+        by_ticker.setdefault(s.ticker, []).append(hit)
+    baselines = {t: sum(rows) / len(rows) for t, rows in by_ticker.items()}
+    return [_Scored(s, hit, baselines[s.ticker]) for s, hit in hits]
 
 
 def _board(
@@ -200,18 +239,17 @@ def _board(
     current: AnalysisConfig,
     current_params: tuple[float, ...],
 ) -> HorizonBoard:
-    baseline = (
-        sum(1 for s in samples if s.realized_return_pct > 0) / len(samples)
-        if samples else 0.0
-    )
+    scored = _scored(horizon, samples)
+    # 보드 기준선은 표시용 pooled 값 — 게이트는 후보별 가중 기준선(CandidateResult.baseline)을 쓴다
+    baseline = sum(1 for r in scored if r.hit) / len(scored) if scored else 0.0
     rows = [
-        _evaluate(samples, baseline, threshold, weights, current_params)
+        _evaluate(scored, threshold, weights, current_params)
         for weights in _WEIGHT_SETS
         for threshold in _UP_THRESHOLDS
     ]
     # 현행 조합이 후보 열거 밖일 수 있다(과거 승격분) — 별도 재채점해 비교 기준으로 쓴다
     current_row = _evaluate(
-        samples, baseline, current.up_threshold,
+        scored, current.up_threshold,
         (current.w_rsi, current.w_trend, current.w_bb, current.w_obv, current.w_momentum),
         current_params,
     )
@@ -223,15 +261,16 @@ def _board(
 
 
 def _evaluate(
-    samples: Sequence[RefitSample],
-    baseline: float,
+    scored: Sequence[_Scored],
     up_threshold: float,
     weights: tuple[float, float, float, float, float],
     current_params: tuple[float, ...],
 ) -> CandidateResult:
     w_rsi, w_trend, w_bb, w_obv, w_momentum = weights
     n = hits = 0
-    for s in samples:
+    baseline_sum = 0.0
+    for row in scored:
+        s = row.sample
         # OutlookPredictor.score와 같은 합산·클램프 — sentiment는 스냅샷 경로에서 항상 0
         score = (
             w_rsi * s.signals.get("rsi", 0.0)
@@ -243,14 +282,18 @@ def _evaluate(
         score = max(-1.0, min(1.0, score))
         if score >= up_threshold:
             n += 1
-            if s.realized_return_pct > 0:
+            baseline_sum += row.ticker_baseline
+            if row.hit:
                 hits += 1
+    # 후보가 실제로 신호를 낸 종목 구성으로 기준선을 만든다 — 신호를 안 낸 종목은 안 섞인다
+    baseline = baseline_sum / n if n else 0.0
     lower = wilson_lower_bound(hits, n)
     params = (up_threshold, *weights)
     return CandidateResult(
         up_threshold=up_threshold,
         w_rsi=w_rsi, w_trend=w_trend, w_bb=w_bb, w_obv=w_obv, w_momentum=w_momentum,
         n=n, hits=hits, hit_rate=hits / n if n else None,
+        baseline=baseline,
         wilson_lower=lower,
         is_current=all(math.isclose(a, b, abs_tol=1e-9) for a, b in zip(params, current_params)),
         gate_passed=n >= MIN_SIGNAL_SAMPLES and lower > baseline,

@@ -9,12 +9,13 @@ class DirectionStats:
 
     마감 수익률(q25/median/q75)은 "결국 어디서 끝났나"만 말한다. 하방 필드는 그 사이에
     **얼마나 빠졌다가** 어떻게 됐는지를 담는다 — 같은 +1% 마감도 무조정 상승과 -8% 급락 후
-    회복은 전혀 다른 경험이다. 하락 방향 예측이 검증되지 않았으므로(재채점 2·3차) 하방은
-    방향 라벨이 아니라 이 실측 분포로 제시한다.
+    회복은 전혀 다른 경험이다. 하락 방향 라벨이 생긴 뒤에도(4차 재채점, 2026-08-28) 이
+    분포는 걷어내지 않는다 — 방향은 "어느 쪽"만 말하고, 얼마나 빠졌다 어떻게 됐는지는
+    여전히 이 실측치만 답할 수 있다.
     """
 
     sample_size: int
-    hits: int              # 상승 마감(양의 수익률) 수
+    hits: int              # 변동성 초과 상승 수(적중 정의는 backtest_report.is_up_hit)
     q25: float | None      # 실현 수익률 분위수 — 표본 2개 미만이면 None
     median: float | None
     q75: float | None
@@ -22,6 +23,7 @@ class DirectionStats:
     trough_median_pct: float | None = None  # 장중 최대 낙폭 중앙값 (-0.032 = -3.2%)
     trough_q25_pct: float | None = None     # 하위 25% = 더 나쁜 쪽
     down_close_rate: float | None = None    # horizon 마감이 음수였던 비율
+    down_hits: int = 0                      # 변동성 초과 하락 수 — DOWN 유의성 판정의 분자
     dip_samples: int = 0                    # 낙폭이 있었던(trough < 0) 표본 — 회복률의 분모
     recovery_rate: float | None = None      # dip_samples 중 기준가를 종가로 회복한 비율
     recovery_days_median: float | None = None  # 회복까지 걸린 거래일 중앙값
@@ -33,6 +35,7 @@ class RegimeStats:
 
     evaluated: int
     baseline_up_rate: float
+    baseline_down_rate: float
     by_direction: dict[str, DirectionStats]
 
 
@@ -47,7 +50,8 @@ class ForecastDistribution:
 
     horizon_days: int
     evaluated: int                          # veto 제외 후 평가일 수
-    baseline_up_rate: float                 # 항상-UP 기준선(무조건부 상승 비율)
+    baseline_up_rate: float                 # 무조건부 "변동성 초과 상승" 비율 — UP 기준선
+    baseline_down_rate: float               # 무조건부 "변동성 초과 하락" 비율 — DOWN 기준선
     by_direction: dict[str, DirectionStats]  # "UP" | "DOWN" | "NEUTRAL"
     by_regime: dict[str, RegimeStats] = field(default_factory=dict)  # BULL | BEAR | HIGH_VOL
     vetoed: int = 0                         # 어닝 등으로 평가에서 제외된 날 수

@@ -7,6 +7,32 @@ from dataclasses import dataclass
 MIN_SIGNAL_SAMPLES = 100
 WILSON_Z = 1.96  # 95%
 
+# 적중 판정 문턱(2026-08-28 [1]-① 정의 변경) — 실현 수익률이 변동성 1단위
+# (ATR% × √horizon)의 이만큼을 넘어야 적중이다. 부호(> 0)만 보면 잡음 수준의 +0.01%도
+# 적중이 되고, 변동성이 큰 종목일수록 우연한 통과가 쉬워 종목 간 비교가 왜곡된다.
+HIT_Z_MIN = 0.25
+
+
+def hit_unit(atr_pct: float | None, horizon_days: int) -> float:
+    """변동성 1단위 = ATR% × √horizon.
+
+    ATR을 모르는 표본(옛 스냅샷 등)은 0을 돌려 부호 판정으로 열화한다 — 채점에서
+    빼면 표본이 줄고, 임의값을 넣으면 없는 근거를 만든다.
+    """
+    if not atr_pct or atr_pct <= 0.0 or horizon_days <= 0:
+        return 0.0
+    return atr_pct * (horizon_days ** 0.5)
+
+
+def is_up_hit(return_pct: float, unit: float, z_min: float = HIT_Z_MIN) -> bool:
+    """상승 적중 — 수익률이 변동성 단위의 z_min배를 넘었는가."""
+    return return_pct > unit * z_min
+
+
+def is_down_hit(return_pct: float, unit: float, z_min: float = HIT_Z_MIN) -> bool:
+    """하락 적중 — 대칭. 하락은 현행 정책상 무발화지만 정의는 같이 둔다."""
+    return return_pct < -unit * z_min
+
 
 def wilson_lower_bound(hits: int, n: int, z: float = WILSON_Z) -> float:
     """이항 비율의 Wilson score 신뢰구간 하한 — 소표본 낙관을 걸러낸다."""
@@ -41,7 +67,11 @@ class BacktestReport:
     neutral_signals: int
     up_hits: int           # UP 신호 중 실제 상승
     down_hits: int         # DOWN 신호 중 실제 하락
-    baseline_up_rate: float  # 항상 UP이라 가정한 적중률(양의 수익률 비율) — 비교 기준선
+    baseline_up_rate: float  # 항상 UP이라 가정한 적중률(변동성 초과 상승 비율) — UP 비교 기준선
+    # 하락 기준선은 (1 − baseline_up_rate)가 **아니다**. 변동성 문턱을 쓰면 결과가 셋
+    # (초과 상승 / 초과 하락 / 잡음 구간)이라 두 기준선을 따로 세야 한다. 모르면 None —
+    # 이때 down_probability_ready는 판정하지 않는다(없는 기준선으로 통과시키지 않는다).
+    baseline_down_rate: float | None = None
 
     @property
     def hits(self) -> int:
@@ -77,10 +107,12 @@ class BacktestReport:
 
     @property
     def down_probability_ready(self) -> bool:
-        """DOWN 신호를 '확률'로 제시해도 되는가 — 표본 n≥100 + Wilson 95% 하한 > 역기준선."""
+        """DOWN 신호를 '확률'로 제시해도 되는가 — 표본 n≥100 + Wilson 95% 하한 > 하락 기준선."""
+        if self.baseline_down_rate is None:
+            return False
         return (
             self.down_signals >= MIN_SIGNAL_SAMPLES
-            and wilson_lower_bound(self.down_hits, self.down_signals) > 1.0 - self.baseline_up_rate
+            and wilson_lower_bound(self.down_hits, self.down_signals) > self.baseline_down_rate
         )
 
     def merged(self, other: "BacktestReport") -> "BacktestReport":
@@ -96,8 +128,29 @@ class BacktestReport:
             neutral_signals=self.neutral_signals + other.neutral_signals,
             up_hits=self.up_hits + other.up_hits,
             down_hits=self.down_hits + other.down_hits,
-            baseline_up_rate=(
-                (self.baseline_up_rate * self.evaluated + other.baseline_up_rate * other.evaluated)
-                / total
-            ),
+            baseline_up_rate=_weighted_baseline(self, other, "up"),
+            baseline_down_rate=_weighted_baseline(self, other, "down"),
         )
+
+
+def _weighted_baseline(
+    a: "BacktestReport", b: "BacktestReport", side: str,
+) -> float | None:
+    """다종목 기준선 — 평가일이 아니라 **그 방향의 신호 수**로 가중한다(2026-08-28 [1]-③).
+
+    비교 대상은 "신호가 난 날"이므로, 신호를 거의 내지 않은 종목의 기준선이 긴 평가
+    기간만으로 과대 반영되면 우위 판정이 왜곡된다. 해당 방향 신호가 양쪽 다 0이면
+    가중치가 성립하지 않으니 평가일로 되돌린다.
+    """
+    va, vb = (
+        (a.baseline_up_rate, b.baseline_up_rate) if side == "up"
+        else (a.baseline_down_rate, b.baseline_down_rate)
+    )
+    if va is None or vb is None:
+        return None
+    w_a, w_b = (
+        (a.up_signals, b.up_signals) if side == "up" else (a.down_signals, b.down_signals)
+    )
+    if w_a + w_b == 0:
+        w_a, w_b = a.evaluated, b.evaluated
+    return (va * w_a + vb * w_b) / (w_a + w_b)

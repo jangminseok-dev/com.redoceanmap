@@ -22,6 +22,7 @@ def _candidate(c: dict | None) -> RefitCandidateRow | None:
         w_bb=c.get("w_bb", 0.0), w_obv=c.get("w_obv", 0.0),
         w_momentum=c.get("w_momentum", 0.0),
         n=c.get("n", 0), hits=c.get("hits", 0), hit_rate=c.get("hit_rate"),
+        baseline=c.get("baseline", 0.0),
         wilson_lower=c.get("wilson_lower", 0.0),
         is_current=c.get("is_current", False),
         gate_passed=c.get("gate_passed", False),

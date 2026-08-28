@@ -80,13 +80,16 @@ async def test_상승_합성봉의_확률은_결정적이다():
     assert view.symbol == "TEST"
     assert view.resolved_ticker == "TEST.KS"
     assert view.horizon_days == 5
-    # 단조 상승이라 전 평가일이 상승 마감 — 조건부 상승 비율 100%, 기준선도 100%
+    # 단조 상승 합성봉은 RSI 100 + 밴드 상단이라 **과매수 하락 신호**가 난다
+    # (2026-08-28 하락 임계 -0.45 검증·발화 이후. 그전에는 임계 도달 불가라 NEUTRAL이었다).
+    # 확률 필드는 방향을 따라간다 — DOWN이면 "변동성 초과 하락" 비율이고, 단조 상승이라 0이다.
+    assert view.signal_direction == "DOWN"
     p = view.probability
     assert p is not None
-    assert p.hits == p.sample_size
-    assert p.up_rate == 1.0
-    assert p.baseline_up_rate == 1.0
-    assert p.ci_low < 1.0 <= p.ci_high  # Wilson 구간은 1.0을 물고 하한은 그보다 작다
+    assert p.hits == 0 and p.up_rate == 0.0
+    assert p.baseline_up_rate == 0.0     # 하락 기준선 — 내린 날이 없다
+    assert p.ready is False              # 기준선을 못 이기므로 확률 제시 불가
+    assert p.ci_low == 0.0 < p.ci_high
     assert any(i.key == "probability" for i in view.insights)
     assert any(i.key == "basis" for i in view.insights)
 
@@ -152,18 +155,24 @@ async def test_조합_키가_바뀌면_캐시가_무효화된다():
     assert port.full_loads == 2
 
 
-async def test_DOWN_신호는_상승률이_기준선보다_낮아야_유의하다(monkeypatch):
+async def test_DOWN_신호는_하락_적중률이_하락_기준선을_이겨야_유의하다(monkeypatch):
+    """2026-08-28 규칙 변경 — 하락은 '상승률이 낮다'가 아니라 '하락 적중이 잦다'로 잰다.
+
+    변동성 문턱을 쓰면 결과가 셋(초과 상승 / 초과 하락 / 잡음)이라 (1 − 상승기준선)이
+    하락 기준선이 아니다. 그래서 하락도 상승과 같은 모양 — 하한 > 그 방향 기준선 — 이 된다.
+    """
     interactor = StockForecastInteractor(history=_StubPort(_bars(120)))
     monkeypatch.setattr(
         interactor._predictor, "predict",
         lambda *a, **k: Outlook(direction=Direction.DOWN, confidence=0.5),
     )
+    # 하락 적중 45%(90/200) vs 하락 기준선 30% — 우위 +15%p
+    down = DirectionStats(200, 40, -0.02, -0.01, 0.0, down_hits=90)
     dist = ForecastDistribution(
-        horizon_days=5, evaluated=400, baseline_up_rate=0.55,
+        horizon_days=5, evaluated=400, baseline_up_rate=0.55, baseline_down_rate=0.30,
         by_direction={
             "UP": DirectionStats(0, 0, None, None, None),
-            # 상승 35%(70/200) — 기준선 55%보다 뚜렷이 낮은 강한 하락 신호
-            "DOWN": DirectionStats(200, 70, -0.02, -0.01, 0.0),
+            "DOWN": down,
             "NEUTRAL": DirectionStats(200, 110, 0.0, 0.0, 0.0),
         },
     )
@@ -171,8 +180,35 @@ async def test_DOWN_신호는_상승률이_기준선보다_낮아야_유의하�
 
     view = await interactor.forecast(ForecastQuery(symbol="TEST"))
     assert view.signal_direction == "DOWN"
-    assert view.probability.ready is True  # 하락 방향은 '상승률이 낮을수록' 유의
+    p = view.probability
+    assert p.hits == 90 and p.up_rate == 0.45      # 방향 적중률
+    assert p.baseline_up_rate == 0.30              # 그 방향의 기준선
+    assert p.ready is True
     assert not any(i.key == "sample" for i in view.insights)  # 참고용 경고 없음
+
+
+async def test_DOWN은_상승률이_낮다는_이유만으로는_유의하지_않다(monkeypatch):
+    """옛 규칙(ci_high < 상승기준선)이었다면 통과했을 표본 — 이제는 떨어져야 한다."""
+    interactor = StockForecastInteractor(history=_StubPort(_bars(120)))
+    monkeypatch.setattr(
+        interactor._predictor, "predict",
+        lambda *a, **k: Outlook(direction=Direction.DOWN, confidence=0.5),
+    )
+    # 상승은 35%로 기준선 55%보다 뚜렷이 낮지만, 하락 적중은 25%로 기준선 30%에 못 미친다
+    # (나머지 40%는 잡음 구간 — 오르지도 내리지도 않은 날)
+    down = DirectionStats(200, 70, -0.02, -0.01, 0.0, down_hits=50)
+    dist = ForecastDistribution(
+        horizon_days=5, evaluated=400, baseline_up_rate=0.55, baseline_down_rate=0.30,
+        by_direction={
+            "UP": DirectionStats(0, 0, None, None, None),
+            "DOWN": down,
+            "NEUTRAL": DirectionStats(200, 110, 0.0, 0.0, 0.0),
+        },
+    )
+    monkeypatch.setattr(interactor._backtester, "distribution", lambda *a, **k: dist)
+
+    view = await interactor.forecast(ForecastQuery(symbol="TEST"))
+    assert view.probability.ready is False
 
 
 async def test_ready_기준은_표본과_신뢰구간_하한():

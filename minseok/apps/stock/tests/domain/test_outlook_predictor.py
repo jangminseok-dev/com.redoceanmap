@@ -31,15 +31,23 @@ def test_감성은_지표를_보정할_뿐_단독으로_방향을_만들지_않�
 def test_negative_sentiment_and_overbought_predicts_down():
     """과매수 + 악재 뉴스면 하락 방향이 나온다.
 
-    RSI 기준이 75→85로 올라간 이유(2026-08-28): 감성 가중치가 0.5에서 0.2로 낮아져,
-    약한 과매수(75 → 신호 -0.167)는 뉴스가 나빠도 문턱(-0.28)에 닿지 않는다. 하락 판정이
-    보수적으로 바뀐 것인데, 하락 방향은 백테스트에서 검증 통과 조합이 없었으므로
-    (`AnalysisConfig.forecast_signal()` 참조) 덜 단정하는 쪽이 실측과 맞다.
+    두 번 조정됐다(2026-08-28). ① 감성 가중치가 0.5→0.2로 낮아져 약한 과매수는 뉴스가
+    나빠도 문턱에 닿지 않는다. ② 하락 문턱이 검증값 -0.45의 0.8배인 **-0.36**으로 내려가
+    (이전 -0.28은 미검증 대칭값), rsi=85 단독(-0.32)으로는 이제 부족하다.
+
+    지표가 주도하고 뉴스가 보조한다는 구조가 여기서 그대로 보인다 — 감성 -0.8이 얹는 몫은
+    -0.16뿐이라, 지표가 이미 문턱 가까이 와 있어야 방향이 굳는다.
     """
-    out = OutlookPredictor().predict(
+    predictor = OutlookPredictor()
+    # rsi 90(-0.373): 지표만으로 문턱을 넘는다
+    assert predictor.predict(
+        _ind(rsi=90.0), SentimentScore(-0.8), AnalysisConfig.default()
+    ).direction is Direction.DOWN
+
+    # rsi 85(-0.32)는 악재 뉴스가 있어도 관망 — 뉴스는 판정을 뒤집지 못한다
+    assert predictor.predict(
         _ind(rsi=85.0), SentimentScore(-0.8), AnalysisConfig.default()
-    )
-    assert out.direction is Direction.DOWN
+    ).direction is Direction.NEUTRAL
 
 
 def test_flat_signals_predict_neutral():

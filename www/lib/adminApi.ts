@@ -396,9 +396,10 @@ export type AdminRefitCandidate = {
   n: number;
   hits: number;
   hit_rate: number | null;
+  baseline: number; // 이 후보가 신호를 낸 종목들의 기준선(신호 수 가중)
   wilson_lower: number;
   is_current: boolean;
-  gate_passed: boolean; // n≥100 + Wilson 하한 > 기준선
+  gate_passed: boolean; // n≥100 + Wilson 하한 > baseline
 };
 
 export type AdminRefitBoard = {

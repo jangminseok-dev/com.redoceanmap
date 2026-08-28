@@ -82,22 +82,108 @@ def test_확률_제시_판정은_표본과_신뢰구간_하한을_모두_요구�
     assert not marginal.up_probability_ready
 
 
-def test_리포트_병합은_카운트_합산_기준선은_가중평균():
+def test_리포트_병합은_카운트_합산_기준선은_신호수_가중():
     from stock.domain.value_objects.backtest_report import BacktestReport
 
+    # 평가일은 b가 3배 길지만 신호는 a가 3배 많다 — 두 가중이 서로 다른 답을 내는 표본이라야
+    # "신호 수 가중"이 실제로 걸렸는지 구분된다(평가일 가중이면 0.525). 가중치는 **그 방향의**
+    # 신호 수다(UP 기준선은 up_signals로) — 상승·하락 기준선이 별개 축이라 함께 섞지 않는다.
     a = BacktestReport(
-        horizon_days=5, evaluated=100, up_signals=10, down_signals=5,
-        neutral_signals=85, up_hits=6, down_hits=2, baseline_up_rate=0.6,
+        horizon_days=5, evaluated=100, up_signals=25, down_signals=5,
+        neutral_signals=70, up_hits=15, down_hits=2, baseline_up_rate=0.6,
     )
     b = BacktestReport(
-        horizon_days=5, evaluated=300, up_signals=30, down_signals=15,
-        neutral_signals=255, up_hits=18, down_hits=9, baseline_up_rate=0.5,
+        horizon_days=5, evaluated=300, up_signals=8, down_signals=2,
+        neutral_signals=290, up_hits=4, down_hits=1, baseline_up_rate=0.5,
     )
     m = a.merged(b)
     assert m.evaluated == 400
-    assert m.up_signals == 40 and m.down_signals == 20
-    assert m.up_hits == 24 and m.down_hits == 11
-    assert abs(m.baseline_up_rate - (0.6 * 100 + 0.5 * 300) / 400) < 1e-9
+    assert m.up_signals == 33 and m.down_signals == 7
+    assert m.up_hits == 19 and m.down_hits == 3
+    assert abs(m.baseline_up_rate - (0.6 * 25 + 0.5 * 8) / 33) < 1e-9
+
+
+def test_병합_하락기준선은_하락신호_수로_가중하고_모르면_None():
+    from stock.domain.value_objects.backtest_report import BacktestReport
+
+    a = BacktestReport(
+        horizon_days=5, evaluated=100, up_signals=25, down_signals=30,
+        neutral_signals=45, up_hits=15, down_hits=12, baseline_up_rate=0.6,
+        baseline_down_rate=0.30,
+    )
+    b = BacktestReport(
+        horizon_days=5, evaluated=300, up_signals=8, down_signals=10,
+        neutral_signals=282, up_hits=4, down_hits=3, baseline_up_rate=0.5,
+        baseline_down_rate=0.20,
+    )
+    assert abs(a.merged(b).baseline_down_rate - (0.30 * 30 + 0.20 * 10) / 40) < 1e-9
+
+    # 한쪽이라도 하락 기준선을 모르면 합칠 수 없다 — 없는 기준선을 지어내지 않는다
+    unknown = BacktestReport(
+        horizon_days=5, evaluated=100, up_signals=1, down_signals=1,
+        neutral_signals=98, up_hits=1, down_hits=1, baseline_up_rate=0.5,
+    )
+    assert a.merged(unknown).baseline_down_rate is None
+
+
+def test_하락_기준선을_모르면_확률_판정을_하지_않는다():
+    from stock.domain.value_objects.backtest_report import BacktestReport
+
+    strong = dict(
+        horizon_days=5, evaluated=1000, up_signals=0, down_signals=200,
+        neutral_signals=800, up_hits=0, down_hits=140, baseline_up_rate=0.4,
+    )
+    assert BacktestReport(**strong).down_probability_ready is False          # 기준선 미상
+    assert BacktestReport(**strong, baseline_down_rate=0.30).down_probability_ready is True
+    # (1 − 상승기준선)=0.6과 겨루던 옛 규칙이었다면 하한 63%가 못 이겨 False였을 자리다
+
+
+def test_병합_신호가_한쪽도_없으면_기준선은_평가일_가중으로_되돌린다():
+    from stock.domain.value_objects.backtest_report import BacktestReport
+
+    a = BacktestReport(
+        horizon_days=5, evaluated=100, up_signals=0, down_signals=0,
+        neutral_signals=100, up_hits=0, down_hits=0, baseline_up_rate=0.6,
+    )
+    b = BacktestReport(
+        horizon_days=5, evaluated=300, up_signals=0, down_signals=0,
+        neutral_signals=300, up_hits=0, down_hits=0, baseline_up_rate=0.5,
+    )
+    assert abs(a.merged(b).baseline_up_rate - (0.6 * 100 + 0.5 * 300) / 400) < 1e-9
+
+
+def test_적중은_변동성_문턱을_넘어야_한다():
+    """계속 오르지만 상승폭이 잡음보다 작으면 적중이 아니다 — 부호 판정과 갈리는 지점."""
+    # 하루 +0.01(5일 ≈ +0.05%)인데 일중 폭은 ±2(ATR ≈ 4%) — 문턱은 4%×√5×0.25 ≈ 2.2%
+    closes = [100.0 + 0.01 * i for i in range(100)]
+    lows = [c - 2.0 for c in closes]
+    highs = [c + 2.0 for c in closes]
+    report = Backtester(predictor=_FixedPredictor(Direction.UP)).run(
+        closes, lows, highs, horizon=5,
+    )
+    assert report.up_signals == report.evaluated
+    assert report.up_hits == 0          # 전 구간 상승인데도 적중 0
+    assert report.baseline_up_rate == 0.0  # 기준선도 같은 규칙으로 세므로 함께 0
+
+
+def test_적중_문턱은_변동성에_비례한다():
+    """같은 상승폭이라도 잡음이 작은 종목에서는 적중이다 — 위 테스트의 대조군."""
+    closes = [100.0 + 0.01 * i for i in range(100)]
+    lows = [c - 0.002 for c in closes]
+    highs = [c + 0.002 for c in closes]
+    report = Backtester(predictor=_FixedPredictor(Direction.UP)).run(
+        closes, lows, highs, horizon=5,
+    )
+    assert report.up_hits == report.up_signals
+    assert report.baseline_up_rate == 1.0
+
+
+def test_ATR을_모르면_부호_판정으로_열화한다():
+    from stock.domain.value_objects.backtest_report import hit_unit, is_up_hit
+
+    assert hit_unit(None, 5) == 0.0
+    assert is_up_hit(0.0001, hit_unit(None, 5)) is True
+    assert is_up_hit(-0.0001, hit_unit(None, 5)) is False
 
 
 def test_distribution_레짐_분할_합계는_무조건부와_일치():

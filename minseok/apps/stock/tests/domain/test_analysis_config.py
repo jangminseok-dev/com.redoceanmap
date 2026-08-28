@@ -29,14 +29,23 @@ def test_forecast_signal_does_not_use_sentiment():
     assert config.w_rsi + config.w_bb + config.w_momentum == 1.0
 
 
-def test_forecast_signal_never_predicts_down():
-    """하락은 검증되지 않았다 — 어떤 지표 조합에서도 DOWN이 나오면 안 된다(임계값 도달 불가)."""
+def test_forecast_signal_predicts_down_only_past_validated_threshold():
+    """하락은 -0.45(4차 재채점 검증값)를 넘어야만 발화한다 — 그 아래는 관망.
+
+    2026-08-28 정책 변경. 이전에는 임계가 도달 불가값(-1.01)이라 어떤 조합도 DOWN을 내지
+    못했다. 적중을 변동성 초과로 재정의하고 하락 기준선을 따로 세운 뒤 -0.40·-0.45가
+    홀드아웃·인샘플 두 구간을 통과했다(-0.35·-0.50은 미달). 경계 양쪽을 함께 고정한다.
+    """
     predictor = OutlookPredictor()
     config = AnalysisConfig.forecast_signal()
-    # 모든 신호를 최대 음수로 밀어도(과매수 + 밴드 상단 + 모멘텀 -50%) score는 -1.0에서 멈춘다
-    worst = _ind(rsi=100.0, bb=1.0, momentum=-1.0)
-    assert predictor.score(predictor.breakdown(worst, NEUTRAL, config)) <= -1.0 + 1e-9
-    assert predictor.predict(worst, NEUTRAL, config).direction is Direction.NEUTRAL
+
+    # 강한 과매수 + 밴드 상단 = -0.60 → 검증 구간 안쪽이라 발화
+    strong = _ind(rsi=85.0, bb=1.0)
+    assert predictor.predict(strong, NEUTRAL, config).direction is Direction.DOWN
+
+    # 약한 과매수(-0.24)는 문턱에 못 미친다 — 미달 구간을 발화시키지 않는다
+    weak = _ind(rsi=70.0, bb=0.8)
+    assert predictor.predict(weak, NEUTRAL, config).direction is Direction.NEUTRAL
 
 
 def test_forecast_signal_reaches_up_on_oversold_reversal():
@@ -54,7 +63,7 @@ def test_default_matches_forecast_signal_when_sentiment_neutral():
     곱한 값이고 스코어가 선형 가중합이라 임계 비교 결과가 보존된다. 이게 깨지면 analyze 경로가
     백테스트로 검증된 적 없는 조합으로 방향을 판정하게 된다.
 
-    DOWN은 비교하지 않는다 — forecast_signal은 하락 무발화(도달 불가 임계)이고
+    DOWN은 비교하지 않는다 — 두 조합의 하락 임계가 -0.45와 -0.36(0.8배)으로 스케일만 다르고
     default는 북마크 알림 상태를 위해 DOWN을 낸다.
     """
     predictor = OutlookPredictor()

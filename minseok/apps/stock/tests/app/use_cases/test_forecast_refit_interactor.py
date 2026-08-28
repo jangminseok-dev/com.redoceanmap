@@ -97,7 +97,7 @@ async def test_게이트_통과시_자동_승격하고_리포트를_남긴다():
     assert result.activated_key.startswith("refit-") and len(result.activated_key) <= 24
     [(key, config)] = configs.activated
     assert key == result.activated_key
-    assert config.down_threshold == -1.01 and config.w_sentiment == 0.0
+    assert config.down_threshold == -0.45 and config.w_sentiment == 0.0
     [(params, payload)] = reports.saved
     assert params["activated_key"] == result.activated_key
     assert payload["promote"] is True

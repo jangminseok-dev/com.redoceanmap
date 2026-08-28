@@ -149,29 +149,25 @@ class StockForecastInteractor(StockForecastUseCase):
             direction = "NEUTRAL"  # 발표 구간은 방향 주장을 하지 않는다 — 관망 강등
 
         regime = calendar.regime_at(bars[-1].ts.date()) if calendar is not None else None
-        stats, baseline_up_rate, regime_conditional = self._select_stats(dist, direction, regime)
+        stats, baseline_rate, regime_conditional = self._select_stats(dist, direction, regime)
 
         probability = None
         ready = False
         if stats.sample_size > 0:
-            ci_low, ci_high = wilson_bounds(stats.hits, stats.sample_size)
-            # 방향별 유의성: UP은 상승 비율이 기준선보다 뚜렷이 높아야, DOWN은 뚜렷이 낮아야
-            # (backtest_report의 up/down_probability_ready와 같은 취지). NEUTRAL은 방향 주장이 아니다.
-            # 조건부 선택 시 기준선도 같은 레짐 슬라이스의 것 — 국면 자체의 상승률과 비교해야 공정.
-            if direction == "UP":
-                significant = ci_low > baseline_up_rate
-            elif direction == "DOWN":
-                significant = ci_high < baseline_up_rate
-            else:
-                significant = False
+            # 확률 필드는 **그 방향의 적중률**이다 — UP이면 변동성 초과 상승, DOWN이면 초과 하락.
+            # 방향마다 분자와 기준선이 함께 바뀌므로 유의성 판정은 양쪽 다 "하한 > 기준선"으로
+            # 같은 모양이 된다(2026-08-28 하락 검증 이전에는 DOWN을 상승률의 역으로 쟀다).
+            hits = stats.down_hits if direction == "DOWN" else stats.hits
+            ci_low, ci_high = wilson_bounds(hits, stats.sample_size)
+            significant = ci_low > baseline_rate if direction in ("UP", "DOWN") else False
             ready = stats.sample_size >= MIN_SIGNAL_SAMPLES and significant
             probability = ProbabilityInfo(
-                up_rate=stats.hits / stats.sample_size,
+                up_rate=hits / stats.sample_size,
                 sample_size=stats.sample_size,
-                hits=stats.hits,
+                hits=hits,
                 ci_low=ci_low,
                 ci_high=ci_high,
-                baseline_up_rate=baseline_up_rate,
+                baseline_up_rate=baseline_rate,
                 ready=ready,
             )
 
@@ -208,7 +204,7 @@ class StockForecastInteractor(StockForecastUseCase):
             probability=probability,
             band=band,
             insights=forecast_narrator.narrate(
-                direction, stats, baseline_up_rate, query.horizon, ready,
+                direction, stats, baseline_rate, query.horizon, ready,
                 regime=regime, regime_conditional=regime_conditional,
                 earnings_veto=earnings_veto,
                 position=position,
@@ -273,9 +269,18 @@ class StockForecastInteractor(StockForecastUseCase):
         레짐 분할로 표본이 급감하는 것이 구조적 리스크 — 폴백이 흡수한다.
         ready 게이트(n≥100 + Wilson)는 선택된 슬라이스 위에서 그대로 적용된다.
         """
+        # 기준선은 **방향마다 다른 축**이다 — DOWN은 (1 − 상승기준선)이 아니라 하락 기준선과
+        # 겨룬다(변동성 문턱을 쓰면 잡음 구간이 따로 있어 둘의 합이 1이 아니다).
+        def _baseline(up_rate: float, down_rate: float) -> float:
+            return down_rate if direction == "DOWN" else up_rate
+
         if regime is not None and regime in dist.by_regime:
             regime_stats = dist.by_regime[regime]
             conditional = regime_stats.by_direction.get(direction)
             if conditional is not None and conditional.sample_size >= QUANTILE_MIN_SAMPLES:
-                return conditional, regime_stats.baseline_up_rate, True
-        return dist.by_direction[direction], dist.baseline_up_rate, False
+                return conditional, _baseline(
+                    regime_stats.baseline_up_rate, regime_stats.baseline_down_rate,
+                ), True
+        return dist.by_direction[direction], _baseline(
+            dist.baseline_up_rate, dist.baseline_down_rate,
+        ), False

@@ -10,13 +10,20 @@ from stock.domain.services.weight_refit import (
 CURRENT = AnalysisConfig.forecast_signal()  # RSI+BB+MOM 0.4/0.4/0.2 ±0.35
 
 
-def _sample(rsi=0.0, bollinger=0.0, momentum=0.0, trend=0.0, obv=0.0, ret=0.01) -> RefitSample:
+# atr 1% · 지평 5일 → 변동성 1단위 0.0224, 적중 문턱 0.0056. 아래 표본의 ±0.01~0.03은
+# 이 문턱 밖이라 적중 판정이 부호 기준일 때와 같다(옛 기대값 그대로 유효).
+def _sample(
+    rsi=0.0, bollinger=0.0, momentum=0.0, trend=0.0, obv=0.0, ret=0.01,
+    ticker="AAA", atr_pct=0.01,
+) -> RefitSample:
     return RefitSample(
         signals={
             "sentiment": 0.0, "rsi": rsi, "trend": trend,
             "bollinger": bollinger, "obv": obv, "momentum": momentum,
         },
         realized_return_pct=ret,
+        ticker=ticker,
+        atr_pct=atr_pct,
     )
 
 
@@ -96,7 +103,7 @@ def test_승격_게이트_전부_통과():
     winner = report.winner
     assert winner.n >= 100 and winner.gate_passed and not winner.is_current
     config = report.winner_config()
-    assert config.down_threshold == DOWN_THRESHOLD  # 하락 무발화 유지
+    assert config.down_threshold == DOWN_THRESHOLD  # 검증된 하락 임계 고정(-0.45)
     assert config.w_sentiment == 0.0                # 감성 재적합은 E3의 몫
 
 
@@ -145,3 +152,23 @@ def test_현행_조합이_후보_열거_밖이어도_재채점된다():
     board = report.boards[0]
     assert board.current is not None and board.current.n == 50
     assert not any(r.is_current for r in board.rows)  # 열거 후보 중엔 현행이 없다
+
+
+def test_기준선은_신호를_낸_종목만으로_만든다():
+    """[1]-③ — 신호를 한 번도 안 낸 종목의 기준선이 게이트 비교에 섞이면 안 된다."""
+    # AAA: 강신호 120건 중 60%만 적중 / BBB: 신호 무발화(전 원신호 0)인데 전부 상승
+    aaa = [
+        _sample(rsi=1.0, bollinger=1.0, momentum=1.0, trend=1.0, obv=1.0,
+                ret=0.02 if i < 72 else -0.02, ticker="AAA")
+        for i in range(120)
+    ]
+    bbb = [_sample(ret=0.02, ticker="BBB") for _ in range(200)]
+
+    board = weight_refit.refit({5: aaa + bbb}, CURRENT).boards[0]
+
+    # 표시용 pooled 기준선은 BBB까지 섞인 값
+    assert abs(board.baseline_up_rate - (72 + 200) / 320) < 1e-9
+    # 게이트가 쓰는 후보 기준선은 AAA 자기 값뿐
+    fired = [r for r in board.rows if r.n > 0]
+    assert fired and all(r.n == 120 for r in fired)
+    assert all(abs(r.baseline - 0.6) < 1e-9 for r in fired)

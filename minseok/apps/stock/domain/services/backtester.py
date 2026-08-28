@@ -6,7 +6,12 @@ from stock.domain.entities.analysis_config import AnalysisConfig
 from stock.domain.entities.outlook import Direction
 from stock.domain.services.indicator_calculator import MA_LONG, IndicatorCalculator
 from stock.domain.services.outlook_predictor import OutlookPredictor
-from stock.domain.value_objects.backtest_report import BacktestReport
+from stock.domain.value_objects.backtest_report import (
+    BacktestReport,
+    hit_unit,
+    is_down_hit,
+    is_up_hit,
+)
 from stock.domain.value_objects.forecast_distribution import (
     DirectionStats,
     ForecastDistribution,
@@ -23,6 +28,9 @@ class Backtester:
     워크포워드: 각 평가일 t에서 t까지의 데이터로만 지표를 계산해 전망을 내고,
     t+horizon 종가와 비교한다(미래 참조 없음). 과거 뉴스는 수집할 수 없으므로
     감성은 중립(0.0) 고정 — 지표 신호만 평가한다.
+
+    적중은 수익률 부호가 아니라 **변동성 대비 초과분**이다(`is_up_hit`) — 기준선도
+    같은 규칙으로 세어야 비교가 성립하므로 baseline_up_rate도 함께 바뀐다.
     """
 
     def __init__(
@@ -68,8 +76,8 @@ class Backtester:
             )
 
         evaluated = end - start
-        indicator_rose_pairs = []
-        baseline_up = 0
+        indicator_outcomes = []
+        baseline_up = baseline_down = 0
         for t in range(start, end):
             indicators = self._calculator.compute(
                 closes[: t + 1],
@@ -77,21 +85,23 @@ class Backtester:
                 highs[: t + 1],
                 volumes[: t + 1] if volumes is not None else None,
             )
-            rose = closes[t + horizon] > closes[t]
-            baseline_up += 1 if rose else 0
-            indicator_rose_pairs.append((indicators, rose))
+            ret = closes[t + horizon] / closes[t] - 1.0
+            unit = hit_unit(indicators.atr_pct, horizon)
+            baseline_up += 1 if is_up_hit(ret, unit) else 0
+            baseline_down += 1 if is_down_hit(ret, unit) else 0
+            indicator_outcomes.append((indicators, ret, unit))
 
         reports = []
         for config in configs:
             up = down = neutral_count = up_hits = down_hits = 0
-            for indicators, rose in indicator_rose_pairs:
+            for indicators, ret, unit in indicator_outcomes:
                 outlook = self._predictor.predict(indicators, neutral, config)
                 if outlook.direction is Direction.UP:
                     up += 1
-                    up_hits += 1 if rose else 0
+                    up_hits += 1 if is_up_hit(ret, unit) else 0
                 elif outlook.direction is Direction.DOWN:
                     down += 1
-                    down_hits += 0 if rose else 1
+                    down_hits += 1 if is_down_hit(ret, unit) else 0
                 else:
                     neutral_count += 1
             reports.append(BacktestReport(
@@ -103,6 +113,7 @@ class Backtester:
                 up_hits=up_hits,
                 down_hits=down_hits,
                 baseline_up_rate=baseline_up / evaluated,
+                baseline_down_rate=baseline_down / evaluated,
             ))
         return reports
 
@@ -144,7 +155,8 @@ class Backtester:
         outcomes: dict[str, list[_Outcome]] = {d.value: [] for d in Direction}
         regime_outcomes: dict[str, dict[str, list[_Outcome]]] = {}
         regime_baseline_up: dict[str, int] = {}
-        baseline_up = 0
+        regime_baseline_down: dict[str, int] = {}
+        baseline_up = baseline_down = 0
         vetoed = 0
         for t in range(start, end):
             if excluded is not None and excluded[t]:
@@ -158,6 +170,7 @@ class Backtester:
             )
             base = closes[t]
             ret = closes[t + horizon] / base - 1.0
+            unit = hit_unit(indicators.atr_pct, horizon)
             # 구간 내 하방·회복 — 마감 수익률만으로는 "빠졌다 회복한 것"과 "그냥 오른 것"이 구분되지
             # 않는다. 낙폭은 장중 저가, 회복은 종가 기준(기준가를 실제로 되찾은 날).
             trough = min(lows[t + 1 : t + horizon + 1]) / base - 1.0
@@ -165,15 +178,21 @@ class Backtester:
                 (k for k, c in enumerate(closes[t + 1 : t + horizon + 1], start=1) if c >= base),
                 None,
             )
-            baseline_up += 1 if ret > 0 else 0
+            baseline_up += 1 if is_up_hit(ret, unit) else 0
+            baseline_down += 1 if is_down_hit(ret, unit) else 0
             outlook = self._predictor.predict(indicators, neutral, cfg)
-            outcome = _Outcome(ret=ret, trough=trough, recovery_day=recovery_day)
+            outcome = _Outcome(ret=ret, unit=unit, trough=trough, recovery_day=recovery_day)
             outcomes[outlook.direction.value].append(outcome)
             regime = regimes[t] if regimes is not None else None
             if regime is not None:
                 bucket = regime_outcomes.setdefault(regime, {d.value: [] for d in Direction})
                 bucket[outlook.direction.value].append(outcome)
-                regime_baseline_up[regime] = regime_baseline_up.get(regime, 0) + (1 if ret > 0 else 0)
+                regime_baseline_up[regime] = (
+                    regime_baseline_up.get(regime, 0) + (1 if is_up_hit(ret, unit) else 0)
+                )
+                regime_baseline_down[regime] = (
+                    regime_baseline_down.get(regime, 0) + (1 if is_down_hit(ret, unit) else 0)
+                )
 
         evaluated = end - start - vetoed
         if evaluated <= 0:
@@ -182,11 +201,13 @@ class Backtester:
             horizon_days=horizon,
             evaluated=evaluated,
             baseline_up_rate=baseline_up / evaluated,
+            baseline_down_rate=baseline_down / evaluated,
             by_direction=_direction_stats(outcomes),
             by_regime={
                 regime: RegimeStats(
                     evaluated=(n := sum(len(rows) for rows in bucket.values())),
                     baseline_up_rate=regime_baseline_up.get(regime, 0) / n,
+                    baseline_down_rate=regime_baseline_down.get(regime, 0) / n,
                     by_direction=_direction_stats(bucket),
                 )
                 for regime, bucket in regime_outcomes.items()
@@ -200,6 +221,7 @@ class _Outcome:
     """평가일 1건의 사후 결과 — 마감 수익률 + 구간 내 최대 낙폭 + 기준가 회복일."""
 
     ret: float
+    unit: float               # 그날의 변동성 1단위(ATR% × √horizon) — 적중 판정 분모
     trough: float             # 장중 저가 기준 최대 낙폭 (0 이상이면 구간 내 하락 없음)
     recovery_day: int | None  # 기준가를 종가로 되찾은 첫 거래일(1-based), 못 찾으면 None
 
@@ -216,7 +238,8 @@ def _stats_of(rows: list[_Outcome]) -> DirectionStats:
     recovered = [o.recovery_day for o in dips if o.recovery_day is not None]
     return DirectionStats(
         sample_size=len(rows),
-        hits=sum(1 for r in rets if r > 0),
+        hits=sum(1 for o in rows if is_up_hit(o.ret, o.unit)),
+        down_hits=sum(1 for o in rows if is_down_hit(o.ret, o.unit)),
         q25=_quantile(rets, 0.25),
         median=_quantile(rets, 0.5),
         q75=_quantile(rets, 0.75),

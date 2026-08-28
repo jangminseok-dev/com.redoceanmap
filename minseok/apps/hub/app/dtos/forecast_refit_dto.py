@@ -24,11 +24,12 @@ class RefitCandidateRow:
     w_obv: float
     w_momentum: float
     n: int                    # UP 판정 표본 수
-    hits: int                 # 그중 실현 수익률 > 0
+    hits: int                 # 그중 적중(변동성 초과 상승)
     hit_rate: float | None
+    baseline: float           # 이 후보가 신호를 낸 종목들의 기준선(신호 수 가중)
     wilson_lower: float
     is_current: bool
-    gate_passed: bool         # n≥100 + Wilson 하한 > 기준선
+    gate_passed: bool         # n≥100 + Wilson 하한 > baseline
 
 
 @dataclass(frozen=True)

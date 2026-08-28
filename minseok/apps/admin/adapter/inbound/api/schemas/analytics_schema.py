@@ -147,9 +147,10 @@ class RefitCandidateRowSchema(BaseModel):
     n: int
     hits: int
     hit_rate: float | None
+    baseline: float
     wilson_lower: float
     is_current: bool
-    gate_passed: bool   # n≥100 + Wilson 하한 > 기준선
+    gate_passed: bool   # n≥100 + Wilson 하한 > baseline(후보가 신호를 낸 종목 가중)
 
 
 class RefitHorizonBoardSchema(BaseModel):
