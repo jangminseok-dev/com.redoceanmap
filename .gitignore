@@ -117,3 +117,11 @@ blog/_site/
 blog/.jekyll-cache/
 blog/.jekyll-metadata
 blog/vendor/
+
+# Claude Code 에이전트 하네스 — 도구 설치물·런타임은 제외하고 설정만 추적한다.
+# skills/(7.5MB 번들)·data/(13MB)는 `omd install-skills`로 재생성되므로 저장소에 넣지 않는다.
+.claude/skills/
+.claude/data/
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.omd/init-context.json

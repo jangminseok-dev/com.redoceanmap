@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "_doc": "OmD project hooks — auto-installed by `omd install-skills`. Re-run with --force to refresh.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PROJECT_DIR}/.claude/hooks/skill-activation.cjs",
+            "timeout": 3000
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PROJECT_DIR}/.claude/hooks/session-state-loader.cjs",
+            "timeout": 3000
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PROJECT_DIR}/.claude/hooks/post-edit-watch.cjs",
+            "timeout": 2000
+          },
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // empty' | grep -qE '/com\\.redoceanmap/(minseok|www|flutter)/' && touch ${CLAUDE_PROJECT_DIR}/.claude/data/notion-update-pending || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ${CLAUDE_PROJECT_DIR}/.claude/hooks/session-end-foldin.cjs",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "M=${CLAUDE_PROJECT_DIR}/.claude/data/notion-update-pending; if [ -f \"$M\" ]; then rm -f \"$M\"; printf '%s' '{\"decision\":\"block\",\"reason\":\"이번 턴에서 프로젝트 코드(minseok/www/flutter)를 수정했다. 이 변경이 기능 슬라이스의 시작·진행·완료에 해당하면 Notion com.redoceanmap 프로젝트 DB의 해당 기능 행(상태·진행률·본문)을 메모리 project-notion-progress-log.md 규칙대로 갱신하라(새 기능이면 행 신규 생성, 비개발자용 쉬운 언어+7섹션 템플릿). 세션에 Notion 도구가 없으면 claude -p 하위 세션으로 갱신하라. 기능 진행과 무관한 사소한 수정·설정 변경이면 갱신 없이 그대로 종료하라.\"}'; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
