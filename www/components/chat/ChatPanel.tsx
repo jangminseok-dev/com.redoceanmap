@@ -16,6 +16,34 @@ const DIRECTION_META = {
   NEUTRAL: { label: "중립", icon: Minus, className: "text-foreground-muted bg-surface border-border" },
 } as const;
 
+/** 판정 배지 → 결론 → 근거 → 지켜볼 점. 이 순서가 "그래서 뭘 하라는 거냐"의 답이다.
+ *  배지는 **상태 서술**이지 지시가 아니다("하락 신호"이지 "파세요"가 아니다) — 표현 규칙
+ *  (eval_scorer의 금지 패턴)과 유사투자자문업 경계를 건드리지 않으면서 강도를 올리는 자리. */
+function VerdictBlock({ stock }: { stock: StockAnalysis }) {
+  const meta = DIRECTION_META[stock.direction] ?? DIRECTION_META.NEUTRAL;
+  const Icon = meta.icon;
+  return (
+    <div className="mb-3 pb-3 border-b border-border">
+      <span
+        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-semibold ${meta.className}`}
+      >
+        <Icon size={12} strokeWidth={2.5} />
+        {meta.label}
+        {stock.strength && ` · ${stock.strength}`}
+      </span>
+      <p className="mt-1.5 text-sm font-semibold leading-snug">{stock.headline}</p>
+      {stock.basis && (
+        <p className="mt-0.5 text-xs text-foreground-muted leading-snug tabular-nums">
+          {stock.basis}
+        </p>
+      )}
+      {stock.watch && (
+        <p className="mt-1 text-xs text-foreground-muted leading-snug">지켜볼 점 {stock.watch}</p>
+      )}
+    </div>
+  );
+}
+
 function PinMark({ size = 13 }: { size?: number }) {
   return (
     <svg width={size} height={Math.round((size * 20) / 16)} viewBox="0 0 16 20" aria-hidden>
@@ -108,16 +136,7 @@ export default function ChatPanel({
                     판단을 만난다("그래서 뭘 하라는 거냐" 피드백, 2026-08-28).
                     카드가 아니라 별도 블록인 이유: 카드는 stock 워크스페이스에서만 렌더되는데
                     결론은 어느 화면에서 물었든 보여야 한다. headline은 서버 verdict가 만든다. */}
-                {m.stock?.headline && (
-                  <div className="mb-3 pb-3 border-b border-border">
-                    <p className="text-sm font-semibold leading-snug">{m.stock.headline}</p>
-                    {m.stock.watch && (
-                      <p className="mt-1 text-xs text-foreground-muted leading-snug">
-                        지켜볼 점 {m.stock.watch}
-                      </p>
-                    )}
-                  </div>
-                )}
+                {m.stock?.headline && <VerdictBlock stock={m.stock} />}
 
                 {m.stock && workspace === "stock" && (
                   <StockSummaryCard stock={m.stock} onClick={() => onSelectStock?.(m.stock!)} />

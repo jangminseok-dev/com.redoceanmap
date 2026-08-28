@@ -59,6 +59,7 @@ export type StockAnalysis = {
   headline?: string;
   watch?: string | null;
   strength?: string; // 신호 세기(약/보통/강)
+  basis?: string; // 결론의 근거 한 줄(표본·95% 구간). 구버전 히스토리 payload에는 없다
   value?: string[]; // 가치·체력 해석(펀더멘털) 대표 1~2줄 — 미수집이면 빈 배열
   keywords?: string[]; // 영향 키워드 Top-N(B2, 헤드라인 빈도 — 예측 아님). 표본 미달이면 빈 배열
 };

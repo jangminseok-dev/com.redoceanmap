@@ -19,6 +19,7 @@ from chat.app.dtos.area_stat_dto import AreaStatDto
 from chat.app.ports.input.chat_use_case import ChatUseCase
 from chat.app.ports.output.conversation_repository import ConversationRepository
 from chat.domain.entities.conversation_entity import ConversationSummary, Message
+from chat.domain.services import answer_guard
 from chat.domain.services.verdict import strength as verdict_strength
 from chat.domain.services.verdict import verdict as verdict_headline
 from core.llm.llm_orchestrator import llm_orchestrator
@@ -921,6 +922,9 @@ class ChatInteractor(ChatUseCase):
         self._notify(on_stage, "narrate", "동향을 정리하고 있어요")
         # 최종 서술(최종 사용자 답변) → 오케스트레이터 기본 모델(7.8B)
         text = await llm_orchestrator.orchestrate(f"{MARKET_NEWS_ANSWER_PROMPT}\n\n{context}")
+        # 절대 규칙은 프롬프트가 아니라 코드가 지킨다(2026-08-28 골든셋 위반 13건)
+        text = answer_guard.strip_dangling_citations(text, answer_guard.allowed_citations(context))
+        text = answer_guard.ensure_disclaimer(text)
         news = [
             NewsCardItem(
                 title=h.title,
@@ -1007,9 +1011,19 @@ class ChatInteractor(ChatUseCase):
         )
         # 최종 서술(최종 사용자 답변) → 오케스트레이터 기본 모델(7.8B)
         text = await llm_orchestrator.orchestrate(f"{STOCK_ANSWER_PROMPT}\n\n{context}")
+        # 절대 규칙은 프롬프트가 아니라 코드가 지킨다(2026-08-28 골든셋 위반 13건).
+        # 프롬프트에 이미 두 규칙이 다 적혀 있었다 — 7.8B가 안 지킨 것이라 문구로는 못 막는다.
+        text = answer_guard.strip_dangling_citations(text, answer_guard.allowed_citations(context))
+        # 거래량 판정(C1 골격)도 같은 이유로 코드가 보장한다 — 압축 뒤 포함률 0.70 → 0.467
+        text = answer_guard.ensure_volume_verdict(
+            text, ma20=analysis.ma20, ma50=analysis.ma50, volume_ratio=analysis.volume_ratio,
+        )
+        text = answer_guard.ensure_disclaimer(text)
 
         # 결론 한 줄 — 페이지 히어로와 같은 verdict 로직으로 서버가 계산해 카드에 싣는다.
-        headline, _detail = verdict_headline(analysis.direction, forecast)
+        # detail(표본·신뢰구간)까지 카드에 싣는다 — 배지 밑에 근거가 없으면 판정만 남아
+        # "왜?"가 답이 안 된다(2026-08-28 배지 UI).
+        headline, basis = verdict_headline(analysis.direction, forecast)
         card = StockCard(
             symbol=analysis.symbol,
             price=analysis.price,
@@ -1034,6 +1048,7 @@ class ChatInteractor(ChatUseCase):
                 self._currency_unit(analysis.symbol),
             ),
             strength=verdict_strength(analysis.score, analysis.up_threshold),
+            basis=basis,
             value=value_notes,
             keywords=[k.keyword for k in keywords],
         )

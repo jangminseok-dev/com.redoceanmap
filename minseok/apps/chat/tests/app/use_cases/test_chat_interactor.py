@@ -312,7 +312,9 @@ async def test_stock_의도면_분석_포트를_호출하고_카드를_반환한
     result = await interactor.ask("삼성전자 어때?")
     assert stubs["stocks"].queries == ["삼성전자"]
     assert result.stock is not None and result.stock.symbol == "005930"
-    assert result.text == "주식 서술"
+    # 답변 뒤에 책임 고지가 코드로 붙는다(answer_guard) — 모델이 빠뜨려도 절대 규칙을 지킨다
+    assert result.text.startswith("주식 서술")
+    assert result.text.endswith("투자 판단과 그 결과는 본인 책임입니다.")
 
 
 async def test_market_news_의도면_뉴스_검색을_코퍼스_횡단으로_호출한다(monkeypatch):
@@ -320,7 +322,8 @@ async def test_market_news_의도면_뉴스_검색을_코퍼스_횡단으로_호
     interactor, _, _ = _build(monkeypatch, [INTENT_MARKET_NEWS, "업황 서술"], news=news)
     result = await interactor.ask("반도체 업황 어때?")
     assert news.calls == [("반도체 업황 어때?", None, 8)]
-    assert result.text == "업황 서술" and result.recommendations == []
+    assert result.text.startswith("업황 서술") and result.recommendations == []
+    assert result.text.endswith("투자 판단과 그 결과는 본인 책임입니다.")
 
 
 async def test_market_의도면_기존_상권_경로가_그대로_동작한다(monkeypatch):  # 무손상 회귀
@@ -693,6 +696,8 @@ async def test_주식_카드에_서버_결론이_실린다(monkeypatch):
     assert "+7%p 높았습니다" in result.stock.headline  # edge = 62-55
     assert result.stock.strength == "보통"  # |0.5| vs 임계 0.3·0.6
     assert "지켜보세요" in result.stock.watch
+    # 배지 밑 근거 한 줄 — 판정만 남고 "왜?"가 비면 배지가 지시문처럼 읽힌다(2026-08-28)
+    assert result.stock.basis == "표본 120회 · 95% 구간 53~70%."
 
 
 async def test_주식_카드_결론은_forecast_없으면_약한_결론으로_열화(monkeypatch):
@@ -704,6 +709,7 @@ async def test_주식_카드_결론은_forecast_없으면_약한_결론으로_�
     )
     result = await interactor.ask("삼성전자 어때?")
     assert "근거는 약합니다" in result.stock.headline
+    assert result.stock.basis == "과거 통계로 검증할 표본이 아직 없습니다."
 
 
 async def test_주식_카드에_펀더멘털_가치_한줄이_실린다(monkeypatch):
@@ -781,7 +787,16 @@ def test_verdict_파리티_고정():  # www/lib/verdict.ts와 같은 문안이�
         sample_size=120, hits=74, ci_low=0.53, ci_high=0.70,
     )
     head, _ = verdict("UP", strong)
-    assert head == "상승 쪽 신호이고, 과거 통계도 평소보다 +7%p 높았습니다"
+    assert head == "상승 쪽 신호이고, 과거 이 신호일 때 실제로 올랐던 비율이 평소보다 +7%p 높았습니다"
+
+    # 하락도 같은 모양 — up_rate가 '그 방향의 적중률'이라 우위는 양수다(2026-08-28)
+    bearish = StockForecastSummary(
+        signal_direction="DOWN", ready=True, up_rate=0.45, baseline_up_rate=0.30,
+        sample_size=200, hits=90, ci_low=0.38, ci_high=0.52,
+    )
+    head_down, _ = verdict("DOWN", bearish)
+    assert head_down == "하락 쪽 신호이고, 과거 이 신호일 때 실제로 내렸던 비율이 평소보다 +15%p 높았습니다"
+
     assert verdict("NEUTRAL", None)[0] == "지금은 방향을 말하기 어렵습니다"
     assert verdict("UP", None)[0] == "상승 쪽 신호가 있지만, 근거는 약합니다"
     assert strength(0.2, 0.3) == "약" and strength(0.5, 0.3) == "보통" and strength(0.7, 0.3) == "강"

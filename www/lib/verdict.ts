@@ -26,17 +26,21 @@ export function verdict(
       detail: "지표들이 서로 상쇄돼 한쪽으로 기울지 않았습니다.",
     };
   }
+  // up_rate는 **그 방향의 적중률**이다(2026-08-28) — DOWN이면 "변동성 초과 하락" 비율.
+  // verdict.py와 같은 규칙이어야 카드와 히어로가 어긋나지 않는다.
+  const moved = analyze.direction === "UP" ? "올랐" : "내렸";
+
   if (edgePp === null || !p?.ready || Math.abs(edgePp) < EDGE_MIN_PP) {
     return {
       headline: `${word} 쪽 신호가 있지만, 근거는 약합니다`,
       detail:
         edgePp === null
           ? "과거 통계로 검증할 표본이 아직 없습니다."
-          : `과거 같은 신호일 때 상승 비율이 평소와 사실상 같았습니다(차이 ${edgePp >= 0 ? "+" : ""}${edgePp}%p).`,
+          : `과거 같은 신호일 때 실제로 ${moved}던 비율이 평소와 사실상 같았습니다(차이 ${edgePp >= 0 ? "+" : ""}${edgePp}%p).`,
     };
   }
   return {
-    headline: `${word} 쪽 신호이고, 과거 통계도 평소보다 ${edgePp >= 0 ? "+" : ""}${edgePp}%p 높았습니다`,
+    headline: `${word} 쪽 신호이고, 과거 이 신호일 때 실제로 ${moved}던 비율이 평소보다 ${edgePp >= 0 ? "+" : ""}${edgePp}%p 높았습니다`,
     detail: `표본 ${p.sample_size}회 · 95% 구간 ${Math.round(p.ci_low * 100)}~${Math.round(p.ci_high * 100)}%.`,
   };
 }

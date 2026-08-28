@@ -53,6 +53,7 @@ class StockCard(BaseModel):
     headline: str = ""              # 방향 결론 문장
     watch: str | None = None        # 지켜볼 포인트(관측 지시 — 조언 아님)
     strength: str = ""              # 신호 세기(약/보통/강) — 확신도% 오독 방지
+    basis: str = ""                 # 결론의 근거 한 줄(표본·구간 또는 "표본 없음") — verdict detail
     value: list[str] = []           # 가치·체력 해석(펀더멘털) 대표 1~2줄 — 미수집이면 빈 리스트
     keywords: list[str] = []        # 영향 키워드 Top-N(B2, 헤드라인 빈도) — 표본 미달이면 빈 리스트
 

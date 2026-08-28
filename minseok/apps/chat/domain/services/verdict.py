@@ -31,17 +31,25 @@ def verdict(direction: str, forecast: StockForecastSummary | None) -> tuple[str,
     if direction == "NEUTRAL":
         return ("지금은 방향을 말하기 어렵습니다", "지표들이 서로 상쇄돼 한쪽으로 기울지 않았습니다.")
 
+    # `up_rate`는 **그 방향의 적중률**이다(2026-08-28) — UP이면 변동성 초과 상승,
+    # DOWN이면 초과 하락 비율. 기준선도 같은 방향의 것이라 우위는 양쪽 다 양수가 정상이다.
+    moved = "올랐" if direction == "UP" else "내렸"
+
     if edge_pp is None or not (forecast and forecast.ready) or abs(edge_pp) < EDGE_MIN_PP:
         if edge_pp is None:
             detail = "과거 통계로 검증할 표본이 아직 없습니다."
         else:
             sign = "+" if edge_pp >= 0 else ""
-            detail = f"과거 같은 신호일 때 상승 비율이 평소와 사실상 같았습니다(차이 {sign}{edge_pp}%p)."
+            detail = (
+                f"과거 같은 신호일 때 실제로 {moved}던 비율이 평소와 사실상 같았습니다"
+                f"(차이 {sign}{edge_pp}%p)."
+            )
         return (f"{word} 쪽 신호가 있지만, 근거는 약합니다", detail)
 
     sign = "+" if edge_pp >= 0 else ""
     return (
-        f"{word} 쪽 신호이고, 과거 통계도 평소보다 {sign}{edge_pp}%p 높았습니다",
+        f"{word} 쪽 신호이고, 과거 이 신호일 때 실제로 {moved}던 비율이 "
+        f"평소보다 {sign}{edge_pp}%p 높았습니다",
         f"표본 {forecast.sample_size}회 · 95% 구간 {_pct(forecast.ci_low)}~{_pct(forecast.ci_high)}%.",
     )
 
