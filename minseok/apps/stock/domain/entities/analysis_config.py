@@ -25,7 +25,27 @@ class AnalysisConfig:
 
     @classmethod
     def default(cls) -> "AnalysisConfig":
-        return cls(up_threshold=0.3, down_threshold=-0.3)
+        """analyze(실시간 질의) 경로 — 뉴스 감성 비중을 0.5에서 0.2로 낮춘 조합(2026-08-28).
+
+        **값의 근거는 임의 조정이 아니라 검증 조합의 스케일 축소다.** 백테스트로 인샘플·홀드아웃
+        양쪽을 통과한 `forecast_signal()`의 `(w_rsi, w_bb, w_momentum) = (0.4, 0.4, 0.2)` · `up=0.35`에
+        일괄 0.8을 곱하면 `(0.32, 0.32, 0.16)` · `up=0.28`이 된다. 스코어가 선형 가중합이라
+        **감성이 0일 때 이 조합의 방향 판정은 검증 조합과 완전히 동일하다**(스케일 불변).
+        남은 0.2가 감성 몫이라, 뉴스는 판정을 뒤집는 축이 아니라 ±0.2를 얹는 보정항이 된다.
+
+        `w_trend=0`인 이유: 3차 재채점에서 두 구간 연속 통과한 조합에 추세 축이 없었다.
+        MA 배열은 판정에서 빼되 서술(STOCK_ANSWER_PROMPT 1단계)에서는 계속 인용한다.
+
+        감성 가중치를 그냥 낮추기만 하면 안 되는 이유는 `forecast_signal()` docstring 참조 —
+        예산이 모자라 임계에 산술적으로 못 미치면 전량 NEUTRAL이 된다(2026-07-30 실측 814건).
+        여기서는 지표 예산을 0.8배로 함께 줄여 임계도 같은 비율로 낮췄으므로 그 함정을 피한다.
+
+        회귀 방지: tests/test_analysis_config.py가 "감성 0일 때 forecast_signal()과 방향 동일"을 고정.
+        """
+        return cls(
+            up_threshold=0.28, down_threshold=-0.28,
+            w_sentiment=0.2, w_rsi=0.32, w_trend=0.0, w_bb=0.32, w_momentum=0.16,
+        )
 
     @classmethod
     def forecast_signal(cls) -> "AnalysisConfig":

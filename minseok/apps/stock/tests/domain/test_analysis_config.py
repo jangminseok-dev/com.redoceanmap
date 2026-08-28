@@ -47,14 +47,44 @@ def test_forecast_signal_reaches_up_on_oversold_reversal():
     assert out.direction is Direction.UP
 
 
-def test_default_config_cannot_reach_threshold_without_sentiment():
-    """왜 조합을 바꿨는지 고정 — default()는 감성 없이는 UP도 DOWN도 낼 수 없다."""
+def test_default_matches_forecast_signal_when_sentiment_neutral():
+    """감성이 0이면 default()의 UP 판정이 검증 조합(forecast_signal)과 완전히 같다.
+
+    **이 등가가 뉴스 비중 0.5→0.2 조정의 유일한 근거다.** default()는 검증 조합에 일괄 0.8을
+    곱한 값이고 스코어가 선형 가중합이라 임계 비교 결과가 보존된다. 이게 깨지면 analyze 경로가
+    백테스트로 검증된 적 없는 조합으로 방향을 판정하게 된다.
+
+    DOWN은 비교하지 않는다 — forecast_signal은 하락 무발화(도달 불가 임계)이고
+    default는 북마크 알림 상태를 위해 DOWN을 낸다.
+    """
+    predictor = OutlookPredictor()
+    default = AnalysisConfig.default()
+    verified = AnalysisConfig.forecast_signal()
+
+    cases = [
+        _ind(rsi=r, bb=b, momentum=m)
+        for r in (10.0, 25.0, 50.0, 75.0, 95.0)
+        for b in (0.0, 0.3, 0.5, 0.8, 1.0)
+        for m in (-0.6, 0.0, 0.6)
+    ]
+    for ind in cases:
+        up_default = predictor.predict(ind, NEUTRAL, default).direction is Direction.UP
+        up_verified = predictor.predict(ind, NEUTRAL, verified).direction is Direction.UP
+        assert up_default == up_verified, f"UP 판정이 갈렸다: {ind}"
+
+
+def test_default_sentiment_alone_cannot_decide_direction():
+    """뉴스만으로는 방향이 나오지 않는다 — 감성은 판정을 뒤집는 축이 아니라 보정항이다.
+
+    감성 가중치 0.2 < 임계 0.28이므로, 지표가 전부 중립이면 감성이 최대(±1.0)여도 NEUTRAL이다.
+    "뉴스 비중을 낮춘다"는 요구가 실제로 코드에서 성립하는지를 이 테스트가 고정한다.
+    """
     predictor = OutlookPredictor()
     config = AnalysisConfig.default()
-    # 추세를 포화시키고 RSI까지 극단으로 밀어도 감성 0이면 상한이 0.5 — 그런데 실측 대부분은
-    # RSI 신호 0(30~70 구간)이라 추세 기여 0.2가 천장이다.
-    trend_only = _ind(rsi=50.0, ma20=200.0, ma50=100.0)
-    score = predictor.score(predictor.breakdown(trend_only, NEUTRAL, config))
-    assert abs(score) <= 0.2 + 1e-9
-    assert score < config.up_threshold
-    assert predictor.predict(trend_only, NEUTRAL, config).direction is Direction.NEUTRAL
+    flat = _ind(rsi=50.0, bb=0.5, momentum=0.0)  # 모든 지표 신호 0
+
+    for sentiment in (SentimentScore(1.0), SentimentScore(-1.0)):
+        score = predictor.score(predictor.breakdown(flat, sentiment, config))
+        assert abs(score) <= config.w_sentiment + 1e-9
+        assert abs(score) < config.up_threshold
+        assert predictor.predict(flat, sentiment, config).direction is Direction.NEUTRAL
