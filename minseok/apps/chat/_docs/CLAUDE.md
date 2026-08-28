@@ -123,3 +123,37 @@ apps/chat/
 ├── adapter/inbound/api/v1/chat_router.py  # /chat/ask · /chat/stream · /chat/conversations*
 └── dependencies/chat_provider.py
 ```
+
+## 답변 후처리 가드 (2026-08-28)
+
+절대 규칙은 **프롬프트가 아니라 코드가** 지킨다 — `domain/services/answer_guard.py`.
+골든셋 실측에서 위반 13건이 나왔는데(유령 인용 11 · 고지 누락 2) 두 규칙 모두
+`STOCK_ANSWER_PROMPT`에 이미 적혀 있었다. 7.8B가 안 지킨 것이라 문구를 더 써도 못 막는다.
+
+- `allowed_citations(context)` — 컨텍스트의 `근거 [n]` 표기가 배정한 번호 집합(블록 생략 시 결번)
+- `strip_dangling_citations` — 배정 밖 번호 마커만 제거(문장은 남긴다)
+- `ensure_disclaimer` — 꼬리 150자에 책임 고지가 없으면 붙인다(멱등)
+
+판정 정규식은 채점기 `eval_scorer`와 **같은 것을 쓴다**. 갈라지면 가드를 통과한 답변이
+채점에서 떨어진다. stock·market_news 두 답변 경로 모두에 적용된다.
+
+**컨텍스트 창**: phase1 프롬프트는 4,100~4,200토큰이다. `core/llm/llm_orchestrator.NUM_CTX`
+(8,192)가 이를 담는데, 표 행이나 열을 늘리면 다시 창에 접근한다 — 초과하면 Ollama가
+**앞부분을 조용히 버려** 지시문이 사라진다(2026-08-24~28 실장애, ROADMAP I-10).
+프롬프트를 키우는 변경은 `prompt_eval_count` 경고 로그를 확인한다.
+
+## LLM 경로 감시 (2026-08-28 신설)
+
+`scripts/check_llm_health.py` — 호스트 cron 매일 **09:30**(신선도 09:00 뒤). 알림 창구는
+check_freshness와 같다(n8n 웹훅 → 메일). 세 축을 본다:
+
+| 축 | 잡는 것 |
+|---|---|
+| **계약 카나리아** | phase1과 같은 모양·같은 크기(80행)의 프롬프트로 실제 추론 1회 → `trdar_codes` 스키마 준수와 프롬프트 토큰을 확인 |
+| **런타임 경고 수거** | 백엔드 컨테이너 로그에서 오케스트레이터의 컨텍스트 근접 경고를 24시간치 걷어온다 — 카나리아는 합성이라 **실제 프롬프트가 창에 닿았는지는 이 로그만 안다** |
+| **호스트 자원** | Ollama 생존 · 최근 24시간 커널 OOM · 여유 메모리(<2GiB면 경보) |
+
+**왜 지표가 아니라 계약을 보는가**: 2026-08-24 사고에서 phase1은 완전히 죽었는데
+`region_hit_rate`는 1.0이었다 — 결정론 지역 가드가 대신 채웠기 때문이다. 품질 지표는
+폴백이 가려주지만 **형식 계약은 못 가린다**. 그래서 카나리아는 정확도가 아니라
+"JSON 스키마가 돌아오는가"만 본다.
