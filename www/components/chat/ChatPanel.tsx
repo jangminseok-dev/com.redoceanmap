@@ -104,22 +104,37 @@ export default function ChatPanel({
                 <span className="text-xs font-medium text-foreground-muted">AI 분석</span>
               </div>
               <div className="min-w-0">
-                <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                {/* 결론이 서술보다 **위**에 온다 — 아래에 두면 사용자가 긴 설명을 다 읽고서야
+                    판단을 만난다("그래서 뭘 하라는 거냐" 피드백, 2026-08-28).
+                    카드가 아니라 별도 블록인 이유: 카드는 stock 워크스페이스에서만 렌더되는데
+                    결론은 어느 화면에서 물었든 보여야 한다. headline은 서버 verdict가 만든다. */}
+                {m.stock?.headline && (
+                  <div className="mb-3 pb-3 border-b border-border">
+                    <p className="text-sm font-semibold leading-snug">{m.stock.headline}</p>
+                    {m.stock.watch && (
+                      <p className="mt-1 text-xs text-foreground-muted leading-snug">
+                        지켜볼 점 {m.stock.watch}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {m.stock && workspace === "stock" && (
+                  <StockSummaryCard stock={m.stock} onClick={() => onSelectStock?.(m.stock!)} />
+                )}
+
+                <p className="mt-3 text-sm text-foreground leading-relaxed whitespace-pre-wrap">
                   {withCitations(m.content)}
                 </p>
 
-                {m.stock && (
-                  workspace === "stock" ? (
-                    <StockSummaryCard stock={m.stock} onClick={() => onSelectStock?.(m.stock!)} />
-                  ) : (
-                    <Link
-                      href={`/stock?symbol=${encodeURIComponent(m.stock.symbol)}${cParam}`}
-                      className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-brand text-white text-xs font-medium hover:bg-brand-deep transition-colors"
-                    >
-                      {m.stock.symbol} 주식 워크스페이스에서 열기
-                      <ArrowUpRight size={13} strokeWidth={2.25} />
-                    </Link>
-                  )
+                {m.stock && workspace !== "stock" && (
+                  <Link
+                    href={`/stock?symbol=${encodeURIComponent(m.stock.symbol)}${cParam}`}
+                    className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-brand text-white text-xs font-medium hover:bg-brand-deep transition-colors"
+                  >
+                    {m.stock.symbol} 주식 워크스페이스에서 열기
+                    <ArrowUpRight size={13} strokeWidth={2.25} />
+                  </Link>
                 )}
 
                 {m.news && m.news.length > 0 && <NewsEvidenceList items={m.news} />}
@@ -256,13 +271,8 @@ function StockSummaryCard({ stock, onClick }: { stock: StockAnalysis; onClick: (
           <div className="mt-1 text-xs text-foreground-muted">질문 시점 기준</div>
         </div>
       </div>
-      {/* 결론 한 줄 — 서버가 페이지와 같은 verdict로 계산(구버전 payload엔 없어 생략) */}
-      {stock.headline && (
-        <p className="mt-2 text-sm font-semibold leading-snug">{stock.headline}</p>
-      )}
-      {stock.watch && (
-        <p className="mt-1 text-xs text-foreground-muted leading-snug">지켜볼 점 {stock.watch}</p>
-      )}
+      {/* headline·watch는 이 카드가 아니라 버블 최상단 결론 블록이 렌더한다(중복 방지).
+          카드는 지표 근거만 담는다 — 결론은 stock 워크스페이스 밖에서도 보여야 하기 때문. */}
       {stock.value && stock.value.length > 0 && (
         <p className="mt-1 text-xs text-foreground-muted leading-snug">
           가치·체력 {stock.value.join(" · ")}
