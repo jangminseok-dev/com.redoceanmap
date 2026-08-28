@@ -210,9 +210,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             {/* 정책 — 이 시트가 셸의 푸터 자리다. 그전까지 진입로가 회원가입 동의
                 체크박스뿐이라 이미 가입한 사용자는 처리방침(연락처 포함)에 닿을 수 없었다. */}
             <div className="mt-2 pt-3 border-t border-border flex flex-wrap gap-x-4 gap-y-1 px-2 text-xs text-foreground-muted">
-              <Link href="/about" onClick={() => setOverlay(null)} className="hover:text-foreground transition-colors">
+              <a
+                href="https://blog.redoceanmap.com/about/"
+                target="_blank"
+                rel="noreferrer"
+                className="hover:text-foreground transition-colors"
+              >
                 서비스 소개
-              </Link>
+              </a>
               <Link href="/privacy" onClick={() => setOverlay(null)} className="hover:text-foreground transition-colors">
                 개인정보처리방침
               </Link>

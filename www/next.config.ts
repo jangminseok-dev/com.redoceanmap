@@ -22,8 +22,17 @@ const nextConfig: NextConfig = {
     ];
   },
   // 구 지도 페이지 → 상권 워크스페이스
+  // 구 소개 페이지 → 블로그로 이관(2026-08-28). permanent를 켜면 브라우저가 영구 캐시해
+  // 되돌리기 어려워지므로 /map과 같이 임시로 둔다.
   async redirects() {
-    return [{ source: "/map", destination: "/market", permanent: false }];
+    return [
+      { source: "/map", destination: "/market", permanent: false },
+      {
+        source: "/about",
+        destination: "https://blog.redoceanmap.com/about/",
+        permanent: false,
+      },
+    ];
   },
 };
 

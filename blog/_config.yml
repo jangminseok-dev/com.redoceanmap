@@ -8,7 +8,7 @@ description: >-
   전국 상권 분석과 주식 대화형 서비스 redoceanmap의 개발 과정을
   마일스톤 리뷰 형식으로 기록하는 블로그.
 baseurl: ""
-url: ""
+url: "https://blog.redoceanmap.com"
 github_username: jangminseok-dev
 
 # Build settings

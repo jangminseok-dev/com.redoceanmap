@@ -18,9 +18,15 @@ export default function AppFooter() {
   return (
     <footer className="mt-16 border-t border-border pt-6 pb-10 text-xs text-foreground-muted">
       <nav className="flex flex-wrap items-center gap-x-4 gap-y-2" aria-label="소개 및 정책">
-        <Link href="/about" className="hover:text-foreground transition-colors">
+        {/* 소개는 blog.redoceanmap.com으로 이관했다(2026-08-28) — 외부 도메인이라 Link가 아닌 a. */}
+        <a
+          href="https://blog.redoceanmap.com/about/"
+          target="_blank"
+          rel="noreferrer"
+          className="hover:text-foreground transition-colors"
+        >
           서비스 소개
-        </Link>
+        </a>
         <Link href="/privacy" className="hover:text-foreground transition-colors">
           개인정보처리방침
         </Link>
