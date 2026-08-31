@@ -251,10 +251,29 @@ myfranchise.kr(마이프차 — 공정위 정보공개서 1만 브랜드 비교�
 | — | 파트너 부동산 매물 연결 | 마이프차 | **기각** — 중개 알선은 공인중개사법 영역·B2B 영업 자산 필요 | — |
 | — | 마이프차 지도 · 카드매출 기반 추천 업종 | 마이프차 | 지도는 B5와 동일(수요 게이트 뒤), 추천 업종은 `find_service_ranking`으로 **이미 있음** | — |
 
+### 추가 대조 — SAVE 투자 속보 앱 (2026-08-31)
+
+SAVE(saveticker.com — 유튜버 오선/futuresnow의 무료 투자 속보 앱, 뉴스·리포트·커뮤니티·캘린더·
+내정보 5탭) 대조. 핵심 시사점: 우리 뉴스 수집은 이미 **30분 주기**(`collect_news.py` cron `*/30`,
+RSS 2종+기관등급)인데 **수집된 뉴스가 사용자에게 도달하는 경로(뉴스 알림)가 0건**이다 —
+SAVE 사용자 후기 1위 가치("알림만 읽어도 미장 파악")가 정확히 이 공백. retention hook 관점에서
+이번 대조의 최대 수확은 B9다.
+
+| # | 기능 | 출처 | 크로스체크(2026-08-31) | 크기 |
+|---|---|---|---|---|
+| B9 | **티커·키워드 뉴스 알림** — 북마크 종목에 임계 이상 감성(예: \|sentiment\|≥0.5) 뉴스 적재 시 텔레그램·이메일. 차별점: SAVE는 "떴다"만, 우리는 감성 라벨+현재 신호 상태 병기 | SAVE 맞춤 알림 | 뉴스 알림 0건. 부품 전부 보유: 북마크(대상)·`user_alert_settings`+텔레그램(I-7)·`user_alert_deliveries` dedupe·n8n 발송·30분 수집·`news_labels` 감성. **시그널 대개편 [6] 가격 도달 알림과 알림 인프라(조건·스캔·수신 설정) 공유 — 한 묶음으로 설계** | M |
+| B10 | **경제지표 캘린더** — CPI·FOMC·고용 등 일정+발표 결과+지표별 알림 | SAVE 캘린더 탭 | 코드 0건. FRED release-dates API 무료(미국 지표 한정). 신규 수집 축이라 **수요 게이트 뒤**(B5와 동일 취급) | M~L |
+| B11 | **내 북마크 데일리 브리핑** — 신호 상태+당일 뉴스 감성+어닝 임박을 결정론 조립(LLM 미사용, 검증 수치 병기) | 오선의 Daily Report(사람 작성)의 자동화 대응 | `bookmark_alert_composer` 결정론 템플릿+신호 보드+감성 집계 = 부품 보유. B9 완료 후 같은 파이프에 얹음 | S~M |
+| — | 어닝 임박 배지 | SAVE 캘린더의 어닝 축 | **신규 아님** — `EarningsCalendarPort`+`earnings_veto`가 forecast 응답에 이미 노출, 프론트 배지만 잔여(분석 개선 사이클 Phase E 기존 후보의 승격). [[SERVICE_QUALITY_2026-08|서비스 품질]] Phase 3에 편입 | S |
+| — | 실시간 속보 큐레이션(로이터·파이낸셜주스 + 운영자 검증 우선 배열) | SAVE 뉴스 탭 | **기각** — 유료 와이어+상근 큐레이터가 해자라 무료·1인 원칙과 충돌. 감성·이벤트 라벨 자동 선별로 대응 | — |
+| — | 커뮤니티(유저뉴스·자유게시판) | SAVE 커뮤니티 탭 | **기각** — ①모더레이션 상근 비용 ②게시판 리딩방화가 유사투자자문 요건("불특정 다수 동일 내용")과 충돌 ③콜드스타트(SAVE는 유튜버 팬덤이 초기 유저 공급 — 우리는 그 자산이 없고, SAVE의 해자는 기능이 아니라 팬덤) | — |
+| — | 모바일 푸시 | SAVE 푸시 | 현행 유지 — 텔레그램 봇으로 대체 중, 앱 푸시는 flutter 착수 시 | — |
+
 출처: golmok.seoul.go.kr 소개·나는사장 · scpm.seoul.go.kr/seoul-policy/evt0253 · chat.sbiz.or.kr ·
 korea.kr 소상공인365 · openub.com(/dpo) · m.nicebizmap.co.kr/pricing/plans · thinkpool.com/signal ·
 AI시그널프로 앱스토어(id6743826148) · 한경 2025-01 AI픽워드 · hwangon.com(+벤처스퀘어 주방맵 기사) ·
-about.myfranchise.kr·play.google.com(kr.myfranchise.myfc) · data.go.kr 15125569/15110265/15110241/15143710/15110293.
+about.myfranchise.kr·play.google.com(kr.myfranchise.myfc) · data.go.kr 15125569/15110265/15110241/15143710/15110293 ·
+saveticker.com · apps.apple.com(id6751139540) · play.google.com(com.savenews.app).
 
 ## 명시적 비추천 (과설계 목록)
 
