@@ -117,10 +117,14 @@ def _position_insight(p: PositionProfile) -> Insight:
     zone = _RSI_ZONE_LABELS.get(p.rsi_zone, p.rsi_zone)
     drop = p.drawdown_from_high_pct * 100
     room = p.above_support_pct * 100
-    # 고점 대비 낙폭이 일 변동성(ATR)의 몇 배인지 — "평소 흔들림인지 진짜 조정인지"의 눈금
+    # 고점 대비 낙폭이 일 변동성(ATR)의 몇 배인지 — "평소 흔들림인지 진짜 조정인지"의 눈금.
+    # 주어를 명시한다 — "…의 5배입니다"만 남으면 무엇의 배수인지 읽을 수 없다(2026-08-31 실측).
     scale = ""
     if p.atr_pct > 0 and drop < 0:
-        scale = f" 하루 평균 변동폭({p.atr_pct * 100:.1f}%)의 {abs(drop) / (p.atr_pct * 100):.0f}배입니다."
+        scale = (
+            f" 이 낙폭은 하루 평균 변동폭({p.atr_pct * 100:.1f}%)의 "
+            f"{abs(drop) / (p.atr_pct * 100):.0f}배입니다."
+        )
     return Insight(
         key="position", tone="neutral",
         text=(

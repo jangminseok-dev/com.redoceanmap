@@ -67,8 +67,20 @@ export default function AiInsightCard({
       <div className="flex items-start gap-2">
         <Sparkles size={15} strokeWidth={2} className="mt-0.5 shrink-0 text-brand" />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold leading-snug">{headline}</p>
+          <p className="text-sm font-semibold leading-snug">
+            {headline}
+            {forecast?.earnings_veto && (
+              <span className="ml-1.5 inline-block align-middle rounded-full bg-down-weak px-2 py-0.5 text-[11px] font-medium text-down">
+                실적 발표 임박
+              </span>
+            )}
+          </p>
           <p className="mt-0.5 text-xs text-foreground-muted leading-relaxed">{detail}</p>
+          {forecast?.earnings_veto && (
+            <p className="mt-0.5 text-xs text-foreground-muted leading-relaxed">
+              실적 발표 앞뒤 2일은 변동이 커서 방향 신호를 관망으로 낮춰 보여드려요.
+            </p>
+          )}
           {watch && <p className="mt-1 text-xs leading-relaxed">{watch}</p>}
         </div>
         <Button

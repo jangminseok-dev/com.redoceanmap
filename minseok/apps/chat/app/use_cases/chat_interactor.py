@@ -1,3 +1,4 @@
+import ast
 import json
 import logging
 import re
@@ -13,7 +14,6 @@ from chat.app.exceptions import (
     CommercialDataUnavailableError,
     ConversationNotFoundError,
     InvalidLLMResponseError,
-    NoValidAreaError,
 )
 from chat.app.dtos.area_stat_dto import AreaStatDto
 from chat.app.ports.input.chat_use_case import ChatUseCase
@@ -42,6 +42,8 @@ from hub.app.ports.output.gemini_answer_port import GeminiAnswerError, GeminiAns
 from hub.app.ports.output.market_news_search_port import MarketNewsSearchPort
 from hub.app.ports.output.news_search_port import NewsSearchPort
 from hub.app.ports.output.recommendation_record_port import RecommendationRecordPort
+from hub.app.dtos.forecast_refit_dto import RefitCandidateRow, RefitReportInfo
+from hub.app.ports.output.forecast_refit_port import ForecastRefitPort
 from hub.app.ports.output.fundamental_read_port import FundamentalReadPort
 from hub.app.ports.output.stock_analysis_port import StockAnalysisPort, StockAnalysisUnavailable
 from hub.app.ports.output.stock_forecast_port import StockForecastPort
@@ -281,6 +283,18 @@ def _has_deixis(prompt: str) -> bool:
     return any(token in prompt for token in DEICTIC_TOKENS)
 
 
+# 서비스 메타 질문 가드(1-2) — "너희 UP 시그널 적중률이 어떻게 돼?"를 LLM에 보내면
+# 자기 서비스를 제3자 취급하는 일반론("해당 서비스에 데이터를 요구하세요")이 나온다
+# (2026-08-31 프로덕션 실측). 자기 지칭 + 검증 어휘가 함께 있을 때만 결정론으로 가로챈다 —
+# 자기 지칭 없는 "삼성전자 신호 검증된 거야?"는 기존 종목 경로를 그대로 탄다(보수적 매칭).
+_META_SELF_RE = re.compile(r"너희|너네|니네|당신들|이\s?(서비스|사이트|앱)")
+_META_VERIFY_RE = re.compile(r"적중률|적중\s?율|백테스트|표본|신뢰\s?구간|승률|검증")
+
+
+def _is_service_meta(prompt: str) -> bool:
+    return bool(_META_SELF_RE.search(prompt) and _META_VERIFY_RE.search(prompt))
+
+
 # 반경 질의 가드(I-10) — "반경 500m"·"1km 이내" 같은 거리 제약을 결정론으로 처리한다.
 # 실측(2026-08-24): "강남역 반경 500m" 질문에 어간 매칭이 강남구 104곳을 후보로 올려
 # 추천 5곳 중 3곳이 3km 밖이었다. 좌표 필터가 성립하면 코드로 자르고, 중심을 못 찾으면
@@ -323,6 +337,7 @@ class ChatInteractor(ChatUseCase):
         forecaster: StockForecastPort | None = None,
         fundamentals: FundamentalReadPort | None = None,
         profiles: UserProfilePort | None = None,
+        refit: ForecastRefitPort | None = None,
     ) -> None:
         self._market = market
         self._recorder = recorder
@@ -334,6 +349,7 @@ class ChatInteractor(ChatUseCase):
         self._forecaster = forecaster
         self._fundamentals = fundamentals
         self._profiles = profiles
+        self._refit = refit
 
     def _history_block(self, history: list[Message]) -> str:
         if not history:
@@ -492,8 +508,10 @@ class ChatInteractor(ChatUseCase):
                 revenue_text = f"업종 월 총매출 {sales_wan:,}만원 (점포수 미집계)"
                 revenue_source = "점포당 매출 계산 불가 (점포수 데이터 없음)"
             else:
-                revenue_text = "매출 데이터 없음"
-                revenue_source = "해당 분기 데이터 미수집"
+                # 축을 명시한다 — 이 값은 질문 업종 한정이라, 상권 전체 매출이 있는 상세
+                # 페이지와 "없음/366억"으로 모순돼 보였다(2026-08-31 프로덕션 실측).
+                revenue_text = "이 업종 매출 데이터 없음"
+                revenue_source = "해당 분기 이 업종 매출 미수집 — 상권 전체 매출과는 별개"
 
             weekday_text = "데이터 없음"
             if raw.has_sales and raw.monthly_sales_amount and raw.weekday_sales_amount:
@@ -538,16 +556,17 @@ class ChatInteractor(ChatUseCase):
                 change_text = raw.change_indicator_name or "데이터 없음"
                 op_months = raw.operating_months_avg
                 region_op = raw.region_operating_months_avg
-                op_text = (
-                    f"이 상권 평균 {op_months}개월 영업 (지역 평균 {region_op}개월)"
-                    if op_months else "데이터 없음"
-                )
+                # 지역 평균 결측 시 괄호를 생략한다 — "None개월"이 그대로 노출됐다(2026-08-31 실측).
+                op_text = "데이터 없음"
+                if op_months:
+                    op_text = f"이 상권 평균 {op_months}개월 영업"
+                    if region_op:
+                        op_text += f" (지역 평균 {region_op}개월)"
                 # 생존 중 점포의 영업개월만으론 "얼마 만에 닫는가"를 알 수 없다.
                 if raw.closure_months_avg:
-                    op_text += (
-                        f", 폐업 점포는 평균 {raw.closure_months_avg}개월 만에 닫음"
-                        f" (지역 평균 {raw.region_closure_months_avg}개월)"
-                    )
+                    op_text += f", 폐업 점포는 평균 {raw.closure_months_avg}개월 만에 닫음"
+                    if raw.region_closure_months_avg:
+                        op_text += f" (지역 평균 {raw.region_closure_months_avg}개월)"
             else:
                 change_text = "데이터 없음"
                 op_text = "데이터 없음"
@@ -591,13 +610,17 @@ class ChatInteractor(ChatUseCase):
         history = await self._conversations.get_messages(conversation_id)
         await self._conversations.add_message(conversation_id, "user", prompt)
 
+        # 서비스 메타 질문(자기 시그널 검증치)은 LLM 진입 전에 결정론으로 답한다(1-2)
+        if _is_service_meta(prompt):
+            return await self._answer_service_meta(conversation_id)
+
         # phase0(의도 분류 = 도메인 판단) — 단일 모델(7.8B) 정책
         self._notify(on_stage, "intent", "질문 의도를 파악하고 있어요")
-        intent, stock_query = await self._classify_intent(prompt, history)
+        intent, stock_queries = await self._classify_intent(prompt, history)
         # 프로파일은 데이터 근거 서술(stock·market)에만 주입한다 — 미작성·실패는 None(무손상)
         profile = await self._load_profile(user_id) if intent in ("stock", "market") else None
         if intent == "stock":
-            return await self._answer_stock(conversation_id, prompt, stock_query, on_stage, profile)
+            return await self._answer_stock(conversation_id, prompt, stock_queries, on_stage, profile)
         if intent == "market_news":
             return await self._answer_market_news(conversation_id, prompt, on_stage)
         if intent == "general":
@@ -705,7 +728,17 @@ class ChatInteractor(ChatUseCase):
                 radius_codes, key=lambda c: summary.sales_by_code.get(c) or 0, reverse=True,
             )[:3]
         if not valid_codes:
-            raise NoValidAreaError("유효한 상권을 찾지 못했습니다.")
+            # 매칭 실패는 오류(422)가 아니라 안내 답변이다 — "목동 반찬가게"·"유동인구 많은
+            # 상권 3곳" 질문이 62~86초 기다린 끝에 오류 원문을 받았다(2026-08-31 프로덕션).
+            # 대화는 계속돼야 하므로 다음 질문 방법을 알려주고 정상 응답으로 돌려보낸다.
+            text = (
+                "질문에서 분석할 상권을 특정하지 못했어요. 동네·역·거리 이름을 함께 물어봐"
+                ' 주세요 (예: "강남역 카페 어때?", "성수동 분식집 괜찮아?").'
+                " 조건으로 찾고 싶다면 상권 지도의 랭킹에서 자치구·업종·변화 유형별로"
+                " 정렬해 볼 수 있어요."
+            )
+            await self._conversations.add_message(conversation_id, "assistant", text)
+            return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
         # 분량 상한 — 가드를 **전부 통과한 뒤**에 자른다. 앞에서 자르면 지역·지시어·반경 가드가
         # 되돌리려던 상권이 이미 사라져 region_hit_rate가 깎인다.
         valid_codes = valid_codes[:MAX_AREAS]
@@ -879,7 +912,7 @@ class ChatInteractor(ChatUseCase):
         raw = await llm_orchestrator.orchestrate(prompt, format="json")
         return _parse_llm_json(raw)
 
-    async def _classify_intent(self, prompt: str, history: list[Message]) -> tuple[str, str]:
+    async def _classify_intent(self, prompt: str, history: list[Message]) -> tuple[str, list[str]]:
         try:
             parsed = await self._orchestrate_json(
                 f"{INTENT_PROMPT}\n\n{self._history_block(history)}사용자 질문: {prompt}",
@@ -887,19 +920,92 @@ class ChatInteractor(ChatUseCase):
             )
         except Exception:
             logger.warning("[chat] 의도 분류 파싱 실패(재시도 포함) → market 폴백")
-            return "market", ""
-        stock_query = str(parsed.get("stock_query") or "").strip()
+            return "market", []
+        stock_queries = self._normalize_stock_queries(parsed.get("stock_query"))
         intent = parsed.get("intent")
-        if intent == "stock" and stock_query:
-            return "stock", stock_query
+        if intent == "stock" and stock_queries:
+            return "stock", stock_queries
         if intent == "stock":
             # 종목 추출 실패 — 상권으로 보내던 기존 오답 대신 뉴스 RAG가 차선
-            return "market_news", ""
+            return "market_news", []
         if intent == "market_news":
-            return "market_news", ""
+            return "market_news", []
         if intent == "general":
-            return "general", ""
-        return "market", ""  # 미지 라벨 포함 전부 market — 기존 동작 보존
+            return "general", []
+        return "market", []  # 미지 라벨 포함 전부 market — 기존 동작 보존
+
+    @staticmethod
+    def _normalize_stock_queries(raw) -> list[str]:
+        """phase0의 stock_query를 질의 리스트로 정규화한다.
+
+        비교 질문("테슬라랑 애플 중 뭐가 나아?")에서 7.8B가 스키마(단일 문자열) 대신
+        리스트나 그 문자열 표기("['테슬라', '애플']")를 반환한 실사례 방어 — str()로
+        감싸면 리스트 표기가 심볼 리졸버까지 흘러가 전부 실패한다(2026-08-31 프로덕션).
+        """
+        if isinstance(raw, list):
+            items = raw
+        else:
+            text = str(raw or "").strip()
+            if text.startswith("[") and text.endswith("]"):
+                try:
+                    parsed = ast.literal_eval(text)
+                    items = list(parsed) if isinstance(parsed, (list, tuple)) else [text]
+                except (ValueError, SyntaxError):
+                    items = [p.strip(" '\"") for p in text[1:-1].split(",")]
+            else:
+                items = [text]
+        return [q for q in (str(item).strip() for item in items) if q]
+
+    async def _answer_service_meta(self, conversation_id: int) -> AskResponse:
+        """자기 시그널 검증치 질문 — LLM 없이 재적합 리포트로 답한다(결정론).
+
+        이 서비스의 차별점은 "측정해서 미달이면 기각"하는 계측 정직성인데, LLM 경로는
+        그걸 모른 채 자기 서비스를 제3자 취급하는 일반론을 지어냈다(2026-08-31 q05).
+        수치는 허브 ForecastRefitPort의 최신 리포트에서 읽고, 미주입·조회 실패·미집계는
+        방법론 설명만으로 열화한다(무손상 규칙).
+        """
+        lines = [
+            "이 서비스의 방향 신호(상승/하락) 검증 방식은 이렇습니다.",
+            "- 적중 기준: 5거래일 뒤 수익률이 그 종목의 평소 변동폭(ATR 기반)의 일정 배수를"
+            " 넘어야 적중으로 칩니다 — 오르내림 부호만 세면 '항상 매수'와 구분되지 않아서예요.",
+            "- 사용 조건: 표본 100건 이상 + Wilson 95% 신뢰구간 하한이 기준선(평소 상승률)을"
+            " 넘는 조합만 쓰고, 매주 재채점해 통과한 조합만 승격합니다.",
+        ]
+        stats_line = "- 최근 재채점 집계는 준비 중입니다."
+        if self._refit is not None:
+            try:
+                report = await self._refit.latest()
+                row = self._gate_row(report) if report else None
+                if report is not None and row is not None:
+                    verdict = (
+                        "검증 게이트 통과" if row.gate_passed
+                        else "아직 게이트 미달이라 답변에 단정 문구를 쓰지 않습니다"
+                    )
+                    rate = f"{row.hit_rate:.0%}" if row.hit_rate is not None else "집계 불가"
+                    stats_line = (
+                        f"- 현재 활성 조합의 최근 재채점({report.ran_at:%Y-%m-%d} 기준,"
+                        f" {report.gate_horizon}거래일 지평): 표본 {row.n}건 중"
+                        f" {row.hits}건 적중 (적중률 {rate} · 기준선 {row.baseline:.0%}"
+                        f" · Wilson 하한 {row.wilson_lower:.0%}) — {verdict}."
+                    )
+            except Exception:
+                logger.warning("[chat] 재적합 리포트 조회 실패 — 방법론만 답변", exc_info=True)
+        lines.append(stats_line)
+        lines.append(
+            "종목별 과거 통계는 각 종목의 예측 화면에서 표본·신뢰구간과 함께 볼 수 있어요."
+            " 이 수치는 과거 채점 결과이며 미래 수익을 보장하지 않습니다."
+        )
+        text = "\n".join(lines)
+        await self._conversations.add_message(conversation_id, "assistant", text)
+        return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
+
+    @staticmethod
+    def _gate_row(report: RefitReportInfo) -> RefitCandidateRow | None:
+        """게이트 판정 지평 보드의 현행 조합 행 — 없으면 None(집계 준비 중 열화)."""
+        for board in report.boards:
+            if board.horizon_days == report.gate_horizon:
+                return board.current
+        return None
 
     async def _answer_general(self, conversation_id: int, prompt: str) -> AskResponse:
         """상권/주식과 무관한 일반 질문 — 허브 GeminiAnswerPort(외부 Gemini API)로 답변."""
@@ -964,14 +1070,21 @@ class ChatInteractor(ChatUseCase):
         return "\n".join(lines)
 
     async def _answer_stock(
-        self, conversation_id: int, prompt: str, stock_query: str, on_stage=None,
+        self, conversation_id: int, prompt: str, stock_queries: list[str], on_stage=None,
         profile: UserProfileSummary | None = None,
     ) -> AskResponse:
+        # 비교 질문은 아직 단일 분석만 지원한다(I-18) — 첫 종목만 분석하고 고지는
+        # LLM이 아니라 코드가 문두에 붙인다(결정론 가드 원칙).
+        stock_query, extra_queries = stock_queries[0], stock_queries[1:]
+        compare_notice = (
+            f"여러 종목 비교는 아직 지원하지 않아 '{stock_query}'만 분석했어요. "
+            f"{', '.join(extra_queries)}은(는) 따로 물어봐 주세요.\n\n"
+        ) if extra_queries else ""
         self._notify(on_stage, "analyze", "종목 지표를 분석하고 있어요")
         try:
             analysis = await self._stocks.analyze(stock_query)
         except StockAnalysisUnavailable as e:
-            text = f"{e.detail} 정확한 종목명이나 티커로 다시 물어봐 주세요."
+            text = f"{compare_notice}{e.detail} 정확한 종목명이나 티커로 다시 물어봐 주세요."
             await self._conversations.add_message(conversation_id, "assistant", text)
             return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
 
@@ -1019,6 +1132,7 @@ class ChatInteractor(ChatUseCase):
             text, ma20=analysis.ma20, ma50=analysis.ma50, volume_ratio=analysis.volume_ratio,
         )
         text = answer_guard.ensure_disclaimer(text)
+        text = compare_notice + text
 
         # 결론 한 줄 — 페이지 히어로와 같은 verdict 로직으로 서버가 계산해 카드에 싣는다.
         # detail(표본·신뢰구간)까지 카드에 싣는다 — 배지 밑에 근거가 없으면 판정만 남아
@@ -1191,7 +1305,8 @@ class ChatInteractor(ChatUseCase):
         )
         share = f" (전체 거래량의 {r.volume_poc_share:.0%})" if r.volume_poc_share else ""
         return (
-            f"- 거래 밀집 구간: {r.volume_poc_low:,.2f}~{r.volume_poc_high:,.2f}{unit}"
+            f"- 거래 밀집 구간: {ChatInteractor._price_text(r.volume_poc_low, unit).removesuffix(unit)}"
+            f"~{ChatInteractor._price_text(r.volume_poc_high, unit)}"
             f"{share}, 현재가는 {where}"
             " — 과거 거래량이 몰린 가격대일 뿐 지지선·저항선이 아님\n"
         )
@@ -1219,8 +1334,8 @@ class ChatInteractor(ChatUseCase):
         if not (resistance > support):
             return None
         ratio = max(0.0, min(1.0, (price - support) / (resistance - support)))
-        lo = f"{support:,.2f}{unit}"
-        hi = f"{resistance:,.2f}{unit}"
+        lo = ChatInteractor._price_text(support, unit)
+        hi = ChatInteractor._price_text(resistance, unit)
         if ratio <= 0.25:
             return f"저점권입니다. {lo}(60일 저점) 이탈 여부를 지켜보세요."
         if ratio >= 0.75:
@@ -1235,6 +1350,14 @@ class ChatInteractor(ChatUseCase):
         """
         base = symbol.split(".")[0]
         return "원" if len(base) == 6 and base.isdigit() else "달러"
+
+    @staticmethod
+    def _price_text(value: float, unit: str) -> str:
+        """가격 표기 — 원화는 정수(호가에 소수점이 없다), 달러는 소수 2자리.
+
+        컨텍스트의 "1,245,729.86원"을 모델이 답변에 그대로 옮겨 적었다(2026-08-31 실측).
+        """
+        return f"{value:,.0f}{unit}" if unit == "원" else f"{value:,.2f}{unit}"
 
     @staticmethod
     def _forecast_text(f: StockForecastSummary | None) -> str:
@@ -1278,11 +1401,13 @@ class ChatInteractor(ChatUseCase):
             f"사용자 질문: {prompt}\n\n"
             f"[{r.symbol} 분석 데이터] — 근거 [1]"
             f" (가격 단위는 모두 {unit} — 다른 통화로 바꿔 쓰지 말 것)\n"
-            f"- 현재가: {r.price:,.2f}{unit}\n"
+            f"- 현재가: {cls._price_text(r.price, unit)}\n"
             f"- 방향 신호: {r.direction} (확신도 {r.confidence:.2f})\n"
             f"- RSI(14): {r.rsi:.1f} (30↓ 과매도 / 70↑ 과매수)\n"
-            f"- 20일 이동평균: {r.ma20:,.2f}{unit} / 50일 이동평균: {r.ma50:,.2f}{unit}\n"
-            f"- 지지선: {r.support:,.2f}{unit} / 저항선: {r.resistance:,.2f}{unit}"
+            f"- 20일 이동평균: {cls._price_text(r.ma20, unit)}"
+            f" / 50일 이동평균: {cls._price_text(r.ma50, unit)}\n"
+            f"- 지지선: {cls._price_text(r.support, unit)}"
+            f" / 저항선: {cls._price_text(r.resistance, unit)}"
             f" (최근 60거래일 저/고점)\n"
             f"- 현재가 위치: {cls._price_position_text(r.price, r.support, r.resistance)}\n"
             f"- 변동성: {cls._volatility_text(r.atr_pct)}\n"

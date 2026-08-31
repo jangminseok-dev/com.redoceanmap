@@ -29,6 +29,11 @@ from hub.app.dtos.news_dto import NewsHit, NewsKeyword
 from hub.app.dtos.stock_analysis_dto import StockAnalysisResult
 from hub.app.dtos.stock_forecast_dto import StockForecastSummary
 from hub.app.dtos.user_profile_dto import UserProfileSummary
+from hub.app.dtos.forecast_refit_dto import (
+    RefitCandidateRow,
+    RefitHorizonBoard,
+    RefitReportInfo,
+)
 from hub.app.ports.output.stock_analysis_port import StockAnalysisUnavailable
 
 _NOW = datetime(2026, 7, 14, 12, 0, tzinfo=timezone.utc)
@@ -315,6 +320,32 @@ async def test_stock_의도면_분석_포트를_호출하고_카드를_반환한
     # 답변 뒤에 책임 고지가 코드로 붙는다(answer_guard) — 모델이 빠뜨려도 절대 규칙을 지킨다
     assert result.text.startswith("주식 서술")
     assert result.text.endswith("투자 판단과 그 결과는 본인 책임입니다.")
+
+
+async def test_비교_질문_리스트_반환은_첫_종목만_분석하고_고지한다(monkeypatch):
+    # 7.8B가 스키마(단일 문자열) 대신 리스트를 반환한 실사례(2026-08-31 프로덕션)
+    intent = '{"intent": "stock", "stock_query": ["테슬라", "애플"]}'
+    interactor, _, stubs = _build(monkeypatch, [intent, "주식 서술"])
+    result = await interactor.ask("테슬라랑 애플 중 어디에 투자할까?")
+    assert stubs["stocks"].queries == ["테슬라"]  # 리스트 표기가 리졸버로 흘러가지 않는다
+    assert result.text.startswith("여러 종목 비교는 아직 지원하지 않아 '테슬라'만 분석했어요.")
+    assert "애플" in result.text.split("\n\n")[0]
+    assert result.text.endswith("투자 판단과 그 결과는 본인 책임입니다.")  # 고지 유지
+
+
+async def test_비교_질문_리스트_문자열_표기도_첫_종목만_분석한다(monkeypatch):
+    # 리스트를 문자열로 흉내낸 변형("['테슬라', '애플']") — str() 캐스팅 시절의 실패 모양
+    intent = '{"intent": "stock", "stock_query": "[\'테슬라\', \'애플\']"}'
+    interactor, _, stubs = _build(monkeypatch, [intent, "주식 서술"])
+    await interactor.ask("테슬라랑 애플 비교해줘")
+    assert stubs["stocks"].queries == ["테슬라"]
+
+
+async def test_단일_종목_질문은_고지_없이_기존과_동일하다(monkeypatch):  # 무손상 회귀
+    interactor, _, stubs = _build(monkeypatch, [INTENT_STOCK, "주식 서술"])
+    result = await interactor.ask("삼성전자 어때?")
+    assert stubs["stocks"].queries == ["삼성전자"]
+    assert "비교는 아직 지원하지 않아" not in result.text
 
 
 async def test_market_news_의도면_뉴스_검색을_코퍼스_횡단으로_호출한다(monkeypatch):
@@ -618,6 +649,66 @@ async def test_지역_기사가_없으면_기사_블록을_생략한다(monkeypa
     assert "[관련 지역 기사" not in llm.calls[2][0]
 
 
+def _refit_report(*, n=89, hits=40, gate_passed=False) -> RefitReportInfo:
+    row = RefitCandidateRow(
+        up_threshold=0.35, w_rsi=0.4, w_trend=0.0, w_bb=0.4, w_obv=0.0, w_momentum=0.2,
+        n=n, hits=hits, hit_rate=hits / n, baseline=0.38, wilson_lower=0.35,
+        is_current=True, gate_passed=gate_passed,
+    )
+    return RefitReportInfo(
+        ran_at=_NOW, params={}, gate_horizon=5, promote=False, winner=None, reasons=[],
+        boards=[RefitHorizonBoard(horizon_days=5, total=1, baseline_up_rate=0.51,
+                                  current=row, rows=[row])],
+    )
+
+
+class _StubRefit:
+    def __init__(self, report: RefitReportInfo | None = None, fail: bool = False):
+        self.report, self.fail = report, fail
+
+    async def latest(self):
+        if self.fail:
+            raise RuntimeError("조회 실패")
+        return self.report
+
+
+async def test_자기_시그널_검증_질문은_LLM_없이_재적합_수치로_답한다(monkeypatch):
+    # "해당 서비스 측에 데이터를 요구하세요" — 자기 서비스를 제3자 취급한 실사례(2026-08-31 q05)
+    interactor, llm, stubs = _build(monkeypatch, [])
+    interactor._refit = _StubRefit(_refit_report())
+    result = await interactor.ask("너희 UP 시그널의 백테스트 적중률, 표본 수, 신뢰구간이 어떻게 돼?")
+    assert llm.calls == []  # LLM에 보내지 않는다 — 결정론 답변
+    assert "표본 89건 중 40건 적중" in result.text
+    assert "Wilson 하한 35%" in result.text
+    assert "게이트 미달이라 답변에 단정 문구를 쓰지 않습니다" in result.text  # 정직한 미달 고지
+    assert "미래 수익을 보장하지 않습니다" in result.text
+
+
+async def test_재적합_조회_실패는_방법론만으로_열화한다(monkeypatch):
+    interactor, llm, _ = _build(monkeypatch, [])
+    interactor._refit = _StubRefit(fail=True)
+    result = await interactor.ask("이 서비스 시그널 검증은 어떻게 해?")
+    assert llm.calls == []
+    assert "재채점 집계는 준비 중" in result.text
+    assert "Wilson 95% 신뢰구간 하한" in result.text  # 방법론은 항상 나간다
+
+
+async def test_자기_지칭_없는_검증_질문은_기존_경로를_탄다(monkeypatch):  # 보수적 매칭
+    interactor, llm, stubs = _build(monkeypatch, [INTENT_STOCK, "주식 서술"])
+    await interactor.ask("삼성전자 신호 검증된 거야?")
+    assert stubs["stocks"].queries == ["삼성전자"]  # 메타 가로채기 없음
+
+
+async def test_상권_특정_실패는_오류가_아니라_안내_답변이다(monkeypatch):
+    # "목동 반찬가게"·"유동인구 많은 상권 3곳"이 422 원문을 받았다(2026-08-31 프로덕션).
+    interactor, _, stubs = _build(monkeypatch, [INTENT_MARKET, PHASE1_EMPTY])
+    result = await interactor.ask("유동인구 많고 폐업률 낮은 상권 3곳 추천해줘")
+    assert "분석할 상권을 특정하지 못했어요" in result.text
+    assert "랭킹" in result.text  # 조건 검색 대안 안내
+    assert result.recommendations == []
+    assert stubs["conversations"].saved[-1][0] == "assistant"  # 대화 이력에도 남는다
+
+
 async def test_의도_파싱_실패면_market_폴백(monkeypatch):
     # 파싱 실패는 1회 재시도되므로 두 번 연속 실패해야 폴백이 발동한다
     interactor, _, stubs = _build(
@@ -667,7 +758,7 @@ async def test_주식_컨텍스트에_거래_밀집_구간이_주입된다(monke
     await interactor.ask("삼성전자 어때?")
 
     stock_prompt = llm.calls[1][0]
-    assert "- 거래 밀집 구간: 86,000.00~88,000.00원" in stock_prompt
+    assert "- 거래 밀집 구간: 86,000~88,000원" in stock_prompt  # 원화는 정수 표기
     assert "전체 거래량의 18%" in stock_prompt
     assert "현재가는 그 위" in stock_prompt
     assert "지지선·저항선이 아님" in stock_prompt
@@ -779,6 +870,45 @@ async def test_forecast_펀더멘털_없으면_해당_블록_생략(monkeypatch)
 
     context = llm.calls[1][0]
     assert "과거 통계" not in context and "가치·체력" not in context
+
+
+def test_원화는_정수_달러는_소수2자리로_표기한다():
+    # "지지선인 1,245,729.86원" 노출 실사례(2026-08-31 프로덕션) — 원화 호가에 소수점이 없다
+    assert ChatInteractor._price_text(1245729.86, "원") == "1,245,730원"
+    assert ChatInteractor._price_text(227.979995, "달러") == "227.98달러"
+
+
+async def test_지역_평균_결측이면_영업개월_괄호를_생략한다(monkeypatch):
+    # "(지역 평균 None개월)" 노출 실사례(2026-08-31 프로덕션)
+    interactor, _, _ = _build(monkeypatch, [])
+    stats = interactor._format_stats({
+        1000001: _raw_stat(
+            has_cc=True, operating_months_avg=86, region_operating_months_avg=None,
+            closure_months_avg=49, region_closure_months_avg=None,
+        )
+    }, 20261)
+    op_text = stats[1000001]["op_months_text"]
+    assert "None" not in op_text
+    assert "평균 86개월 영업" in op_text and "49개월 만에 닫음" in op_text
+
+
+async def test_지역_평균이_있으면_괄호를_병기한다(monkeypatch):  # 무손상 회귀
+    interactor, _, _ = _build(monkeypatch, [])
+    stats = interactor._format_stats({
+        1000001: _raw_stat(
+            has_cc=True, operating_months_avg=86, region_operating_months_avg=70,
+            closure_months_avg=49, region_closure_months_avg=40,
+        )
+    }, 20261)
+    op_text = stats[1000001]["op_months_text"]
+    assert "(지역 평균 70개월)" in op_text and "(지역 평균 40개월)" in op_text
+
+
+async def test_업종_매출_결측_문구는_축을_명시한다(monkeypatch):
+    # 카드 "매출 데이터 없음" vs 점수 페이지 월매출 366억이 모순으로 보였다(2026-08-31 실측)
+    interactor, _, _ = _build(monkeypatch, [])
+    stats = interactor._format_stats({1000001: _raw_stat()}, 20261)
+    assert stats[1000001]["revenue_text"] == "이 업종 매출 데이터 없음"
 
 
 def test_verdict_파리티_고정():  # www/lib/verdict.ts와 같은 문안이어야 채팅==페이지
@@ -1059,7 +1189,7 @@ def test_주식_컨텍스트의_가격에는_통화가_붙는다():
     assert "원" not in context.split("[SNDK 분석 데이터]")[1].split("- 방향 신호")[0]
 
     kr = ChatInteractor._format_stock_context("삼성전자 어때?", _analysis(symbol="005930"))
-    assert "90,000.00원" in kr
+    assert "90,000원" in kr and "90,000.00원" not in kr  # 원화는 정수 표기
 
 
 # ── 유동인구 피크시간 구간 폭 보정 ──

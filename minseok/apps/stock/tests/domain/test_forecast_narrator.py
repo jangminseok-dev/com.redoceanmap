@@ -38,7 +38,8 @@ def test_국면_하방_회복_문장이_모두_나온다():
     assert "고점 대비 -16.7%" in position.text   # 120 → 100
     assert "저점보다 +11.1%" in position.text     # 90 → 100
     assert "과매도 구간" in position.text
-    assert "하루 평균 변동폭(2.0%)의 8배" in position.text  # 16.7 / 2.0
+    # 주어 명시 — "…의 8배입니다"만 남으면 무엇의 배수인지 읽을 수 없다(2026-08-31 실측)
+    assert "이 낙폭은 하루 평균 변동폭(2.0%)의 8배" in position.text  # 16.7 / 2.0
 
     downside = next(i for i in insights if i.key == "downside")
     assert "중앙값 -3.2%" in downside.text and "나쁜 쪽 25%는 -6.8%" in downside.text

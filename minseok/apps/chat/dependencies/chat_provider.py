@@ -10,11 +10,13 @@ from hub.app.ports.output.gemini_answer_port import GeminiAnswerPort
 from hub.app.ports.output.market_news_search_port import MarketNewsSearchPort
 from hub.app.ports.output.news_search_port import NewsSearchPort
 from hub.app.ports.output.recommendation_record_port import RecommendationRecordPort
+from hub.app.ports.output.forecast_refit_port import ForecastRefitPort
 from hub.app.ports.output.fundamental_read_port import FundamentalReadPort
 from hub.app.ports.output.stock_analysis_port import StockAnalysisPort
 from hub.app.ports.output.stock_forecast_port import StockForecastPort
 from hub.app.ports.output.user_profile_port import UserProfilePort
 from hub.dependencies.commercial_data_provider import get_commercial_data_port
+from hub.dependencies.forecast_refit_provider import get_forecast_refit_port
 from hub.dependencies.fundamental_read_provider import get_fundamental_read_port
 from hub.dependencies.gemini_provider import get_gemini_answer_port
 from hub.dependencies.market_news_search_provider import get_market_news_search_port
@@ -35,6 +37,7 @@ def get_chat_use_case(
     forecaster: StockForecastPort = Depends(get_stock_forecast_port),
     fundamentals: FundamentalReadPort = Depends(get_fundamental_read_port),
     profiles: UserProfilePort = Depends(get_user_profile_port),
+    refit: ForecastRefitPort = Depends(get_forecast_refit_port),
     db: AsyncSession = Depends(get_db),
 ) -> ChatUseCase:
     return ChatInteractor(
@@ -48,4 +51,5 @@ def get_chat_use_case(
         forecaster=forecaster,
         fundamentals=fundamentals,
         profiles=profiles,
+        refit=refit,
     )

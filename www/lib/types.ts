@@ -147,6 +147,7 @@ export type StockForecast = {
     recovery_days_median: number | null;
   } | null;
   live?: boolean; // true = 미수집 종목 — yfinance 라이브 이력 기반 계산
+  earnings_veto?: boolean; // true = 실적 발표 ±2일 — 신호를 관망으로 강등(SAVE 대조 편입 배지)
 };
 
 // ── GET /stock/{symbol}/quote ──
