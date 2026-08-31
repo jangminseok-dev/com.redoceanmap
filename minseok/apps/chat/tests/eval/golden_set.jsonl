@@ -122,3 +122,8 @@
 {"case_id": "MR22", "category": "market_region", "prompt": "대치동에서 치킨 배달이 제일 많은 요일이 언제야?", "expected_intent": "market", "region": "대치동"}
 {"case_id": "MR23", "category": "market_region", "prompt": "삼청동 카페 경쟁 현황이 어때? 몇 개나 있고 프랜차이즈 비중은?", "expected_intent": "market", "region": "삼청동"}
 {"case_id": "MR24", "category": "market_region", "prompt": "성수동 미용실은 평균 몇 개월 영업하고 생존율이 어떻게 돼?", "expected_intent": "market", "region": "성수동"}
+{"case_id": "SF06", "category": "stock_fuzzy", "prompt": "테슬라랑 애플 중에 어디에 투자하는 게 나아?", "expected_intent": "stock", "accepted_queries": ["테슬라", "TSLA"]}
+{"case_id": "SU11", "category": "stock_us", "prompt": "엔비디아 다음주에 오를 확률이 얼마나 돼?", "expected_intent": "stock", "accepted_queries": ["NVDA", "엔비디아"]}
+{"case_id": "MR25", "category": "market_region", "prompt": "망원동에 카페 자리 알아보는데 임대료가 평당 얼마 정도야?", "expected_intent": "market", "region": "망원동"}
+{"case_id": "MR26", "category": "market_region", "prompt": "목동에서 반찬가게 하면 먹고살 수 있을까?", "expected_intent": "market", "region": "목동"}
+{"case_id": "MN11", "category": "market_noregion", "prompt": "유동인구 많고 폐업률 낮은 서울 상권 3곳만 추천해줘", "expected_intent": "market"}

@@ -144,7 +144,16 @@ function ComponentBar({ component: c }: { component: ScoreComponent }) {
           <span className="text-foreground-muted tabular-nums">
             {signed(c.value)} <span className="opacity-60">vs 서울 {signed(c.benchmark)}</span>
           </span>
-          <span className="font-semibold tabular-nums">{c.score}</span>
+          {/* 방향을 색으로 명시 — "47.9점"만 보면 평균 이상처럼 읽힌다(2026-08-31 테스트).
+              ±5점 안쪽은 평균권이라 중립색 유지 */}
+          <span
+            title="50점 = 서울 평균"
+            className={`font-semibold tabular-nums ${
+              c.score >= 55 ? "text-up" : c.score <= 45 ? "text-down" : ""
+            }`}
+          >
+            {c.score}
+          </span>
         </span>
       </div>
       <div className="relative mt-1 h-1.5 rounded-full bg-border/60 overflow-hidden">

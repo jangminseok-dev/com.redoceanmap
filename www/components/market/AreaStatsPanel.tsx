@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, Gauge, Store, TrendingUp, Users } from "lucide-react";
+import { BarChart3, ChevronDown, Gauge, Store, TrendingUp, Users } from "lucide-react";
 import { fetchAreaStats } from "@/lib/api";
 import type { QuarterStat } from "@/lib/types";
 import AreaScoreCard from "./AreaScoreCard";
@@ -98,25 +98,97 @@ export default function AreaStatsPanel({
         ))}
       </div>
 
+      {/* I-6 2단계 노출 — 핵심(요약 타일 + 종합점수)을 먼저 주고, 나머지 지표는 접는다.
+          365의 간단/상세 UX: 초보는 1단계에서 결론이 서고, 깊이 볼 사람만 연다 */}
+      <CoreTiles series={data.series} />
+
       <Section icon={Gauge} title="상권 종합점수">
         <AreaScoreCard trdarCode={trdarCode} quarters={view.quarters} />
       </Section>
 
-      <Section icon={TrendingUp} title="분기 매출 추이">
-        <SalesTrendChart series={data.series} />
-      </Section>
+      <details className="group">
+        <summary className="flex cursor-pointer list-none select-none items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-foreground-muted">
+          <ChevronDown size={13} className="transition-transform group-open:rotate-180" />
+          전체 지표 더 보기
+        </summary>
+        <div className="mt-4 flex flex-col gap-5">
+          <Section icon={TrendingUp} title="분기 매출 추이">
+            <SalesTrendChart series={data.series} />
+          </Section>
 
-      <Section icon={Users} title="유동인구 (최신 분기)">
-        <PopulationCharts latest={data.latest} />
-      </Section>
+          <Section icon={Users} title="유동인구 (최신 분기)">
+            <PopulationCharts latest={data.latest} />
+          </Section>
 
-      <Section icon={Store} title="점포 현황">
-        <StorePanel series={data.series} latest={data.latest} />
-      </Section>
+          <Section icon={Store} title="점포 현황">
+            <StorePanel series={data.series} latest={data.latest} />
+          </Section>
 
-      <Section icon={BarChart3} title="유동인구 추이">
-        <FloatingTrend series={data.series} />
-      </Section>
+          <Section icon={BarChart3} title="유동인구 추이">
+            <FloatingTrend series={data.series} />
+          </Section>
+        </div>
+      </details>
+
+      {/* I-9 — 못 하는 것을 먼저 말한다(정확도 경쟁 대신 한계 명시, ROADMAP).
+          창업자가 결국 물을 축(임대료)이 비어 있음을 숨기지 않는다 */}
+      <p className="border-t border-border pt-3 text-xs text-foreground-muted leading-relaxed">
+        이 자료가 다루지 않는 것: 임대료·권리금(공공 API가 없어 미제공), 개별 매장 매출(카드사
+        실결제가 아닌 서울시 추정 집계예요). 데이터는 분기 단위라 최신 분기와 지금 사이에
+        1~2분기 시차가 있어요.
+      </p>
+    </div>
+  );
+}
+
+// 핵심 요약 3타일 — 매출 흐름·폐업률·하루 방문(테스트 판정의 "핵심 4개" 중 점수 카드 제외분).
+// 값이 없는 축은 "—"로 정직하게 비운다(추정치로 채우지 않는다).
+function CoreTiles({ series }: { series: QuarterStat[] }) {
+  const withSales = series.filter((q) => q.monthlySales !== null);
+  const cur = withSales.length >= 1 ? withSales[withSales.length - 1] : null;
+  const prev = withSales.length >= 2 ? withSales[withSales.length - 2] : null;
+  const qoq =
+    cur && prev && prev.monthlySales
+      ? ((cur.monthlySales! - prev.monthlySales!) / prev.monthlySales!) * 100
+      : null;
+  const closure = [...series].reverse().find((q) => q.closureRate !== null) ?? null;
+  const foot = [...series].reverse().find((q) => q.totalFloatingPop !== null) ?? null;
+
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      <CoreTile
+        label="매출 (전분기 대비)"
+        value={qoq !== null ? `${qoq > 0 ? "+" : ""}${qoq.toFixed(1)}%` : "—"}
+        tone={qoq === null ? "" : qoq > 0 ? "text-up" : qoq < 0 ? "text-down" : ""}
+      />
+      <CoreTile
+        label="분기 폐업률"
+        value={closure?.closureRate !== null && closure ? `${closure.closureRate}%` : "—"}
+        caption={closure?.closureCount != null ? `${closure.closureCount}곳 폐업` : undefined}
+      />
+      <CoreTile
+        label="하루 평균 방문"
+        value={
+          foot?.totalFloatingPop != null
+            ? `${Math.round(foot.totalFloatingPop / 91).toLocaleString("ko-KR")}명`
+            : "—"
+        }
+      />
+    </div>
+  );
+}
+
+function CoreTile({ label, value, caption, tone = "" }: {
+  label: string;
+  value: string;
+  caption?: string;
+  tone?: string;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-surface px-2.5 py-2">
+      <p className="text-xs text-foreground-muted">{label}</p>
+      <p className={`mt-0.5 text-sm font-semibold tabular-nums ${tone}`}>{value}</p>
+      {caption && <p className="text-xs text-foreground-muted">{caption}</p>}
     </div>
   );
 }
