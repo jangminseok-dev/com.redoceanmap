@@ -2,6 +2,7 @@
 
 백엔드 → [[minseok/_docs/CLAUDE|minseok CLAUDE]] · 구조 강제 → [[_docs/harness|harness]]
 진행 중인 별도 축 → [[minseok/_docs/SIGNAL_OVERHAUL_2026-08|시그널 대개편]] (결론 우선 답변 · 판정 정확도 · 가격 알림)
+현행 착수 순서 정본 → [[minseok/_docs/SERVICE_QUALITY_2026-08|서비스 품질 개선]] (2026-08-31 프로덕션 페르소나 테스트 30건 후속 — Phase 0부터)
 
 목표는 **단계적**: ① 개인 투자/분석 도구 → ② 취업 포트폴리오 품질 → ③ 실사용자 서비스.
 제약: 개발 단계 비용 0원(무료 리소스만) · 헥사고날/클린/DDD+SOLID 무조건 준수(import-linter
