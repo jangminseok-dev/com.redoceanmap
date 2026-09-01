@@ -684,6 +684,20 @@ async def test_일반_질문에는_분기_추이를_주입하지_않는다(monke
     assert "[종합점수 산출 방식]" not in llm.calls[2][0]
 
 
+async def test_중립_방향_답변에는_가격_알림_안내가_붙는다(monkeypatch):
+    # [6] — 중립 답변의 공식 대체재(예측 대신 사용자 설정 조건의 사실 통지)
+    interactor, _, _ = _build(monkeypatch, [INTENT_STOCK, "주식 서술."])
+    result = await interactor.ask("삼성전자 어때?")  # _analysis 기본 direction=NEUTRAL
+    assert "'가격 도달 알림'에서 조건을 걸어 보세요" in result.text
+
+
+async def test_방향이_있으면_가격_알림_안내를_붙이지_않는다(monkeypatch):
+    stocks = _StubStocks(result=_analysis(direction="UP"))
+    interactor, _, _ = _build(monkeypatch, [INTENT_STOCK, "주식 서술."], stocks=stocks)
+    result = await interactor.ask("삼성전자 어때?")
+    assert "가격 도달 알림" not in result.text
+
+
 async def test_임대료_질문은_미지원_고지가_문두에_붙는다(monkeypatch):
     # I-12, 2026-08-31 실측 m5: 임대료 질문에 임대료 언급 0(모델 회피 서술)
     interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON])

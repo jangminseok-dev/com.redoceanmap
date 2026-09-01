@@ -61,6 +61,8 @@ from hub.adapter.inbound.api.v1.news_label_ingest_router import news_label_inges
 from hub.adapter.inbound.api.v1.postmaster_router import postmaster_router
 from hub.adapter.inbound.api.v1.price_bar_ingest_router import price_bar_ingest_router
 from hub.adapter.inbound.api.v1.bookmark_alert_router import bookmark_alert_router
+from hub.adapter.inbound.api.v1.price_alert_scan_router import price_alert_scan_router
+from hub.adapter.inbound.api.v1.news_alert_scan_router import news_alert_scan_router
 from hub.adapter.inbound.api.v1.signal_scan_router import signal_scan_router
 from hub.adapter.inbound.api.v1.stock_demand_router import stock_demand_router
 from hub.dependencies.area_backtest_report_provider import get_area_backtest_report_port
@@ -74,6 +76,8 @@ from hub.dependencies.news_ingest_provider import get_news_storage_port
 from hub.dependencies.news_label_ingest_provider import get_news_label_storage_port
 from hub.dependencies.price_bar_ingest_provider import get_price_bar_storage_port
 from hub.dependencies.email_request_provider import get_email_composer
+from hub.dependencies.price_alert_directory_provider import get_price_alert_directory_port
+from hub.dependencies.news_alert_feed_provider import get_news_alert_feed_port
 from mail.adapter.inbound.api.v1.judge_router import judge_router
 from mail.adapter.inbound.api.v1.inbound_mail_router import inbound_mail_router
 from mail.adapter.inbound.api.v1.postman_router import postman_router
@@ -143,6 +147,7 @@ from stock.dependencies.news_provider import get_news_search_gateway, get_news_s
 from stock.dependencies.price_bar_provider import get_price_bar_storage_gateway
 from stock.dependencies.stock_demand_provider import get_stock_demand_gateway
 from stock.dependencies.stock_dataset_stats_provider import get_stock_dataset_stats_gateway
+from stock.dependencies.news_alert_feed_provider import get_news_alert_feed_gateway
 from stock.dependencies.news_event_study_provider import get_news_event_study_gateway
 from stock.dependencies.stock_forecast_provider import get_stock_forecast_gateway
 from stock.dependencies.stock_status_provider import get_stock_status_gateway
@@ -152,6 +157,7 @@ from stock.dependencies.stock_provider import (
     get_stock_analysis_gateway_batch,
 )
 from recommendation.adapter.inbound.api.v1.alert_setting_router import alert_setting_router
+from recommendation.adapter.inbound.api.v1.price_alert_router import price_alert_router
 from recommendation.adapter.inbound.api.v1.bookmark_board_router import bookmark_board_router
 from recommendation.adapter.inbound.api.v1.bookmark_router import bookmark_router
 from recommendation.adapter.inbound.api.v1.curator_router import curator_router
@@ -161,6 +167,7 @@ from recommendation.dependencies.bookmark_provider import (
     get_alert_delivery_gateway,
     get_bookmark_directory_gateway,
 )
+from recommendation.dependencies.price_alert_provider import get_price_alert_directory_gateway
 from recommendation.dependencies.profile_provider import get_user_profile_gateway
 from recommendation.dependencies.recommendation_provider import (
     get_recommendation_directory_gateway,
@@ -243,6 +250,8 @@ app.include_router(forecast_refit_router)
 app.include_router(mail_ingest_router)
 app.include_router(signal_scan_router)
 app.include_router(bookmark_alert_router)  # 허브 — 관심 종목 알림 스캔(웹훅 토큰, ③-M3)
+app.include_router(price_alert_scan_router)  # 허브 — 가격 도달 알림 스캔(웹훅 토큰, [6])
+app.include_router(news_alert_scan_router)  # 허브 — 티커 뉴스 알림 스캔(웹훅 토큰, B9)
 app.include_router(dispatcher_router)
 # 공개 — 비로그인 첫 화면 쇼케이스(읽기 전용·최소 필드). 데이터 라우터 중 유일하게
 # 인증 없이 열린다. 여기에 라우터를 더 얹기 전에 tests/test_public_routes.py를 볼 것.
@@ -276,6 +285,7 @@ app.include_router(recommendation_router, dependencies=_authenticated)
 app.include_router(bookmark_router, dependencies=_authenticated)
 app.include_router(bookmark_board_router, dependencies=_authenticated)
 app.include_router(alert_setting_router, dependencies=_authenticated)
+app.include_router(price_alert_router, dependencies=_authenticated)
 app.include_router(profile_router, dependencies=_authenticated)
 app.include_router(curator_router, dependencies=_authenticated)
 app.include_router(email_request_router, dependencies=_authenticated)  # 허브 — 이메일 발송 요청
@@ -330,6 +340,8 @@ app.dependency_overrides[get_user_profile_port] = get_user_profile_gateway
 app.dependency_overrides[get_bookmark_directory_port] = get_bookmark_directory_gateway
 app.dependency_overrides[get_member_contact_port] = get_member_contact_gateway
 app.dependency_overrides[get_alert_delivery_port] = get_alert_delivery_gateway
+app.dependency_overrides[get_price_alert_directory_port] = get_price_alert_directory_gateway
+app.dependency_overrides[get_news_alert_feed_port] = get_news_alert_feed_gateway
 app.dependency_overrides[get_mail_storage_port] = get_mail_storage_gateway
 app.dependency_overrides[get_stock_demand_port] = get_stock_demand_gateway
 app.dependency_overrides[get_game_ops_port] = get_game_ops_gateway

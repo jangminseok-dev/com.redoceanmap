@@ -18,3 +18,13 @@ class StockStatusPort(ABC):
     async def latest_statuses(self, symbols: list[str]) -> dict[str, StockStatusInfo]:
         """요청 심볼 → 최신 상태. 거래소 접미 변형(005930 ↔ 005930.KS)은 구현이 흡수한다."""
         ...
+
+    @abstractmethod
+    async def latest_closes(self, symbols: list[str]) -> dict[str, float]:
+        """요청 심볼 → 최신 수집 종가(가격 도달 알림 [6]의 판정 근거).
+
+        latest_statuses와 달리 스냅샷 없이도 답한다 — 봉(price_bars)만 있으면 된다.
+        타임프레임 무관 최신 봉의 종가(5분봉이 있으면 그것이 최신). 봉이 없는 심볼은
+        키 자체가 없다(오류 아님 — 소비자는 판정 불가로 건너뛴다). 벤더 호출 없음.
+        """
+        ...

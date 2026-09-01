@@ -1306,6 +1306,13 @@ class ChatInteractor(ChatUseCase):
             band_high=analysis.volume_poc_high,
             atr_value=analysis.price * analysis.atr_pct,
         )
+        # 가격 도달 알림 안내([6]) — 중립 답변의 공식 대체재. 방향 단정은 데이터가 아직
+        # 허락하지 않으므로(시그널 대개편 결론) 예측 대신 사실 통지(사용자 설정 조건)를 권한다.
+        if analysis.direction == "NEUTRAL":
+            text = (
+                f"{text.rstrip()}\n\n지금은 방향 신호가 중립이에요. 원하시는 가격에 닿으면"
+                " 알려드릴 수 있어요 — 프로필의 '가격 도달 알림'에서 조건을 걸어 보세요."
+            )
         # 용어 결정론 풀이(I-19) — 질문에 없는 전문용어의 첫 등장에 괄호 설명을 붙인다
         text = answer_guard.attach_glossary(text, prompt)
         text = answer_guard.ensure_disclaimer(text)

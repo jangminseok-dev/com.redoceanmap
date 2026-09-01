@@ -71,6 +71,39 @@ class StockStatusGateway(StockStatusPort):
             )
         return result
 
+    async def latest_closes(self, symbols: list[str]) -> dict[str, float]:
+        """심볼 → 최신 수집 종가(가격 도달 알림 [6]) — 타임프레임 무관 최신 봉.
+
+        5분봉이 있으면 그것이 최신이라 자연히 이긴다(수집 주기 기준 — 벤더 호출 없음).
+        스냅샷 유무와 무관하게 봉만 있으면 답한다(latest_statuses와의 계약 차이).
+        """
+        if not symbols:
+            return {}
+        match = or_(*[
+            (PriceBarOrm.ticker == s) | PriceBarOrm.ticker.like(f"{s}.%")
+            for s in symbols
+        ])
+        ranked = (
+            select(
+                PriceBarOrm.ticker,
+                PriceBarOrm.close,
+                func.row_number()
+                .over(partition_by=PriceBarOrm.ticker, order_by=PriceBarOrm.ts.desc())
+                .label("rn"),
+            )
+            .where(match)
+            .subquery()
+        )
+        rows = (await self._session.execute(
+            select(ranked.c.ticker, ranked.c.close).where(ranked.c.rn == 1)
+        )).all()
+        result: dict[str, float] = {}
+        for ticker, close in rows:
+            symbol = self._requested_symbol(ticker, symbols)
+            if symbol is not None and symbol not in result:
+                result[symbol] = float(close)
+        return result
+
     @staticmethod
     def _requested_symbol(stored: str, symbols: list[str]) -> str | None:
         """저장 티커를 요청 심볼로 되돌린다 (005930.KS → 요청이 005930이면 005930)."""

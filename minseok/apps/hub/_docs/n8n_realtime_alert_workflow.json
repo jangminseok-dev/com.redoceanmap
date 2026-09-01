@@ -1,0 +1,245 @@
+{
+  "name": "redoceanmap 실시간 알림 (가격 도달 · 티커 뉴스)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        100
+      ],
+      "name": "매시 정각"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://backend:8000/automation/price-alerts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Webhook-Token",
+              "value": "={{ $env.REDOCEAN_WEBHOOK_TOKEN }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        0
+      ],
+      "name": "가격 도달 스캔"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://backend:8000/automation/news-alerts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Webhook-Token",
+              "value": "={{ $env.REDOCEAN_WEBHOOK_TOKEN }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        300
+      ],
+      "name": "뉴스 알림 스캔"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 응답의 emails 배열을 개별 아이템으로 펼친다 — 없으면 빈 배열(발송 없음)\nreturn ($input.first().json.emails || []).map(e => ({ json: e }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        -60
+      ],
+      "name": "가격 메일 펼치기"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 응답의 telegrams 배열을 개별 아이템으로 펼친다 — 없으면 빈 배열(발송 없음)\nreturn ($input.first().json.telegrams || []).map(e => ({ json: e }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        60
+      ],
+      "name": "가격 텔레그램 펼치기"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 응답의 emails 배열을 개별 아이템으로 펼친다 — 없으면 빈 배열(발송 없음)\nreturn ($input.first().json.emails || []).map(e => ({ json: e }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        240
+      ],
+      "name": "뉴스 메일 펼치기"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 응답의 telegrams 배열을 개별 아이템으로 펼친다 — 없으면 빈 배열(발송 없음)\nreturn ($input.first().json.telegrams || []).map(e => ({ json: e }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        360
+      ],
+      "name": "뉴스 텔레그램 펼치기"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        660,
+        60
+      ],
+      "name": "Gmail 발송"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.text }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        660,
+        300
+      ],
+      "name": "Telegram 발송"
+    }
+  ],
+  "connections": {
+    "매시 정각": {
+      "main": [
+        [
+          {
+            "node": "가격 도달 스캔",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "뉴스 알림 스캔",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "가격 도달 스캔": {
+      "main": [
+        [
+          {
+            "node": "가격 메일 펼치기",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "가격 텔레그램 펼치기",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "뉴스 알림 스캔": {
+      "main": [
+        [
+          {
+            "node": "뉴스 메일 펼치기",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "뉴스 텔레그램 펼치기",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "가격 메일 펼치기": {
+      "main": [
+        [
+          {
+            "node": "Gmail 발송",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "뉴스 메일 펼치기": {
+      "main": [
+        [
+          {
+            "node": "Gmail 발송",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "가격 텔레그램 펼치기": {
+      "main": [
+        [
+          {
+            "node": "Telegram 발송",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "뉴스 텔레그램 펼치기": {
+      "main": [
+        [
+          {
+            "node": "Telegram 발송",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
