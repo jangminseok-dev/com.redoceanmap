@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from hub.app.dtos.commercial_data_dto import (
     AreaInsight,
     AreaOverviewRow,
+    AreaRankingInfo,
     AreaRawStat,
     AreaScoreInfo,
     AreaSummary,
@@ -41,6 +42,13 @@ class CommercialDataPort(ABC):
     @abstractmethod
     async def get_area_scores(self, trdar_codes: list[int]) -> dict[int, AreaScoreInfo]:
         """지정 상권들의 시도 벤치마크 대비 종합점수 — 산출 근거 팩트가 없는 상권은 제외."""
+        ...
+
+    @abstractmethod
+    async def get_area_ranking(
+        self, service_code: str | None = None
+    ) -> list[AreaRankingInfo]:
+        """전 상권 랭킹 행 — 조건 질의("폐업률 낮은 N곳")의 결정론 근거. 정렬은 소비자 몫."""
         ...
 
     @abstractmethod

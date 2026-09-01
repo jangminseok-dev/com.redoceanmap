@@ -8,19 +8,24 @@ from hub.app.dtos.commercial_data_dto import (
     AreaInfo,
     AreaInsight,
     AreaOverviewRow,
+    AreaRankingInfo,
     AreaRawStat,
     AreaScoreComponent,
     AreaScoreInfo,
     AreaSummary,
+    AreaTrendPoint,
     PermitChurnInfo,
     ServiceCode,
 )
 from hub.app.dtos.dataset_stat_dto import DatasetStat
 from market.adapter.outbound.pg.area_detail_pg_repository import AreaDetailPgRepository
+from market.adapter.outbound.pg.area_ranking_pg_repository import AreaRankingPgRepository
 from market.adapter.outbound.pg.area_score_pg_repository import AreaScorePgRepository
 from market.app.dtos.area_detail_dto import AreaDetailQuery
+from market.app.dtos.area_ranking_dto import AreaRankingQuery
 from market.app.dtos.area_score_dto import AreaScoreQuery
 from market.app.use_cases.area_detail_interactor import AreaDetailInteractor
+from market.app.use_cases.area_ranking_interactor import AreaRankingInteractor
 from market.app.use_cases.area_score_interactor import AreaScoreInteractor
 from market.adapter.outbound.orm.change_indicator_orm import ChangeIndicatorOrm
 from market.adapter.outbound.orm.commercial_change_benchmark_orm import (
@@ -147,8 +152,42 @@ class CommercialDataGateway(CommercialDataPort):
                     )
                     for c in view.score.components
                 ),
+                # 분기 추이(I-20) — 슬라이스가 이미 계산하던 것을 버리지 않고 나른다
+                trend=tuple(
+                    AreaTrendPoint(
+                        year_quarter=t.year_quarter,
+                        monthly_sales=t.monthly_sales,
+                        sales_qoq=t.sales_qoq,
+                        total_floating_pop=t.total_floating_pop,
+                        floating_qoq=t.floating_qoq,
+                        sales_yoy=t.sales_yoy,
+                        floating_yoy=t.floating_yoy,
+                    )
+                    for t in view.trend
+                ),
             )
         return result
+
+    async def get_area_ranking(
+        self, service_code: str | None = None
+    ) -> list[AreaRankingInfo]:
+        # area_ranking 슬라이스를 그대로 재사용해 허브 DTO로 변환 — get_area_scores와 같은 형태
+        interactor = AreaRankingInteractor(repo=AreaRankingPgRepository(session=self._session))
+        view = await interactor.list_ranking(AreaRankingQuery(service_code=service_code))
+        return [
+            AreaRankingInfo(
+                trdar_code=r.trdar_code,
+                trdar_name=r.trdar_name,
+                district_name=r.district_name,
+                dong_name=r.dong_name,
+                monthly_sales=r.monthly_sales,
+                store_count=r.store_count,
+                sales_per_store=r.sales_per_store,
+                closure_rate=r.closure_rate,
+                change_indicator_name=r.change_indicator_name,
+            )
+            for r in view.rows
+        ]
 
     async def get_area_insights(
         self, trdar_codes: list[int], service_code: str | None = None

@@ -15,7 +15,8 @@ LLM-as-judge를 쓰지 않는다(단일 모델 정책상 7.8B가 자기 답을 �
 - risk_mention_rate                  : 상권 추천 이유의 "유의할 점" 포함률(C2 리스크 의무 준수)
 - citation_coverage                  : 수치 주장 문장 중 인용 마커([n]) 포함 비율(R4 출처 인용)
 - violations                         : 절대 규칙 위반(환각 숫자·금지 표현·고지 누락·입지 창작·
-                                       유령 인용 dangling_citation — 컨텍스트에 없는 근거 번호)
+                                       유령 인용 dangling_citation — 컨텍스트에 없는 근거 번호·
+                                       grade_caution — 주의/위험 등급 상권 추천 어휘)
 - latency_p50/p95_ms                 : phase별 지연
 """
 from __future__ import annotations
@@ -67,6 +68,26 @@ def _is_truncated(answer: str) -> bool:
 # 금지 입지 서술(market 답변) — 컨텍스트에 없는 교통·입지 창작(PHASE2_PROMPT 금지 규칙)
 _LOCATION_CLAIM_TOKENS = ("호선", "환승", "관문")
 
+# 등급 결정론 가드(2026-08-31 실측 p04) — '주의'/'위험' 등급 상권을 추천 어휘로 서술하면
+# 절대 규칙 위반. 어휘 집합은 answer_guard.suppress_recommendation이 치환하는 것과 같다.
+# 등급은 phase2 컨텍스트의 점수 라인에서 읽는다('근거 [n]'처럼 컨텍스트 표기가 단일 정의처).
+_GRADE_HEADER = re.compile(r"\(trdar_code: (\d+)\)")
+_GRADE_LINE = re.compile(r"종합 [\d.]+점·(우수|양호|보통|주의|위험)")
+_CAUTION_GRADES = ("주의", "위험")
+_RECOMMEND_VOCAB = re.compile(r"추천|강력히|강력하게")
+
+
+def _context_grades(prompt: str) -> dict[int, str]:
+    """phase2 컨텍스트의 상권 블록별 등급 — 헤더에서 다음 헤더 전까지를 그 상권 블록으로 본다."""
+    heads = [(m.start(), int(m.group(1))) for m in _GRADE_HEADER.finditer(prompt)]
+    grades: dict[int, str] = {}
+    for i, (start, code) in enumerate(heads):
+        end = heads[i + 1][0] if i + 1 < len(heads) else len(prompt)
+        m = _GRADE_LINE.search(prompt, start, end)
+        if m:
+            grades[code] = m.group(1)
+    return grades
+
 _NUM = re.compile(r"\d[\d,]*(?:\.\d+)?")
 
 # 출처 인용(R4) — 컨텍스트의 근거 번호 표기('근거 [n]', chat_interactor가 단일 정의처)와
@@ -102,7 +123,7 @@ def _sentences_with_markers(text: str) -> list[str]:
 class RuleViolation:
     case_id: str
     # hallucinated_number | forbidden_phrase | missing_disclaimer | location_claim
-    # | truncated_answer | dangling_citation
+    # | truncated_answer | dangling_citation | grade_caution
     rule: str
     detail: str
 
@@ -148,6 +169,9 @@ def _stem(name: str) -> str:
     """지명 어간 — chat_interactor._place_stem과 같은 규칙(계층 방향상 소형 복제)."""
     match = re.match(r"^[가-힣]+", name or "")
     stem = match.group() if match else ""
+    if len(stem) < 2:  # "목1동" — 선행 한글 1자 퇴화 시 숫자를 걷고 재시도(인터랙터와 동일)
+        match = re.match(r"^[가-힣]+", re.sub(r"\d+", "", name or ""))
+        stem = match.group() if match else ""
     while len(stem) > 2 and stem[-1] in "구동가로읍면리":
         stem = stem[:-1]
     return stem
@@ -341,6 +365,21 @@ def score(cases: list[EvalCase], traces: list[CaseTrace]) -> EvalReport:
             for token in _LOCATION_CLAIM_TOKENS:
                 if token in market_text:
                     violations.append(RuleViolation(c.case_id, "location_claim", token))
+            # 등급 결정론 가드 — '주의'/'위험' 상권을 추천 어휘로 서술하면 위반
+            phase2 = _call_of(t, "phase2")
+            grades = _context_grades(phase2.prompt) if phase2 else {}
+            caution = [
+                (code, reason) for code, reason
+                in zip(t.recommendation_codes, t.recommendation_reasons)
+                if grades.get(code) in _CAUTION_GRADES
+            ]
+            for code, reason in caution:
+                if _RECOMMEND_VOCAB.search(reason):
+                    violations.append(
+                        RuleViolation(c.case_id, "grade_caution", f"{code} 이유 추천 어휘")
+                    )
+            if caution and _RECOMMEND_VOCAB.search(t.answer_text):
+                violations.append(RuleViolation(c.case_id, "grade_caution", "본문 추천 어휘"))
         gen = _generative_call(t)
         if gen is not None:
             answer = t.answer_text + " " + " ".join(t.recommendation_reasons)

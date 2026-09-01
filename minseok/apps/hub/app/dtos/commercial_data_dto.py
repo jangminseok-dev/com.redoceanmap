@@ -78,12 +78,47 @@ class AreaScoreComponent:
 
 
 @dataclass(frozen=True)
+class AreaTrendPoint:
+    """분기 1개의 추이 — 값과 변화율(%). 팩트별 결측은 None(market TrendPoint 미러)."""
+
+    year_quarter: int
+    monthly_sales: int | None = None
+    sales_qoq: float | None = None
+    total_floating_pop: int | None = None
+    floating_qoq: float | None = None
+    sales_yoy: float | None = None
+    floating_yoy: float | None = None
+
+
+@dataclass(frozen=True)
 class AreaScoreInfo:
     """상권 1곳의 시도 벤치마크 대비 종합점수(0~100)."""
 
     total: float
     grade: str  # 우수 / 양호 / 보통 / 주의 / 위험
     components: tuple[AreaScoreComponent, ...]
+    # 분기 추이(I-20) — 전문가 질문("분기 추이 데이터 줘")에만 소비. 스코어 슬라이스가
+    # 이미 계산하던 것을 나른다(기본값 유지 — 기존 소비자 무손상).
+    trend: tuple[AreaTrendPoint, ...] = ()
+
+
+@dataclass(frozen=True)
+class AreaRankingInfo:
+    """상권 1곳의 랭킹 행 — 조건 질의("폐업률 낮은 N곳") 결정론 라우팅용(1-4).
+
+    market 랭킹 슬라이스와 같은 원칙으로 정렬하지 않고 나른다(정렬은 소비자 몫).
+    유동인구 축은 랭킹 집계에 없다 — 소비자는 없는 축을 없다고 고지한다(I-12).
+    """
+
+    trdar_code: int
+    trdar_name: str
+    district_name: str
+    dong_name: str
+    monthly_sales: int | None      # 원 — 상권 전체 월매출 합계
+    store_count: int | None
+    sales_per_store: int | None    # 원
+    closure_rate: float | None     # %
+    change_indicator_name: str | None
 
 
 @dataclass(frozen=True)

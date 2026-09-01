@@ -312,3 +312,37 @@ def test_지연_백분위는_phase별로_집계():
     report = score([_case("C1")], [_trace("C1", calls=calls)])
     assert report.latency_p50_ms["phase0"] == 200.0
     assert report.latency_p95_ms["phase0"] == 400.0
+
+
+# --- 등급 결정론 가드 (grade_caution) ---
+
+_GRADED_PROMPT = (
+    "[성수역 / 성동구] (trdar_code: 1000001)\n"
+    "- 서울 평균 대비: 종합 44.9점·주의 (50점=서울 평균, 이 상권은 평균 미달)\n"
+    "[홍대입구 / 마포구] (trdar_code: 1000002)\n"
+    "- 서울 평균 대비: 종합 67.0점·양호 (50점=서울 평균, 이 상권은 평균 상회)\n"
+)
+
+
+def _phase2(prompt=_GRADED_PROMPT) -> LlmCall:
+    return LlmCall(phase="phase2", prompt=prompt, response="{}", latency_ms=100.0)
+
+
+def test_주의_등급_상권의_추천_어휘는_절대_규칙_위반():
+    traces = [_trace("C1", answer_text="성수역을 추천합니다",
+                     calls=(_phase2(),),
+                     recommendation_codes=(1000001, 1000002),
+                     recommendation_reasons=("강력히 추천합니다", "추천합니다"))]
+    report = score([_case("C1")], traces)
+    rules = [v for v in report.violations if v.rule == "grade_caution"]
+    # 주의 상권 이유 1건 + 본문 1건 — 양호 상권 이유의 '추천'은 위반이 아니다
+    assert len(rules) == 2
+
+
+def test_등급_가드를_통과한_답변은_위반이_없다():
+    traces = [_trace("C1", answer_text="성수역은 '주의' 등급입니다. 검토해볼 만합니다.",
+                     calls=(_phase2(),),
+                     recommendation_codes=(1000001,),
+                     recommendation_reasons=("검토해볼 만합니다. 유의할 점: 경쟁 밀집.",))]
+    report = score([_case("C1")], traces)
+    assert [v for v in report.violations if v.rule == "grade_caution"] == []

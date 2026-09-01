@@ -133,6 +133,19 @@ apps/chat/
 - `allowed_citations(context)` — 컨텍스트의 `근거 [n]` 표기가 배정한 번호 집합(블록 생략 시 결번)
 - `strip_dangling_citations` — 배정 밖 번호 마커만 제거(문장은 남긴다)
 - `ensure_disclaimer` — 꼬리 150자에 책임 고지가 없으면 붙인다(멱등)
+- `suppress_recommendation` + `grade_caution_notice`(2026-09-01, 1-1) — '주의'/'위험' 등급
+  상권의 추천 어휘를 검토로 치환하고 등급 고지를 답변 문두에 삽입. 채점기 `grade_caution`
+  절대 규칙과 같은 어휘.
+- `strip_unsupported_metric` / `enforce_distance_claim`(2026-09-01, I-15) — 데이터 없는
+  지표명("폐업률") 문장 제거(유의 문장은 `_ensure_risk_note`가 재충전) / 매물대 거리가
+  ATR 2배를 넘으면 '근처'류를 "(현재가보다 N% 아래/위)"로 교체(매물대·밀집 문장만).
+- `attach_glossary`(2026-09-01, I-19) — 질문에 없는 전문용어(모멘텀·수급·%B·ATR·정/역배열)
+  첫 등장에 괄호 풀이. 질문자가 쓴 용어·기존 괄호("ATR(14)")는 건드리지 않는다.
+
+인터랙터 측 결정론 삽입(가드와 같은 원칙, 2026-09-01): `_unsupported_notice`(I-12·I-17 —
+임대료·정확 매출·배당·PER비교·확률을 물으면 "없다/단정 안 한다"를 문두에),
+조건 질의 랭킹 라우팅(I-14 — 지역 미언급+조건 어휘면 허브 `get_area_ranking`을 코드로 정렬,
+LLM 미사용), `_trend_text`+산출 방식 블록(I-20 — 추이·산출근거 요청 시에만 주입).
 
 판정 정규식은 채점기 `eval_scorer`와 **같은 것을 쓴다**. 갈라지면 가드를 통과한 답변이
 채점에서 떨어진다. stock·market_news 두 답변 경로 모두에 적용된다.

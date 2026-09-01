@@ -26,6 +26,7 @@ from core.llm.llm_orchestrator import llm_orchestrator
 from hub.app.dtos.commercial_data_dto import (
     AreaInfo,
     AreaInsight,
+    AreaRankingInfo,
     AreaRawStat,
     AreaScoreInfo,
     AreaSummary,
@@ -309,6 +310,55 @@ _RADIUS_NAME_STOPWORDS = frozenset(
     {"상권", "시장", "거리", "골목", "공원", "광장", "상가", "단지", "타운", "프라자", "먹자골목"}
 )
 
+# 전문가 데이터 질문 라우팅(I-20, 2026-08-31 실측 p04·p05·p09) — 추이·산출근거·개폐업
+# 데이터 요청에 151자 일반 추천이 나갔다. 데이터는 스코어 슬라이스에 이미 있다 — 감지 시
+# 분기 추이·산출 방식을 컨텍스트에 주입한다(평시 미주입 — 프롬프트 예산 보호).
+_EXPERT_DETAIL_RE = re.compile(r"추이|추세|분기별|산출\s*근거|산출\s*방식|어떻게\s*계산|개폐업")
+
+# 미지원 축 결정론 고지(I-12) + 확률 질문 안내(I-17) — 질문이 우리가 갖고 있지 않은
+# 데이터를 물으면 "없다"를 첫 문장에 코드가 말한다. 모델은 부재를 회피 서술한다
+# (2026-08-31 실측 m5: 임대료 질문에 임대료 언급 0, q03: 배당 데이터 없이 배당주 나열,
+# s4: 확률 요구에 일반론 1,800자).
+_MARKET_UNSUPPORTED_NOTICES = (
+    (re.compile(r"임대료|월세|보증금|권리금"),
+     "임대료·보증금·권리금 데이터는 제공하지 않아요(공공데이터에 없어요)."
+     " 아래는 매출·점포·유동인구 등 보유 데이터 기준이에요."),
+    (re.compile(r"정확한?\s*매출|실제\s*매출"),
+     "매출 수치는 카드사 기반 추정 집계예요 — 개별 점포의 실제 매출 데이터는 제공하지 않아요."),
+)
+_STOCK_UNSUPPORTED_NOTICES = (
+    (re.compile(r"배당"),
+     "배당수익률·배당 이력 데이터는 아직 제공하지 않아요. 아래는 가격·수급·가치 지표 기준이에요."),
+    (re.compile(r"PER\s*(?:이|가)?\s*(?:낮은|높은)|저\s*PER|PER\s*비교"),
+     "종목 간 PER 비교·스크리닝은 아직 지원하지 않아요 — 개별 종목의 밸류에이션 한 줄만 제공해요."),
+    (re.compile(r"확률|몇\s*(?:퍼센트|%)"),
+     "오르거나 내릴 확률은 단정해서 제시하지 않아요 — 과거 통계 참고치는 종목 예측 화면에서"
+     " 표본·신뢰구간과 함께 볼 수 있어요."),
+)
+
+
+def _unsupported_notice(
+    prompt: str, table: tuple[tuple[re.Pattern[str], str], ...],
+) -> str:
+    lines = [f"※ {msg}" for pattern, msg in table if pattern.search(prompt)]
+    return "\n".join(lines) + "\n\n" if lines else ""
+
+
+# 조건 질의 결정론 라우팅(I-14 확장, 2026-08-31 실측 m4) — "유동인구 많고 폐업률 낮은
+# 상권 3곳"은 phase1(LLM)이 답할 수 없다: 후보 표에 판정 축이 없어 62초 뒤 422였다.
+# 지역 미언급 + 조건 어휘면 랭킹 집계를 코드로 정렬해 답한다. 유동인구 축은 랭킹에
+# 없으므로 정렬 근거로 쓰지 않고 없다고 고지한다(I-12와 같은 태도).
+_CONDITION_AXES = (
+    ("closure", re.compile(r"폐업\s*률?\s*(?:이|가|은|는|도)?\s*(?:낮|적)")),
+    ("flow", re.compile(r"유동\s*인구\s*(?:가|는|도)?\s*많")),
+    ("sales", re.compile(r"매출\s*(?:이|가|은|는|도)?\s*(?:높|많|큰|잘)")),
+)
+_CONDITION_COUNT = re.compile(r"(\d+)\s*(?:곳|군데|개)")
+_CONDITION_DEFAULT_COUNT = 3
+_CONDITION_MAX_COUNT = 10
+# 점포 극단값 컷 — 점포 1~2개 상권은 폐업률 0%가 흔하다(랭킹 쇼케이스 하한과 같은 취지)
+_CONDITION_MIN_STORES = 10
+
 
 def _parse_llm_json(raw: str) -> dict:
     raw = raw.strip()
@@ -359,9 +409,16 @@ class ChatInteractor(ChatUseCase):
 
     @staticmethod
     def _place_stem(name: str) -> str:
-        """지명 어간 — 선행 한글 구간에서 행정 접미(구·동·가·로 등)를 뗀다 (예: 성수1가1동 → 성수)."""
+        """지명 어간 — 선행 한글 구간에서 행정 접미(구·동·가·로 등)를 뗀다 (예: 성수1가1동 → 성수).
+
+        선행 한글이 1자로 퇴화하면 숫자를 걷어내고 다시 딴다 — "목1동"의 선행 한글은
+        "목"이라 2자 미만 필터에서 탈락했다(2026-08-31 실측 p06: 목동 반찬가게 질문 422).
+        """
         match = re.match(r"^[가-힣]+", name or "")
         stem = match.group() if match else ""
+        if len(stem) < 2:
+            match = re.match(r"^[가-힣]+", re.sub(r"\d+", "", name or ""))
+            stem = match.group() if match else ""
         while len(stem) > 2 and stem[-1] in "구동가로읍면리":
             stem = stem[:-1]
         return stem
@@ -646,6 +703,12 @@ class ChatInteractor(ChatUseCase):
                 return AskResponse(
                     text=text, recommendations=[], conversationId=conversation_id,
                 )
+            # 조건 질의 결정론 라우팅 — 지역 미언급 + 조건 어휘면 LLM 없이 랭킹으로 답한다
+            axes = [key for key, pattern in _CONDITION_AXES if pattern.search(prompt)]
+            if axes:
+                return await self._answer_condition_ranking(
+                    conversation_id, prompt, axes, on_stage,
+                )
 
         # 반경 질의 가드(I-10) — 중심 상권을 좌표로 특정할 수 있으면 반경 안 상권 집합을
         # 만들어 phase1 결과를 자르고, 못 하면 "미적용"을 답변 문두에 결정론으로 명시한다.
@@ -758,12 +821,14 @@ class ChatInteractor(ChatUseCase):
         area_articles = await self._market_news.search(prompt, limit=4)
 
         quarter_label = f"{str(quarter)[:4]}년 {str(quarter)[4]}분기"
+        wants_detail = bool(_EXPERT_DETAIL_RE.search(prompt))
         stats_context_lines = [f"사용자 질문: {prompt}\n업종: {service_name}\n기준: {quarter_label}\n"]
         for code in valid_codes:
             area = area_map[code]
             st = real_stats.get(code, {})
             score = area_scores.get(code)
             score_line = f"- 서울 평균 대비: {self._score_text(score)}\n" if score else ""
+            trend_line = self._trend_text(score) if wants_detail and score else ""
             insight_line = self._insight_text(area_insights.get(code))
             permit_line = self._permit_text(permit_churn.get(code))
             stats_context_lines.append(
@@ -775,7 +840,13 @@ class ChatInteractor(ChatUseCase):
                 f"- 유동인구 최다 연령대: {st.get('top_age')} (통행량 기준 — 매출 기준 고객층이 아님)"
                 f" | 유동인구 피크시간(시간당): {st.get('peak_time')}\n"
                 f"- 상권변화: {st.get('change_text')} | {st.get('op_months_text')}\n"
-                f"{score_line}{permit_line}{insight_line}"
+                f"{score_line}{trend_line}{permit_line}{insight_line}"
+            )
+        if wants_detail:
+            stats_context_lines.append(
+                "[종합점수 산출 방식] 시도(서울) 벤치마크 대비 4개 컴포넌트 — 매출 성장·"
+                "유동인구 성장(직전 분기 대비), 개폐업 건강도, 영업 지속성 — 를 0~100으로"
+                " 환산해 종합. 50점 = 서울 평균 동률."
             )
         if area_articles:
             stats_context_lines.append(self._format_area_articles(area_articles))
@@ -799,6 +870,17 @@ class ChatInteractor(ChatUseCase):
             for item in p2.get("areas", [])
             if str(item.get("trdar_code", "")).isdigit()
         }
+        # 값 재라벨 금지 가드(I-15 상권판, 2026-08-31 실측 m1) — 폐업률 데이터가 없는
+        # 상권의 이유에 "폐업률"이 등장하면 문장째 걷어낸다(영업 기간 재라벨 차단).
+        # 유의 문장이 지워지면 바로 아래 _ensure_risk_note가 데이터 기반 문장으로 다시 채운다.
+        reason_map = {
+            code: (
+                answer_guard.strip_unsupported_metric(reason, "폐업률")
+                if real_stats.get(code, {}).get("closure_text") == "데이터 없음"
+                else reason
+            )
+            for code, reason in reason_map.items()
+        }
         # C2 리스크 의무의 결정론 보강 — 모델이 "유의할 점"을 빼먹으면(첫 재측정 준수율 31%)
         # 이미 컨텍스트에 주입된 수치를 재인용해 붙인다. 창작이 아니라 팩트의 재사용이다.
         reason_map = {
@@ -811,6 +893,16 @@ class ChatInteractor(ChatUseCase):
         reasoned = [c for c in valid_codes if reason_map.get(c, "").strip()]
         if reasoned:
             valid_codes = reasoned
+
+        # 등급 결정론 가드(2026-08-31 실측 p04) — '주의'/'위험' 상권은 모델이 무엇을 썼든
+        # 추천 어휘를 차단하고, 등급 고지를 답변 첫 문단에 코드로 삽입한다(아래 text 조립).
+        caution_codes = [
+            code for code in valid_codes
+            if (s := area_scores.get(code)) and s.grade in answer_guard.CAUTION_GRADES
+        ]
+        for code in caution_codes:
+            if reason_map.get(code):
+                reason_map[code] = answer_guard.suppress_recommendation(reason_map[code])
 
         recommendations: list[AreaRecommendation] = []
         for code in valid_codes:
@@ -842,7 +934,20 @@ class ChatInteractor(ChatUseCase):
                 ),
             ))
 
-        text = radius_note + p2.get("text", "")
+        text = p2.get("text", "")
+        if caution_codes:
+            text = answer_guard.suppress_recommendation(text)
+            notices = " ".join(
+                answer_guard.grade_caution_notice(
+                    area_map[code].trdar_name,
+                    area_scores[code].grade,
+                    area_scores[code].total,
+                )
+                for code in caution_codes
+            )
+            text = f"{notices}\n\n{text}" if text else notices
+        # 미지원 축 고지(I-12)가 맨 앞 — "없다"부터 말하고 보유 데이터 서술이 따른다
+        text = _unsupported_notice(prompt, _MARKET_UNSUPPORTED_NOTICES) + radius_note + text
         # 구조화 카드를 payload로 동반 저장 — 히스토리 재진입 시 카드 복원용
         await self._conversations.add_message(
             conversation_id, "assistant", text,
@@ -869,6 +974,64 @@ class ChatInteractor(ChatUseCase):
         return AskResponse(
             text=text, recommendations=recommendations, conversationId=conversation_id,
         )
+
+    async def _answer_condition_ranking(
+        self, conversation_id: int, prompt: str, axes: list[str], on_stage,
+    ) -> AskResponse:
+        """조건 질의 결정론 응답 — 랭킹 집계를 코드로 정렬해 N곳을 채운다(LLM 미사용).
+
+        정렬 축은 실제 보유 지표만 쓴다: 폐업률(낮은 순)·월매출(높은 순).
+        유동인구는 랭킹 집계에 없다 — 정렬한 척하지 않고 없다고 말한다(반경 가드와 같은 태도).
+        """
+        self._notify(on_stage, "data", "조건에 맞는 상권을 찾고 있어요")
+        rows = await self._market.get_area_ranking()
+        pool = [
+            r for r in rows
+            if r.closure_rate is not None and r.monthly_sales
+            and (r.store_count or 0) >= _CONDITION_MIN_STORES
+        ]
+        count_match = _CONDITION_COUNT.search(prompt)
+        count = int(count_match.group(1)) if count_match else _CONDITION_DEFAULT_COUNT
+        count = max(1, min(count, _CONDITION_MAX_COUNT))
+
+        want_closure = "closure" in axes
+        pool.sort(key=lambda r: (
+            r.closure_rate if want_closure else 0.0,
+            -(r.monthly_sales or 0),
+        ))
+        top = pool[:count]
+        if not top:
+            text = (
+                "조건으로 정렬할 상권 데이터를 찾지 못했어요. 동네·역·거리 이름을 함께"
+                ' 물어봐 주세요 (예: "강남역 카페 어때?").'
+            )
+            await self._conversations.add_message(conversation_id, "assistant", text)
+            return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
+
+        crit = "폐업률 낮은 순(동률은 월매출 높은 순)" if want_closure else "월매출 높은 순"
+        lines = [f"서울 전체(업종 무관, 점포 {_CONDITION_MIN_STORES}개 이상 상권)에서"
+                 f" {crit} 상위 {len(top)}곳이에요."]
+        for i, r in enumerate(top, 1):
+            per = (
+                f" · 점포당 월 {round(r.sales_per_store / 10000):,}만원"
+                if r.sales_per_store else ""
+            )
+            change = f" · {r.change_indicator_name}" if r.change_indicator_name else ""
+            lines.append(
+                f"{i}. {r.trdar_name} ({r.district_name} {r.dong_name}) —"
+                f" 폐업률 {r.closure_rate:.0f}% · 월매출 {r.monthly_sales / 1e8:.1f}억원"
+                f"{per}{change}"
+            )
+        if "flow" in axes:
+            lines.append(
+                "※ 유동인구 순 정렬은 아직 지원하지 않아 위 결과에는 반영되지 않았어요."
+            )
+        lines.append(
+            '특정 동네가 궁금하면 지역과 업종을 함께 물어봐 주세요 (예: "성수동 카페 어때?").'
+        )
+        text = "\n".join(lines)
+        await self._conversations.add_message(conversation_id, "assistant", text)
+        return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
 
     async def _load_profile(self, user_id: int | None) -> UserProfileSummary | None:
         """프로파일 조회 — 비로그인·미작성·조회 실패는 전부 None(주입 생략, 답변 무손상)."""
@@ -941,6 +1104,8 @@ class ChatInteractor(ChatUseCase):
         비교 질문("테슬라랑 애플 중 뭐가 나아?")에서 7.8B가 스키마(단일 문자열) 대신
         리스트나 그 문자열 표기("['테슬라', '애플']")를 반환한 실사례 방어 — str()로
         감싸면 리스트 표기가 심볼 리졸버까지 흘러가 전부 실패한다(2026-08-31 프로덕션).
+        세 번째 변형: 쉼표 결합 단일 문자열("테슬라, 애플") — 2026-09-01 배포 검증에서
+        실측(리졸버가 통째로 받아 "종목을 찾지 못했습니다: 테슬라, 애플").
         """
         if isinstance(raw, list):
             items = raw
@@ -952,6 +1117,8 @@ class ChatInteractor(ChatUseCase):
                     items = list(parsed) if isinstance(parsed, (list, tuple)) else [text]
                 except (ValueError, SyntaxError):
                     items = [p.strip(" '\"") for p in text[1:-1].split(",")]
+            elif re.search(r"[,·]", text):
+                items = re.split(r"\s*[,·]\s*", text)
             else:
                 items = [text]
         return [q for q in (str(item).strip() for item in items) if q]
@@ -1031,6 +1198,8 @@ class ChatInteractor(ChatUseCase):
         # 절대 규칙은 프롬프트가 아니라 코드가 지킨다(2026-08-28 골든셋 위반 13건)
         text = answer_guard.strip_dangling_citations(text, answer_guard.allowed_citations(context))
         text = answer_guard.ensure_disclaimer(text)
+        # 미지원 축 고지(I-12) — 배당 질의는 종목 미추출 시 이 경로로 낙하한다(q03 실측)
+        text = _unsupported_notice(prompt, _STOCK_UNSUPPORTED_NOTICES) + text
         news = [
             NewsCardItem(
                 title=h.title,
@@ -1131,8 +1300,17 @@ class ChatInteractor(ChatUseCase):
         text = answer_guard.ensure_volume_verdict(
             text, ma20=analysis.ma20, ma50=analysis.ma50, volume_ratio=analysis.volume_ratio,
         )
+        # 매물대 거리 재라벨 금지(I-15, 실측 q09) — 먼 구간을 "근처"라 부르지 못하게 한다
+        text = answer_guard.enforce_distance_claim(
+            text, price=analysis.price, band_low=analysis.volume_poc_low,
+            band_high=analysis.volume_poc_high,
+            atr_value=analysis.price * analysis.atr_pct,
+        )
+        # 용어 결정론 풀이(I-19) — 질문에 없는 전문용어의 첫 등장에 괄호 설명을 붙인다
+        text = answer_guard.attach_glossary(text, prompt)
         text = answer_guard.ensure_disclaimer(text)
-        text = compare_notice + text
+        # 미지원 축·확률 고지(I-12·I-17)가 비교 고지(I-18)보다 앞 — 전부 결정론 문두 삽입
+        text = _unsupported_notice(prompt, _STOCK_UNSUPPORTED_NOTICES) + compare_notice + text
 
         # 결론 한 줄 — 페이지 히어로와 같은 verdict 로직으로 서버가 계산해 카드에 싣는다.
         # detail(표본·신뢰구간)까지 카드에 싣는다 — 배지 밑에 근거가 없으면 판정만 남아
@@ -1203,16 +1381,47 @@ class ChatInteractor(ChatUseCase):
 
     @staticmethod
     def _score_text(score: AreaScoreInfo) -> str:
-        """상권 종합점수 의미 해석 문장 — 성장 컴포넌트는 상권/서울 QoQ를 병기한다."""
+        """상권 종합점수 의미 해석 문장 — 컴포넌트마다 서울 평균 대비 방향을 코드가 못박는다.
+
+        2026-08-31 실측(p04): 방향 없이 점수만 주면 7.8B가 47.9점(평균 미달)을 "크게
+        상회"로 뒤집어 서술했다. 성장 컴포넌트는 상권/서울 QoQ 실측치를 병기한다.
+        """
         parts = []
         for c in score.components:
+            side = "상회" if c.score > 50 else ("동률" if c.score == 50 else "미달")
             if c.key in ("sales_growth", "floating_growth"):
                 parts.append(
-                    f"{c.name} {c.score}점(상권 {c.value:+.1f}% vs 서울 {c.benchmark:+.1f}%)"
+                    f"{c.name} {c.score}점(서울 평균 {side} —"
+                    f" 상권 {c.value:+.1f}% vs 서울 {c.benchmark:+.1f}%)"
                 )
             else:
-                parts.append(f"{c.name} {c.score}점")
-        return f"종합 {score.total}점·{score.grade} (50점=서울 평균 수준) — " + ", ".join(parts)
+                parts.append(f"{c.name} {c.score}점(서울 평균 {side})")
+        total_side = "상회" if score.total > 50 else ("동률" if score.total == 50 else "미달")
+        return (
+            f"종합 {score.total}점·{score.grade} (50점=서울 평균, 이 상권은 평균 {total_side})"
+            " — " + ", ".join(parts)
+        )
+
+    @staticmethod
+    def _trend_text(score: AreaScoreInfo) -> str:
+        """분기 추이 한 줄(I-20) — 전문가 질문에만 주입한다(프롬프트 예산 보호).
+
+        최근 6분기만 싣고, 값이 전혀 없는 분기는 건너뛴다(없는 축은 '-'가 아니라 생략).
+        """
+        points = [t for t in score.trend if t.monthly_sales or t.total_floating_pop][-6:]
+        if not points:
+            return ""
+        parts = []
+        for t in points:
+            seg = [str(t.year_quarter)]
+            if t.monthly_sales:
+                qoq = f"{t.sales_qoq:+.1f}%" if t.sales_qoq is not None else "-"
+                seg.append(f"매출 {t.monthly_sales / 1e8:.1f}억(QoQ {qoq})")
+            if t.total_floating_pop:
+                fq = f"{t.floating_qoq:+.1f}%" if t.floating_qoq is not None else "-"
+                seg.append(f"유동 {t.total_floating_pop / 10000:.1f}만(QoQ {fq})")
+            parts.append(" ".join(seg))
+        return "- 분기 추이: " + " / ".join(parts) + "\n"
 
     @staticmethod
     def _permit_text(churn: PermitChurnInfo | None) -> str:

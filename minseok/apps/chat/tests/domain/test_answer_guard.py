@@ -63,3 +63,71 @@ def test_배열이_붙어_있으면_판정을_생략한다():
     # 골든셋에서 한 번도 발화하지 않았다 — 스텁이 전 케이스를 NEUTRAL로 고정한다).
     plain = "지표가 서로 상쇄됐습니다."
     assert g.ensure_volume_verdict(plain, ma20=100.0, ma50=100.2, volume_ratio=0.4) == plain
+
+
+def test_주의_등급_추천_어휘를_중립으로_되돌린다():
+    src = "성수역을 강력히 추천합니다. 유동인구 성장률이 높습니다."
+    out = g.suppress_recommendation(src)
+    # eval_scorer grade_caution과 같은 어휘가 남지 않는다
+    assert "추천" not in out and "강력히" not in out
+    assert "성수역을 검토해볼 만합니다." in out
+    assert "유동인구 성장률이 높습니다." in out  # 수치 서술 문장은 지우지 않는다
+
+
+def test_추천_활용형과_명사형도_치환된다():
+    assert "검토해 보시길 바랍니다" in g.suppress_recommendation("추천드립니다")
+    assert g.suppress_recommendation("추천 상권입니다") == "검토 상권입니다"
+    assert "적극적으로" not in g.suppress_recommendation("적극적으로 추천해요")
+
+
+def test_등급_고지_문장():
+    line = g.grade_caution_notice("성수역", "주의", 44.9)
+    assert line.startswith("※ 성수역 상권은 종합 44.9점 '주의' 등급")
+    assert "서울 평균(50점)에 못 미칩니다" in line
+
+
+def test_데이터_없는_지표명이_든_문장만_걷어낸다():
+    # 2026-08-31 실측 m1: 폐업률 '데이터 없음'인데 영업 기간을 폐업률로 재라벨
+    src = "유동인구가 많습니다. 유의할 점: 높은 폐업률(평균 49개월 내 폐업)이 있어요."
+    out = g.strip_unsupported_metric(src, "폐업률")
+    assert out == "유동인구가 많습니다."
+
+
+def test_지표명이_없으면_그대로_둔다():
+    src = "유동인구가 많습니다. 유의할 점: 경쟁 밀집."
+    assert g.strip_unsupported_metric(src, "폐업률") == src
+
+
+def test_먼_매물대를_근처라_부르면_실제_위치로_교체한다():
+    # 2026-08-31 실측 q09: 현재가 227.97, 매물대 180.10~186.34(23% 아래)를 "근처"로 서술
+    answer = "과거 거래량 밀집 구간(180.10~186.34달러) 근처에 있습니다. 지지선 근처도 보세요."
+    out = g.enforce_distance_claim(
+        answer, price=227.97, band_low=180.10, band_high=186.34,
+        atr_value=227.97 * 0.064,  # ATR 6.4% — 거리 41.6 > 2×ATR 29.2
+    )
+    assert "(현재가보다 18% 아래)에 있습니다" in out
+    assert "지지선 근처" in out  # 매물대 문장이 아니면 손대지 않는다
+
+
+def test_구간_안이거나_ATR_2배_이내면_근처를_허용한다():
+    answer = "매물대 근처입니다."
+    assert g.enforce_distance_claim(
+        answer, price=183.0, band_low=180.0, band_high=186.0, atr_value=5.0,
+    ) == answer  # 구간 안
+    assert g.enforce_distance_claim(
+        answer, price=190.0, band_low=180.0, band_high=186.0, atr_value=5.0,
+    ) == answer  # 거리 4 ≤ 2×ATR 10
+
+
+def test_질문에_없는_전문용어에_괄호_풀이를_붙인다():
+    out = g.attach_glossary("수급 유출 우위이고 모멘텀도 약합니다. 수급 개선 필요.", "애플 어때?")
+    assert out.startswith("수급(사자·팔자 자금의 흐름) 유출 우위")
+    assert "모멘텀(최근 1년 주가 흐름의 힘)" in out
+    assert out.count("수급(") == 1  # 첫 등장에만
+
+
+def test_질문자가_쓴_용어와_이미_괄호가_붙은_용어는_건드리지_않는다():
+    src = "수급이 약합니다."
+    assert g.attach_glossary(src, "삼성전자 수급 어때?") == src  # 질문자가 아는 용어
+    src2 = "ATR(14) 기준 변동성이 큽니다."
+    assert g.attach_glossary(src2, "애플 어때?") == src2  # 기존 괄호 설명 유지

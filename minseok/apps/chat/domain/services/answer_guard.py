@@ -84,3 +84,116 @@ def ensure_disclaimer(answer: str) -> str:
     if _DISCLAIMER_SUBJECT.search(tail) and _DISCLAIMER_OWNER.search(tail):
         return answer
     return f"{answer.rstrip()}\n\n{DISCLAIMER}"
+
+
+# 등급 결정론 가드 — 2026-08-31 프로덕션 실측(p04): 총점 44.9 '주의' 상권을 "강력히
+# 추천합니다. 유동인구 성장률이 서울 평균을 크게 상회"로 사실 반전 서술했다. 등급 의미론
+# (50점=서울 평균)은 프롬프트에 있어도 7.8B가 뒤집는다 — 어휘 차단과 등급 고지를 코드가
+# 보장한다. 판정 어휘는 eval_scorer의 grade_caution 규칙과 같다.
+CAUTION_GRADES = ("주의", "위험")
+
+# 부사는 어디서 지워도 문장이 성립한다 — 어휘 전체를 걷어낸다("강력한"은 명사 수식이라
+# 두고, 뒤의 추천→검토 치환이 "강력한 검토"로 눅인다)
+_INTENSIFIER = re.compile(r"(?:강력히|강력하게|적극적으로)\s*")
+_RECOMMEND_POLITE = re.compile(r"추천\s*(?:드립니다|드려요)")
+_RECOMMEND_PLAIN = re.compile(r"추천\s*(?:합니다|해요)")
+
+
+def suppress_recommendation(text: str) -> str:
+    """'주의'/'위험' 등급 상권 서술의 추천 어휘를 중립(검토)으로 되돌린다.
+
+    문장을 지우지 않는다 — 수치 근거 서술은 남기고 단정 어휘만 바꾼다
+    (유령 인용 가드와 같은 태도: 마커만 걷고 문장은 살린다).
+    """
+    t = _INTENSIFIER.sub("", text)
+    t = _RECOMMEND_POLITE.sub("검토해 보시길 바랍니다", t)
+    t = _RECOMMEND_PLAIN.sub("검토해볼 만합니다", t)
+    return t.replace("추천", "검토")
+
+
+# 용어 결정론 풀이(I-19, 2026-08-31 실측 q01·q06) — "나스닥도 모른다"는 초보에게
+# "12-1 모멘텀 +47.9%, 수급 유출 우위"가 나갔다. 질문에 그 용어가 없으면(초보 추정)
+# 첫 등장에 괄호 한 줄 설명을 코드가 붙인다. 질문에 있으면 생략(q04 전문 질의 무풀이).
+_GLOSSARY = (
+    ("모멘텀", "최근 1년 주가 흐름의 힘"),
+    ("수급", "사자·팔자 자금의 흐름"),
+    ("%B", "볼린저 밴드 안 현재가 위치 — 0=하단·1=상단"),
+    ("ATR", "하루 평균 변동폭"),
+    ("정배열", "단기 이동평균이 장기보다 위 — 상승 추세 모양"),
+    ("역배열", "단기 이동평균이 장기보다 아래 — 하락 추세 모양"),
+)
+
+
+def attach_glossary(answer: str, prompt: str) -> str:
+    """질문자가 쓰지 않은 전문용어의 첫 등장에 괄호 설명을 붙인다(멱등).
+
+    이미 괄호가 붙은 용어("ATR(14)")는 설명이 있는 것으로 보고 건너뛴다 —
+    컨텍스트 주입 문장이 이 형태를 쓴다.
+    """
+    for term, gloss in _GLOSSARY:
+        if term in prompt or term not in answer:
+            continue
+        if f"{term}(" in answer:
+            continue
+        answer = answer.replace(term, f"{term}({gloss})", 1)
+    return answer
+
+
+# 값 재라벨 금지 가드(I-15) — 컨텍스트가 주지 않은 지표명·거리 판정을 모델이 지어붙인
+# 실측 2건(2026-08-31): m1은 폐업률이 '데이터 없음'인데 "높은 폐업률(평균 49개월 내 폐업)"
+# 으로 별개 지표(영업 기간)를 재라벨했고, q09는 현재가보다 23% 아래인 매물대를 "근처"라 불렀다.
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?…])\s+|\n+")
+
+NEAR_ATR_MULTIPLE = 2.0
+_NEAR_WORD = re.compile(r"근처|부근|인근")
+# 구분자를 캡처로 보존해 재조립한다. 소수점(180.10)은 공백이 안 따라와 경계가 아니다.
+_SENTENCE_PIECES = re.compile(r"((?<=[.!?…])\s+|\n+)")
+
+
+def strip_unsupported_metric(reason: str, metric: str) -> str:
+    """지표 데이터가 없는데 그 지표명이 등장한 문장을 걷어낸다(I-15 상권판).
+
+    수치만 지우면 라벨("높은 폐업률")이 남아 더 위험하다 — 문장째 지운다.
+    '유의할 점' 문장이 지워지면 인터랙터의 _ensure_risk_note가 데이터 기반 문장으로
+    다시 채운다(호출 순서가 계약이다).
+    """
+    kept = [s for s in _SENTENCE_SPLIT.split(reason) if s and metric not in s]
+    return " ".join(kept).strip()
+
+
+def enforce_distance_claim(
+    answer: str, *, price: float,
+    band_low: float | None, band_high: float | None, atr_value: float,
+) -> str:
+    """매물대 거리 재라벨 금지(I-15 주식판) — 현재가와 구간 거리가 ATR 2배를 넘으면
+    '근처'류 표현을 실제 상대 위치로 교체한다(실측 q09: 23% 아래 구간을 "근처").
+
+    구간을 언급한 문장(매물대·밀집)만 손댄다 — 지지선 등 다른 지표의 '근처'는
+    출처가 달라 이 판정으로 재단할 수 없다.
+    """
+    if not price or band_low is None or band_high is None or atr_value <= 0:
+        return answer
+    if band_low <= price <= band_high:
+        return answer
+    edge = band_high if price > band_high else band_low
+    if abs(price - edge) <= atr_value * NEAR_ATR_MULTIPLE:
+        return answer
+    pct = abs(price - edge) / price * 100
+    side = "아래" if price > edge else "위"
+    replacement = f"(현재가보다 {pct:.0f}% {side})"
+    return "".join(
+        _NEAR_WORD.sub(replacement, piece)
+        if ("매물대" in piece or "밀집" in piece) else piece
+        for piece in _SENTENCE_PIECES.split(answer)
+    )
+
+
+def grade_caution_notice(name: str, grade: str, total: float) -> str:
+    """등급 고지 한 줄 — 답변 첫 문단에 코드가 삽입한다(모델 서술과 무관하게 항상 정확).
+
+    '주의'(30~45)·'위험'(<30)은 정의상 항상 서울 평균(50점) 미달이다(GRADE_BOUNDS).
+    """
+    return (
+        f"※ {name} 상권은 종합 {total:.1f}점 '{grade}' 등급으로"
+        " 서울 평균(50점)에 못 미칩니다. 아래 유의점을 먼저 확인하세요."
+    )

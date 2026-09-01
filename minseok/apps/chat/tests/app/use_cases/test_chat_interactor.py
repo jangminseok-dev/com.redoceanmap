@@ -15,9 +15,11 @@ from chat.domain.entities.conversation_entity import Conversation, Message
 from hub.app.dtos.commercial_data_dto import (
     AreaInfo,
     AreaInsight,
+    AreaRankingInfo,
     AreaRawStat,
     AreaScoreComponent,
     AreaScoreInfo,
+    AreaTrendPoint,
     AreaSummary,
     PermitChurnInfo,
     ServiceCode,
@@ -145,7 +147,8 @@ class _StubMarket:
                  raw: AreaRawStat | None = None,
                  permit_churn: dict[int, PermitChurnInfo] | None = None,
                  areas: list[AreaInfo] | None = None,
-                 yoy: dict[int, float | None] | None = None):
+                 yoy: dict[int, float | None] | None = None,
+                 ranking: list[AreaRankingInfo] | None = None):
         self.summary_calls = 0
         self.scores = scores or {}
         self.score_calls: list[list[int]] = []
@@ -156,6 +159,8 @@ class _StubMarket:
         self.permit_calls: list[list[int]] = []
         self._areas = areas  # None이면 기존 단일 상권(무손상)
         self._yoy = yoy or {}
+        self.ranking = ranking or []
+        self.ranking_calls: list[str | None] = []
 
     async def get_area_summary(self) -> AreaSummary:
         self.summary_calls += 1
@@ -178,6 +183,10 @@ class _StubMarket:
     async def get_area_scores(self, trdar_codes):
         self.score_calls.append(list(trdar_codes))
         return self.scores
+
+    async def get_area_ranking(self, service_code=None):
+        self.ranking_calls.append(service_code)
+        return self.ranking
 
     async def get_area_insights(self, trdar_codes, service_code=None):
         self.insight_calls.append((list(trdar_codes), service_code))
@@ -331,6 +340,15 @@ async def test_비교_질문_리스트_반환은_첫_종목만_분석하고_고�
     assert result.text.startswith("여러 종목 비교는 아직 지원하지 않아 '테슬라'만 분석했어요.")
     assert "애플" in result.text.split("\n\n")[0]
     assert result.text.endswith("투자 판단과 그 결과는 본인 책임입니다.")  # 고지 유지
+
+
+async def test_비교_질문_쉼표_결합_문자열도_첫_종목만_분석한다(monkeypatch):
+    # 세 번째 변형(2026-09-01 배포 검증 실측): "테슬라, 애플" 단일 문자열
+    intent = '{"intent": "stock", "stock_query": "테슬라, 애플"}'
+    interactor, _, stubs = _build(monkeypatch, [intent, "주식 서술"])
+    result = await interactor.ask("테슬라랑 애플 중 어디에 투자할까?")
+    assert stubs["stocks"].queries == ["테슬라"]
+    assert result.text.startswith("여러 종목 비교는 아직 지원하지 않아 '테슬라'만 분석했어요.")
 
 
 async def test_비교_질문_리스트_문자열_표기도_첫_종목만_분석한다(monkeypatch):
@@ -546,9 +564,10 @@ async def test_상권_컨텍스트에_서울_평균_대비_종합점수가_주�
     )
     await interactor.ask("역삼동 카페 어때?")
     phase2_prompt = llm.calls[2][0]
-    assert "서울 평균 대비: 종합 59.6점·보통 (50점=서울 평균 수준)" in phase2_prompt
-    assert "매출 성장 91.9점(상권 +21.9% vs 서울 +5.2%)" in phase2_prompt
-    assert "영업 지속성 16.1점" in phase2_prompt
+    assert "서울 평균 대비: 종합 59.6점·보통 (50점=서울 평균, 이 상권은 평균 상회)" in phase2_prompt
+    # 컴포넌트마다 평균 대비 방향을 코드가 못박는다(1-1 실측: 방향 없이 주면 모델이 뒤집는다)
+    assert "매출 성장 91.9점(서울 평균 상회 — 상권 +21.9% vs 서울 +5.2%)" in phase2_prompt
+    assert "영업 지속성 16.1점(서울 평균 미달)" in phase2_prompt
     assert market.score_calls == [[1000001]]
 
 
@@ -556,6 +575,171 @@ async def test_종합점수가_없는_상권은_점수_라인을_생략한다(mo
     interactor, llm, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON])
     await interactor.ask("역삼동 카페 어때?")
     assert "- 서울 평균 대비:" not in llm.calls[2][0]  # 규칙 문구가 아닌 컨텍스트 라인 기준
+
+
+async def test_주의_등급_상권은_추천_어휘가_차단되고_등급_고지가_문두에_붙는다(monkeypatch):
+    # 2026-08-31 프로덕션 실측(p04): 44.9점 '주의'를 "강력히 추천"으로 사실 반전 서술
+    caution = AreaScoreInfo(
+        total=44.9, grade="주의",
+        components=(
+            AreaScoreComponent(key="floating_growth", name="유동인구 성장",
+                               score=47.9, value=-0.11, benchmark=0.72),
+        ),
+    )
+    market = _StubMarket(scores={1000001: caution})
+    phase2 = ('{"text": "테스트상권을 강력히 추천합니다", "areas": [{"trdar_code": 1000001,'
+              ' "reason": "강력히 추천합니다. 유의할 점: 경쟁 밀집."}]}')
+    interactor, llm, _ = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, phase2], market=market,
+    )
+    result = await interactor.ask("역삼동 카페 어때?")
+
+    # 등급 고지가 답변 첫 문단에 코드로 박힌다
+    assert result.text.startswith("※ 테스트상권 상권은 종합 44.9점 '주의' 등급")
+    # 추천 어휘는 본문·이유 모두에서 차단된다(eval_scorer grade_caution과 같은 어휘)
+    assert "추천" not in result.text and "강력히" not in result.text
+    assert "추천" not in result.recommendations[0].reason
+    assert "유의할 점: 경쟁 밀집." in result.recommendations[0].reason  # 문장은 살린다
+    # 컨텍스트에도 방향이 박힌다 — 미달 점수를 "상회"로 뒤집을 수 없게
+    assert "유동인구 성장 47.9점(서울 평균 미달 — 상권 -0.1% vs 서울 +0.7%)" in llm.calls[2][0]
+
+
+def _ranking_row(**overrides) -> AreaRankingInfo:
+    base = dict(trdar_code=1, trdar_name="A상권", district_name="강남구", dong_name="역삼동",
+                monthly_sales=3_000_000_000, store_count=40, sales_per_store=75_000_000,
+                closure_rate=0.0, change_indicator_name="정체")
+    return AreaRankingInfo(**{**base, **overrides})
+
+
+async def test_조건_질의는_LLM_없이_랭킹으로_결정론_응답한다(monkeypatch):
+    # 2026-08-31 실측 m4: "유동인구 많고 폐업률 낮은 상권 3곳" → 62초 뒤 422 원문 노출
+    ranking = [
+        _ranking_row(trdar_code=1, trdar_name="A상권", closure_rate=0.0,
+                     monthly_sales=3_000_000_000),
+        _ranking_row(trdar_code=2, trdar_name="B상권", closure_rate=2.0,
+                     monthly_sales=10_000_000_000),
+        _ranking_row(trdar_code=3, trdar_name="C상권", closure_rate=0.0,
+                     monthly_sales=8_000_000_000),
+        _ranking_row(trdar_code=4, trdar_name="극단상권", closure_rate=0.0,
+                     store_count=2),  # 점포 극단값 컷
+    ]
+    market = _StubMarket(ranking=ranking)
+    interactor, llm, _ = _build(monkeypatch, [INTENT_MARKET], market=market)
+    result = await interactor.ask("유동인구 많고 폐업률 낮은 상권 3곳 추천해줘")
+
+    assert len(llm.calls) == 1  # phase0만 — phase1·phase2 LLM 미호출
+    # 폐업률 낮은 순, 동률은 월매출 높은 순: C(0%, 80억) → A(0%, 30억) → B(2%, 100억)
+    lines = result.text.split("\n")
+    assert lines[1].startswith("1. C상권") and "폐업률 0% · 월매출 80.0억원" in lines[1]
+    assert lines[2].startswith("2. A상권")
+    assert lines[3].startswith("3. B상권")
+    assert "극단상권" not in result.text
+    # 없는 축은 없다고 말한다(I-12) — 유동인구를 정렬한 척하지 않는다
+    assert "유동인구 순 정렬은 아직 지원하지 않아" in result.text
+    assert result.recommendations == []
+
+
+async def test_지역이_언급된_조건_질의는_기존_흐름을_탄다(monkeypatch):  # 무손상
+    interactor, llm, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON])
+    result = await interactor.ask("역삼동에서 폐업률 낮은 카페 어때?")
+    assert len(llm.calls) == 3  # phase0·1·2 정상 경유
+    assert len(result.recommendations) == 1
+
+
+async def test_추이_질문은_분기_추이와_산출_방식이_컨텍스트에_주입된다(monkeypatch):
+    # I-20, 2026-08-31 실측 p04: "분기 매출 추이 데이터" 요청에 151자 일반 추천
+    score = AreaScoreInfo(
+        total=59.6, grade="보통",
+        components=(AreaScoreComponent(key="sales_growth", name="매출 성장",
+                                       score=91.9, value=21.9, benchmark=5.2),),
+        trend=(
+            AreaTrendPoint(year_quarter=20244, monthly_sales=320_000_000, sales_qoq=None,
+                           total_floating_pop=1_230_000, floating_qoq=None),
+            AreaTrendPoint(year_quarter=20251, monthly_sales=350_000_000, sales_qoq=9.4,
+                           total_floating_pop=1_180_000, floating_qoq=-4.1),
+        ),
+    )
+    market = _StubMarket(scores={1000001: score})
+    interactor, llm, _ = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON], market=market,
+    )
+    await interactor.ask("역삼동 카페 분기 매출 추이 데이터 보여줘")
+    context = llm.calls[2][0]
+    assert "- 분기 추이: 20244 매출 3.2억(QoQ -) 유동 123.0만(QoQ -)" in context
+    assert "20251 매출 3.5억(QoQ +9.4%) 유동 118.0만(QoQ -4.1%)" in context
+    assert "[종합점수 산출 방식]" in context
+
+
+async def test_일반_질문에는_분기_추이를_주입하지_않는다(monkeypatch):  # 프롬프트 예산 보호
+    score = AreaScoreInfo(
+        total=59.6, grade="보통", components=(),
+        trend=(AreaTrendPoint(year_quarter=20251, monthly_sales=350_000_000),),
+    )
+    market = _StubMarket(scores={1000001: score})
+    interactor, llm, _ = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON], market=market,
+    )
+    await interactor.ask("역삼동 카페 어때?")
+    assert "- 분기 추이:" not in llm.calls[2][0]
+    assert "[종합점수 산출 방식]" not in llm.calls[2][0]
+
+
+async def test_임대료_질문은_미지원_고지가_문두에_붙는다(monkeypatch):
+    # I-12, 2026-08-31 실측 m5: 임대료 질문에 임대료 언급 0(모델 회피 서술)
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON])
+    result = await interactor.ask("역삼동 카페 임대료 어때?")
+    assert result.text.startswith("※ 임대료·보증금·권리금 데이터는 제공하지 않아요")
+
+
+async def test_배당_확률_질문은_주식_미지원_고지가_문두에_붙는다(monkeypatch):
+    # I-12(q03 배당) + I-17(s4 확률) — 결정론 문두 삽입
+    interactor, _, _ = _build(monkeypatch, [INTENT_STOCK, "주식 서술."])
+    result = await interactor.ask("삼성전자 배당이랑 오를 확률 알려줘")
+    first_block = result.text.split("\n\n")[0]
+    assert "배당수익률·배당 이력 데이터는 아직 제공하지 않아요" in first_block
+    assert "확률은 단정해서 제시하지 않아요" in first_block
+    assert result.text.endswith("투자 판단과 그 결과는 본인 책임입니다.")
+
+
+async def test_용어_풀이는_질문에_없는_용어에만_붙는다(monkeypatch):
+    interactor, _, _ = _build(monkeypatch, [INTENT_STOCK, "수급 유출 우위입니다."])
+    result = await interactor.ask("애플 어때?")
+    assert "수급(사자·팔자 자금의 흐름)" in result.text
+
+
+def test_지명_어간은_숫자_낀_행정동을_되살린다():
+    # 2026-08-31 실측 p06: "목1동"의 선행 한글 어간이 "목" 1자로 붕괴 → 목동 질문 매칭 탈락
+    assert ChatInteractor._place_stem("목1동") == "목동"
+    assert ChatInteractor._place_stem("성수1가1동") == "성수"   # 기존 동작 무손상
+    assert ChatInteractor._place_stem("테헤란로107길") == "테헤란"  # 기존 동작 무손상
+
+
+async def test_숫자_낀_행정동_지역도_결정론_가드가_보정한다(monkeypatch):
+    areas = [
+        AreaInfo(trdar_code=1, trdar_name="목동문화체육센터", district_name="양천구",
+                 adm_dong_name="목2동", lat=37.53, lng=126.87),
+        AreaInfo(trdar_code=2, trdar_name="강남역", district_name="강남구",
+                 adm_dong_name="역삼동", lat=37.49, lng=127.02),
+    ]
+    market = _StubMarket(areas=areas)
+    phase1 = ('{"service_code": "CS100010", "service_name": "커피-음료",'
+              ' "trdar_codes": [2]}')  # 모델이 유명 상권으로 쏠린 상황
+    phase2 = '{"text": "요약", "areas": [{"trdar_code": 1, "reason": "이유. 유의할 점: 경쟁."}]}'
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, phase1, phase2], market=market)
+    result = await interactor.ask("목동에서 반찬가게 어때?")
+    assert [r.id for r in result.recommendations] == ["1"]
+
+
+async def test_보통_이상_등급_상권은_추천_어휘를_건드리지_않는다(monkeypatch):  # 무손상
+    market = _StubMarket(scores={1000001: _area_score()})  # 59.6점·보통
+    phase2 = ('{"text": "테스트상권을 추천합니다", "areas": [{"trdar_code": 1000001,'
+              ' "reason": "추천 이유. 유의할 점: 경쟁."}]}')
+    interactor, _, _ = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, phase2], market=market,
+    )
+    result = await interactor.ask("역삼동 카페 어때?")
+    assert result.text.startswith("테스트상권을 추천합니다")
+    assert "추천 이유" in result.recommendations[0].reason
 
 
 async def test_상권_컨텍스트에_상권_성격_해석이_주입된다(monkeypatch):
@@ -700,9 +884,10 @@ async def test_자기_지칭_없는_검증_질문은_기존_경로를_탄다(mon
 
 
 async def test_상권_특정_실패는_오류가_아니라_안내_답변이다(monkeypatch):
-    # "목동 반찬가게"·"유동인구 많은 상권 3곳"이 422 원문을 받았다(2026-08-31 프로덕션).
+    # "목동 반찬가게" 류가 422 원문을 받았다(2026-08-31 프로덕션). 조건 어휘가 있는
+    # 질문("유동인구 많은 상권 3곳")은 이제 랭킹 결정론 라우팅이 선점한다(별도 테스트).
     interactor, _, stubs = _build(monkeypatch, [INTENT_MARKET, PHASE1_EMPTY])
-    result = await interactor.ask("유동인구 많고 폐업률 낮은 상권 3곳 추천해줘")
+    result = await interactor.ask("장사 잘되는 동네 어디야?")
     assert "분석할 상권을 특정하지 못했어요" in result.text
     assert "랭킹" in result.text  # 조건 검색 대안 안내
     assert result.recommendations == []
