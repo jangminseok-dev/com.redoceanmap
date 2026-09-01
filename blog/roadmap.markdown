@@ -76,9 +76,9 @@ permalink: /roadmap/
 
 | 마일스톤 | 상태 |
 | --- | --- |
-| R1 검색 품질 계측 기반 — 골든셋·채점기·회귀 게이트 | <span class="st st-wip">하네스 완료 · 라벨 대기</span> |
-| R2 하이브리드 검색 (trigram + 벡터 RRF) | <span class="st st-wip">구현 완료 · 판정 대기</span> |
-| R3 청킹 전략 3종 비교 (공시 원문·표·각주) | <span class="st st-wip">구현 완료 · 판정 대기</span> |
+| R1 검색 품질 계측 기반 — 골든셋·채점기·회귀 게이트 | <span class="st st-done">완료 2026-08</span> baseline 박제(nDCG@5 0.77) |
+| R2 하이브리드 검색 (trigram + 벡터 RRF) | <span class="st st-drop">측정 후 기각</span> 개선폭 게이트 미달 — 현행 유지 |
+| R3 청킹 전략 3종 비교 (공시 원문·표·각주) | <span class="st st-drop">측정 후 기각</span> 표 인지 청킹이 대조군 이하 — 고정 청킹 유지 |
 | R4 문장 단위 출처 인용 + dangling citation 절대 규칙 | <span class="st st-done">완료 2026-08</span> |
 
 ※ R2·R3는 게이트 미달 시 **기각하고 현행 유지**한다 — 측정해서 기각한 이력도 결과다.
@@ -97,6 +97,8 @@ permalink: /roadmap/
 | 운영 관측 — 구조화 로깅 + 업타임 모니터링 (강제 다운 → 알림 2분 28초 실측) | <span class="st st-done">완료 2026-08</span> |
 | 데이터 갱신 자동화 + LLM 교체 스위치 | <span class="st st-done">완료 2026-08</span> |
 | 개인화 ⓪ 투자·창업 프로파일 / ① 관심 목록 상태 보드 | <span class="st st-done">완료 2026-08</span> |
+| 알림 v2 — 가격 도달(one-shot)·관심 종목 뉴스(커서 dedupe), 매시 스캔 | <span class="st st-done">완료 2026-09</span> |
+| 프로덕션 페르소나 테스트 3회(85턴) → 결정론 가드 일괄 | <span class="st st-done">완료 2026-09</span> |
 | 개인화 ② 선호 프로파일 | <span class="st st-wait">수요 게이트 뒤</span> |
 | 매물(listing) 스포크 | <span class="st st-wait">수요 게이트 뒤</span> |
 
@@ -109,7 +111,7 @@ permalink: /roadmap/
 | 실험 | 결과 |
 | --- | --- |
 | 5분봉 이벤트 연구 — 뉴스 후 30·60분 초과수익 | <span class="st st-done">완료</span> 초과수익 사실상 없음 — 값은 되돌림에서 나온다 |
-| 가중치 재적합·자동 승격 루프 | <span class="st st-done">완료</span> 채점→재적합→승격 자동화 |
+| 가중치 재적합·자동 승격 루프 | <span class="st st-done">완료</span> 채점→재적합→승격 자동화 — 변동성 초과 적중 정의로 첫 실전 승격(하한 0.50 > 기준선 0.34) |
 | 펀더멘털 → 판정 편입 | <span class="st st-drop">측정 후 기각</span> 전 조합 게이트 미달(역방향) — 서술 축 유지 |
 | LLM 라이선스 실사 | <span class="st st-done">완료</span> 공개 서비스 전 모델 교체 필수 판정 |
 | Neo4j 그래프 질의 게이트(E4) | <span class="st st-wait">측정 후 보류</span> 실질문 129건 전수 판정 — graph-only 0건, 착수 조건 미달 |
@@ -128,7 +130,7 @@ permalink: /roadmap/
 | I-10 반경·전년대비(YoY) 질의 가드 — 좌표 유클리드 필터 + 미적용 시 결정론 명시 | <span class="st st-done">완료 2026-08</span> |
 | I-1 상권변화지표 해석 팩트 — 4분류 톤 서술 + chat 주입 + 랭킹 필터 | <span class="st st-done">완료 2026-08</span> |
 | I-3 랭킹 필터·행정동 롤업 축 | <span class="st st-done">완료 2026-08</span> |
-| I-2 골든셋 경쟁사 예시 질문 편입 (124케이스) | <span class="st st-wip">편입 완료 · 측정 대기</span> |
+| I-2 골든셋 경쟁사 예시 질문 편입 (129케이스) | <span class="st st-done">완료 2026-09</span> 전건 완주·baseline 박제 |
 | B1 상권 북마크 알림 — 분기·등급 상태 스캔 + dedupe | <span class="st st-done">완료 2026-08</span> |
 | B2 주가 영향 키워드 Top-N 결정론 추출 | <span class="st st-done">완료 2026-08</span> |
 | I-7 알림 채널 텔레그램 추가 — 실발송(이메일+텔레그램 동시 수신) 검증 | <span class="st st-done">완료 2026-08</span> |
