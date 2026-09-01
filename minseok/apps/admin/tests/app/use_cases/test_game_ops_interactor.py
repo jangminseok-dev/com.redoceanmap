@@ -105,9 +105,20 @@ class _StubMembers:
         return "player@example.com"
 
 
+class _StubAudit:
+    def __init__(self):
+        self.entries: list[tuple[int, str, str]] = []
+
+    async def write(self, actor_id: int, action: str, detail: str) -> None:
+        self.entries.append((actor_id, action, detail))
+
+    async def list_recent(self, limit: int):
+        return []
+
+
 def _build(**kwargs):
     game = _StubGame(**kwargs)
-    return GameOpsInteractor(game=game, members=_StubMembers()), game
+    return GameOpsInteractor(game=game, members=_StubMembers(), audit=_StubAudit()), game
 
 
 # --- 지갑 -------------------------------------------------------------------
@@ -231,7 +242,7 @@ async def test_숨김_지시가_사유와_함께_game에_전달된다():
     interactor, game = _build()
 
     await interactor.hide_content(
-        HideContentCommand(target_type="post", target_id=11, reason="욕설")
+        HideContentCommand(target_type="post", target_id=11, reason="욕설", hidden_by=1)
     )
 
     assert game.hidden[11] == "욕설"
@@ -244,7 +255,7 @@ async def test_사유_없는_숨김은_거부한다(reason):
 
     with pytest.raises(ValueError):
         await interactor.hide_content(
-            HideContentCommand(target_type="post", target_id=11, reason=reason)
+            HideContentCommand(target_type="post", target_id=11, reason=reason, hidden_by=1)
         )
 
     assert game.hidden == {}
@@ -253,10 +264,10 @@ async def test_사유_없는_숨김은_거부한다(reason):
 async def test_숨김을_되돌릴_수_있다():
     interactor, game = _build()
     await interactor.hide_content(
-        HideContentCommand(target_type="post", target_id=11, reason="욕설")
+        HideContentCommand(target_type="post", target_id=11, reason="욕설", hidden_by=1)
     )
 
-    await interactor.unhide_content("post", 11)
+    await interactor.unhide_content("post", 11, 1)
 
     assert game.hidden == {}
 
@@ -264,4 +275,4 @@ async def test_숨김을_되돌릴_수_있다():
 async def test_숨겨지지_않은_글의_해제는_거부된다():
     interactor, _ = _build()
     with pytest.raises(ValueError):
-        await interactor.unhide_content("post", 999)
+        await interactor.unhide_content("post", 999, 1)

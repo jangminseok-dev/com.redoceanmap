@@ -45,6 +45,6 @@ class GameOpsUseCase(ABC):
         ...
 
     @abstractmethod
-    async def unhide_content(self, target_type: str, target_id: int) -> None:
+    async def unhide_content(self, target_type: str, target_id: int, actor_id: int) -> None:
         """숨김 해제. 대상이 없거나 숨겨져 있지 않으면 ValueError."""
         ...

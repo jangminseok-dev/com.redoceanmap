@@ -27,6 +27,7 @@ from market.app.dtos.area_score_dto import AreaScoreQuery
 from market.app.use_cases.area_detail_interactor import AreaDetailInteractor
 from market.app.use_cases.area_ranking_interactor import AreaRankingInteractor
 from market.app.use_cases.area_score_interactor import AreaScoreInteractor
+from market.adapter.outbound.orm.business_permit_orm import BusinessPermitOrm
 from market.adapter.outbound.orm.change_indicator_orm import ChangeIndicatorOrm
 from market.adapter.outbound.orm.commercial_change_benchmark_orm import (
     CommercialChangeBenchmarkOrm,
@@ -305,6 +306,15 @@ class CommercialDataGateway(CommercialDataPort):
         stats.append(DatasetStat(
             key="market_news", name="상권 뉴스", row_count=news[0],
             latest_label=None, latest_at=news[1],
+        ))
+        # 인허가 업소 — check_freshness(메일 감시)에는 있는데 콘솔 카드에 빠져 있던
+        # 감시 사각(2026-09-01 버그 수정). 기준은 다른 카드와 같은 created_at.
+        permits = (await self._session.execute(
+            select(func.count(BusinessPermitOrm.id), func.max(BusinessPermitOrm.created_at))
+        )).one()
+        stats.append(DatasetStat(
+            key="business_permits", name="인허가 업소", row_count=permits[0],
+            latest_label=None, latest_at=permits[1],
         ))
         return stats
 

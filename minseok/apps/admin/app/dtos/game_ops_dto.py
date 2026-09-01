@@ -111,3 +111,4 @@ class HideContentCommand:
     target_type: str
     target_id: int
     reason: str
+    hidden_by: int  # 감사 기록용 행위자

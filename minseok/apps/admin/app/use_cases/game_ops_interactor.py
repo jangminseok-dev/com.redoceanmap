@@ -13,6 +13,7 @@ from admin.app.dtos.game_ops_dto import (
     SymbolOption,
 )
 from admin.app.ports.input.game_ops_use_case import GameOpsUseCase
+from admin.app.ports.output.audit_log_port import AuditLogPort
 from hub.app.dtos.game_ops_dto import (
     CapitalGrantCommand,
     HideContentCommand as HubHideContentCommand,
@@ -37,9 +38,12 @@ class GameOpsInteractor(GameOpsUseCase):
     여기서는 **누구에게 얼마** · **무엇을 몇 %** 를 옮기고 회원 정보를 붙일 뿐이다.
     """
 
-    def __init__(self, game: GameOpsPort, members: MemberDirectoryPort) -> None:
+    def __init__(
+        self, game: GameOpsPort, members: MemberDirectoryPort, audit: AuditLogPort,
+    ) -> None:
         self._game = game
         self._members = members
+        self._audit = audit
 
     async def get_wallet(self, query: GameWalletQuery) -> GameWalletView:
         summary = await self._game.get_wallet(query.user_id)
@@ -67,6 +71,12 @@ class GameOpsInteractor(GameOpsUseCase):
                 reason=command.reason,
                 granted_by=command.granted_by,
             )
+        )
+        # 게임 스포크 원장과 별개로 어드민 감사에도 남긴다 — 스키마·화면이
+        # "감사에 남는다"고 안내하는 약속의 이행(2026-09-01 버그 수정).
+        await self._audit.write(
+            command.granted_by, "game.capital.grant",
+            f"user={command.user_id} amount={command.amount_krw:,} reason={command.reason}",
         )
         return GrantCapitalResult(
             user_id=receipt.user_id,
@@ -111,6 +121,12 @@ class GameOpsInteractor(GameOpsUseCase):
                 target_price_krw=command.target_price_krw,
             )
         )
+        await self._audit.write(
+            command.created_by, "game.intervene",
+            f"{command.scope}:{command.target} shock={command.shock_pct}%"
+            f" drift={command.drift_pct_per_day}%/일 {command.duration_days}일"
+            f" — {command.headline}",
+        )
         return _to_view(record)
 
 
@@ -145,9 +161,16 @@ class GameOpsInteractor(GameOpsUseCase):
                 reason=reason,
             )
         )
+        await self._audit.write(
+            command.hidden_by, "game.community.hide",
+            f"{command.target_type}#{command.target_id} reason={reason}",
+        )
 
-    async def unhide_content(self, target_type: str, target_id: int) -> None:
+    async def unhide_content(self, target_type: str, target_id: int, actor_id: int) -> None:
         await self._game.unhide_content(target_type, target_id)
+        await self._audit.write(
+            actor_id, "game.community.unhide", f"{target_type}#{target_id}",
+        )
 
 
 

@@ -194,6 +194,7 @@ async def list_reported_content(
 )
 async def hide_content(
     body: HideContentRequestSchema,
+    admin_id: int = Depends(require_permission("game:write")),
     use_case: GameOpsUseCase = Depends(get_game_ops_use_case),
 ) -> None:
     """신고된 글·댓글을 내린다.
@@ -206,6 +207,7 @@ async def hide_content(
                 target_type=body.target_type,
                 target_id=body.target_id,
                 reason=body.reason,
+                hidden_by=admin_id,
             )
         )
     except ValueError as e:
@@ -219,10 +221,11 @@ async def hide_content(
 )
 async def unhide_content(
     body: UnhideContentRequestSchema,
+    admin_id: int = Depends(require_permission("game:write")),
     use_case: GameOpsUseCase = Depends(get_game_ops_use_case),
 ) -> None:
     """숨김 해제. 작성자가 스스로 지운 글은 되살아나지 않는다."""
     try:
-        await use_case.unhide_content(body.target_type, body.target_id)
+        await use_case.unhide_content(body.target_type, body.target_id, admin_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
