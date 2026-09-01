@@ -35,10 +35,22 @@ import type {
   StockNewsItem,
   StockQuote,
 } from "./types";
+import { tryRefreshSession } from "./authApi";
+
+// 액세스 토큰(1시간)이 탭을 열어둔 사이 만료되면 모든 조회가 401로 죽는다(2026-09-01 실측
+// 57건 — 화면 전체 "불러오지 못했습니다"). chat 경로(store.ts)와 같은 규칙으로
+// 401 → 리프레시 회전 → 1회 재시도한다. 리프레시도 실패하면 원래 401을 그대로 던진다.
+async function fetchWithRefresh(input: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(input, init);
+  if (res.status === 401 && (await tryRefreshSession())) {
+    return fetch(input, init);
+  }
+  return res;
+}
 
 // 모든 GET 조회는 next.config rewrites(/api/backend/* → FastAPI)를 경유한다.
 async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(`/api/backend${path}`);  // 세션은 httpOnly 쿠키 — 자동 동행
+  const res = await fetchWithRefresh(`/api/backend${path}`);  // 세션은 httpOnly 쿠키 — 자동 동행
   if (!res.ok) {
     const detail = await res.json().catch(() => null);
     throw new ApiError(res.status, detail?.detail ?? "요청에 실패했습니다.");
@@ -257,7 +269,7 @@ export const fetchGameSettlements = (): Promise<GameSettlementList> =>
 
 // ── 북마크 — 관심 종목·상권. 인증은 httpOnly 쿠키가 자동 동행한다. ──
 async function sendJson<T>(path: string, method: "POST" | "PUT" | "DELETE", body?: unknown): Promise<T> {
-  const res = await fetch(`/api/backend${path}`, {
+  const res = await fetchWithRefresh(`/api/backend${path}`, {
     method,
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
@@ -306,7 +318,7 @@ export const createPriceAlert = (body: {
 
 export const deletePriceAlert = async (id: number): Promise<void> => {
   // 204 응답이라 sendJson(res.json 강제)을 못 쓴다 — 본문 없는 성공을 그대로 받는다
-  const res = await fetch(`/api/backend/price-alerts/${id}`, { method: "DELETE" });
+  const res = await fetchWithRefresh(`/api/backend/price-alerts/${id}`, { method: "DELETE" });
   if (!res.ok) {
     const detail = await res.json().catch(() => null);
     throw new ApiError(res.status, detail?.detail ?? "요청에 실패했습니다.");

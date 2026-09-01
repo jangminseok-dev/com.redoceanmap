@@ -1,3 +1,4 @@
+import { tryRefreshSession } from "./authApi";
 import { ApiError } from "./api";
 
 /* ── 타입 (백엔드 admin 스키마 1:1) ── */
@@ -248,10 +249,14 @@ export type AdminGameBoard = {
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api/backend${path}`, {
-    ...init,
-    headers: { ...(init?.body ? { "Content-Type": "application/json" } : {}) },  // 세션은 httpOnly 쿠키
-  });
+  // 401 → 리프레시 회전 → 1회 재시도(lib/api.ts와 같은 규칙 — 탭 방치 후 콘솔 깨짐 방지)
+  const doFetch = () =>
+    fetch(`/api/backend${path}`, {
+      ...init,
+      headers: { ...(init?.body ? { "Content-Type": "application/json" } : {}) },  // 세션은 httpOnly 쿠키
+    });
+  let res = await doFetch();
+  if (res.status === 401 && (await tryRefreshSession())) res = await doFetch();
   if (!res.ok) {
     const detail = await res.json().catch(() => null);
     throw new ApiError(res.status, detail?.detail ?? "요청에 실패했습니다.");
@@ -505,11 +510,14 @@ export const fetchAdminGameReports = (
 
 async function requestVoid(path: string, body: unknown): Promise<void> {
   // 204 응답 엔드포인트용 — request()는 res.json()을 강제해서 못 쓴다
-  const res = await fetch(`/api/backend${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const doFetch = () =>
+    fetch(`/api/backend${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  let res = await doFetch();
+  if (res.status === 401 && (await tryRefreshSession())) res = await doFetch();
   if (!res.ok) {
     const detail = await res.json().catch(() => null);
     throw new ApiError(res.status, detail?.detail ?? "요청에 실패했습니다.");
