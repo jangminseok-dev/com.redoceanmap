@@ -175,7 +175,9 @@ function toNewsMarkers(
       position: positive ? "belowBar" : "aboveBar",
       shape: positive ? "arrowUp" : "arrowDown",
       color: positive ? colors.up : colors.down,
-      text: item.title.length > 20 ? `${item.title.slice(0, 20)}…` : item.title,
+      // 제목 텍스트를 차트에 그리지 않는다 — lightweight-charts 마커 텍스트는 충돌
+      // 회피가 없어 인접 봉의 제목끼리 겹쳐 캔들까지 가린다(2026-09-01 실측 스크린샷).
+      // 제목은 뉴스 패널이 목록으로 보여준다 — 차트는 위치·방향만 말한다.
     });
   }
   return markers.sort((a, b) => a.time - b.time);
@@ -663,7 +665,7 @@ export default function CandleChart({
               : "변동성(ATR) 기반"}
           </span>
         )}
-        {news && news.length > 0 && <span>▲▼ 감성 강한 뉴스</span>}
+        {news && news.length > 0 && <span>▲▼ 감성 강한 뉴스 — 제목은 뉴스 탭에서</span>}
       </div>
       {/* lightweight-charts 라이선스 고지 */}
       <a
