@@ -243,6 +243,17 @@ export default function ChatPanel({
 const fmtNum = (v: number, digits = 2) =>
   v.toLocaleString("ko-KR", { maximumFractionDigits: digits });
 
+// 지표 해석 임계값 — stock/IndicatorPanel(=백엔드 stock_narrator.py)과 같은 값.
+// 카드가 맨숫자만 보여주면 초보자에게 무의미하다(2026-08-31 페르소나 테스트 — 무설명 노출).
+const RSI_OVERSOLD = 30;
+const RSI_OVERBOUGHT = 70;
+const BB_LOW = 0.2;
+const BB_HIGH = 0.8;
+const VOLUME_SURGE = 1.5;
+const VOLUME_QUIET = 0.7;
+const MOMENTUM_MIN = 0.15;
+const ATR_HIGH = 4.0;
+
 // 확신도 %를 그대로 띄우면(예: "중립 9%") 초보자가 상승 확률로 오독한다 — 페이지 StockHero와
 // 같은 결로 신호 세기(약/보통/강)로 바꾼다. 기준은 방향 임계값(±0.3)의 1·2배.
 function signalStrength(confidence: number): string {
@@ -254,16 +265,27 @@ function signalStrength(confidence: number): string {
 function StockSummaryCard({ stock, onClick }: { stock: StockAnalysis; onClick: () => void }) {
   const meta = DIRECTION_META[stock.direction] ?? DIRECTION_META.NEUTRAL;
   const DirectionIcon = meta.icon;
-  // 신규 6필드는 optional(구버전 히스토리 payload 호환) — 있을 때만 지표 그리드 렌더
-  const indicators: [string, string][] | null =
+  // 신규 6필드는 optional(구버전 히스토리 payload 호환) — 있을 때만 지표 그리드 렌더.
+  // 셋째 칸은 쉬운 말 해석 한 줄 — 맨숫자 그리드는 초보자에게 무의미하다(I-6 잔여).
+  const bb = stock.bbPercentB ?? 0.5;
+  const vol = stock.volumeRatio ?? 1;
+  const mom = stock.momentum12To1 ?? 0;
+  const obv = stock.obvSlope ?? 0;
+  const indicators: [string, string, string][] | null =
     stock.atrPct !== undefined
       ? [
-          ["RSI", fmtNum(stock.rsi, 1)],
-          ["밴드 위치", fmtNum(stock.bbPercentB ?? 0.5)],
-          ["거래량비", `${fmtNum(stock.volumeRatio ?? 1)}x`],
-          ["1년 추세", `${fmtNum((stock.momentum12To1 ?? 0) * 100, 1)}%`],
-          ["ATR (변동성)", `${fmtNum(stock.atrPct * 100, 1)}%`],
-          ["자금 흐름", fmtNum(stock.obvSlope ?? 0, 3)],
+          ["RSI", fmtNum(stock.rsi, 1),
+           stock.rsi <= RSI_OVERSOLD ? "과매도" : stock.rsi >= RSI_OVERBOUGHT ? "과열" : "중립"],
+          ["밴드 위치", fmtNum(bb),
+           bb <= BB_LOW ? "밴드 하단" : bb >= BB_HIGH ? "밴드 상단" : "밴드 중앙"],
+          ["거래량비", `${fmtNum(vol)}x`,
+           vol >= VOLUME_SURGE ? "평소보다 급증" : vol <= VOLUME_QUIET ? "평소보다 한산" : "평소 수준"],
+          ["1년 추세", `${fmtNum(mom * 100, 1)}%`,
+           mom >= MOMENTUM_MIN ? "상승 추세" : mom <= -MOMENTUM_MIN ? "하락 추세" : "방향성 약함"],
+          ["ATR (변동성)", `${fmtNum(stock.atrPct * 100, 1)}%`,
+           stock.atrPct * 100 >= ATR_HIGH ? "급등락 주의" : "변동성 보통"],
+          ["자금 흐름", fmtNum(obv, 3),
+           obv > 0 ? "자금 유입 우위" : obv < 0 ? "자금 유출 우위" : "수급 중립"],
         ]
       : null;
   return (
@@ -299,10 +321,11 @@ function StockSummaryCard({ stock, onClick }: { stock: StockAnalysis; onClick: (
       )}
       {indicators && (
         <div className="mt-2.5 grid grid-cols-3 gap-1.5">
-          {indicators.map(([label, value]) => (
+          {indicators.map(([label, value, hint]) => (
             <div key={label} className="rounded-lg bg-surface border border-border px-2 py-1.5">
               <div className="text-xs text-foreground-muted">{label}</div>
               <div className="text-xs font-semibold mt-0.5">{value}</div>
+              <div className="text-xs text-foreground-muted mt-0.5 leading-tight">{hint}</div>
             </div>
           ))}
         </div>

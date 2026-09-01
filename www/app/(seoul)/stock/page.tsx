@@ -271,6 +271,8 @@ function StockWorkspace() {
               <Chip
                 key={p.name}
                 active={activePattern?.name === p.name}
+                // 무설명 배지 해소(I-6 잔여) — 클릭 전에도 형태 설명이 한 줄 뜬다
+                title={p.note}
                 // 같은 칩을 다시 누르면 보조선을 끈다
                 onClick={() =>
                   setView((prev) => ({ ...prev, pattern: prev.pattern === p.name ? null : p.name }))
@@ -396,14 +398,17 @@ function Chip({
   active,
   onClick,
   children,
+  title,
 }: {
   active: boolean;
   onClick: () => void;
   children: React.ReactNode;
+  title?: string;
 }) {
   return (
     <button
       type="button"
+      title={title}
       onClick={onClick}
       aria-pressed={active}
       className={`inline-flex items-center h-8 px-3 rounded-full text-xs font-medium transition-colors duration-150 ${

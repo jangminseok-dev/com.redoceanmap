@@ -100,6 +100,15 @@ export default function AiInsightCard({
         <RiskSummary analyze={analyze} forecast={forecast} price={price} symbol={ticker} />
       </div>
 
+      {/* 매물대·지지/저항 구간 문장(I-5) — 접지 않고 전면에 둔다. 페르소나 테스트에서
+          가장 잘 읽힌 쉬운 문장들인데 "근거 보기" 뒤에 숨어 있었다. */}
+      {forecast && forecast.insights.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-border">
+          <p className="mb-1.5 text-xs text-foreground-muted">가격대 근거</p>
+          <InsightList insights={forecast.insights} />
+        </div>
+      )}
+
       <ContributionBars analyze={analyze} />
 
       {expert && (
@@ -153,17 +162,6 @@ export default function AiInsightCard({
         </details>
       )}
 
-      {forecast && forecast.insights.length > 0 && (
-        <details className="mt-2 group">
-          <summary className="flex items-center gap-1 text-xs text-foreground-muted cursor-pointer list-none select-none">
-            <ChevronDown size={13} className="transition-transform group-open:rotate-180" />
-            근거 보기
-          </summary>
-          <div className="mt-1.5 pl-1">
-            <InsightList insights={forecast.insights} />
-          </div>
-        </details>
-      )}
     </div>
   );
 }
