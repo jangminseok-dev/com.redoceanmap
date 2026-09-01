@@ -160,6 +160,24 @@ apps/hub/dependencies/user_profile_provider.py  # get_user_profile_port (NotImpl
 - **소비**: 허브 자신의 `BookmarkAlertInteractor`(아래 자동화 창구) — StockStatusPort 재사용.
 - **배선**: `main.py` overrides — recommendation·auth 게이트웨이 주입.
 
+## 소유 계약 — PriceAlertDirectoryPort · NewsAlertFeedPort (알림 묶음, 2026-09-01)
+
+가격 도달 알림([6])과 티커 뉴스 알림(B9)이 쓰는 계약 2종. **dedupe에
+`user_alert_deliveries`를 재사용하지 않는다** — 그 테이블은 북마크 스캔이 매 실행 전체
+교체(delete-all)하므로 다른 스캔이 공유하면 서로의 상태를 지운다.
+
+- **PriceAlertDirectoryPort** — `active_alerts()`(수신 거부 회원 제외) ·
+  `mark_triggered()`(one-shot 비활성화 = dedupe) · `telegram_chat_ids()`.
+  구현: recommendation `PriceAlertDirectoryGateway`(`user_price_alerts`, 루트 체인
+  `n3a4b5c6d7e8`). 조건 CRUD는 recommendation `/price-alerts` 슬라이스.
+- **NewsAlertFeedPort** — `pull_alertable(min_abs_sentiment)`: 커서(`news_alert_cursor`
+  단일 행) 이후의 강한 감성 라벨만 내주고 커서를 전진(at-most-once — 중복이 재발송보다
+  나쁘다는 판단). 첫 호출은 백로그 홍수 방지로 커서만 세팅. 구현: stock
+  `NewsAlertFeedGateway`(기본 라벨러만 — 재라벨 실험 행이 재알림을 만들지 않게).
+- **소비**: 허브 `PriceAlertScanInteractor` / `NewsAlertScanInteractor`(아래 자동화 창구) —
+  조립은 순수 도메인 `price_alert_composer` / `news_alert_composer`(권유 금지·고지 필수,
+  가격 알림은 "사용자가 정한 조건의 도달 사실 통지 = 자문 아님"을 문장에 명시).
+
 ## 소유 계약 — StockStatusPort
 
 지정 종목들의 최신 신호 상태 조회 협력(③-M7 관심 보드). recommendation(소비)과
@@ -172,6 +190,7 @@ apps/hub/app/
 ├── ports/output/stock_status_port.py   # StockStatusPort (ABC) — latest_statuses(symbols)
 │     스냅샷 없는 심볼은 결과에서 빠진다(오류 아님 — 소비자는 상태 없이 표시)
 └── dtos/stock_status_dto.py            # StockStatusInfo(direction·price·change_pct·ready·기준일)
+│     latest_closes(symbols) — 봉만으로 최신 수집 종가(스냅샷 불요, [6] 판정 근거, 2026-09-01)
 apps/hub/dependencies/stock_status_provider.py  # get_stock_status_port (NotImplementedError 스텁)
 ```
 
@@ -316,6 +335,7 @@ apps/hub/
 |------|------|
 | 뉴스 수집 | n8n(스케줄+RSS) → `POST /automation/news` → NewsIngestInteractor → `NewsStoragePort` → stock 저장 |
 | 시그널 알림 | n8n(스케줄) → `POST /automation/stock-scan` → SignalScanInteractor → 기존 `StockAnalysisPort` 재사용 → n8n이 중립 제외 후 Gmail 발송 |
+| 실시간 알림([6]+B9, 2026-09-01) | n8n(매시) → `POST /automation/price-alerts`(가격 도달 — one-shot 비활성) + `POST /automation/news-alerts`(북마크 종목 \|감성\|≥0.5 뉴스 — 커서 dedupe, 신호 상태 병기) → `emails[]`·`telegrams[]`를 n8n이 발송. 워크플로: [[minseok/apps/hub/_docs/n8n_realtime_alert_workflow.json]] |
 | 관심 대상 알림(③-M3 + B1) | n8n(매일 15:30 — 스냅샷 cron 14:00 뒤) → `POST /automation/bookmark-alerts` → BookmarkAlertInteractor(종목: 북마크×신호 비중립만 · 상권(B1, 2026-08-24): 북마크×분기+등급 상태 변화(CommercialDataPort — chat·지도와 같은 원천, 상태 인코딩 "20254양호" 7자 ≤ direction String(8)), 메일 조립은 순수 도메인 `bookmark_alert_composer`(compose_alert·compose_area_alert) — LLM 미사용·권유 금지·고지 필수) → 응답 `emails[]`를 n8n이 사용자별 Gmail 발송. 워크플로: [[minseok/apps/hub/_docs/n8n_bookmark_alert_workflow.json]]. **dedupe(2026-08-23)**: 마지막 통지 신호와 같으면 억제(AlertDeliveryPort — 방향 전환·소멸 후 재발생은 새 알림, 이메일 없어 못 보낸 신호는 상태 미기록), **수신 설정**: 끈 회원은 BookmarkDirectoryPort가 스캔에서 제외(`PUT /alert-settings`, 기본 수신) |
 | 메일 수신 | n8n(Gmail Push/폴링) → `POST /automation/mail` → MailIngestInteractor → `MailStoragePort` → mail 저장(조회: `GET /mail/list`) |
 | OHLCV 수집 | cron(`scripts/collect_prices.py`) → `POST /automation/prices` (+`GET /automation/prices/coverage`) → PriceBarIngestInteractor → `PriceBarStoragePort` → stock 저장 |

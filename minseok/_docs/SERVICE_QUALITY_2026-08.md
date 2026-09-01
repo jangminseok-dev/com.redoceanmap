@@ -263,6 +263,10 @@ docker run --rm -v /home/host/projects/com.redoceanmap:/work -w /work/minseok \
 
 ## Phase 4 — 시그널 대개편 잔여 ([[SIGNAL_OVERHAUL_2026-08]] 정본)
 
+> ✅ **[6]+B9 알림 묶음 구현 완료(2026-09-01, 미커밋)** — 조건 슬라이스(recommendation
+> `/price-alerts`)+허브 스캔 2종+n8n 워크플로+프로필 UI+중립 답변 안내 문장. 마이그레이션
+> `n3a4b5c6d7e8`(배포 시 자동 적용). 잔여: n8n 임포트(사용자)·[5] KIS·[1]-②④.
+
 5. **[5] KIS 어댑터** — 국내주식만 KIS, 미국은 yfinance 유지. `MarketDataPort` 구현체 추가.
 6. **[6] 가격 도달 알림** — 새 슬라이스(조건 테이블+라우터 `/myself`+인터랙터+프론트 /profile 병합,
    발송은 bookmark_alert 패턴 재사용). **중립·약 답변의 공식 대체재** — q09(물린 초보)의 실제

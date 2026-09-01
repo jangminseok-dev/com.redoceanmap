@@ -38,6 +38,21 @@
   `user_alert_deliveries`(마지막 통지 신호 — 허브 `AlertDeliveryPort`를
   `AlertDeliveryGateway`가 구현, 전량 스캔 전체 교체). 테이블 2종은 루트 체인 `l1e2f3a4b5c6`.
 
+## 가격 도달 알림 조건 (시그널 대개편 [6], 2026-09-01)
+
+사용자가 직접 건 손절·익절선(`user_price_alerts`, 루트 체인 `n3a4b5c6d7e8`) —
+방향 예측이 아니라 **도달 사실 통지**라 자문 경계 밖이다. 사용자↔대상 축이라 이 스포크 소유.
+
+- **API**: `GET /price-alerts/myself` · `GET /price-alerts` · `POST /price-alerts`
+  (ticker 대문자 정규화·direction above|below·가격>0 검증, 활성 상한 50 초과는 409) ·
+  `DELETE /price-alerts/{id}`(남의 것·미존재는 같은 404 — 존재 비노출).
+- **one-shot**: 도달 통지 후 `active=false`+`triggered_at`. 재알림은 재등록.
+  `user_alert_deliveries`를 안 쓰는 이유는 hub CLAUDE 알림 묶음 절 참고(전체 교체 충돌).
+- **스캔 열람**: 허브 `PriceAlertDirectoryPort`를 `PriceAlertDirectoryGateway`가 구현 —
+  수신 끈 회원 제외(북마크 열람과 같은 발송 대상 의미론). 판정·조립은 허브, 발송은 n8n(매시).
+- **프론트**: `/profile`의 "가격 도달 알림" 섹션(조건 등록·목록·삭제). 채팅은 중립 답변에
+  이 기능 안내 문장을 결정론으로 붙인다(중립의 공식 대체재).
+
 ## 관심 보드 (개인화 ①, ③-M7, 2026-08-23)
 
 `GET /bookmarks/board`(+`/myself`) — 북마크를 "재개 지점"에서 **"내 관심 대상의 지금"**으로

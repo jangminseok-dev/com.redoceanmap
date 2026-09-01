@@ -152,7 +152,7 @@
 
 `MarketDataPort` 구현체를 하나 더 만든다(`yfinance_market_data_adapter.py`와 공존). **국내주식만 KIS, 미국주식은 yfinance 유지** — KIS 해외주식은 별도 신청이고 무료 범위가 다르다. 토큰은 `core/key/secret_manager.py` 경유, `.env.example`에 키 등록.
 
-### [6] 가격 도달 알림 — 신규
+### [6] 가격 도달 알림 — ✅ 구현 완료(2026-09-01, B9와 한 묶음 — 미커밋)
 
 현재 가격 감시 기능은 **없다**(방향 상태 변화만 감지). 새 슬라이스로 만든다: 조건 테이블 + 라우터(`GET /myself` 포함) + 인터랙터 + 프론트 설정 UI(`www/app/(seoul)/profile/page.tsx`에 병합). 발송은 기존 구조 재사용 — `bookmark_alert_composer.py` 패턴으로 조립하고 n8n이 텔레그램·이메일로 보낸다. dedupe는 `user_alert_deliveries` 재사용.
 
