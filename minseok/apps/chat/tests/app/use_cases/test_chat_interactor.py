@@ -148,7 +148,8 @@ class _StubMarket:
                  permit_churn: dict[int, PermitChurnInfo] | None = None,
                  areas: list[AreaInfo] | None = None,
                  yoy: dict[int, float | None] | None = None,
-                 ranking: list[AreaRankingInfo] | None = None):
+                 ranking: list[AreaRankingInfo] | None = None,
+                 services: list[ServiceCode] | None = None):
         self.summary_calls = 0
         self.scores = scores or {}
         self.score_calls: list[list[int]] = []
@@ -161,6 +162,7 @@ class _StubMarket:
         self._yoy = yoy or {}
         self.ranking = ranking or []
         self.ranking_calls: list[str | None] = []
+        self.services = services or [ServiceCode(code="CS100010", name="커피-음료")]
 
     async def get_area_summary(self) -> AreaSummary:
         self.summary_calls += 1
@@ -175,7 +177,7 @@ class _StubMarket:
         )
 
     async def get_service_codes(self) -> list[ServiceCode]:
-        return [ServiceCode(code="CS100010", name="커피-음료")]
+        return self.services
 
     async def get_area_raw_stats(self, codes, service_code, quarter):
         return {c: (self.raw or _raw_stat()) for c in codes}
@@ -561,6 +563,39 @@ async def test_비지시어_후속도_직전_추천으로_제한한다(monkeypat
     assert [r.id for r in result.recommendations] == ["1000001"]
     # 업종 단서도 없으므로 직전 업종(치킨전문점)을 잇는다 — phase1의 커피-음료 재선택 폐기
     assert result.recommendations[0].category == "치킨전문점"
+
+
+async def test_사용자가_말한_업종은_phase1_오선택을_이긴다(monkeypatch):
+    # 2026-09-01 실측: "길음동 떡볶이집"을 phase1이 커피-음료로 오선택 → 3턴 표류
+    services = [ServiceCode(code="CS100010", name="커피-음료"),
+                ServiceCode(code="CS100008", name="분식전문점")]
+    market = _StubMarket(services=services)
+    phase2 = '{"text": "요약", "areas": [{"trdar_code": 1000001, "reason": "이유. 유의할 점: x"}]}'
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, phase2], market=market)
+    result = await interactor.ask("역삼동에서 떡볶이집 괜찮을까?")
+    assert result.recommendations[0].category == "분식전문점"  # phase1의 커피-음료 폐기
+
+
+async def test_정정_신호가_있으면_직전_업종을_승계하지_않는다(monkeypatch):
+    services = [ServiceCode(code="CS100010", name="커피-음료"),
+                ServiceCode(code="CS100008", name="분식전문점")]
+    conversations = _StubConversations(history=[
+        Message(id=1, conversation_id=100, role="user", content="역삼동 어때?",
+                created_at=_NOW, payload=None),
+        Message(id=2, conversation_id=100, role="assistant", content="상권 추천",
+                created_at=_NOW,
+                payload={"recommendations": [
+                    {"id": "1000001", "name": "테스트상권",
+                     "serviceCode": "CS100010", "category": "커피-음료"}]}),
+    ])
+    market = _StubMarket(services=services)
+    phase2 = '{"text": "요약", "areas": [{"trdar_code": 1000001, "reason": "이유. 유의할 점: x"}]}'
+    interactor, _, _ = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, phase2],
+        conversations=conversations, market=market,
+    )
+    result = await interactor.ask("엥 나는 떡볶이집을 추천해달라고 했는데?", conversation_id=100)
+    assert result.recommendations[0].category == "분식전문점"  # 감지가 승계를 이긴다
 
 
 async def test_업종_단서가_있으면_phase1_업종을_신뢰한다(monkeypatch):  # 무손상

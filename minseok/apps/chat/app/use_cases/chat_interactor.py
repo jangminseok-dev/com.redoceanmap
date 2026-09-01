@@ -310,6 +310,55 @@ def _service_hinted(prompt: str, service_name: str) -> bool:
     return any(t in prompt for t in re.findall(r"[가-힣]{2,}", service_name or ""))
 
 
+# 업종 결정론 감지(2026-09-01 실측) — "길음동에서 떡볶이집"을 phase1이 커피-음료로
+# 오선택했고, 업종 승계 가드가 그 오선택을 3턴 내내 고착시켰다(사용자가 "떡볶이집을
+# 추천해달라고 했는데?"라고 정정해도 단서 토큰에 '떡볶이'가 없어 승계가 이김).
+# 사용자가 말한 업종은 코드가 감지해 **항상 이기게** 한다. (별칭, 서비스명 포함 키워드) 쌍.
+_SERVICE_ALIASES = (
+    ("떡볶이", "분식"), ("떡볶기", "분식"), ("순대", "분식"), ("어묵", "분식"),
+    ("라볶이", "분식"), ("김밥", "분식"), ("튀김", "분식"),
+    ("카페", "커피"), ("커피", "커피"), ("디저트", "제과"), ("빵", "제과"),
+    ("베이커리", "제과"), ("케이크", "제과"),
+    ("치킨", "치킨"), ("통닭", "치킨"),
+    ("술집", "주점"), ("호프", "주점"), ("맥주", "주점"), ("포차", "주점"), ("주점", "주점"),
+    ("햄버거", "패스트푸드"), ("버거", "패스트푸드"),
+    ("한식", "한식"), ("국밥", "한식"), ("백반", "한식"), ("고기", "한식"),
+    ("삼겹", "한식"), ("갈비", "한식"), ("족발", "한식"), ("찌개", "한식"),
+    ("초밥", "일식"), ("스시", "일식"), ("돈까스", "일식"), ("라멘", "일식"),
+    ("횟집", "일식"), ("일식", "일식"),
+    ("짜장", "중식"), ("짬뽕", "중식"), ("마라", "중식"), ("중식", "중식"),
+    ("파스타", "양식"), ("피자", "양식"), ("스테이크", "양식"), ("양식", "양식"),
+    ("편의점", "편의점"), ("반찬", "반찬"), ("미용", "미용"), ("헤어", "미용"),
+    ("네일", "네일"), ("세탁", "세탁"), ("문구", "문구"), ("서점", "서적"),
+)
+
+# 정정 신호 — 사용자가 앞선 답을 바로잡는 중이면 직전 업종을 승계하지 않는다
+_CORRECTION_TOKENS = (
+    "라고 했", "라고 말했", "말했잖", "했잖아", "아니라", "아닌데", "잘못", "다시 추천",
+)
+
+
+def _has_correction(prompt: str) -> bool:
+    return any(token in prompt for token in _CORRECTION_TOKENS)
+
+
+def _detect_service(prompt: str, service_codes) -> tuple[str, str] | None:
+    """프롬프트가 말한 업종을 결정론으로 찾는다 — 없으면 None(phase1·승계에 맡김).
+
+    서비스명 직접 언급(긴 이름 우선)을 먼저, 별칭(긴 것 우선)을 다음에 본다.
+    별칭은 전부 2자 이상 — 1자("회")는 "회사" 류 오탐을 만든다.
+    """
+    for sc in sorted(service_codes, key=lambda c: -len(c.name)):
+        if any(t in prompt for t in re.findall(r"[가-힣]{2,}", sc.name)):
+            return sc.code, sc.name
+    for alias, keyword in sorted(_SERVICE_ALIASES, key=lambda a: -len(a[0])):
+        if alias in prompt:
+            for sc in service_codes:
+                if keyword in sc.name:
+                    return sc.code, sc.name
+    return None
+
+
 # 서비스 메타 질문 가드(1-2) — "너희 UP 시그널 적중률이 어떻게 돼?"를 LLM에 보내면
 # 자기 서비스를 제3자 취급하는 일반론("해당 서비스에 데이터를 요구하세요")이 나온다
 # (2026-08-31 프로덕션 실측). 자기 지칭 + 검증 어휘가 함께 있을 때만 결정론으로 가로챈다 —
@@ -820,11 +869,17 @@ class ChatInteractor(ChatUseCase):
 
         service_code: str = p1.get("service_code", "")
         service_name: str = p1.get("service_name", "")
-        # 업종 승계(3차 실측 P2) — 후속 질문에 업종 단서가 없으면 phase1의 자의 재선택
-        # ("주의 등급이면 하지 말라는 거야?" → 조명용품 표류)을 버리고 직전 업종을 잇는다.
-        prev_service = self._previous_service(history)
-        if prev_service and not _service_hinted(prompt, service_name):
-            service_code, service_name = prev_service
+        # 업종 결정론 가드 — 사용자가 말한 업종("떡볶이집")은 phase1 오선택·승계보다
+        # 항상 이긴다. 감지가 없을 때만 승계(P2)를 보되, 정정 신호("~라고 했는데")가
+        # 있으면 승계하지 않는다(오선택 고착 방지 — 2026-09-01 실측 3턴 표류).
+        detected = _detect_service(prompt, service_codes)
+        if detected is not None:
+            service_code, service_name = detected
+        else:
+            prev_service = self._previous_service(history)
+            if (prev_service and not _service_hinted(prompt, service_name)
+                    and not _has_correction(prompt)):
+                service_code, service_name = prev_service
         trdar_codes: list[int] = [int(c) for c in p1.get("trdar_codes", []) if str(c).isdigit()]
         valid_codes = [c for c in trdar_codes if c in area_map]
 
