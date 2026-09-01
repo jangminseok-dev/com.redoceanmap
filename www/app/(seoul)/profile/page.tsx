@@ -3,7 +3,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BellRing, UserRound } from "lucide-react";
 import {
+  createPriceAlert,
+  deletePriceAlert,
   fetchAlertSetting,
+  fetchPriceAlerts,
   fetchProfile,
   removeProfile,
   saveAlertSetting,
@@ -174,6 +177,111 @@ function AlertSettingSection() {
   );
 }
 
+/** 가격 도달 알림([6]) — 사용자가 직접 건 손절·익절선. 도달 시 1회 통지 후 자동 꺼짐. */
+function PriceAlertSection() {
+  const queryClient = useQueryClient();
+  const { data, isPending } = useQuery({
+    queryKey: ["price-alerts"],
+    queryFn: fetchPriceAlerts,
+  });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["price-alerts"] });
+  const create = useMutation({ mutationFn: createPriceAlert, onSuccess: invalidate });
+  const remove = useMutation({ mutationFn: deletePriceAlert, onSuccess: invalidate });
+
+  // 조건 등록 — 폼 제출 흐름이라 FormData 패턴(REACT_RULES 패턴 A)
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const ticker = String(formData.get("ticker") ?? "").trim();
+    const price = Number(formData.get("target_price"));
+    const direction = String(formData.get("direction")) as "above" | "below";
+    if (!ticker || !(price > 0)) return;
+    create.mutate({ ticker, target_price: price, direction });
+    e.currentTarget.reset();
+  };
+
+  const alerts = data?.alerts ?? [];
+  const fmtPrice = (a: { ticker: string; target_price: number }) =>
+    /^\d+$/.test(a.ticker.split(".")[0])
+      ? `${Math.round(a.target_price).toLocaleString("ko-KR")}원`
+      : `$${a.target_price.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}`;
+
+  return (
+    <section className="rounded-2xl bg-surface border border-border p-6">
+      <h2 className="text-sm font-semibold flex items-center gap-1.5">
+        <BellRing size={15} /> 가격 도달 알림
+      </h2>
+      <p className="mt-1 text-xs text-foreground-muted">
+        원하는 가격(손절·익절선)에 닿으면 이메일·텔레그램으로 알려드립니다. 방향 예측이
+        아니라 직접 정한 가격의 도달 사실 통지예요. 도달하면 1회 알림 후 자동으로 꺼지고,
+        수집 주기 기준이라 최대 1시간가량 늦을 수 있습니다.
+      </p>
+      <form onSubmit={handleSubmit} className="mt-3 flex flex-wrap items-end gap-2">
+        <div className="space-y-1">
+          <Label htmlFor="pa-ticker" className="text-xs font-medium">종목</Label>
+          <Input id="pa-ticker" name="ticker" placeholder="005930 · AAPL" className="w-32" />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="pa-price" className="text-xs font-medium">가격</Label>
+          <Input
+            id="pa-price" name="target_price" type="number" step="any" min="0"
+            placeholder="70000" className="w-32"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="pa-direction" className="text-xs font-medium">조건</Label>
+          {/* 네이티브 select 유지 — shadcn 미이관 목록(www CLAUDE §4)과 동일 취급 */}
+          <select
+            id="pa-direction" name="direction" defaultValue="below"
+            className="h-10 rounded-xl border border-border bg-surface px-3 text-sm"
+          >
+            <option value="below">이하로 내려오면</option>
+            <option value="above">이상으로 올라가면</option>
+          </select>
+        </div>
+        <Button type="submit" size="md" variant="weak" loading={create.isPending}>
+          조건 걸기
+        </Button>
+      </form>
+      {create.isError && (
+        <p className="mt-2 text-xs text-brand">
+          {create.error instanceof Error ? create.error.message : "등록에 실패했습니다."}
+        </p>
+      )}
+      {isPending ? (
+        <div className="mt-3 skeleton h-10 rounded-xl" />
+      ) : alerts.length === 0 ? (
+        <p className="mt-3 text-xs text-foreground-muted">아직 등록한 조건이 없어요.</p>
+      ) : (
+        <ul className="mt-3 divide-y divide-border">
+          {alerts.map((a) => (
+            <li key={a.id} className="flex items-center gap-2 py-2 text-sm">
+              <span className="font-semibold">{a.ticker}</span>
+              <span className="text-foreground-muted">
+                {fmtPrice(a)} {a.direction === "above" ? "이상" : "이하"}
+              </span>
+              {a.active ? (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-up-weak text-up">감시 중</span>
+              ) : (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-border/60 text-foreground-muted">
+                  도달 통지됨
+                </span>
+              )}
+              <Button
+                size="sm" variant="ghost" className="ml-auto text-foreground-muted"
+                loading={remove.isPending && remove.variables === a.id}
+                onClick={() => remove.mutate(a.id)}
+              >
+                삭제
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 /** 투자·창업 프로파일 설문 — 밴드(구간)만 저장하고 채팅 분석 서술의 관점 조정에 쓴다. */
 export default function ProfilePage() {
   const user = useUIStore((s) => s.user);
@@ -240,6 +348,7 @@ export default function ProfilePage() {
         ) : (
           <>
           <AlertSettingSection />
+          <PriceAlertSection />
           <form
             key={profile ? profile.updated_at : "empty"} // 조회 결과 도착 시 defaultChecked 재적용
             onSubmit={handleSubmit}

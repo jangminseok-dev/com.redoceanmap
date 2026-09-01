@@ -1048,6 +1048,22 @@ export type AlertSetting = {
   telegram_chat_id: string | null; // 텔레그램 채널(I-7) — 미등록이면 null
 };
 
+// ── /price-alerts (직접 호출 — snake_case DTO) — 가격 도달 알림 조건([6], one-shot) ──
+export type PriceAlert = {
+  id: number;
+  ticker: string;
+  target_price: number;
+  direction: "above" | "below";
+  active: boolean; // 도달 통지 후 false — 재알림은 재등록
+  triggered_at: string | null;
+  created_at: string;
+};
+
+export type PriceAlertList = {
+  alerts: PriceAlert[];
+  max_active: number;
+};
+
 // ── /profile (직접 호출 — snake_case DTO) — 투자·창업 프로파일 설문(밴드 기반) ──
 export type InvestorProfile = {
   purpose: "startup" | "invest" | "both";

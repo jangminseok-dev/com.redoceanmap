@@ -23,6 +23,8 @@ import type {
   GameWallet,
   InvestorProfile,
   AlertSetting,
+  PriceAlert,
+  PriceAlertList,
   BookmarkBoardItem,
   MarketArea,
   PriceHistory,
@@ -292,6 +294,24 @@ export const saveAlertSetting = (body: {
   email_alerts: boolean;
   telegram_chat_id: string | null; // null·빈 문자열 = 텔레그램 채널 해제(I-7)
 }): Promise<AlertSetting> => sendJson("/alert-settings", "PUT", body);
+
+// 가격 도달 알림 조건([6]) — 도달 시 1회 통지 후 자동 비활성(재알림은 재등록)
+export const fetchPriceAlerts = (): Promise<PriceAlertList> => getJson("/price-alerts");
+
+export const createPriceAlert = (body: {
+  ticker: string;
+  target_price: number;
+  direction: PriceAlert["direction"];
+}): Promise<PriceAlert> => sendJson("/price-alerts", "POST", body);
+
+export const deletePriceAlert = async (id: number): Promise<void> => {
+  // 204 응답이라 sendJson(res.json 강제)을 못 쓴다 — 본문 없는 성공을 그대로 받는다
+  const res = await fetch(`/api/backend/price-alerts/${id}`, { method: "DELETE" });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => null);
+    throw new ApiError(res.status, detail?.detail ?? "요청에 실패했습니다.");
+  }
+};
 
 // ── 투자·창업 프로파일 — 자기신고 설문(밴드 기반), 사용자당 1건. ──
 export const fetchProfile = (): Promise<{ profile: InvestorProfile | null }> =>
