@@ -133,6 +133,8 @@ export type AdminForecastSnapshot = {
   direction: string;
   base_price: number;
   score: number;
+  // ⚠ 이름과 달리 '그 방향의 과거 적중률'이다 — 적중 재정의(3d8ecbb) 이후
+  // UP 행은 변동성 초과 상승, DOWN 행은 초과 하락 적중률(화면 라벨: 방향 적중률).
   up_rate: number | null;
   ready: boolean;
   evaluated_at: string | null;
@@ -222,6 +224,18 @@ export type AdminGameIntervention = {
   headline: string;
   note: string | null;
   in_effect: boolean;
+};
+
+export type AdminGameReportedContent = {
+  target_type: "post" | "comment";
+  target_id: number;
+  symbol: string;
+  author: string; // 게임이 만든 고정 가명 — 실명·이메일 아님
+  body: string;
+  report_count: number;
+  reasons: string[];
+  reported_at: string;
+  hidden: boolean; // 이미 내려간 글 — 되돌릴 수 있게 목록에 남는다
 };
 
 export type AdminGameBoard = {
@@ -484,6 +498,35 @@ export const interveneAdminGamePrice = (body: {
 }): Promise<AdminGameIntervention> =>
   request("/admin/game/interventions", { method: "POST", body: JSON.stringify(body) });
 
+export const fetchAdminGameReports = (
+  limit = 50,
+): Promise<AdminGameReportedContent[]> =>
+  request(`/admin/game/community/reports?limit=${limit}`);
+
+async function requestVoid(path: string, body: unknown): Promise<void> {
+  // 204 응답 엔드포인트용 — request()는 res.json()을 강제해서 못 쓴다
+  const res = await fetch(`/api/backend${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => null);
+    throw new ApiError(res.status, detail?.detail ?? "요청에 실패했습니다.");
+  }
+}
+
+export const hideAdminGameContent = (body: {
+  target_type: string;
+  target_id: number;
+  reason: string;
+}): Promise<void> => requestVoid("/admin/game/community/hide", body);
+
+export const unhideAdminGameContent = (body: {
+  target_type: string;
+  target_id: number;
+}): Promise<void> => requestVoid("/admin/game/community/unhide", body);
+
 // BOM 포함 CSV 다운로드 (엑셀 한글 호환)
 export const downloadCsv = (filename: string, header: string[], rows: (string | number)[][]) => {
   const escape = (v: string | number) => {
@@ -499,8 +542,10 @@ export const downloadCsv = (filename: string, header: string[], rows: (string | 
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 };
 
 /* ── 표시 헬퍼 ── */

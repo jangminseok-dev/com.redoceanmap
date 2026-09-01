@@ -14,6 +14,15 @@ const ACTION_META: Record<string, { label: string; grant: boolean }> = {
   "member.reinstate": { label: "정지 해제", grant: true },
   "member.sessions.revoke": { label: "세션 만료", grant: false },
   "member.withdraw": { label: "탈퇴 처리", grant: false },
+  "grade.create": { label: "등급 생성", grant: true },
+  "grade.update": { label: "등급 수정", grant: true },
+  "grade.delete": { label: "등급 삭제", grant: false },
+  "pdf.summarize": { label: "문서 요약", grant: true },
+  "image.upload": { label: "이미지 업로드", grant: true },
+  "game.capital.grant": { label: "게임 자본 지급", grant: true },
+  "game.intervene": { label: "게임 주가 개입", grant: false },
+  "game.community.hide": { label: "토론방 글 숨김", grant: false },
+  "game.community.unhide": { label: "토론방 숨김 해제", grant: true },
 };
 
 export default function AuditPage() {
@@ -29,7 +38,7 @@ export default function AuditPage() {
       <div>
         <h1 className="text-xl sm:text-2xl font-bold tracking-tight">감사 로그</h1>
         <p className="mt-1 text-sm text-foreground-muted">
-          관리자 행위 기록 (역할·정지·탈퇴·세션 · 최근 50건)
+          관리자 행위 기록 (역할·제재·등급·문서·게임 운영 · 최근 50건)
         </p>
       </div>
 

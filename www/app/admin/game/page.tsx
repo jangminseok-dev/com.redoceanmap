@@ -10,9 +10,12 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
   fetchAdminGameBoard,
+  fetchAdminGameReports,
   fetchAdminGameWallet,
   grantAdminGameCapital,
+  hideAdminGameContent,
   interveneAdminGamePrice,
+  unhideAdminGameContent,
   type AdminGameSymbol,
 } from "@/lib/adminApi";
 
@@ -128,8 +131,16 @@ function GameOps() {
 
   const grantReady =
     Number.isInteger(userId) && userId > 0 && Number(form.amount) !== 0 && !!form.reason.trim();
+  // 상한은 board가 내려주는 게임 규칙 값 — 초과 입력을 400 왕복 전에 여기서 막는다
+  const overLimit =
+    (form.mode === "pct" &&
+      Math.abs(Number(form.shockPct)) > (board?.max_shock_pct ?? 300)) ||
+    Math.abs(Number(form.driftPct)) > (board?.max_drift_pct_per_day ?? 20) ||
+    Number(form.durationDays) < 1 ||
+    Number(form.durationDays) > (board?.max_duration_days ?? 5);
   const interveneReady =
     !!form.headline.trim() &&
+    !overLimit &&
     (form.scope === "market" || !!form.target) &&
     (form.mode === "pct" ? Number(form.shockPct) !== 0 || Number(form.driftPct) !== 0 : !!form.targetPrice);
 
@@ -386,6 +397,12 @@ function GameOps() {
             >
               {intervene.isPending ? "반영 중…" : "지금부터 적용"}
             </Button>
+            {overLimit && (
+              <p className="text-xs text-brand">
+                상한 초과 — 즉시 충격 ±{board?.max_shock_pct ?? 300}% · 드리프트 ±
+                {board?.max_drift_pct_per_day ?? 20}%/일 · 기간 1~{board?.max_duration_days ?? 5}일
+              </p>
+            )}
           </div>
         </section>
       </div>
@@ -444,7 +461,83 @@ function GameOps() {
           </div>
         )}
       </section>
+
+      <ReportsSection />
     </div>
+  );
+}
+
+/** 토론방 신고 대기줄 — 백엔드는 있었는데 콘솔 화면이 없던 표면(2026-09-01 버그 수정). */
+function ReportsSection() {
+  const queryClient = useQueryClient();
+  const { data, isPending } = useQuery({
+    queryKey: ["admin-game-reports"],
+    queryFn: () => fetchAdminGameReports(50),
+  });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["admin-game-reports"] });
+  const hide = useMutation({ mutationFn: hideAdminGameContent, onSuccess: invalidate });
+  const unhide = useMutation({ mutationFn: unhideAdminGameContent, onSuccess: invalidate });
+
+  // 숨김 사유 — 행마다 폼 제출 흐름이라 FormData 패턴(REACT_RULES 패턴 A)
+  const handleHide =
+    (targetType: string, targetId: number) => (e: React.FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      const reason = String(new FormData(e.currentTarget).get("reason") ?? "").trim();
+      if (!reason) return;
+      hide.mutate({ target_type: targetType, target_id: targetId, reason });
+    };
+
+  const items = data ?? [];
+  return (
+    <section className="rounded-2xl bg-surface border border-border">
+      <h2 className="px-5 pt-5 text-sm font-bold tracking-tight">토론방 신고 처리</h2>
+      <p className="px-5 mt-0.5 text-xs text-foreground-muted">
+        최근 신고순. 이미 내려간 글도 되돌릴 수 있게 남습니다. 숨김·해제는 감사 로그에 기록됩니다.
+      </p>
+      {isPending && <BlockSkeleton rows={3} />}
+      {!isPending && items.length === 0 && <Empty msg="처리할 신고가 없습니다." />}
+      {items.length > 0 && (
+        <ul className="mt-3 divide-y divide-border">
+          {items.map((r) => (
+            <li key={`${r.target_type}-${r.target_id}`} className="px-5 py-3">
+              <div className="flex items-center gap-2 text-xs text-foreground-muted">
+                <span className="font-medium text-foreground">{r.symbol}</span>
+                <span>{r.target_type === "post" ? "글" : "댓글"}</span>
+                <span>{r.author}</span>
+                <span>신고 {r.report_count}건 · {r.reasons.join(", ")}</span>
+                {r.hidden && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-700">숨김 중</span>
+                )}
+              </div>
+              <p className="mt-1 text-sm whitespace-pre-wrap">{r.body}</p>
+              <div className="mt-2">
+                {r.hidden ? (
+                  <Button
+                    size="sm" variant="weak"
+                    loading={unhide.isPending}
+                    onClick={() =>
+                      unhide.mutate({ target_type: r.target_type, target_id: r.target_id })
+                    }
+                  >
+                    숨김 해제
+                  </Button>
+                ) : (
+                  <form
+                    onSubmit={handleHide(r.target_type, r.target_id)}
+                    className="flex gap-2 max-w-md"
+                  >
+                    <Input name="reason" placeholder="숨김 사유 (감사에 남습니다)" className="flex-1" />
+                    <Button type="submit" size="sm" variant="weak" loading={hide.isPending}>
+                      숨기기
+                    </Button>
+                  </form>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

@@ -4,7 +4,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useUIStore } from "@/lib/uiStore";
 import { apiLogout } from "@/lib/authApi";
-import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   LayoutDashboard,
   Store,
@@ -19,8 +24,7 @@ import {
   MessagesSquare,
   Gamepad2,
   ScrollText,
-  Search,
-  Bell,
+  MoreHorizontal,
   LogOut,
 } from "lucide-react";
 
@@ -40,8 +44,10 @@ const nav = [
   { icon: ScrollText, label: "감사 로그", href: "/admin/audit" },
 ];
 
-// 모바일 하단 탭 (주요 5개)
-const mobileTabs = nav.slice(0, 5);
+// 모바일 하단 탭 — 주요 4개 + "더보기"(나머지 전부). 5개 자르기는 8페이지를
+// 모바일에서 도달 불가로 만들었다(2026-09-01 버그 수정).
+const mobileTabs = nav.slice(0, 4);
+const moreTabs = nav.slice(4);
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -114,23 +120,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             <span className="font-semibold tracking-tight text-[15px]">어드민</span>
           </div>
 
-          <label className="hidden sm:flex items-center gap-2 flex-1 max-w-md ml-1 px-3.5 h-10 rounded-full bg-background border border-border text-sm">
-            <Search size={16} className="text-foreground-muted shrink-0" />
-            <Input
-              name="search"
-              placeholder="상권, 회원, 업종 검색"
-              className="bg-transparent outline-none flex-1 placeholder:text-foreground-muted"
-            />
-          </label>
-
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
-            <button
-              type="button"
-              className="relative grid place-items-center w-10 h-10 rounded-full hover:bg-accent transition-colors"
-            >
-              <Bell size={18} strokeWidth={1.8} />
-              <span className="absolute top-2.5 right-2.5 w-1.5 h-1.5 rounded-full bg-brand" />
-            </button>
             <div className="flex items-center gap-2.5">
               <span className="grid place-items-center w-10 h-10 rounded-full bg-brand/10 text-brand text-sm font-semibold">
                 {user?.name?.[0] ?? "?"}
@@ -176,6 +166,31 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               </Link>
             );
           })}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className={`flex-1 flex flex-col items-center justify-center gap-1 py-2 transition-colors ${
+                  moreTabs.some(({ href }) => isActive(href))
+                    ? "text-brand"
+                    : "text-foreground-muted"
+                }`}
+              >
+                <MoreHorizontal size={21} strokeWidth={1.75} />
+                <span className="text-xs font-medium">더보기</span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" side="top" className="mb-2">
+              {moreTabs.map(({ icon: Icon, label, href }) => (
+                <DropdownMenuItem key={label} asChild>
+                  <Link href={href} className="flex items-center gap-2">
+                    <Icon size={15} strokeWidth={1.75} />
+                    {label}
+                  </Link>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </nav>
     </div>

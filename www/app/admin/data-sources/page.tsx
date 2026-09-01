@@ -13,6 +13,7 @@ const NOTES: Record<string, string> = {
   store: "서울 열린데이터광장 · 분기 팩트",
   floating_population: "서울 열린데이터광장 · 분기 팩트",
   market_news: "Google News RSS · 일 단위 수집",
+  business_permits: "서울 열린데이터광장 인허가 · 주 1회",
   recommendations: "AI 추천 파이프라인 산출물",
   price_bars: "yfinance OHLCV · 자동 수집",
   news_articles: "Google News RSS · 30분 주기",

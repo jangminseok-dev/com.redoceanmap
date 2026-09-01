@@ -54,7 +54,7 @@ export default function ForecastsPage() {
   const exportCsv = (rows: AdminForecastSnapshot[]) =>
     downloadCsv(
       "forecast_snapshots.csv",
-      ["티커", "기준일", "호라이즌", "방향", "레짐", "어닝veto", "기준가", "점수", "과거상승비율", "채점일", "실현수익률", "적중"],
+      ["티커", "기준일", "호라이즌", "방향", "레짐", "어닝veto", "기준가", "점수", "방향적중률", "채점일", "실현수익률", "적중"],
       rows.map((r) => [
         r.ticker,
         r.as_of.slice(0, 10),
@@ -110,7 +110,7 @@ export default function ForecastsPage() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <Kpi icon={CheckCircle2} label="채점 완료" value={data.kpi.scored.toLocaleString()} sub={`전체 ${data.kpi.total.toLocaleString()}건`} />
             <Kpi icon={Clock} label="채점 대기" value={data.kpi.pending.toLocaleString()} sub="horizon 미도래" />
-            <Kpi icon={Target} label="전체 적중률" value={pct(data.kpi.hit_rate)} sub="UP·DOWN만" />
+            <Kpi icon={Target} label="전체 적중률" value={pct(data.kpi.hit_rate)} sub="UP·DOWN만 · 최근 채점 2,000건 기준" />
             <Kpi icon={TrendingUp} label="UP 적중률" value={pct(data.kpi.up_hit_rate)} sub={`DOWN ${pct(data.kpi.down_hit_rate)}`} />
           </div>
 
@@ -127,7 +127,7 @@ export default function ForecastsPage() {
               empty="채점 완료된 스냅샷이 없습니다."
             />
             <StatTable
-              title="신호별 방향 일치율"
+              title="신호별 방향 일치율 (부호 기준 — 위 적중 정의와 다른 자)"
               headers={["신호", "표본", "일치", "일치율"]}
               rows={data.by_signal.map((s) => [
                 SIGNAL_LABEL[s.key] ?? s.key,
@@ -136,6 +136,17 @@ export default function ForecastsPage() {
                 pct(s.hit_rate),
               ])}
               empty="신호 표본이 아직 없습니다."
+            />
+            <StatTable
+              title="지평별"
+              headers={["지평", "채점", "적중률", "평균 실현수익률"]}
+              rows={data.by_horizon.map((h) => [
+                `${h.horizon_days}일`,
+                h.scored.toLocaleString(),
+                pct(h.hit_rate),
+                signedPct(h.avg_realized_return_pct),
+              ])}
+              empty="채점 완료된 스냅샷이 없습니다."
             />
             <StatTable
               title="레짐별 (캡처 시점 시장 국면)"
@@ -175,7 +186,7 @@ export default function ForecastsPage() {
                         <th className="font-medium px-4 py-2.5 text-right">호라이즌</th>
                         <th className="font-medium px-4 py-2.5">방향</th>
                         <th className="font-medium px-4 py-2.5">레짐</th>
-                        <th className="font-medium px-4 py-2.5 text-right">과거 상승비율</th>
+                        <th className="font-medium px-4 py-2.5 text-right">방향 적중률</th>
                         <th className="font-medium px-4 py-2.5 text-right">실현 수익률</th>
                         <th className="font-medium px-5 py-2.5 text-right">적중</th>
                       </tr>

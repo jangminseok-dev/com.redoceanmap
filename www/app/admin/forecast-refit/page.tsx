@@ -126,7 +126,8 @@ function BoardTable({ board, isGate }: { board: AdminRefitBoard; isGate: boolean
             <thead>
               <tr className="text-xs text-foreground-muted border-b border-border">
                 <th className="text-left font-normal py-1.5">가중치</th>
-                <th className="text-right font-normal py-1.5">임계</th>
+                <th className="text-right font-normal py-1.5">상승 임계</th>
+              <th className="text-right font-normal py-1.5">하락 임계</th>
                 <th className="text-right font-normal py-1.5">UP n</th>
                 <th className="text-right font-normal py-1.5">적중</th>
                 <th className="text-right font-normal py-1.5">기준선</th>
@@ -196,7 +197,8 @@ function HistoryTable({ rows }: { rows: AdminSignalConfig[] }) {
             <tr className="text-xs text-foreground-muted border-b border-border">
               <th className="text-left font-normal py-1.5">키</th>
               <th className="text-left font-normal py-1.5">가중치</th>
-              <th className="text-right font-normal py-1.5">임계</th>
+              <th className="text-right font-normal py-1.5">상승 임계</th>
+              <th className="text-right font-normal py-1.5">하락 임계</th>
               <th className="text-left font-normal py-1.5">출처</th>
               <th className="text-right font-normal py-1.5">활성화</th>
             </tr>
@@ -225,6 +227,8 @@ function HistoryTable({ rows }: { rows: AdminSignalConfig[] }) {
                   })}
                 </td>
                 <td className="text-right tabular-nums py-1.5">{r.up_threshold.toFixed(2)}</td>
+                {/* 3d8ecbb가 하락 임계를 -1.01→-0.45로 바꿨는데 이력에 안 보였다(2026-09-01) */}
+                <td className="text-right tabular-nums py-1.5">{r.down_threshold.toFixed(2)}</td>
                 <td className="py-1.5">{r.source === "seed" ? "시드" : "재적합"}</td>
                 <td className="text-right tabular-nums py-1.5 text-foreground-muted">
                   {r.activated_at ? new Date(r.activated_at).toLocaleDateString("ko-KR") : "—"}

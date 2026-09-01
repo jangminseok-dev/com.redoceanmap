@@ -28,7 +28,7 @@ import { Button } from "@/components/ui/button";
 
 const PAGE_SIZE = 20;
 
-// permission 코드 → 설명 (백엔드 alembic 시드와 동일한 7종)
+// permission 코드 → 설명 — 백엔드 alembic 시드 12종과 동일(회귀: test_admin_access_matrix)
 const PERMISSION_DESC: Record<string, string> = {
   "dashboard:read": "대시보드 KPI 조회",
   "areas:read": "상권 목록 조회",
@@ -37,6 +37,11 @@ const PERMISSION_DESC: Record<string, string> = {
   "recommendations:read": "추천 기록 조회",
   "datasources:read": "데이터셋 현황 조회",
   "audit:read": "감사 로그 조회",
+  "analytics:read": "예측 채점·백테스트 조회",
+  "documents:read": "문서(PDF 요약) 조회",
+  "documents:write": "문서 업로드·요약 실행",
+  "game:read": "게임 운영 현황 조회",
+  "game:write": "게임 자본 지급·주가 개입·신고 처리",
 };
 
 type DialogAction = "suspend" | "revoke-sessions" | "withdraw";
