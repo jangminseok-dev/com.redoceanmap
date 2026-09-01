@@ -11,7 +11,7 @@ from hub.app.ports.output.forecast_refit_port import ForecastRefitPort
 from stock.app.ports.input.forecast_refit_use_case import ForecastRefitUseCase
 
 
-def _candidate(c: dict | None) -> RefitCandidateRow | None:
+def _candidate(c: dict | None, board_baseline: float = 0.0) -> RefitCandidateRow | None:
     # payload 키는 weight_refit.RefitReport.to_payload()가 정의 —
     # 누락 키는 .get() 관용(구버전 리포트 공존, NewsEventStudyGateway 선례)
     if c is None:
@@ -22,7 +22,10 @@ def _candidate(c: dict | None) -> RefitCandidateRow | None:
         w_bb=c.get("w_bb", 0.0), w_obv=c.get("w_obv", 0.0),
         w_momentum=c.get("w_momentum", 0.0),
         n=c.get("n", 0), hits=c.get("hits", 0), hit_rate=c.get("hit_rate"),
-        baseline=c.get("baseline", 0.0),
+        # 기준선은 행이 아니라 보드 레벨(baseline_up_rate)에 있다 — 행 payload에 baseline
+        # 키가 없어 폴백 0.0이 그대로 소비돼 "기준선 0%"로 출력됐다(2026-09-01 실측 q05).
+        # 같은 지평의 후보들은 기준선을 공유하므로 보드 값을 채운다.
+        baseline=c.get("baseline", board_baseline),
         wilson_lower=c.get("wilson_lower", 0.0),
         is_current=c.get("is_current", False),
         gate_passed=c.get("gate_passed", False),
@@ -53,15 +56,26 @@ class ForecastRefitGateway(ForecastRefitPort):
             params=view.params or {},
             gate_horizon=payload.get("gate_horizon", 0),
             promote=payload.get("promote", False),
-            winner=_candidate(payload.get("winner")),
+            # winner의 기준선은 게이트 판정 지평 보드의 것을 쓴다(같은 지평에서 뽑힌 승자)
+            winner=_candidate(
+                payload.get("winner"),
+                next(
+                    (b.get("baseline_up_rate", 0.0) for b in payload.get("boards", [])
+                     if b.get("horizon_days") == payload.get("gate_horizon")),
+                    0.0,
+                ),
+            ),
             reasons=payload.get("reasons", []),
             boards=[
                 RefitHorizonBoard(
                     horizon_days=b.get("horizon_days", 0),
                     total=b.get("total", 0),
                     baseline_up_rate=b.get("baseline_up_rate", 0.0),
-                    current=_candidate(b.get("current")),
-                    rows=[_candidate(r) for r in b.get("rows", [])],
+                    current=_candidate(b.get("current"), b.get("baseline_up_rate", 0.0)),
+                    rows=[
+                        _candidate(r, b.get("baseline_up_rate", 0.0))
+                        for r in b.get("rows", [])
+                    ],
                 )
                 for b in payload.get("boards", [])
             ],
