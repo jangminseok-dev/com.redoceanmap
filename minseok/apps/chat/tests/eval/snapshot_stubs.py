@@ -18,6 +18,7 @@ from chat.domain.entities.conversation_entity import Conversation, Message
 from hub.app.dtos.commercial_data_dto import (
     AreaInfo,
     AreaInsight,
+    AreaRankingInfo,
     AreaRawStat,
     AreaScoreComponent,
     AreaScoreInfo,
@@ -224,6 +225,22 @@ class SnapshotMarket:
 
     async def get_area_permit_churn(self, trdar_codes, months=12):
         return {c: p for c in trdar_codes if (p := synthetic_permit_churn(c)) is not None}
+
+    async def get_area_ranking(self, service_code=None):
+        # 조건 질의 결정론 라우팅(I-14, MN11)용 — 요약 스냅샷에서 시드 합성(다른 합성과 동일 규칙)
+        rows = []
+        for a in self._areas:
+            s = a.trdar_code % 100
+            sales = self._sales.get(a.trdar_code)
+            stores = 5 + s % 60
+            rows.append(AreaRankingInfo(
+                trdar_code=a.trdar_code, trdar_name=a.trdar_name,
+                district_name=a.district_name, dong_name=a.adm_dong_name,
+                monthly_sales=sales, store_count=stores,
+                sales_per_store=(sales // stores) if sales else None,
+                closure_rate=float(s % 7), change_indicator_name=None,
+            ))
+        return rows
 
 
 class SnapshotStocks:
