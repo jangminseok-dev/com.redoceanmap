@@ -83,6 +83,12 @@ def _resolve_sync(query: str) -> str:
     # 해외 종목 한국어명은 별칭 사전으로 해석 — KRX 조회(네트워크) 전에 처리한다.
     if compact in _OVERSEAS_ALIASES:
         return _OVERSEAS_ALIASES[compact]
+    # 정식 명칭 꼬리 변형("마이크론 테크놀로지" — 3차 실측 P5): 4자 이상 별칭이 머리에
+    # 정확히 오면 인정한다. 짧은 별칭은 제외 — "인텔"(2자)을 접두 매칭하면 KRX
+    # 인텔리안테크가 INTC로 오매칭된다.
+    for alias, ticker in _OVERSEAS_ALIASES.items():
+        if len(alias) >= 4 and compact.startswith(alias):
+            return ticker
 
     names = _load_krx_names()
     if q in names:

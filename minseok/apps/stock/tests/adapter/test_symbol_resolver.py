@@ -47,3 +47,10 @@ async def test_미해석_질의는_MarketDataUnavailableError(monkeypatch):
 @pytest.mark.network
 async def test_KRX_실목록_삼성전자():
     assert await symbol_resolver.resolve_symbol("삼성전자") == "005930"
+
+
+def test_별칭의_정식_명칭_꼬리_변형도_해석한다():
+    # 3차 실측 P5: "마이크론 테크놀로지"가 별칭("마이크론") 정확 일치에서 빠져 실패했다
+    assert symbol_resolver._resolve_sync("마이크론 테크놀로지") == "MU"
+    # 짧은 별칭은 접두 매칭하지 않는다 — "인텔리안테크"(KRX)가 INTC로 오매칭되면 안 된다
+    assert "인텔" in symbol_resolver._OVERSEAS_ALIASES

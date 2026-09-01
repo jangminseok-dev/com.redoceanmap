@@ -284,12 +284,49 @@ def _has_deixis(prompt: str) -> bool:
     return any(token in prompt for token in DEICTIC_TOKENS)
 
 
+# 제외 조건 어휘(P2·P7) — "강남 말고" 류는 직전 추천으로 제한하면 정반대 답이 된다
+EXCLUSION_TOKENS = ("말고", "빼고", "제외", "다른 데", "다른 곳", "다른 동네", "딴 데")
+
+
+def _has_exclusion(prompt: str) -> bool:
+    return any(token in prompt for token in EXCLUSION_TOKENS)
+
+
+# 업종 단서 어휘(P2) — 질문이 업종을 새로 말했는지의 보수적 판정. phase1이 고른 업종명
+# 토큰과 함께 본다("카페는 포화 아니야?"는 힌트 있음 → phase1 신뢰, "뭘 조심해야 해?"는
+# 힌트 없음 → 직전 업종 승계).
+_SERVICE_HINT_TOKENS = (
+    "카페", "커피", "치킨", "분식", "한식", "중식", "일식", "양식", "고기", "곱창",
+    "술집", "호프", "주점", "빵", "제과", "베이커리", "디저트", "미용", "네일", "옷",
+    "의류", "패션", "편의점", "약국", "식당", "음식점", "반찬", "정육", "과일", "꽃",
+    "문구", "서점", "학원", "피시방", "노래방", "세탁", "부동산", "김밥", "국수", "피자",
+    "버거", "족발", "횟집", "초밥",
+)
+
+
+def _service_hinted(prompt: str, service_name: str) -> bool:
+    if any(token in prompt for token in _SERVICE_HINT_TOKENS):
+        return True
+    return any(t in prompt for t in re.findall(r"[가-힣]{2,}", service_name or ""))
+
+
 # 서비스 메타 질문 가드(1-2) — "너희 UP 시그널 적중률이 어떻게 돼?"를 LLM에 보내면
 # 자기 서비스를 제3자 취급하는 일반론("해당 서비스에 데이터를 요구하세요")이 나온다
 # (2026-08-31 프로덕션 실측). 자기 지칭 + 검증 어휘가 함께 있을 때만 결정론으로 가로챈다 —
 # 자기 지칭 없는 "삼성전자 신호 검증된 거야?"는 기존 종목 경로를 그대로 탄다(보수적 매칭).
 _META_SELF_RE = re.compile(r"너희|너네|니네|당신들|이\s?(서비스|사이트|앱)")
-_META_VERIFY_RE = re.compile(r"적중률|적중\s?율|백테스트|표본|신뢰\s?구간|승률|검증")
+# 3차 실측(P1): "너네 신호 지난달에 몇 개나 맞았는데?"가 "적중률" 어휘가 없어 새어나가
+# general(Gemini)로 낙하했다 — 구어 검증 어휘까지 넓힌다(자기 지칭 동반 조건은 유지).
+_META_VERIFY_RE = re.compile(
+    r"적중|백테스트|표본|신뢰\s?구간|승률|검증|맞았|맞춘|맞혔|증거|성적|실적"
+)
+
+
+# 급등주 찍기 질의(P5) — 종목/주식 명사와 결합했을 때만(보수적 — "이 주식 추천해?"는 제외)
+_SURGE_PICK_RE = re.compile(
+    r"(?:급등|상한가|오를|수익\s?나?\s?는)\s*(?:만한)?\s*(?:종목|주식).{0,10}(?:찍|골라|추천|알려)"
+    r"|(?:종목|주식)\s*(?:하나|한\s?개)?\s*만?\s*(?:찍어|골라)"
+)
 
 
 def _is_service_meta(prompt: str) -> bool:
@@ -501,14 +538,28 @@ class ChatInteractor(ChatUseCase):
         이전 대화에서 상권을 이어받지 못해 후보가 비는 경우를 결정론적으로 보정한다.
         """
         for m in reversed(history):
-            recs = (m.payload or {}).get("recommendations")
-            if not recs:
-                continue
-            codes = [int(r["id"]) for r in recs if str(r.get("id", "")).isdigit()]
+            payload = m.payload or {}
+            recs = payload.get("recommendations")
+            if recs:
+                codes = [int(r["id"]) for r in recs if str(r.get("id", "")).isdigit()]
+            else:
+                # 조건 질의 랭킹 응답의 후속 앵커(P3) — 카드 없이 코드만 남긴다
+                codes = [c for c in payload.get("rankingCodes") or [] if isinstance(c, int)]
             valid = [c for c in codes if c in area_map]
             if valid:
                 return valid
         return []
+
+    @staticmethod
+    def _previous_service(history: list[Message]) -> tuple[str, str] | None:
+        """직전 추천 카드에서 (업종 코드, 업종명)을 복원한다 — 업종 승계(P2)용."""
+        for m in reversed(history):
+            recs = (m.payload or {}).get("recommendations")
+            if recs:
+                code, name = recs[0].get("serviceCode"), recs[0].get("category")
+                if code and name:
+                    return str(code), str(name)
+        return None
 
     def _build_area_context(
         self, summary: AreaSummary, prompt: str = "", limit: int = 80
@@ -670,6 +721,19 @@ class ChatInteractor(ChatUseCase):
         # 서비스 메타 질문(자기 시그널 검증치)은 LLM 진입 전에 결정론으로 답한다(1-2)
         if _is_service_meta(prompt):
             return await self._answer_service_meta(conversation_id)
+        if _SURGE_PICK_RE.search(prompt):
+            # 급등주 찍기(3차 실측 P5) — market_news로 낙하해 특정 종목을 '단기 투자
+            # 기회'로 서술했다. 단기 급등 예측은 백테스트 우위가 없고 매매 지시 금지가
+            # 원칙이므로 LLM 없이 결정론으로 거절·안내한다.
+            text = (
+                "특정 종목을 찍어드리지는 않아요 — 단기 급등 예측은 백테스트에서 우위가"
+                " 확인되지 않았고, 매매 지시를 하지 않는 것이 이 서비스의 원칙이에요."
+                " 대신 궁금한 종목을 물어보시면 지표·과거 통계(표본·신뢰구간)로 현재"
+                " 상태를 읽어드리고, 프로필의 가격 도달 알림으로 원하는 가격 통지를"
+                " 받아보실 수 있어요."
+            )
+            await self._conversations.add_message(conversation_id, "assistant", text)
+            return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
 
         # phase0(의도 분류 = 도메인 판단) — 단일 모델(7.8B) 정책
         self._notify(on_stage, "intent", "질문 의도를 파악하고 있어요")
@@ -756,6 +820,11 @@ class ChatInteractor(ChatUseCase):
 
         service_code: str = p1.get("service_code", "")
         service_name: str = p1.get("service_name", "")
+        # 업종 승계(3차 실측 P2) — 후속 질문에 업종 단서가 없으면 phase1의 자의 재선택
+        # ("주의 등급이면 하지 말라는 거야?" → 조명용품 표류)을 버리고 직전 업종을 잇는다.
+        prev_service = self._previous_service(history)
+        if prev_service and not _service_hinted(prompt, service_name):
+            service_code, service_name = prev_service
         trdar_codes: list[int] = [int(c) for c in p1.get("trdar_codes", []) if str(c).isdigit()]
         valid_codes = [c for c in trdar_codes if c in area_map]
 
@@ -773,10 +842,11 @@ class ChatInteractor(ChatUseCase):
                 )[:3]
         else:
             previous = self._previous_area_codes(history, area_map)
-            if previous and _has_deixis(prompt):
-                # 지시어 후속 질문("그 중에서/거기") — 직전 추천으로 후보를 **제한**한다.
-                # 첫 baseline 실측: 이 케이스에서 모델이 10건 전부 이웃 상권을 섞었다(집중률 0%).
-                # "그 중"이라 물었는데 새 후보를 더하는 건 오답이므로 코드로 자른다.
+            if previous and (_has_deixis(prompt) or not _has_exclusion(prompt)):
+                # 직전 추천으로 후보를 **제한**한다. 지시어("그 중에서/거기")뿐 아니라
+                # 지역 미언급 후속 전반으로 확대(3차 실측 P2): "경쟁 몇 개야?"·"포화
+                # 아니야?" 류에서 phase1이 전면 재선택해 동대문·홍대로 리셋됐다.
+                # 제외 어휘("말고/빼고")가 있으면 제한하지 않는다 — 정반대 답이 된다.
                 kept = [c for c in valid_codes if c in previous]
                 valid_codes = kept or previous
             elif not valid_codes:
@@ -1030,7 +1100,12 @@ class ChatInteractor(ChatUseCase):
             '특정 동네가 궁금하면 지역과 업종을 함께 물어봐 주세요 (예: "성수동 카페 어때?").'
         )
         text = "\n".join(lines)
-        await self._conversations.add_message(conversation_id, "assistant", text)
+        # 후속 앵커(3차 실측 P3) — "그 중 첫 번째" 류가 이어받을 코드를 payload로 남긴다.
+        # recommendations 키가 아니므로 프론트 카드 복원에는 걸리지 않는다.
+        await self._conversations.add_message(
+            conversation_id, "assistant", text,
+            payload={"rankingCodes": [r.trdar_code for r in top]},
+        )
         return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
 
     async def _load_profile(self, user_id: int | None) -> UserProfileSummary | None:
@@ -1175,9 +1250,19 @@ class ChatInteractor(ChatUseCase):
         return None
 
     async def _answer_general(self, conversation_id: int, prompt: str) -> AskResponse:
-        """상권/주식과 무관한 일반 질문 — 허브 GeminiAnswerPort(외부 Gemini API)로 답변."""
+        """상권/주식과 무관한 일반 질문 — 허브 GeminiAnswerPort(외부 Gemini API)로 답변.
+
+        정체성 프리앰블(3차 실측 P1): 외부 모델이 "저는 OpenAI에서 개발한…"이라고 자기
+        부정하는 것을 막는다 — 메타 가드가 놓친 질문이 이 경로로 낙하할 수 있다.
+        """
+        framed = (
+            "너는 redoceanmap(서울 상권·주식 분석 서비스)의 대화 어시스턴트다. "
+            "자신을 OpenAI·구글 등 외부 회사의 모델이라고 소개하지 말 것. 이 서비스의 "
+            "신호 적중률·검증 수치를 물으면 지어내지 말고 \"'너희 서비스 적중률 알려줘'"
+            "처럼 물어보면 실측 수치로 답한다\"고 안내할 것.\n\n질문: "
+        )
         try:
-            text = (await self._gemini.generate(prompt)).answer
+            text = (await self._gemini.generate(f"{framed}{prompt}")).answer
         except GeminiAnswerError as exc:
             # 외부 API 실패는 500 대신 안내로 열화 — 대화 흐름을 끊지 않는다.
             logger.warning("[chat] general 분기 Gemini 실패: %s", exc)
@@ -1249,11 +1334,14 @@ class ChatInteractor(ChatUseCase):
             f"여러 종목 비교는 아직 지원하지 않아 '{stock_query}'만 분석했어요. "
             f"{', '.join(extra_queries)}은(는) 따로 물어봐 주세요.\n\n"
         ) if extra_queries else ""
+        # 미지원 고지는 실패 경로에도 붙는다(3차 실측 P4) — "PER 낮은 5개"가 리졸버에서
+        # 죽으면 고지 없이 오류 원문만 나갔다.
+        unsupported_note = _unsupported_notice(prompt, _STOCK_UNSUPPORTED_NOTICES)
         self._notify(on_stage, "analyze", "종목 지표를 분석하고 있어요")
         try:
             analysis = await self._stocks.analyze(stock_query)
         except StockAnalysisUnavailable as e:
-            text = f"{compare_notice}{e.detail} 정확한 종목명이나 티커로 다시 물어봐 주세요."
+            text = f"{unsupported_note}{compare_notice}{e.detail} 정확한 종목명이나 티커로 다시 물어봐 주세요."
             await self._conversations.add_message(conversation_id, "assistant", text)
             return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
 
@@ -1317,7 +1405,7 @@ class ChatInteractor(ChatUseCase):
         text = answer_guard.attach_glossary(text, prompt)
         text = answer_guard.ensure_disclaimer(text)
         # 미지원 축·확률 고지(I-12·I-17)가 비교 고지(I-18)보다 앞 — 전부 결정론 문두 삽입
-        text = _unsupported_notice(prompt, _STOCK_UNSUPPORTED_NOTICES) + compare_notice + text
+        text = unsupported_note + compare_notice + text
 
         # 결론 한 줄 — 페이지 히어로와 같은 verdict 로직으로 서버가 계산해 카드에 싣는다.
         # detail(표본·신뢰구간)까지 카드에 싣는다 — 배지 밑에 근거가 없으면 판정만 남아

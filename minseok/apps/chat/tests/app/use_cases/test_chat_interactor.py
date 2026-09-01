@@ -504,7 +504,8 @@ async def test_지시어_후속질문은_직전_추천으로_후보를_제한한
     assert [r.id for r in result.recommendations] == ["1000001"]  # 이웃상권이 잘려나간다
 
 
-async def test_지시어가_없으면_phase1_선택을_제한하지_않는다(monkeypatch):  # 무손상
+async def test_제외어가_있으면_직전_추천으로_제한하지_않는다(monkeypatch):
+    # P2 확대 이후에도 "말고/빼고" 류는 제한하지 않는다 — 직전 추천으로 자르면 정반대 답
     areas = [
         AreaInfo(trdar_code=1000001, trdar_name="테스트상권", district_name="강남구",
                  adm_dong_name="역삼동", lat=37.5, lng=127.0),
@@ -529,6 +530,104 @@ async def test_지시어가_없으면_phase1_선택을_제한하지_않는다(mo
     )
     result = await interactor.ask("숙대 말고 다른 후보도 보여줘", conversation_id=100)
     assert [r.id for r in result.recommendations] == ["1000001", "1000002"]
+
+
+async def test_비지시어_후속도_직전_추천으로_제한한다(monkeypatch):
+    # 3차 실측 P2: "경쟁 가게는 몇 개나 돼?" 류에서 phase1이 전면 재선택해
+    # 동대문·홍대로 리셋됐다 — 새 지역 미언급이면 지시어 없이도 직전 추천으로 제한한다.
+    areas = [
+        AreaInfo(trdar_code=1000001, trdar_name="테스트상권", district_name="강남구",
+                 adm_dong_name="역삼동", lat=37.5, lng=127.0),
+        AreaInfo(trdar_code=1000002, trdar_name="이웃상권", district_name="서초구",
+                 adm_dong_name="서초동", lat=37.4, lng=127.0),
+    ]
+    conversations = _StubConversations(history=[
+        Message(id=1, conversation_id=100, role="user", content="강남 상권 어때?",
+                created_at=_NOW, payload=None),
+        Message(id=2, conversation_id=100, role="assistant", content="상권 추천",
+                created_at=_NOW,
+                payload={"recommendations": [
+                    {"id": "1000001", "name": "테스트상권",
+                     "serviceCode": "CS100001", "category": "치킨전문점"}]}),
+    ])
+    phase1_other = ('{"service_code": "CS100010", "service_name": "커피-음료",'
+                    ' "trdar_codes": [1000002]}')  # 모델이 이웃으로 리셋한 상황
+    phase2 = '{"text": "요약", "areas": [{"trdar_code": 1000001, "reason": "이유. 유의할 점: x"}]}'
+    interactor, llm, _ = _build(
+        monkeypatch, [INTENT_MARKET, phase1_other, phase2],
+        conversations=conversations, market=_StubMarket(areas=areas),
+    )
+    result = await interactor.ask("경쟁 가게는 몇 개나 돼?", conversation_id=100)
+    assert [r.id for r in result.recommendations] == ["1000001"]
+    # 업종 단서도 없으므로 직전 업종(치킨전문점)을 잇는다 — phase1의 커피-음료 재선택 폐기
+    assert result.recommendations[0].category == "치킨전문점"
+
+
+async def test_업종_단서가_있으면_phase1_업종을_신뢰한다(monkeypatch):  # 무손상
+    areas = [
+        AreaInfo(trdar_code=1000001, trdar_name="테스트상권", district_name="강남구",
+                 adm_dong_name="역삼동", lat=37.5, lng=127.0),
+    ]
+    conversations = _StubConversations(history=[
+        Message(id=1, conversation_id=100, role="user", content="강남 상권 어때?",
+                created_at=_NOW, payload=None),
+        Message(id=2, conversation_id=100, role="assistant", content="상권 추천",
+                created_at=_NOW,
+                payload={"recommendations": [
+                    {"id": "1000001", "name": "테스트상권",
+                     "serviceCode": "CS100001", "category": "치킨전문점"}]}),
+    ])
+    phase2 = '{"text": "요약", "areas": [{"trdar_code": 1000001, "reason": "이유. 유의할 점: x"}]}'
+    interactor, _, _ = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, phase2],
+        conversations=conversations, market=_StubMarket(areas=areas),
+    )
+    result = await interactor.ask("카페는 포화 아니야?", conversation_id=100)
+    assert result.recommendations[0].category == "커피-음료"  # phase1 선택 유지
+
+
+async def test_랭킹_결정론_응답도_후속_앵커를_남긴다(monkeypatch):
+    # 3차 실측 P3: "그 중 첫 번째" 후속이 이어받을 payload가 없어 총신대입구로 리셋됐다
+    ranking = [_ranking_row(trdar_code=7, trdar_name="A상권")]
+    market = _StubMarket(ranking=ranking)
+    interactor, _, stubs = _build(monkeypatch, [INTENT_MARKET], market=market)
+    await interactor.ask("유동인구 많고 폐업률 낮은 상권 3곳 추천해줘")
+    assert stubs["conversations"].saved[-1][0] == "assistant"
+    assert stubs["conversations"].payloads[-1] == {"rankingCodes": [7]}
+
+
+async def test_구어_메타_질문도_결정론으로_가로챈다(monkeypatch):
+    # 3차 실측 P1: "너네 신호 지난달에 몇 개나 맞았는데?"가 새어나가 Gemini가
+    # "저는 OpenAI에서 개발한…"이라고 자기 부정했다.
+    interactor, llm, _ = _build(monkeypatch, [])
+    result = await interactor.ask("너네 신호 지난달에 몇 개나 맞았는데? 증거 보여줘")
+    assert llm.calls == []
+    assert "Wilson 95% 신뢰구간 하한" in result.text
+
+
+async def test_general_답변에는_자기_정체성_프리앰블이_붙는다(monkeypatch):
+    intent = '{"intent": "general", "stock_query": ""}'
+    interactor, _, stubs = _build(monkeypatch, [intent])
+    await interactor.ask("점심 뭐 먹을까?")
+    assert "redoceanmap" in stubs["gemini"].prompts[0]
+    assert "점심 뭐 먹을까?" in stubs["gemini"].prompts[0]
+
+
+async def test_급등주_찍기_질문은_결정론으로_거절한다(monkeypatch):
+    # 3차 실측 P5: market_news로 낙하해 특정 종목을 "단기 투자 기회"로 서술했다
+    interactor, llm, _ = _build(monkeypatch, [])
+    result = await interactor.ask("오늘 급등할 종목 하나만 찍어줘")
+    assert llm.calls == []
+    assert "특정 종목을 찍어드리지는 않아요" in result.text
+    assert "가격 도달 알림" in result.text
+
+
+async def test_리졸버_실패_경로에도_미지원_고지가_붙는다(monkeypatch):
+    # 3차 실측 P4: "PER 낮은 5개"가 리졸버에서 죽으면 고지 없이 오류 원문만 나갔다
+    intent = '{"intent": "stock", "stock_query": "PER 낮은 저평가 국내 주식 5개"}'
+    interactor, _, _ = _build(monkeypatch, [intent], stocks=_StubStocks(fail=True))
+    result = await interactor.ask("PER 낮은 저평가 국내 주식 5개만 골라줘")
+    assert result.text.startswith("※ 종목 간 PER 비교·스크리닝은 아직 지원하지 않아요")
 
 
 async def test_이유_없는_추천은_내보내지_않는다(monkeypatch):
@@ -1357,7 +1456,8 @@ async def test_구버전_익명_대화는_인증_사용자에게_허용된다(mo
 async def test_general_의도면_허브_Gemini_포트로_답한다(monkeypatch):
     interactor, _, stubs = _build(monkeypatch, [INTENT_GENERAL])
     result = await interactor.ask("카파시가 누구야?")
-    assert stubs["gemini"].prompts == ["카파시가 누구야?"]
+    # 정체성 프리앰블(P1)이 붙은 채 전달된다 — 원 질문은 보존
+    assert stubs["gemini"].prompts[0].endswith("질문: 카파시가 누구야?")
     assert result.text == "제미나이 답변"
     assert result.recommendations == []
 
