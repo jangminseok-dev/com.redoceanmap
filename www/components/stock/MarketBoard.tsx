@@ -243,11 +243,19 @@ export default function MarketBoard({
       {/* 신호 요약 — 보드 행을 세어 만든다(새 요청 없음). 표가 길어 위에서 전체 그림이 안 잡히던 자리다.
           "주식 분석" 제목은 뺐다 — 레일에서 주식이 활성이라 어디인지는 이미 알고 있다. */}
       {!compact && rows.length > 0 && (
-        <div className="grid grid-cols-3 gap-2 px-4 pt-4 pb-1">
-          <SummaryTile label="상승 신호" count={counts.UP} className="text-up" />
-          <SummaryTile label="하락 신호" count={counts.DOWN} className="text-down" />
-          <SummaryTile label="중립" count={counts.NEUTRAL} className="text-foreground-muted" />
-        </div>
+        <>
+          <div className="grid grid-cols-3 gap-2 px-4 pt-4 pb-1">
+            <SummaryTile label="상승 신호" count={counts.UP} className="text-up" />
+            <SummaryTile label="하락 신호" count={counts.DOWN} className="text-down" />
+            <SummaryTile label="중립" count={counts.NEUTRAL} className="text-foreground-muted" />
+          </div>
+          {/* 지평 안내 — 시장 전체가 내린 날 "상승 신호가 다 빨갛다"로 읽히는 실관찰(9/2).
+              신호는 당일 성적표가 아니라 5거래일 전망이라는 것을 표 앞에서 말한다. */}
+          <p className="px-4 pb-1 text-xs text-foreground-muted">
+            신호는 오늘 등락이 아니라 앞으로 {boardQ.data?.horizon_days ?? 5}거래일 전망이에요 —
+            시장이 크게 내린 날엔 상승 신호 종목도 함께 내릴 수 있어요.
+          </p>
+        </>
       )}
 
       <div className="flex flex-wrap items-baseline gap-x-2 px-4 pt-4 pb-2">
@@ -295,7 +303,7 @@ export default function MarketBoard({
               <span className="hidden xl:block w-24 shrink-0 text-right">등락액</span>
               <span className="w-[72px] shrink-0 text-right">등락률</span>
               <span className="hidden xl:block w-24 shrink-0 text-right">거래대금</span>
-              <span className="w-[104px] shrink-0 text-center">신호</span>
+              <span className="w-[104px] shrink-0 text-center">신호({boardQ.data.horizon_days}일)</span>
               <span className="w-20 shrink-0 text-right">평소 대비</span>
             </div>
           )}
@@ -322,7 +330,8 @@ export default function MarketBoard({
 
           {!compact && (
             <p className="px-4 py-3 text-xs text-foreground-muted leading-relaxed">
-              매수 추천 순위가 아니라 지표 신호가 뚜렷한 순서입니다. &lsquo;평소 대비&rsquo;는 과거 같은
+              매수 추천 순위가 아니라 지표 신호가 뚜렷한 순서입니다. 등락률은 오늘 하루 값이고 신호는
+              앞으로 {boardQ.data.horizon_days}거래일 전망이라, 서로의 성적표가 아닙니다. &lsquo;평소 대비&rsquo;는 과거 같은
               신호에서의 상승 비율과 평소 상승률의 차이로, 과거 통계이며 미래를 보장하지 않습니다. 가격은
               최근 수집 종가라 실시간이 아닙니다.
             </p>
