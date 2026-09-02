@@ -78,6 +78,61 @@ def ensure_volume_verdict(answer: str, *, ma20: float, ma50: float, volume_ratio
     return f"{answer.rstrip()}\n{line}"
 
 
+# 지표 해석 결정론(P4-3, 2026-09-02 4차 실측 S2 t3·S9 t4) — RSI 40.3을 "과매수 영역"으로
+# 서술하고 같은 대화에서 과매도↔과매수를 뒤집었다. 경계는 컨텍스트 표기와 같다
+# (30↓ 과매도 / 70↑ 과매수, %B는 0↓ 과매도 / 1↑ 과매수).
+_RSI_OVERBOUGHT = 70.0
+_RSI_OVERSOLD = 30.0
+_OVERHEAT_WORD = re.compile(r"과매[수도](?:권|\s?(?:영역|구간|상태))?")
+
+
+def enforce_overheat_claim(
+    answer: str, *, rsi: float | None, bb_percent_b: float | None,
+) -> str:
+    """원값이 허락하지 않는 과매수/과매도 서술을 실제 구간 표현으로 교정한다.
+
+    문장은 남기고 어휘만 바꾼다(등급 가드와 같은 태도). RSI 또는 볼린저 %B 어느 한쪽이
+    극단이면 그 방향 표현은 허용한다 — 두 지표 모두 근거 블록에 있어 둘 다 화자의 근거일
+    수 있다.
+    """
+    if rsi is None:
+        return answer
+    overbought = rsi >= _RSI_OVERBOUGHT or (bb_percent_b is not None and bb_percent_b >= 1.0)
+    oversold = rsi <= _RSI_OVERSOLD or (bb_percent_b is not None and bb_percent_b <= 0.0)
+
+    def _fix(m: re.Match) -> str:
+        claimed = m.group(0)
+        if claimed.startswith("과매수"):
+            if overbought:
+                return claimed
+            return "과매도 구간" if oversold else f"중립 구간(RSI {rsi:.0f})"
+        if oversold:
+            return claimed
+        return "과매수 구간" if overbought else f"중립 구간(RSI {rsi:.0f})"
+
+    return _OVERHEAT_WORD.sub(_fix, answer)
+
+
+# 같은 실측(S2 t3): 평균 감성 +0.30을 "주로 악재 관련 기사 다수"로 반전 서술했다.
+# 감성을 직접 언급한 문장 안에서만 교정한다 — 뉴스 제목 인용 등 일반 문장은 건드리지 않는다.
+_SENT_CLEAR = 0.15  # 영향 키워드 tone 경계(±0.15)와 같은 값
+
+
+def enforce_sentiment_claim(answer: str, sentiment: float | None) -> str:
+    if sentiment is None or abs(sentiment) < _SENT_CLEAR:
+        return answer  # 모호 구간은 강제하지 않는다(과교정 방지)
+    pieces = _SENTENCE_PIECES.split(answer)
+    out = []
+    for piece in pieces:
+        if piece and "감성" in piece:
+            if sentiment >= _SENT_CLEAR:
+                piece = piece.replace("부정", "긍정").replace("악재", "호재")
+            else:
+                piece = piece.replace("긍정", "부정").replace("호재", "악재")
+        out.append(piece or "")
+    return "".join(out)
+
+
 def ensure_disclaimer(answer: str) -> str:
     """책임 고지가 꼬리에 없으면 붙인다. 있으면 그대로 둔다(중복 고지 방지)."""
     tail = answer[-_DISCLAIMER_TAIL:]

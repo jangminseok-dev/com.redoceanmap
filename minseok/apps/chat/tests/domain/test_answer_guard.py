@@ -131,3 +131,40 @@ def test_질문자가_쓴_용어와_이미_괄호가_붙은_용어는_건드리�
     assert g.attach_glossary(src, "삼성전자 수급 어때?") == src  # 질문자가 아는 용어
     src2 = "ATR(14) 기준 변동성이 큽니다."
     assert g.attach_glossary(src2, "애플 어때?") == src2  # 기존 괄호 설명 유지
+
+
+def test_중립_RSI의_과매수_서술은_중립_구간으로_교정된다():
+    # 4차 실측 S2 t3: RSI 40.3을 "과매수 영역"으로 서술
+    out = g.enforce_overheat_claim(
+        "현재 주가는 과매수 영역에 위치하고 있으며 (RSI 40.3) 주의가 필요합니다.",
+        rsi=40.3, bb_percent_b=0.5,
+    )
+    assert "과매수" not in out
+    assert "중립 구간(RSI 40)" in out
+
+
+def test_과매도_원값이면_과매수_서술을_과매도로_뒤집는다():
+    out = g.enforce_overheat_claim("과매수 구간입니다.", rsi=25.0, bb_percent_b=0.5)
+    assert out == "과매도 구간입니다."
+    same = g.enforce_overheat_claim("과매도 상태입니다.", rsi=25.0, bb_percent_b=0.5)
+    assert same == "과매도 상태입니다."  # 원값과 일치하는 서술은 무손상
+
+
+def test_볼린저_상단_돌파면_과매수_서술을_허용한다():
+    text = "과매수 구간에 진입했습니다."
+    assert g.enforce_overheat_claim(text, rsi=55.0, bb_percent_b=1.05) == text
+
+
+def test_긍정_감성을_악재로_반전한_문장을_교정한다():
+    # 4차 실측 S2 t3: 평균 감성 +0.30을 "주로 악재 관련 기사 다수"로 서술
+    out = g.enforce_sentiment_claim(
+        "뉴스 감성 지표가 부정적입니다 (평균 감성 +0.30, 악재 기사 다수). 거래량은 적습니다.",
+        sentiment=0.30,
+    )
+    assert "긍정적입니다" in out and "호재 기사" in out
+    assert "거래량은 적습니다" in out  # 감성 무관 문장은 무손상
+
+
+def test_감성_모호_구간은_교정하지_않는다():
+    text = "뉴스 감성이 부정적입니다."
+    assert g.enforce_sentiment_claim(text, sentiment=0.05) == text

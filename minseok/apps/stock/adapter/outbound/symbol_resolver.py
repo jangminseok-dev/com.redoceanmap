@@ -23,6 +23,17 @@ _US_TICKER_RE = re.compile(r"^[A-Za-z][A-Za-z.\-]{0,5}$")
 
 _krx_names: dict[str, str] | None = None  # 종목명 → 6자리 코드 (프로세스 캐시)
 
+# 국내 종목의 국민 별칭(공백 제거형) → KRX 상장명. 상장명이 영문(NAVER·KT 등)이거나
+# 한글 발음 표기가 다른 종목만 유지한다 — 부분 일치가 닿는 이름은 여기 넣지 않는다.
+_KR_NAME_ALIASES: dict[str, str] = {
+    "네이버": "NAVER",
+    "케이티": "KT",
+    "엘지전자": "LG전자",
+    "엘지에너지솔루션": "LG에너지솔루션",
+    "포스코": "POSCO홀딩스",
+    "에스케이하이닉스": "SK하이닉스",
+}
+
 # 해외 종목 한국어명(공백 제거형) → 티커. 한글 질의는 야후 검색을 스킵하므로(아래)
 # 여기 없는 해외 종목의 한국어명은 해석 실패가 된다 — 자주 묻는 종목 위주로 유지한다.
 _OVERSEAS_ALIASES: dict[str, str] = {
@@ -89,6 +100,10 @@ def _resolve_sync(query: str) -> str:
     for alias, ticker in _OVERSEAS_ALIASES.items():
         if len(alias) >= 4 and compact.startswith(alias):
             return ticker
+
+    # 국내 종목 국민 별칭 → KRX 상장명(4차 실측 S5: '네이버'는 상장명이 영문 NAVER라
+    # 부분 일치조차 안 걸려 시나리오가 전멸했다). 상장명이 영문·정식명인 종목만 둔다.
+    compact = _KR_NAME_ALIASES.get(compact, compact)
 
     names = _load_krx_names()
     if q in names:

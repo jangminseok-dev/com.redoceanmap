@@ -54,3 +54,13 @@ def test_별칭의_정식_명칭_꼬리_변형도_해석한다():
     assert symbol_resolver._resolve_sync("마이크론 테크놀로지") == "MU"
     # 짧은 별칭은 접두 매칭하지 않는다 — "인텔리안테크"(KRX)가 INTC로 오매칭되면 안 된다
     assert "인텔" in symbol_resolver._OVERSEAS_ALIASES
+
+
+async def test_국내_국민_별칭은_상장명으로_해석한다(monkeypatch):
+    # 4차 실측 S5: '네이버'는 상장명이 영문 NAVER라 부분 일치조차 안 걸렸다
+    monkeypatch.setattr(
+        symbol_resolver, "_load_krx_names",
+        lambda: {"NAVER": "035420", "KT": "030200"},
+    )
+    assert await symbol_resolver.resolve_symbol("네이버") == "035420"
+    assert await symbol_resolver.resolve_symbol("케이티") == "030200"

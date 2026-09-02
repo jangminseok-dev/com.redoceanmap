@@ -373,8 +373,30 @@ _META_VERIFY_RE = re.compile(
 
 # 급등주 찍기 질의(P5) — 종목/주식 명사와 결합했을 때만(보수적 — "이 주식 추천해?"는 제외)
 _SURGE_PICK_RE = re.compile(
-    r"(?:급등|상한가|오를|수익\s?나?\s?는)\s*(?:만한)?\s*(?:종목|주식).{0,10}(?:찍|골라|추천|알려)"
+    # 4차 실측 S4: "내일 급등할 종목 알려줘"가 관형형 어미(할/하는) 때문에 빠져나가
+    # market_news로 낙하했다. 거절 후 재요구("아 그러지 말고 하나만 찍어줘")도 잡는다.
+    r"(?:급등|상한가|오를|수익\s?나?\s?는)(?:할|하는)?\s*(?:만한)?\s*(?:종목|주식).{0,10}(?:찍|골라|추천|알려)"
     r"|(?:종목|주식)\s*(?:하나|한\s?개)?\s*만?\s*(?:찍어|골라)"
+    r"|하나만\s*찍어"
+)
+
+
+# 알림 기능 질문 판정 — "알림" 명시 + 사용 의도 어휘가 함께 있을 때만(오탐 억제).
+# "떨어지면 알려줄 수 있어?" 류(알림 단어 없음)는 P6(알림 의사 감지) 백로그의 몫.
+_ALERT_HOWTO_RE = re.compile(
+    r"알림(?:[^.\n]{0,20})?(?:설정|등록|어떻게|방법|걸|받|없어|있어|되|돼|가능)"
+)
+# 실기능만 적는다(허브 컴포저·프로필 화면과 일치). 여기 없는 기능을 안내하면 안 된다.
+_ALERT_HOWTO_TEXT = (
+    "알림은 세 가지를 제공해요.\n"
+    "1) 가격 도달 알림 — 프로필 페이지의 '가격 도달 알림'에서 종목·기준가·방향(이상/이하)을"
+    " 등록하면, 매시 자동 스캔이 도달을 확인해 이메일·텔레그램으로 한 번 알려드려요"
+    "(도달 후 자동 비활성화). 시세는 수집 주기 기준이라 최대 1시간가량 늦을 수 있어요.\n"
+    "2) 관심 종목 뉴스 알림 — 종목을 북마크해 두면 감성이 강한 새 기사가 수집될 때 감성"
+    " 라벨과 현재 신호 상태를 함께 알려드려요.\n"
+    "3) 북마크 신호 알림 — 북마크 종목에 검증된 상승 참고 신호가 켜지면 알려드려요.\n"
+    "상권 쪽 알림(임대료·권리금 변동 등)은 제공하지 않아요 — 상권 데이터는 분기 단위"
+    " 공공데이터라 실시간 통지 대상이 아니에요."
 )
 
 
@@ -783,6 +805,13 @@ class ChatInteractor(ChatUseCase):
             )
             await self._conversations.add_message(conversation_id, "assistant", text)
             return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
+        if _ALERT_HOWTO_RE.search(prompt):
+            # 알림 사용법(4차 실측 S1 t5·S9 t5) — general(Gemini)이 "종 모양 아이콘",
+            # "상권 권리금/임대료 변동 알림" 같은 없는 기능·UI를 지어냈다. 실기능 안내는
+            # LLM에게 맡기지 않고 코드가 답한다.
+            text = _ALERT_HOWTO_TEXT
+            await self._conversations.add_message(conversation_id, "assistant", text)
+            return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
 
         # phase0(의도 분류 = 도메인 판단) — 단일 모델(7.8B) 정책
         self._notify(on_stage, "intent", "질문 의도를 파악하고 있어요")
@@ -990,8 +1019,10 @@ class ChatInteractor(ChatUseCase):
 
         # 모델이 trdar_code를 문자열("3110131")로 되돌리는 일이 잦다 — int로 정규화하지
         # 않으면 조회가 전부 빗나가 reason이 빈 채 나간다(3차 실측: reason 69%가 빈 문자열).
+        # reason 키 누락도 열화한다(4차 실측 M8 t1: 7.8B가 reason을 빼먹어 KeyError→500).
+        # 빈 이유는 아래 _ensure_risk_note·폴백 서술이 채운다 — 500보다 얕은 답이 낫다.
         reason_map = {
-            int(item["trdar_code"]): item["reason"]
+            int(item["trdar_code"]): str(item.get("reason") or "")
             for item in p2.get("areas", [])
             if str(item.get("trdar_code", "")).isdigit()
         }
@@ -1314,7 +1345,10 @@ class ChatInteractor(ChatUseCase):
             "너는 redoceanmap(서울 상권·주식 분석 서비스)의 대화 어시스턴트다. "
             "자신을 OpenAI·구글 등 외부 회사의 모델이라고 소개하지 말 것. 이 서비스의 "
             "신호 적중률·검증 수치를 물으면 지어내지 말고 \"'너희 서비스 적중률 알려줘'"
-            "처럼 물어보면 실측 수치로 답한다\"고 안내할 것.\n\n질문: "
+            "처럼 물어보면 실측 수치로 답한다\"고 안내할 것. 서비스 기능은 다음이 전부다"
+            " — 상권 분석 채팅, 종목 분석 채팅, 프로필의 가격 도달 알림(이메일·텔레그램),"
+            " 북마크 종목 뉴스·신호 알림. 이 목록에 없는 기능(상권 임대료·권리금 알림 등)이나"
+            " 화면 사용법(버튼 위치 등)을 지어내서 안내하지 말 것.\n\n질문: "
         )
         try:
             text = (await self._gemini.generate(f"{framed}{prompt}")).answer
@@ -1443,6 +1477,12 @@ class ChatInteractor(ChatUseCase):
         text = answer_guard.ensure_volume_verdict(
             text, ma20=analysis.ma20, ma50=analysis.ma50, volume_ratio=analysis.volume_ratio,
         )
+        # 지표 해석 결정론(4차 실측 S2 t3·S9 t4) — RSI 40.3을 "과매수"로 서술하고 직전
+        # 턴과 과매도↔과매수를 뒤집었다. 원값과 어긋난 과열 어휘·감성 호악재를 코드가 교정.
+        text = answer_guard.enforce_overheat_claim(
+            text, rsi=analysis.rsi, bb_percent_b=analysis.bb_percent_b,
+        )
+        text = answer_guard.enforce_sentiment_claim(text, analysis.sentiment)
         # 매물대 거리 재라벨 금지(I-15, 실측 q09) — 먼 구간을 "근처"라 부르지 못하게 한다
         text = answer_guard.enforce_distance_claim(
             text, price=analysis.price, band_low=analysis.volume_poc_low,

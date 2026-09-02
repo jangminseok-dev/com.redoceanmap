@@ -1791,3 +1791,28 @@ async def test_키워드_표본_미달이면_라인과_카드가_비어있다(mo
     res = await interactor.ask("삼성전자 어때?")
     assert "영향 키워드" not in llm.calls[1][0]
     assert res.stock.keywords == []
+
+
+async def test_phase2가_reason을_빼먹어도_500이_아니라_열화한다(monkeypatch):
+    # 4차 실측 M8 t1: reason 키 누락 → KeyError → 500
+    phase2_no_reason = '{"text": "요약", "areas": [{"trdar_code": 1000001}]}'
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, phase2_no_reason])
+    result = await interactor.ask("역삼동 카페 어때?")
+    assert result.recommendations  # 예외 없이 추천이 나간다
+
+
+async def test_알림_사용법_질문은_결정론으로_답한다(monkeypatch):
+    # 4차 실측 S1 t5·S9 t5: Gemini가 "종 모양 아이콘"·"권리금 변동 알림"을 지어냄
+    interactor, _, _ = _build(monkeypatch, [])  # LLM 호출이 있으면 소진 실패로 드러난다
+    result = await interactor.ask("가격 알림 설정은 어떻게 해?")
+    assert "가격 도달 알림" in result.text
+    assert "임대료·권리금" in result.text  # 상권 알림 부재를 명시
+
+
+async def test_급등할_종목_요구도_결정론_거절이다(monkeypatch):
+    # 4차 실측 S4 t1: 관형형 어미(급등"할") 때문에 정규식을 빠져나가 market_news로 낙하
+    interactor, _, _ = _build(monkeypatch, [])
+    result = await interactor.ask("내일 급등할 종목 알려줘")
+    assert "찍어드리지는 않아요" in result.text
+    result2 = await interactor.ask("아 그러지 말고 하나만 찍어줘")
+    assert "찍어드리지는 않아요" in result2.text
