@@ -1816,3 +1816,72 @@ async def test_급등할_종목_요구도_결정론_거절이다(monkeypatch):
     assert "찍어드리지는 않아요" in result.text
     result2 = await interactor.ask("아 그러지 말고 하나만 찍어줘")
     assert "찍어드리지는 않아요" in result2.text
+
+
+async def test_업종을_겨눈_제외는_지역_맥락을_유지한다(monkeypatch):
+    # 4차 실측 M4 t4: "국밥 말고 돈까스집이면 어때?"에서 지역 승계가 풀려 노원→이태원 점프
+    services = [ServiceCode(code="CS100001", name="한식음식점"),
+                ServiceCode(code="CS100003", name="일식음식점")]
+    areas = [
+        AreaInfo(trdar_code=1000001, trdar_name="노원상권", district_name="노원구",
+                 adm_dong_name="상계동", lat=37.65, lng=127.06),
+        AreaInfo(trdar_code=1000002, trdar_name="이태원상권", district_name="용산구",
+                 adm_dong_name="이태원동", lat=37.53, lng=126.99),
+    ]
+    conversations = _StubConversations(history=[
+        Message(id=1, conversation_id=100, role="user", content="노원에서 국밥집 어떨까?",
+                created_at=_NOW, payload=None),
+        Message(id=2, conversation_id=100, role="assistant", content="상권 추천",
+                created_at=_NOW,
+                payload={"recommendations": [
+                    {"id": "1000001", "name": "노원상권",
+                     "serviceCode": "CS100001", "category": "한식음식점"}]}),
+    ])
+    market = _StubMarket(services=services, areas=areas)
+    # phase1이 이태원(1000002)으로 전면 재선택해도 지역 승계가 이겨야 한다
+    phase1 = '{"service_code": "CS100003", "service_name": "일식음식점", "trdar_codes": [1000002]}'
+    phase2 = '{"text": "요약", "areas": [{"trdar_code": 1000001, "reason": "이유. 유의할 점: x"}]}'
+    interactor, _, _ = _build(
+        monkeypatch, [INTENT_MARKET, phase1, phase2],
+        conversations=conversations, market=market,
+    )
+    result = await interactor.ask("국밥 말고 돈까스집이면 어때?", conversation_id=100)
+    assert result.recommendations[0].category == "일식음식점"  # 업종은 전환
+    assert result.recommendations[0].name == "노원상권"  # 지역은 유지
+
+
+async def test_점수_방법론_질문은_추천이_아니라_설명으로_답한다(monkeypatch):
+    # 4차 실측 M7 t1: "점수는 어떻게 계산하는 거야?"에 종로 추천을 발사했다
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET])  # phase1/2 소진 시 실패로 드러남
+    result = await interactor.ask("너네 상권 점수는 어떻게 계산하는 거야?")
+    assert "50점" in result.text and not result.recommendations
+
+
+async def test_지역이_언급된_점수_질문은_기존_추천_흐름을_탄다(monkeypatch):
+    # I-20 전문가 흐름(상권 지목 + 산출 근거)은 무손상이어야 한다
+    phase2 = '{"text": "요약", "areas": [{"trdar_code": 1000001, "reason": "이유. 유의할 점: x"}]}'
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, phase2])
+    result = await interactor.ask("역삼동 상권 점수 산출 기준 알려줘")
+    assert result.recommendations  # 설명 가로채기 없이 추천 흐름 유지
+
+
+async def test_동음이의_지명은_장소_접미가_있어야_지역으로_인정한다(monkeypatch):
+    # 4차 실측 M8 t2: "방학엔 장사 안 되지 않아?"의 '방학'이 도봉구 방학역에 걸렸다
+    areas = [
+        AreaInfo(trdar_code=1000001, trdar_name="녹두거리", district_name="관악구",
+                 adm_dong_name="대학동", lat=37.47, lng=126.94),
+        AreaInfo(trdar_code=1000002, trdar_name="방학역 1번", district_name="도봉구",
+                 adm_dong_name="방학동", lat=37.66, lng=127.04),
+    ]
+    market = _StubMarket(areas=areas)
+    phase1 = '{"service_code": "CS100010", "service_name": "커피-음료", "trdar_codes": [1000001]}'
+    phase2 = '{"text": "요약", "areas": [{"trdar_code": 1000001, "reason": "이유. 유의할 점: x"}]}'
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, phase1, phase2], market=market)
+    result = await interactor.ask("대학가라 방학엔 장사 안 되지 않아?")
+    names = [r.name for r in result.recommendations]
+    assert "방학역 1번" not in names  # '방학'(휴가)이 지명으로 오인되지 않는다
+
+    # 장소 접미가 붙으면 지명으로 인정 — 방학동 질문은 방학역 상권으로 보정
+    interactor2, _, _ = _build(monkeypatch, [INTENT_MARKET, phase1, phase2], market=market)
+    result2 = await interactor2.ask("방학동에서 카페 어때?")
+    assert [r.name for r in result2.recommendations] == ["방학역 1번"]

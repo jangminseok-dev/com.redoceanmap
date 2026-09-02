@@ -292,6 +292,38 @@ def _has_exclusion(prompt: str) -> bool:
     return any(token in prompt for token in EXCLUSION_TOKENS)
 
 
+# 일반명사와 동음인 지명 어간(4차 실측 M8 t2: "방학엔 장사 안 되지 않아?"의 '방학'이
+# 도봉구 방학역에 걸려 관악구 질문이 방학역 추천으로 샜다). 이 어간은 장소 접미가
+# 따라올 때만 지명으로 인정한다. 실측으로 잡힌 것만 등재한다.
+_HOMONYM_STEMS = ("방학", "신사", "대치")
+
+
+def _stem_means_place(stem: str, prompt: str) -> bool:
+    if stem not in _HOMONYM_STEMS:
+        return True
+    return bool(re.search(re.escape(stem) + r"\s?(?:역|동|상권|쪽|근처|인근|사거리)", prompt))
+
+
+# 장소를 겨눈 제외("다른 데/곳/동네" 류)는 어떤 경우든 지역 승계를 끊어야 한다
+_PLACE_EXCLUSION_RE = re.compile(r"다른\s?(?:데|곳|동네)|딴\s?데|(?:거기|여기)\s?(?:말고|빼고)")
+
+
+def _exclusion_targets_service(prompt: str, service_codes) -> bool:
+    """제외 어휘가 전부 업종을 겨눴는지 — "국밥 말고 돈까스집"은 업종 교체이지 지역
+    이탈이 아니다(4차 실측 M4 t4: 지역 승계가 풀려 노원→이태원 점프). 말고/빼고/제외의
+    바로 앞 어절이 업종 단서일 때만 업종 제외로 인정한다(보수적)."""
+    if _PLACE_EXCLUSION_RE.search(prompt):
+        return False
+    hits = list(re.finditer(r"말고|빼고|제외", prompt))
+    if not hits:
+        return False
+    for m in hits:
+        head = prompt[max(0, m.start() - 12):m.start()]
+        if _detect_service(head, service_codes) is None:
+            return False
+    return True
+
+
 # 업종 단서 어휘(P2) — 질문이 업종을 새로 말했는지의 보수적 판정. phase1이 고른 업종명
 # 토큰과 함께 본다("카페는 포화 아니야?"는 힌트 있음 → phase1 신뢰, "뭘 조심해야 해?"는
 # 힌트 없음 → 직전 업종 승계).
@@ -397,6 +429,25 @@ _ALERT_HOWTO_TEXT = (
     "3) 북마크 신호 알림 — 북마크 종목에 검증된 상승 참고 신호가 켜지면 알려드려요.\n"
     "상권 쪽 알림(임대료·권리금 변동 등)은 제공하지 않아요 — 상권 데이터는 분기 단위"
     " 공공데이터라 실시간 통지 대상이 아니에요."
+)
+
+
+# 점수 방법론·서비스 개념 질문(4차 실측 M7 t1·t2, M10 t2) — "점수 어떻게 계산해?"에
+# 추천을 발사했다. 지역 언급이 없으면 설명이 답이다 — LLM 없이 코드가 답한다.
+_METHOD_QUERY_RE = re.compile(
+    r"(?:점수|종합점수)[^.\n]{0,14}(?:어떻게|계산|산출|기준|믿을|신뢰)"
+    r"|서울\s?평균이?\s?기준"
+    r"|상권\s?분석이?\s?(?:뭔데|뭐야|무엇)"
+)
+# 산출 방식 블록(I-20 wants_detail 주입분)과 같은 내용 — 정의가 갈리면 안 된다
+_METHOD_QUERY_TEXT = (
+    "상권 분석은 서울시 공공데이터(분기 단위)로 상권별 매출·유동인구·점포·개폐업을 읽고,"
+    " 업종·지역에 맞는 후보를 추려 드리는 기능이에요.\n"
+    "종합점수는 서울 평균을 50점으로 놓고 4개 컴포넌트 — 매출 성장·유동인구 성장(직전"
+    " 분기 대비)·개폐업 건강도·영업 지속성 — 를 0~100으로 환산해 종합한 값이에요."
+    " 50점보다 높으면 서울 평균 상회, '주의/위험' 등급은 평균에 크게 못 미친다는 뜻이에요.\n"
+    "특정 상권의 점수와 근거가 궁금하시면 \"성수역 상권 점수 알려줘\"처럼 상권 이름과"
+    " 함께 물어봐 주세요."
 )
 
 
@@ -543,7 +594,10 @@ class ChatInteractor(ChatUseCase):
                 variants = {stem}
                 if stem.endswith("역") and len(stem) >= 4:
                     variants.add(stem[:-1])
-                if any(len(v) >= 2 and v in prompt for v in variants):
+                if any(
+                    len(v) >= 2 and v in prompt and _stem_means_place(v, prompt)
+                    for v in variants
+                ):
                     codes.add(a.trdar_code)
                     break
         return codes
@@ -831,6 +885,14 @@ class ChatInteractor(ChatUseCase):
         if not quarter:
             raise CommercialDataUnavailableError("상권 데이터가 없습니다.")
 
+        # 방법론·개념 질문 결정론 응답(P4-9) — 지역 언급이 없으면 추천이 아니라 설명이
+        # 답이다. 지역이 함께 언급되면 기존 흐름(I-20 wants_detail 주입) 유지.
+        if _METHOD_QUERY_RE.search(prompt) and not self._mentioned_codes(summary, prompt):
+            await self._conversations.add_message(conversation_id, "assistant", _METHOD_QUERY_TEXT)
+            return AskResponse(
+                text=_METHOD_QUERY_TEXT, recommendations=[], conversationId=conversation_id,
+            )
+
         # 서울 외 지역 가드 — 데이터가 서울뿐이라 phase1이 서울 상권을 임의로
         # 고르는 오답을 코드로 차단한다. 서울 지명이 함께 언급되면 기존 흐름(서울 분석) 유지.
         if not self._mentioned_codes(summary, prompt):
@@ -926,11 +988,16 @@ class ChatInteractor(ChatUseCase):
                 )[:3]
         else:
             previous = self._previous_area_codes(history, area_map)
-            if previous and (_has_deixis(prompt) or not _has_exclusion(prompt)):
+            if previous and (
+                _has_deixis(prompt)
+                or not _has_exclusion(prompt)
+                or _exclusion_targets_service(prompt, service_codes)
+            ):
                 # 직전 추천으로 후보를 **제한**한다. 지시어("그 중에서/거기")뿐 아니라
                 # 지역 미언급 후속 전반으로 확대(3차 실측 P2): "경쟁 몇 개야?"·"포화
                 # 아니야?" 류에서 phase1이 전면 재선택해 동대문·홍대로 리셋됐다.
                 # 제외 어휘("말고/빼고")가 있으면 제한하지 않는다 — 정반대 답이 된다.
+                # 단 업종을 겨눈 제외("국밥 말고 돈까스집")는 지역 맥락을 유지한다(P4-4).
                 kept = [c for c in valid_codes if c in previous]
                 valid_codes = kept or previous
             elif not valid_codes:
