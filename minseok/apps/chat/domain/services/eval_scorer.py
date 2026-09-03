@@ -426,6 +426,13 @@ def score(cases: list[EvalCase], traces: list[CaseTrace]) -> EvalReport:
                 str(round(float(n) * 100)) for n in grounded
                 if "." in n and 0 < float(n) < 1
             }
+            # 백 단위 반올림 동치 — 컨텍스트의 "일평균 96,703명"을 모델이 "96,700명"으로
+            # 되받는다(2026-09-03 골든 재완주 MR09 실측, 2회 연속). 만 이상 정수에 한해
+            # 백 단위 반올림형을 인정한다 — 천 단위(97,000)는 여전히 창작으로 본다.
+            grounded |= {
+                str(round(int(n), -2)) for n in grounded
+                if n.isdigit() and int(n) >= 10_000
+            }
             for n in sorted(_numbers(answer) - grounded):
                 violations.append(RuleViolation(c.case_id, "hallucinated_number", n))
 

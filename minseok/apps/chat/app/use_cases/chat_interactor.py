@@ -48,6 +48,7 @@ from hub.app.ports.output.forecast_refit_port import ForecastRefitPort
 from hub.app.ports.output.fundamental_read_port import FundamentalReadPort
 from hub.app.ports.output.stock_analysis_port import StockAnalysisPort, StockAnalysisUnavailable
 from hub.app.ports.output.stock_forecast_port import StockForecastPort
+from hub.app.ports.output.stock_signal_board_port import StockSignalBoardPort
 from hub.app.ports.output.user_profile_port import UserProfilePort
 
 logger = logging.getLogger(__name__)
@@ -202,7 +203,9 @@ PHASE1_PROMPT = """당신은 서울 상권 분석 전문가입니다.
 - 질문에 특정 지역(동·역·상권명)이 언급되면 '질문지역' 칸에 ★ 표시된 상권을 반드시 우선 선택
 - 제공된 상권 데이터는 모두 서울이다 — 질문 지역이 표에 없으면 비슷한 이름의 다른 상권을 임의로 고르지 말 것
 - 상권 전체 월매출 규모와 위치(자치구, 행정동)를 기준으로 사용자 질문에 맞는 곳 선택
-- 질문이 "작년 대비"·"성장"·"매출 오른"을 물으면 '매출전년동분기대비(%)' 열이 큰 상권을 우선 선택 ('-'는 산출 불가)"""
+- 질문이 "작년 대비"·"성장"·"매출 오른"을 물으면 '매출전년동분기대비(%)' 열이 큰 상권을 우선 선택 ('-'는 산출 불가)
+- 질문이 "폐업률 낮은"·"안정적인"·"오래 가는"을 물으면 '폐업률(%)' 열이 작은 상권을 우선 선택 ('-'는 미집계)
+- 질문이 "점포당 매출"·"장사 잘 되는"·"한 가게당"을 물으면 '점포당월매출(만원)' 열이 큰 상권을 우선 선택 ('-'는 미집계)"""
 
 PHASE2_PROMPT = """당신은 서울 창업 컨설턴트입니다.
 제공된 각 상권의 공공데이터 수치를 기반으로 창업자에게 유용한 설명을 작성하세요.
@@ -420,6 +423,25 @@ _SURGE_PICK_RE = re.compile(
 )
 
 
+# 신호 보드 조회(4차 실측 S8 t4) — "상승 신호 종목 뭐야?"가 market_news로 낙하해 신호
+# 데이터가 아니라 뉴스로 답했다. 보드(종목 예측 화면)와 같은 자료를 코드가 읽어 답한다.
+# 보수적으로: 방향 어휘 또는 '나온/뜬' 류 동반 + 종목/주식 명사. "삼성전자 신호 어때?"처럼
+# 종목 하나를 묻는 문장은 잡지 않는다(그건 stock 경로의 몫).
+_SIGNAL_BOARD_RE = re.compile(
+    r"(?:상승|하락|매수|매도)\s*신호(?:가|이|는|은)?\s*(?:나온|뜬|난|있는|잡힌|보이는|켜진)?\s*(?:종목|주식)"
+    r"|신호(?:가|이)?\s*(?:나온|뜬|난|잡힌|켜진)\s*(?:종목|주식)"
+    r"|신호\s*보드"
+)
+_SIGNAL_BOARD_LIMIT = 5  # 답변에 싣는 종목 수 — 전체는 화면 보드로 안내
+
+# 뉴스 상세 후속(3차 P8 s08 t2) — "그 뉴스가 뭔데?"에 지표 분석으로 답했다. 직전 카드의
+# 근거 뉴스(제목·날짜·라벨)를 코드가 그대로 보여준다. 지시어 동반 조건으로 새 질문
+# ("반도체 뉴스 알려줘")과 가른다.
+_NEWS_DETAIL_RE = re.compile(
+    r"(?:그|아까|방금)\s*(?:뉴스|기사)"
+    r"|(?:뉴스|기사)(?:가|는|은|를|들)?\s*(?:뭔데|뭐였|뭐길래|뭐지|자세히|상세|제목)"
+)
+
 # 알림 기능 질문 판정 — "알림" 명시 + 사용 의도 어휘가 함께 있을 때만(오탐 억제).
 # "떨어지면 알려줄 수 있어?" 류(알림 단어 없음)는 P6(알림 의사 감지) 백로그의 몫.
 _ALERT_HOWTO_RE = re.compile(
@@ -557,6 +579,7 @@ class ChatInteractor(ChatUseCase):
         fundamentals: FundamentalReadPort | None = None,
         profiles: UserProfilePort | None = None,
         refit: ForecastRefitPort | None = None,
+        signals: StockSignalBoardPort | None = None,
     ) -> None:
         self._market = market
         self._recorder = recorder
@@ -569,6 +592,7 @@ class ChatInteractor(ChatUseCase):
         self._fundamentals = fundamentals
         self._profiles = profiles
         self._refit = refit
+        self._signals = signals
 
     def _history_block(self, history: list[Message]) -> str:
         if not history:
@@ -593,7 +617,10 @@ class ChatInteractor(ChatUseCase):
         return stem
 
     def _area_mentioned_in(self, area: AreaInfo, text: str) -> bool:
-        for name in (area.district_name, area.adm_dong_name, area.trdar_name):
+        # 괄호 별칭("발산역(마곡)"의 '마곡')도 지명이다 — 어간은 선행 한글만 보므로 별칭을
+        # 따로 후보에 넣는다(I-11 골든 재완주 MR20 실측: 마곡 질문이 강남으로 튀었다).
+        aliases = re.findall(r"\(([가-힣]+)\)", area.trdar_name or "")
+        for name in (area.district_name, area.adm_dong_name, area.trdar_name, *aliases):
             stem = self._place_stem(name)
             # "건대입구역"은 "건대입구 쪽"과 어긋난다(첫 재측정 실측) — '역'을 뗀
             # 변형도 본다. 단 뗀 결과가 3자 이상일 때만: "서울역→서울"처럼 흔한
@@ -739,9 +766,13 @@ class ChatInteractor(ChatUseCase):
         return None
 
     def _build_area_context(
-        self, summary: AreaSummary, prompt: str = "", limit: int = 80
+        self, summary: AreaSummary, prompt: str = "", limit: int = 80,
+        ranking: dict[int, AreaRankingInfo] | None = None,
     ) -> str:
         # 상권 1650개 전체를 넣으면 모델 컨텍스트를 초과한다.
+        # 행 상한은 80을 유지한다(I-11 골든 재완주 실측): 60으로 줄이자 어간 가드가 못 잡는
+        # 지명("발산역(마곡)"의 '마곡')을 phase1이 표에서 읽어 고르던 경로가 끊겨 MR20이
+        # 강남으로 튀었다. 판정 축 2열을 더해도 prompt_eval은 창(8,192)에 여유가 있다.
         # 질문에 언급된 지역(자치구·행정동·상권명 어간)을 우선 포함하고,
         # 나머지는 월매출 상위로 상한까지 채운다. 언급 상권은 ★로 표시해 phase1 선택을 유도한다.
         def sales_of(a) -> int:
@@ -761,15 +792,26 @@ class ChatInteractor(ChatUseCase):
 
         # YoY 열(I-10) — "작년 대비" 질의를 표가 지원하지 않으면 모델이 근거 없이
         # "증가율이 높다"고 서술한다(실측). 산출 불가 상권은 '-'로 정직하게 남긴다.
-        lines = ["상권코드|상권명|자치구|행정동|상권전체월매출합계(만원)|매출전년동분기대비(%)|질문지역"]
+        # 판정 축 2열(I-11) — 표에 없는 축을 물으면 모델이 근거 없이 "폐업률이 낮다"고
+        # 서술했다(3차 실측 M1·M6). 랭킹 집계(전 업종)에서 잇고, 미집계는 '-'로 남긴다.
+        ranking = ranking or {}
+        lines = [
+            "상권코드|상권명|자치구|행정동|상권전체월매출합계(만원)|매출전년동분기대비(%)"
+            "|폐업률(%)|점포당월매출(만원)|질문지역"
+        ]
         for a in picked:
             sales = summary.sales_by_code.get(a.trdar_code)
             wan = round(sales / 10000) if sales else None
             yoy = summary.yoy_by_code.get(a.trdar_code)
+            row = ranking.get(a.trdar_code)
+            closure = row.closure_rate if row is not None else None
+            per_store = row.sales_per_store if row is not None else None
             lines.append(
                 f"{a.trdar_code}|{a.trdar_name}|{a.district_name}|{a.adm_dong_name}"
                 f"|{wan if wan is not None else '데이터없음'}"
                 f"|{f'{yoy:+.1f}' if yoy is not None else '-'}"
+                f"|{f'{closure:.1f}' if closure is not None else '-'}"
+                f"|{round(per_store / 10000) if per_store else '-'}"
                 f"|{'★' if a.trdar_code in mentioned_codes else ''}"
             )
         return "\n".join(lines)
@@ -919,6 +961,16 @@ class ChatInteractor(ChatUseCase):
             await self._conversations.add_message(conversation_id, "assistant", text)
             return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
 
+        if self._signals is not None and _SIGNAL_BOARD_RE.search(prompt):
+            # 신호 보드 조회(4차 실측 S8 t4) — 워치리스트 신호를 코드가 읽어 답한다.
+            return await self._answer_signal_board(conversation_id, prompt, on_stage)
+        if _NEWS_DETAIL_RE.search(prompt):
+            # 뉴스 상세 후속(3차 P8) — 직전 카드에 근거 뉴스가 있을 때만 가로챈다.
+            detail = self._news_detail_text(history)
+            if detail is not None:
+                await self._conversations.add_message(conversation_id, "assistant", detail)
+                return AskResponse(text=detail, recommendations=[], conversationId=conversation_id)
+
         # phase0(의도 분류 = 도메인 판단) — 단일 모델(7.8B) 정책
         self._notify(on_stage, "intent", "질문 의도를 파악하고 있어요")
         intent, stock_queries = await self._classify_intent(prompt, history)
@@ -992,7 +1044,13 @@ class ChatInteractor(ChatUseCase):
                 )
 
         area_map = {a.trdar_code: a for a in summary.areas}
-        area_context = self._build_area_context(summary, prompt)
+        # 판정 축(I-11) — 조회 실패는 열 전체 '-'로 열화(표 자체는 유지).
+        try:
+            ranking = {r.trdar_code: r for r in await self._market.get_area_ranking()}
+        except Exception:
+            logger.warning("[chat] 랭킹 집계 조회 실패 — phase1 판정 축 생략", exc_info=True)
+            ranking = {}
+        area_context = self._build_area_context(summary, prompt, ranking=ranking)
 
         service_codes = await self._market.get_service_codes()
         service_code_list = "\n".join(f"{sc.code}|{sc.name}" for sc in service_codes)
@@ -1433,6 +1491,93 @@ class ChatInteractor(ChatUseCase):
             else:
                 items = [text]
         return [q for q in (str(item).strip() for item in items) if q]
+
+    async def _answer_signal_board(
+        self, conversation_id: int, prompt: str, on_stage=None,
+    ) -> AskResponse:
+        """신호 보드 조회 — LLM 없이 워치리스트 최신 신호를 방향별로 답한다(결정론).
+
+        종목 예측 화면의 보드와 같은 자료·정렬이다. 신호는 예측 확정이 아니라 과거 통계
+        참고치이므로 지평·표본 유의성을 함께 적고, 매매 지시가 아님을 고지한다.
+        """
+        self._notify(on_stage, "data", "신호 보드를 읽고 있어요")
+        want = "DOWN" if "하락" in prompt or "매도" in prompt else "UP"
+        word = "하락" if want == "DOWN" else "상승"
+        try:
+            board = await self._signals.current_board(limit=50)
+        except Exception:
+            logger.warning("[chat] 신호 보드 조회 실패", exc_info=True)
+            text = answer_guard.ensure_disclaimer(
+                "지금 신호 보드를 읽어오지 못했어요. 잠시 뒤 다시 물어보시거나 종목 예측"
+                " 화면의 보드를 확인해 주세요."
+            )
+            await self._conversations.add_message(conversation_id, "assistant", text)
+            return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
+
+        rows = [r for r in board.rows if r.direction == want][:_SIGNAL_BOARD_LIMIT]
+        horizon = board.horizon_days
+        if not rows:
+            text = (
+                f"지금은 워치리스트에 {horizon}거래일 지평 {word} 신호가 나온 종목이 없어요."
+                " 신호는 하루 한 번 갱신되니 내일 다시 물어보셔도 돼요."
+            )
+        else:
+            as_of = max(r.as_of for r in rows)
+            lines = [
+                f"워치리스트에서 앞으로 {horizon}거래일 지평 {word} 신호가 나온 종목이에요"
+                f" (신호 {as_of:%m/%d} 기준, 신호가 뚜렷한 순)."
+            ]
+            for i, r in enumerate(rows, 1):
+                unit = self._currency_unit(r.ticker)
+                price = self._price_text(r.price, unit)
+                change = f" ({r.change_pct * 100:+.1f}%)" if r.change_pct is not None else ""
+                if r.up_rate is None or r.baseline_up_rate is None:
+                    stat = "과거 통계 표본 없음"
+                else:
+                    stat = (
+                        f"같은 신호일 때 실제로 {word}한 비율 {r.up_rate * 100:.0f}%"
+                        f" · 평소 {r.baseline_up_rate * 100:.0f}%"
+                        f" · {'통계적으로 유의' if r.ready else '유의성 미달'}"
+                    )
+                lines.append(f"{i}. {r.name}({r.ticker}) — {price}{change} · {stat}")
+            lines.append(
+                f"신호는 오늘 등락이 아니라 앞으로 {horizon}거래일 전망이고, 매매 지시가"
+                " 아니에요. 전체 보드는 종목 예측 화면에서 볼 수 있고, 종목명을 말씀하시면"
+                " 지표·뉴스 근거를 읽어드릴게요."
+            )
+            text = "\n".join(lines)
+        text = answer_guard.ensure_disclaimer(text)
+        await self._conversations.add_message(conversation_id, "assistant", text)
+        return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
+
+    @staticmethod
+    def _news_detail_text(history: list[Message]) -> str | None:
+        """직전 카드의 근거 뉴스를 그대로 나열한다 — 근거 뉴스가 없는 대화면 None(정상 흐름)."""
+        for m in reversed(history):
+            payload = m.payload or {}
+            news = payload.get("news")
+            if news:
+                lines = ["직전 답변의 근거 뉴스예요 (제목·날짜·라벨만 저장하고 본문은 담지 않아요)."]
+                for n in news[:8]:
+                    parts = [n.get("publishedAt") or "날짜 미상"]
+                    if n.get("ticker"):
+                        parts.append(str(n["ticker"]))
+                    sentiment = n.get("sentiment")
+                    if sentiment is not None:
+                        parts.append("호재" if sentiment > 0 else "악재" if sentiment < 0 else "중립")
+                    if n.get("eventType"):
+                        parts.append(str(n["eventType"]))
+                    lines.append(f"- {' · '.join(parts)} — {n.get('title', '')}")
+                return "\n".join(lines)
+            card = payload.get("stock")
+            if card and card.get("headlines"):
+                lines = [
+                    f"{card.get('symbol', '')} 답변의 근거 헤드라인이에요 (제목만 저장하고"
+                    " 본문은 담지 않아요)."
+                ]
+                lines.extend(f"- {h}" for h in card["headlines"][:8])
+                return "\n".join(lines)
+        return None
 
     async def _answer_service_meta(self, conversation_id: int) -> AskResponse:
         """자기 시그널 검증치 질문 — LLM 없이 재적합 리포트로 답한다(결정론).

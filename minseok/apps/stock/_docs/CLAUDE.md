@@ -222,6 +222,9 @@
   구현 — 지정 심볼 집합의 최신 스냅샷+최근 종가 2봉을 일괄 조회해 recommendation의
   `/bookmarks/board`에 준다. stock_board와 같은 원칙(스냅샷만 읽기·10일 초과 제외)이며
   거래소 접미 변형(005930↔005930.KS)을 흡수한다. 스냅샷 없는 심볼은 결과에서 빠진다(열화).
+- **신호 보드 제공(2026-09-03)**: 허브 `StockSignalBoardPort`를 `StockSignalBoardGateway`가
+  구현 — `StockBoardUseCase.board()`를 지평 5·상한 limit으로 호출해 허브 DTO로 옮긴다(정렬·
+  한글명 그대로). chat이 "상승 신호 나온 종목" 질문에 소비한다.
 
 ## 레이어
 

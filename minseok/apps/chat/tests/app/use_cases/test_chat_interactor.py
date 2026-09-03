@@ -30,6 +30,7 @@ from hub.app.dtos.market_news_dto import MarketNewsHit
 from hub.app.dtos.news_dto import NewsHit, NewsKeyword
 from hub.app.dtos.stock_analysis_dto import StockAnalysisResult
 from hub.app.dtos.stock_forecast_dto import StockForecastSummary
+from hub.app.dtos.stock_signal_board_dto import StockSignalBoardInfo, StockSignalRow
 from hub.app.dtos.user_profile_dto import UserProfileSummary
 from hub.app.dtos.forecast_refit_dto import (
     RefitCandidateRow,
@@ -224,6 +225,25 @@ class _StubGemini:
         return GeminiAnswerResponse(answer="제미나이 답변", model="gemini-test")
 
 
+class _StubSignals:
+    def __init__(self, rows: list[StockSignalRow] | None = None, fail: bool = False):
+        self.rows = rows or []
+        self.fail = fail
+        self.calls: list[int] = []
+
+    async def current_board(self, limit: int) -> StockSignalBoardInfo:
+        self.calls.append(limit)
+        if self.fail:
+            raise RuntimeError("board down")
+        return StockSignalBoardInfo(horizon_days=5, rows=tuple(self.rows[:limit]))
+
+
+def _signal_row(**overrides) -> StockSignalRow:
+    base = dict(ticker="005930.KS", name="삼성전자", as_of=_NOW, direction="UP", price=71000.0,
+                change_pct=0.012, up_rate=0.62, baseline_up_rate=0.57, ready=True)
+    return StockSignalRow(**{**base, **overrides})
+
+
 class _StubRecorder:
     def __init__(self):
         self.recorded: list = []
@@ -299,7 +319,7 @@ def _area_score() -> AreaScoreInfo:
 
 def _build(monkeypatch, llm_responses, *, stocks=None, news=None, conversations=None,
            market=None, market_news=None, gemini=None, forecaster=None, fundamentals=None,
-           profiles=None):
+           profiles=None, signals=None):
     llm = _StubLLM(llm_responses)
     monkeypatch.setattr("chat.app.use_cases.chat_interactor.llm_orchestrator", llm)
     market, recorder = market or _StubMarket(), _StubRecorder()
@@ -314,6 +334,7 @@ def _build(monkeypatch, llm_responses, *, stocks=None, news=None, conversations=
         market=market, recorder=recorder, conversations=conversations,
         stocks=stocks, news=news, market_news=market_news, gemini=gemini,
         forecaster=forecaster, fundamentals=fundamentals, profiles=profiles,
+        signals=signals,
     )
     return interactor, llm, dict(market=market, recorder=recorder,
                                  conversations=conversations, stocks=stocks, news=news,
@@ -1979,3 +2000,150 @@ def test_공백_결합_티커_혼재_질의를_분해한다():
     assert ChatInteractor._normalize_stock_queries("테슬라 AAPL 애플") == ["테슬라", "AAPL", "애플"]
     # 공백 있는 단일 종목명은 쪼개지 않는다
     assert ChatInteractor._normalize_stock_queries("버크셔 해서웨이") == ["버크셔 해서웨이"]
+
+
+# --- 신호 보드 조회 결정론(4차 실측 S8 t4) ---
+
+async def test_상승_신호_종목_질문은_LLM_없이_보드를_읽어_답한다(monkeypatch):
+    signals = _StubSignals(rows=[
+        _signal_row(ticker="005930.KS", name="삼성전자", direction="UP"),
+        _signal_row(ticker="TSLA", name="테슬라", direction="DOWN", price=250.5),
+        _signal_row(ticker="NVDA", name="엔비디아", direction="UP", price=120.25,
+                    up_rate=None, baseline_up_rate=None, ready=False),
+    ])
+    interactor, llm, _ = _build(monkeypatch, [], signals=signals)
+    result = await interactor.ask("지금 상승 신호 뜬 종목 뭐야?")
+
+    assert llm.calls == []  # phase0조차 부르지 않는다
+    assert signals.calls == [50]
+    lines = result.text.split("\n")
+    assert "5거래일 지평 상승 신호" in lines[0]
+    assert lines[1].startswith("1. 삼성전자(005930.KS) — 71,000원 (+1.2%)")
+    assert "실제로 상승한 비율 62% · 평소 57% · 통계적으로 유의" in lines[1]
+    assert lines[2].startswith("2. 엔비디아(NVDA) — 120.25달러") and "표본 없음" in lines[2]
+    assert "테슬라" not in result.text  # 하락 신호는 제외
+    assert "매매 지시가 아니에요" in result.text
+    assert "투자" in result.text[-160:]  # 책임 고지
+    assert result.recommendations == []
+
+
+async def test_하락_신호_질문은_하락_행만_답한다(monkeypatch):
+    signals = _StubSignals(rows=[
+        _signal_row(ticker="005930.KS", name="삼성전자", direction="UP"),
+        _signal_row(ticker="TSLA", name="테슬라", direction="DOWN", price=250.5, up_rate=0.58),
+    ])
+    interactor, _, _ = _build(monkeypatch, [], signals=signals)
+    result = await interactor.ask("하락 신호 나온 주식 있어?")
+    assert "테슬라(TSLA)" in result.text and "삼성전자" not in result.text
+    assert "실제로 하락한 비율 58%" in result.text
+
+
+async def test_신호_없으면_없다고_답한다(monkeypatch):
+    interactor, _, _ = _build(monkeypatch, [], signals=_StubSignals(rows=[]))
+    result = await interactor.ask("상승 신호 종목 알려줘")
+    assert "상승 신호가 나온 종목이 없어요" in result.text
+
+
+async def test_보드_조회_실패는_안내로_열화한다(monkeypatch):
+    interactor, _, _ = _build(monkeypatch, [], signals=_StubSignals(fail=True))
+    result = await interactor.ask("상승 신호 종목 알려줘")
+    assert "읽어오지 못했어요" in result.text
+
+
+async def test_신호_보드_미주입이면_기존_흐름을_탄다(monkeypatch):  # 무손상
+    interactor, llm, deps = _build(monkeypatch, [INTENT_MARKET_NEWS, "시장 동향 서술"])
+    await interactor.ask("상승 신호 종목 알려줘")
+    assert len(llm.calls) == 2  # phase0 + market_news 서술
+
+
+async def test_종목_하나의_신호_질문은_보드로_가로채지_않는다(monkeypatch):  # 무손상
+    signals = _StubSignals(rows=[_signal_row()])
+    interactor, _, deps = _build(monkeypatch, [INTENT_STOCK, "삼성전자 서술"], signals=signals)
+    await interactor.ask("삼성전자 신호 어때?")
+    assert signals.calls == [] and deps["stocks"].queries == ["삼성전자"]
+
+
+# --- 뉴스 상세 후속(3차 P8 s08 t2) ---
+
+def _news_history() -> list[Message]:
+    payload = {"news": [
+        {"title": "반도체 수출 사상 최대", "publishedAt": "2026-09-01", "ticker": None,
+         "sentiment": 0.6, "eventType": "실적"},
+        {"title": "금리 동결 전망", "publishedAt": None, "ticker": "005930.KS",
+         "sentiment": None, "eventType": None},
+    ]}
+    return [
+        Message(id=1, conversation_id=7, role="user", content="반도체 업황 어때?", created_at=_NOW),
+        Message(id=2, conversation_id=7, role="assistant", content="동향 서술", created_at=_NOW,
+                payload=payload),
+    ]
+
+
+async def test_그_뉴스가_뭔데_후속은_직전_근거_뉴스를_나열한다(monkeypatch):
+    conversations = _StubConversations(history=_news_history())
+    interactor, llm, _ = _build(monkeypatch, [], conversations=conversations)
+    result = await interactor.ask("그 뉴스가 뭔데?", conversation_id=7)
+    assert llm.calls == []
+    lines = result.text.split("\n")
+    assert lines[1] == "- 2026-09-01 · 호재 · 실적 — 반도체 수출 사상 최대"
+    assert lines[2] == "- 날짜 미상 · 005930.KS — 금리 동결 전망"
+    assert conversations.saved[-1] == ("assistant", result.text)
+
+
+async def test_종목_카드의_헤드라인도_후속_근거로_나열한다(monkeypatch):
+    history = [Message(id=2, conversation_id=7, role="assistant", content="서술", created_at=_NOW,
+                       payload={"stock": {"symbol": "005930.KS", "headlines": ["실적 발표", "신제품"]}})]
+    interactor, _, _ = _build(monkeypatch, [], conversations=_StubConversations(history=history))
+    result = await interactor.ask("아까 기사 제목 좀", conversation_id=7)
+    assert result.text.split("\n")[1:] == ["- 실적 발표", "- 신제품"]
+
+
+async def test_근거_뉴스_없는_대화의_뉴스_질문은_기존_흐름을_탄다(monkeypatch):  # 무손상
+    interactor, llm, _ = _build(monkeypatch, [INTENT_MARKET_NEWS, "동향 서술"])
+    await interactor.ask("그 뉴스가 뭔데?")
+    assert len(llm.calls) == 2
+
+
+# --- phase1 표 판정 축(I-11) ---
+
+async def test_phase1_표에_폐업률_점포당매출_열이_붙고_미집계는_대시다(monkeypatch):
+    interactor, _, _ = _build(monkeypatch, [])
+    ranking = {1: _ranking_row(trdar_code=1, closure_rate=3.25, sales_per_store=75_000_000)}
+    context = interactor._build_area_context(_summary_two_areas(), "성수동 카페 어때?", ranking=ranking)
+    header, first, second = context.splitlines()
+    assert header.endswith("|폐업률(%)|점포당월매출(만원)|질문지역")
+    assert first.startswith("1|성수역") and "|3.2|7500|★" in first  # 성수(언급) 먼저
+    assert second.startswith("2|") and second.endswith("|-|-|")  # 랭킹 없는 상권은 '-'
+
+
+async def test_market_경로는_랭킹을_조회해_phase1_표에_잇는다(monkeypatch):
+    market = _StubMarket(ranking=[_ranking_row(trdar_code=1000001, closure_rate=1.5,
+                                               sales_per_store=20_000_000)])
+    interactor, llm, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON],
+                                market=market)
+    await interactor.ask("역삼동 카페 어때?")
+    assert market.ranking_calls == [None]
+    phase1_prompt = llm.calls[1][0]
+    assert "폐업률(%)" in phase1_prompt and "|1.5|2000|" in phase1_prompt
+    assert "'폐업률(%)' 열이 작은 상권을 우선 선택" in phase1_prompt
+
+
+async def test_랭킹_조회_실패는_표를_유지한_채_열화한다(monkeypatch):
+    class _Broken(_StubMarket):
+        async def get_area_ranking(self, service_code=None):
+            raise RuntimeError("db down")
+    interactor, llm, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON],
+                                market=_Broken())
+    result = await interactor.ask("역삼동 카페 어때?")
+    assert "|-|-|" in llm.calls[1][0] and result.text
+
+
+async def test_괄호_별칭_지명도_언급_매칭된다(monkeypatch):
+    # I-11 골든 재완주 MR20: "마곡에 편의점 어때?" — 상권명 "발산역(마곡)"의 어간은 '발산역'이라
+    # 가드가 못 잡았고, 행 상한을 줄이자 phase1도 표에서 못 읽어 강남으로 튀었다.
+    interactor, _, _ = _build(monkeypatch, [])
+    balsan = AreaInfo(trdar_code=9, trdar_name="발산역(마곡)", district_name="강서구",
+                      adm_dong_name="가양1동", lat=37.5, lng=126.8)
+    summary = AreaSummary(areas=[balsan], latest_quarter=20254, sales_by_code={9: 1})
+    assert interactor._mentioned_codes(summary, "마곡에 편의점 어때?") == {9}
+    assert interactor._mentioned_codes(summary, "강남에 편의점 어때?") == set()

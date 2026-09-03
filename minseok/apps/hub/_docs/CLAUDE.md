@@ -198,6 +198,23 @@ apps/hub/dependencies/stock_status_provider.py  # get_stock_status_port (NotImpl
 - **소비**: `recommendation`의 `BookmarkBoardInteractor`(`GET /bookmarks/board`).
 - **배선**: `main.py`에서 `app.dependency_overrides[get_stock_status_port] = get_stock_status_gateway`.
 
+## 소유 계약 — StockSignalBoardPort (2026-09-03)
+
+워치리스트 **전체**의 최신 방향 신호를 보드 정렬로 돌려주는 협력. chat(소비)과 stock(구현)을
+잇는다. StockStatusPort가 심볼 집합을 지정해 묻는 것과 달리 종목 예측 화면의 보드와 같은
+자료·정렬이다 — 채팅 답변("상승 신호 나온 종목 뭐야?")과 화면이 어긋나지 않아야 한다.
+
+```
+apps/hub/app/
+├── ports/output/stock_signal_board_port.py   # StockSignalBoardPort (ABC) — current_board(limit)
+└── dtos/stock_signal_board_dto.py            # StockSignalBoardInfo(horizon_days, rows) · StockSignalRow
+apps/hub/dependencies/stock_signal_board_provider.py  # get_stock_signal_board_port (NotImplementedError 스텁)
+```
+
+- **구현**: `stock`의 `StockSignalBoardGateway`(보드 유스케이스 `StockBoardUseCase`를 그대로 감싼다).
+- **소비**: `chat`의 `_answer_signal_board`(4차 실측 S8 t4 — 신호 조회 라우팅 부재로 뉴스로 답하던 결함).
+- **배선**: `main.py`에서 `app.dependency_overrides[get_stock_signal_board_port] = get_stock_signal_board_gateway`.
+
 ## 소유 계약 — StockAnalysisPort
 
 주식 분석 협력. chat(소비)과 stock(구현)을 잇는다.

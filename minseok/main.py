@@ -102,6 +102,7 @@ from hub.dependencies.stock_analysis_provider import (
 )
 from hub.dependencies.stock_forecast_provider import get_stock_forecast_port
 from hub.dependencies.stock_status_provider import get_stock_status_port
+from hub.dependencies.stock_signal_board_provider import get_stock_signal_board_port
 from hub.dependencies.fundamental_read_provider import get_fundamental_read_port
 from hub.dependencies.stock_demand_provider import get_stock_demand_port
 from hub.dependencies.stock_dataset_stats_provider import get_stock_dataset_stats_port
@@ -151,6 +152,7 @@ from stock.dependencies.news_alert_feed_provider import get_news_alert_feed_gate
 from stock.dependencies.news_event_study_provider import get_news_event_study_gateway
 from stock.dependencies.stock_forecast_provider import get_stock_forecast_gateway
 from stock.dependencies.stock_status_provider import get_stock_status_gateway
+from stock.dependencies.stock_signal_board_provider import get_stock_signal_board_gateway
 from stock.dependencies.stock_history_provider import get_fundamental_read_gateway
 from stock.dependencies.stock_provider import (
     get_stock_analysis_gateway,
@@ -324,6 +326,7 @@ app.dependency_overrides[get_stock_analysis_port] = get_stock_analysis_gateway
 app.dependency_overrides[get_stock_analysis_port_batch] = get_stock_analysis_gateway_batch
 app.dependency_overrides[get_stock_forecast_port] = get_stock_forecast_gateway
 app.dependency_overrides[get_stock_status_port] = get_stock_status_gateway
+app.dependency_overrides[get_stock_signal_board_port] = get_stock_signal_board_gateway
 app.dependency_overrides[get_fundamental_read_port] = get_fundamental_read_gateway
 app.dependency_overrides[get_news_storage_port] = get_news_storage_gateway
 app.dependency_overrides[get_price_bar_storage_port] = get_price_bar_storage_gateway

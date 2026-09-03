@@ -8,6 +8,13 @@ import { formatPrice, formatTurnover } from "@/lib/currency";
 import SymbolMark from "@/components/common/SymbolMark";
 import type { StockBoardRow } from "@/lib/types";
 
+// 적중률 라벨의 방향어 — 중립은 방향이 없으므로 "신호"로 둔다(중립 행은 up_rate가 대개 없다)
+const DIRECTION_HIT_WORD: Record<StockBoardRow["direction"], string> = {
+  UP: "상승",
+  DOWN: "하락",
+  NEUTRAL: "신호",
+};
+
 // 좌측 목록의 방향 필터 — 종목이 늘면 상승 신호만 훑는 동작이 기본이 된다(레퍼런스 토스 필터 칩)
 const FILTERS = [
   { key: "ALL", label: "전체" },
@@ -142,11 +149,25 @@ function BoardRow({
               {row.score.toFixed(2)}
             </span>
 
-            <span className="hidden lg:block w-20 shrink-0 text-right text-xs tabular-nums text-foreground-muted">
-              {row.edge_pct != null ? (
+            {/* 적중률은 **그 방향**의 과거 비율이다(verdict.ts와 같은 규칙) — DOWN 행의 62%는
+                "실제로 내린 비율"이지 상승 확률이 아니다. 방향어를 라벨에 박아 오독을 막는다. */}
+            <span
+              className="hidden lg:flex w-24 shrink-0 flex-col items-end text-xs tabular-nums text-foreground-muted"
+              title={
+                row.up_rate != null && row.baseline_up_rate != null
+                  ? `과거 같은 ${DIRECTION_HIT_WORD[row.direction]} 신호일 때 실제로 그 방향으로 간 비율 ${Math.round(row.up_rate * 100)}% · 평소 ${Math.round(row.baseline_up_rate * 100)}%${row.ready ? "" : " · 통계적 유의성 미달"}`
+                  : "과거 통계로 검증할 표본이 아직 없습니다"
+              }
+            >
+              {row.up_rate != null && row.edge_pct != null ? (
                 <>
-                  평소 {row.edge_pct >= 0 ? "+" : ""}
-                  {(row.edge_pct * 100).toFixed(0)}%p
+                  <span>
+                    {DIRECTION_HIT_WORD[row.direction]} 적중 {Math.round(row.up_rate * 100)}%
+                  </span>
+                  <span className="text-[11px]">
+                    평소 {row.edge_pct >= 0 ? "+" : ""}
+                    {(row.edge_pct * 100).toFixed(0)}%p
+                  </span>
                 </>
               ) : (
                 "—"
@@ -304,7 +325,7 @@ export default function MarketBoard({
               <span className="w-[72px] shrink-0 text-right">등락률</span>
               <span className="hidden xl:block w-24 shrink-0 text-right">거래대금</span>
               <span className="w-[104px] shrink-0 text-center">신호({boardQ.data.horizon_days}일)</span>
-              <span className="w-20 shrink-0 text-right">평소 대비</span>
+              <span className="w-24 shrink-0 text-right">방향 적중률</span>
             </div>
           )}
 

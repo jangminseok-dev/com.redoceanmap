@@ -194,6 +194,23 @@ def test_비율의_퍼센트_환산은_환각이_아니다():
     assert [v for v in report.violations if v.rule == "hallucinated_number"] == []
 
 
+def test_만_이상_정수의_백단위_반올림은_환각이_아니다():
+    # 컨텍스트 "일평균 96,703명"을 모델이 "96,700명"으로 되받는다(2026-09-03 MR09, 2회 연속).
+    # 천 단위로 뭉갠 "97,000"은 여전히 창작으로 본다 — 동치는 백 단위까지만.
+    gen = LlmCall(phase="phase2", prompt="- 유동인구: 일평균 96,703명 (분기 총 8,800,000명 ÷ 91일)",
+                  response="{}", latency_ms=1.0)
+    cases = [_case("C1"), _case("C2")]
+    traces = [
+        _trace("C1", answer_text="유동인구가 일평균 96,700명으로 많습니다.", calls=(gen,),
+               recommendation_codes=(1,), recommendation_labels=("성수동2가|성동구|성수동",)),
+        _trace("C2", answer_text="유동인구가 일평균 97,000명으로 많습니다.", calls=(gen,),
+               recommendation_codes=(1,), recommendation_labels=("성수동2가|성동구|성수동",)),
+    ]
+    report = score(cases, traces)
+    halluc = [(v.case_id, v.detail) for v in report.violations if v.rule == "hallucinated_number"]
+    assert halluc == [("C2", "97000")]
+
+
 def test_정수의_0은_지우지_않는다():
     # 소수부만 잘라야 한다 — 100의 0을 지우면 1이 되어 엉뚱한 숫자가 무혐의 처리된다.
     gen = LlmCall(phase="phase2", prompt="컨텍스트: 점포 100개", response="{}", latency_ms=1.0)
