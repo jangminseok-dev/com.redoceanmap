@@ -1885,3 +1885,97 @@ async def test_동음이의_지명은_장소_접미가_있어야_지역으로_�
     interactor2, _, _ = _build(monkeypatch, [INTENT_MARKET, phase1, phase2], market=market)
     result2 = await interactor2.ask("방학동에서 카페 어때?")
     assert [r.name for r in result2.recommendations] == ["방학역 1번"]
+
+
+async def test_general_판정_후속은_직전_상권_도메인을_승계한다(monkeypatch):
+    # 4차 실측 M1 t5: "거기 경쟁 가게는 몇 개나 돼?"가 general로 이탈해 되물었다
+    conversations = _StubConversations(history=[
+        Message(id=1, conversation_id=100, role="user", content="역삼동 카페 어때?",
+                created_at=_NOW, payload=None),
+        Message(id=2, conversation_id=100, role="assistant", content="상권 추천",
+                created_at=_NOW,
+                payload={"recommendations": [
+                    {"id": "1000001", "name": "테스트상권",
+                     "serviceCode": "CS100010", "category": "커피-음료"}]}),
+    ])
+    intent_general = '{"intent": "general", "stock_query": ""}'
+    phase2 = '{"text": "요약", "areas": [{"trdar_code": 1000001, "reason": "이유. 유의할 점: x"}]}'
+    interactor, _, _ = _build(
+        monkeypatch, [intent_general, PHASE1_JSON, phase2], conversations=conversations,
+    )
+    result = await interactor.ask("거기 경쟁 가게는 몇 개나 돼?", conversation_id=100)
+    assert result.recommendations  # general이 아니라 market 경로로 승계
+
+
+async def test_general_판정이어도_도메인_단서가_없으면_그대로_general이다(monkeypatch):
+    conversations = _StubConversations(history=[
+        Message(id=1, conversation_id=100, role="user", content="역삼동 카페 어때?",
+                created_at=_NOW, payload=None),
+        Message(id=2, conversation_id=100, role="assistant", content="상권 추천",
+                created_at=_NOW,
+                payload={"recommendations": [
+                    {"id": "1000001", "name": "테스트상권",
+                     "serviceCode": "CS100010", "category": "커피-음료"}]}),
+    ])
+    intent_general = '{"intent": "general", "stock_query": ""}'
+    interactor, _, stubs = _build(
+        monkeypatch, [intent_general], conversations=conversations,
+    )
+    result = await interactor.ask("고마워, 너 이름이 뭐야?", conversation_id=100)
+    assert not result.recommendations  # 인사·잡담 후속은 승계하지 않는다
+
+
+async def test_제외_지역은_언급_가드와_후보에서_걸러진다(monkeypatch):
+    # 4차 실측 M2 t4: "홍대 말고 다른 데는 없어?"에 홍대 걷고싶은거리를 추천했다
+    areas = [
+        AreaInfo(trdar_code=1000001, trdar_name="홍대입구역", district_name="마포구",
+                 adm_dong_name="서교동", lat=37.55, lng=126.92),
+        AreaInfo(trdar_code=1000002, trdar_name="망원역", district_name="마포구",
+                 adm_dong_name="망원동", lat=37.55, lng=126.90),
+    ]
+    market = _StubMarket(areas=areas)
+    phase1_hongdae = '{"service_code": "CS100010", "service_name": "커피-음료", "trdar_codes": [1000001]}'
+    phase2 = '{"text": "요약", "areas": [{"trdar_code": 1000002, "reason": "이유. 유의할 점: x"}]}'
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, phase1_hongdae, phase2], market=market)
+    result = await interactor.ask("홍대 말고 다른 데는 없어?")
+    names = [r.name for r in result.recommendations]
+    assert "홍대입구역" not in names and names  # 제외 지역이 걸러지고 대체 후보가 나간다
+
+
+async def test_조건부_통지_요청도_알림_안내로_답한다(monkeypatch):
+    # 4차 실측 S6 t5: "떨어지면 알려줄 수 있어?"가 저항선 분석으로 흘렀다(P6)
+    interactor, _, _ = _build(monkeypatch, [])
+    result = await interactor.ask("떨어지면 알려줄 수 있어?")
+    assert "가격 도달 알림" in result.text
+
+
+async def test_설명_요청의_알려줘는_알림_안내로_가로채지_않는다(monkeypatch):
+    # 조건 어미(-면) 없는 "알려줘"는 일반 질문이다
+    interactor, _, stubs = _build(monkeypatch, [INTENT_STOCK, "주식 서술"])
+    result = await interactor.ask("삼성전자 떨어지는 이유 알려줘")
+    assert "가격 도달 알림" not in result.text.split("지금은")[0]  # 본문 가로채기 없음
+
+
+async def test_매물대를_물었는데_본문에_없으면_코드가_채운다(monkeypatch):
+    # 4차 실측 S9 t4: "매물대 어디랬지?"에 과매수/수급 서술만 하고 매물대 무응답
+    stocks = _StubStocks(_analysis(
+        volume_poc_low=86000.0, volume_poc_high=88000.0,
+        volume_poc_share=0.18, volume_price_position="above",
+    ))
+    interactor, _, _ = _build(monkeypatch, [INTENT_STOCK, "주가 흐름 서술"], stocks=stocks)
+    result = await interactor.ask("삼성전자 매물대 어디야?")
+    assert "밀집 구간" in result.text and "86,000" in result.text
+
+
+async def test_매물대_산출_불가면_표본_부족을_고지한다(monkeypatch):
+    stocks = _StubStocks(_analysis())  # volume_poc_* 기본 None
+    interactor, _, _ = _build(monkeypatch, [INTENT_STOCK, "주가 흐름 서술"], stocks=stocks)
+    result = await interactor.ask("삼성전자 매물대 어디야?")
+    assert "표본이 부족" in result.text
+
+
+def test_공백_결합_티커_혼재_질의를_분해한다():
+    # 골든 재완주 SF06 실측: phase0이 "테슬라 AAPL 애플"을 단일 문자열로 반환
+    assert ChatInteractor._normalize_stock_queries("테슬라 AAPL 애플") == ["테슬라", "AAPL", "애플"]
+    # 공백 있는 단일 종목명은 쪼개지 않는다
+    assert ChatInteractor._normalize_stock_queries("버크셔 해서웨이") == ["버크셔 해서웨이"]

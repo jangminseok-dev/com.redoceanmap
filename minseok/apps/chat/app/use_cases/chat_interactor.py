@@ -275,6 +275,13 @@ def _top_time_field(obj, fields: list[tuple[str, str, int]]) -> str:
 
 # 지시어 — 직전 추천을 가리키는 후속 질문의 표지. 보수적으로 유지한다("여기"는
 # "여기 어때?"처럼 새 질문에도 흔해 제외). 지시어 + 직전 추천 존재 = 후보 제한 가드.
+# 도메인 후속 어휘(P4-7) — general 판정을 직전 도메인으로 되돌릴 단서. 보수적으로:
+# 상권·주식 대화에서만 나오는 명사를 담고, 인사·잡담 어휘는 담지 않는다.
+_DOMAIN_FOLLOWUP_RE = re.compile(
+    r"등급|점수|상권|경쟁|폐업|유동인구|매출|배후|업종|창업|가게|점포"
+    r"|종목|주가|매물대|지지선|저항선|수급|거래량|신호|차트"
+)
+
 DEICTIC_TOKENS = (
     "그 중", "그중", "거기", "그곳", "방금", "아까", "그 상권", "그 동네", "이 중",
 )
@@ -417,6 +424,9 @@ _SURGE_PICK_RE = re.compile(
 # "떨어지면 알려줄 수 있어?" 류(알림 단어 없음)는 P6(알림 의사 감지) 백로그의 몫.
 _ALERT_HOWTO_RE = re.compile(
     r"알림(?:[^.\n]{0,20})?(?:설정|등록|어떻게|방법|걸|받|없어|있어|되|돼|가능)"
+    # 알림 의사(3차 P6, 4차 S6 t5) — '알림' 단어 없이 조건부(-면)로 통지를 청하는 표현.
+    # 조건 어미를 요구해 "떨어지는 이유 알려줘" 같은 설명 요청과 가른다.
+    r"|(?:떨어지면|내려가면|오르면|올라가면|도달하면|닿으면|찍으면|되면)[^.\n]{0,12}알려"
 )
 # 실기능만 적는다(허브 컴포저·프로필 화면과 일치). 여기 없는 기능을 안내하면 안 된다.
 _ALERT_HOWTO_TEXT = (
@@ -582,24 +592,52 @@ class ChatInteractor(ChatUseCase):
             stem = stem[:-1]
         return stem
 
+    def _area_mentioned_in(self, area: AreaInfo, text: str) -> bool:
+        for name in (area.district_name, area.adm_dong_name, area.trdar_name):
+            stem = self._place_stem(name)
+            # "건대입구역"은 "건대입구 쪽"과 어긋난다(첫 재측정 실측) — '역'을 뗀
+            # 변형도 본다. 단 뗀 결과가 3자 이상일 때만: "서울역→서울"처럼 흔한
+            # 지명이 되면 서울이 들어간 모든 질문에 걸린다.
+            variants = {stem}
+            if stem.endswith("역") and len(stem) >= 4:
+                variants.add(stem[:-1])
+            if any(
+                len(v) >= 2 and v in text and _stem_means_place(v, text)
+                for v in variants
+            ):
+                return True
+        return False
+
     def _mentioned_codes(self, summary: AreaSummary, prompt: str) -> set[int]:
         """질문에 지역(자치구·행정동·상권명 어간)이 언급된 상권 코드 집합."""
+        return {
+            a.trdar_code for a in summary.areas if self._area_mentioned_in(a, prompt)
+        }
+
+    def _excluded_area_codes(self, summary: AreaSummary, prompt: str) -> set[int]:
+        """제외 어휘 바로 앞에 언급된 지역의 상권 집합 — "홍대 말고 다른 데"(4차 실측
+        M2 t4: 홍대 계열을 다시 추천했다). 어간 매칭은 언급 판정과 같은 규칙을 쓴다."""
+        heads = [
+            prompt[max(0, m.start() - 10):m.start()]
+            for m in re.finditer(r"말고|빼고|제외", prompt)
+        ]
+        if not heads:
+            return set()
+        # 제외 어휘 바로 앞 어절("홍대")은 상권명("홍대입구역")의 어간보다 짧은 통칭일 수
+        # 있다 — 역방향 포함(어절 ⊂ 상권명)도 본다. 위치가 '말고' 직전이라 지명일 개연이
+        # 높아 동음이의 가드는 걸지 않는다.
+        last_words = [
+            tokens[-1] for head in heads
+            if (tokens := re.findall(r"[가-힣]{2,}", head))
+        ]
         codes: set[int] = set()
         for a in summary.areas:
-            for name in (a.district_name, a.adm_dong_name, a.trdar_name):
-                stem = self._place_stem(name)
-                # "건대입구역"은 "건대입구 쪽"과 어긋난다(첫 재측정 실측) — '역'을 뗀
-                # 변형도 본다. 단 뗀 결과가 3자 이상일 때만: "서울역→서울"처럼 흔한
-                # 지명이 되면 서울이 들어간 모든 질문에 걸린다.
-                variants = {stem}
-                if stem.endswith("역") and len(stem) >= 4:
-                    variants.add(stem[:-1])
-                if any(
-                    len(v) >= 2 and v in prompt and _stem_means_place(v, prompt)
-                    for v in variants
-                ):
-                    codes.add(a.trdar_code)
-                    break
+            if any(self._area_mentioned_in(a, head) for head in heads):
+                codes.add(a.trdar_code)
+                continue
+            names = (a.district_name, a.adm_dong_name, a.trdar_name)
+            if any(w in name for w in last_words for name in names):
+                codes.add(a.trdar_code)
         return codes
 
     @staticmethod
@@ -674,6 +712,20 @@ class ChatInteractor(ChatUseCase):
             if valid:
                 return valid
         return []
+
+    @staticmethod
+    def _inherit_intent(prompt: str, history: list[Message]) -> tuple[str, list[str]] | None:
+        """general 판정 후속 질문을 직전 카드의 도메인으로 되돌린다 — 조건 미충족이면 None."""
+        if not (_has_deixis(prompt) or _DOMAIN_FOLLOWUP_RE.search(prompt)):
+            return None
+        for m in reversed(history):
+            payload = m.payload or {}
+            if payload.get("recommendations") or payload.get("rankingCodes"):
+                return "market", []
+            card = payload.get("stock")
+            if card and card.get("symbol"):
+                return "stock", [str(card["symbol"])]
+        return None
 
     @staticmethod
     def _previous_service(history: list[Message]) -> tuple[str, str] | None:
@@ -923,8 +975,11 @@ class ChatInteractor(ChatUseCase):
             center = self._radius_center(summary, prompt)
             if center is None:
                 radius_note = (
+                    # '추천' 어휘를 쓰지 않는다 — 등급 가드(suppress_recommendation) 치환
+                    # 뒤에 붙는 결정론 고지가 추천 어휘를 재삽입하면 채점기 grade_caution에
+                    # 걸린다(골든 재완주 MR21 실측).
                     f"※ 반경 {radius_m:,}m 조건은 기준 지점을 좌표로 특정하지 못해 적용하지"
-                    " 못했어요. 아래 추천은 지역명 기준이에요.\n\n"
+                    " 못했어요. 아래 결과는 지역명 기준이에요.\n\n"
                 )
             else:
                 radius_codes = {
@@ -976,7 +1031,9 @@ class ChatInteractor(ChatUseCase):
 
         # 결정론적 지역 가드 — 질문에 지역이 언급되면 그 지역 상권으로 보정.
         # 모델이 ★ 지시를 무시하고 유명 상권(홍대 등)으로 쏠리는 경우를 코드로 방지한다.
-        mentioned_codes = self._mentioned_codes(summary, prompt)
+        # 제외 지역(P4-8 "홍대 말고")은 언급 집합에서 빼고, 아래에서 후보에서도 걸러낸다.
+        excluded_codes = self._excluded_area_codes(summary, prompt)
+        mentioned_codes = self._mentioned_codes(summary, prompt) - excluded_codes
         if mentioned_codes:
             local = [c for c in valid_codes if c in mentioned_codes]
             if local:
@@ -1004,6 +1061,18 @@ class ChatInteractor(ChatUseCase):
                 # 지역 미언급 후속 질문 — 직전 추천 상권을 이어받아 맥락을 유지한다.
                 # (phase1 LLM이 이전 대화에서 상권을 못 이어받아 후보가 빈 경우만 보정)
                 valid_codes = previous
+        if excluded_codes:
+            valid_codes = [c for c in valid_codes if c not in excluded_codes]
+            if not valid_codes:
+                # 제외를 걸러 후보가 비면 매출 상위 비제외 상권으로 대체한다 —
+                # "홍대 말고"에 매칭 실패 안내를 주는 것은 답이 아니다.
+                valid_codes = [
+                    c for c in sorted(
+                        summary.sales_by_code,
+                        key=lambda c: summary.sales_by_code.get(c) or 0, reverse=True,
+                    )
+                    if c in area_map and c not in excluded_codes
+                ][:3]
         if radius_codes is not None:
             # 지역·지시어 가드를 거친 후보를 반경으로 자른다. 반경 안 후보가 하나도 없으면
             # 반경 안 매출 상위로 대체한다(중심 상권 자신이 항상 포함되므로 공집합이 아니다).
@@ -1322,6 +1391,13 @@ class ChatInteractor(ChatUseCase):
         if intent == "market_news":
             return "market_news", []
         if intent == "general":
+            # 도메인 후속 승계(4차 실측 M1 t5·M3 t4) — "거기 경쟁 가게 몇 개?"·"주의
+            # 등급이면 하지 말라는 거야?"가 general로 이탈했다. 히스토리는 이미 phase0
+            # 프롬프트에 있다 — 7.8B가 안 쓰는 것이라 코드가 승계한다. 지시어 또는
+            # 도메인 어휘가 있고 직전 카드가 있을 때만(인사·상식 후속은 그대로 general).
+            inherited = self._inherit_intent(prompt, history)
+            if inherited is not None:
+                return inherited
             return "general", []
         return "market", []  # 미지 라벨 포함 전부 market — 기존 동작 보존
 
@@ -1347,6 +1423,13 @@ class ChatInteractor(ChatUseCase):
                     items = [p.strip(" '\"") for p in text[1:-1].split(",")]
             elif re.search(r"[,·]", text):
                 items = re.split(r"\s*[,·]\s*", text)
+            elif " " in text and any(
+                re.fullmatch(r"[A-Z][A-Z.\-]{0,5}", tok) for tok in text.split()
+            ):
+                # 네 번째 변형: 공백 결합 + 티커 혼재("테슬라 AAPL 애플" — 골든 재완주
+                # SF06 실측). 공백만으로 자르면 "버크셔 해서웨이"가 쪼개지므로, 대문자
+                # 티커 꼴 토큰이 섞여 있을 때만 다종목으로 본다.
+                items = text.split()
             else:
                 items = [text]
         return [q for q in (str(item).strip() for item in items) if q]
@@ -1556,6 +1639,19 @@ class ChatInteractor(ChatUseCase):
             band_high=analysis.volume_poc_high,
             atr_value=analysis.price * analysis.atr_pct,
         )
+        # 매물대 후속 결정론(P4-11, 4차 실측 S9 t4) — "매물대 어디랬지?"에 과매수/수급
+        # 서술만 하고 매물대를 답하지 않았다. 물었는데 본문에 없으면 코드가 채운다.
+        if "매물대" in prompt:
+            if analysis.volume_poc_low is None or analysis.volume_poc_high is None:
+                text = (
+                    "※ 이 종목은 매물대(거래 밀집 구간)를 산출할 표본이 부족해 값을"
+                    " 드릴 수 없어요.\n\n" + text
+                )
+            elif "매물대" not in text and "밀집 구간" not in text:
+                poc_line = self._volume_profile_text(
+                    analysis, self._currency_unit(analysis.symbol),
+                ).strip().lstrip("- ")
+                text = f"{text.rstrip()}\n{poc_line}"
         # 가격 도달 알림 안내([6]) — 중립 답변의 공식 대체재. 방향 단정은 데이터가 아직
         # 허락하지 않으므로(시그널 대개편 결론) 예측 대신 사실 통지(사용자 설정 조건)를 권한다.
         if analysis.direction == "NEUTRAL":

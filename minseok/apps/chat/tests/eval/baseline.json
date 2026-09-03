@@ -6,10 +6,10 @@
   "inherit_focus_rate": 1.0,
   "volume_verdict_rate": 1.0,
   "risk_mention_rate": 1.0,
-  "citation_coverage": 0.6,
+  "citation_coverage": 0.9107142857142857,
   "phase0_parse_failure_rate": 0.0,
-  "phase1_guard_activation_rate": 0.7674418604651163,
-  "hallucination_count": 5,
+  "phase1_guard_activation_rate": 0.6382978723404256,
+  "hallucination_count": 1,
   "truncation_count": 0,
-  "total": 129
+  "total": 134
 }

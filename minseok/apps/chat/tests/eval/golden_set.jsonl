@@ -56,11 +56,11 @@
 {"case_id": "SU01", "category": "stock_us", "prompt": "테슬라 어때?", "expected_intent": "stock", "accepted_queries": ["TSLA", "테슬라"]}
 {"case_id": "SU02", "category": "stock_us", "prompt": "애플 주가 알려줘", "expected_intent": "stock", "accepted_queries": ["AAPL", "애플"]}
 {"case_id": "SU03", "category": "stock_us", "prompt": "엔비디아 지금 어때?", "expected_intent": "stock", "accepted_queries": ["NVDA", "엔비디아"]}
-{"case_id": "SU04", "category": "stock_us", "prompt": "마이크로소프트 전망 어때?", "expected_intent": "stock", "accepted_queries": ["MSFT", "마이크로소프트"]}
+{"case_id": "SU04", "category": "stock_us", "prompt": "마이크로소프트 전망 어때?", "expected_intent": "stock", "accepted_queries": ["MSFT", "마이크로소프트", "Microsoft"]}
 {"case_id": "SU05", "category": "stock_us", "prompt": "아마존 주식 어때?", "expected_intent": "stock", "accepted_queries": ["AMZN", "아마존"]}
 {"case_id": "SU06", "category": "stock_us", "prompt": "구글 주가 어때?", "expected_intent": "stock", "accepted_queries": ["GOOGL", "GOOG", "구글"]}
 {"case_id": "SU07", "category": "stock_us", "prompt": "메타 어때?", "expected_intent": "stock", "accepted_queries": ["META", "메타"]}
-{"case_id": "SU08", "category": "stock_us", "prompt": "넷플릭스 주가 흐름 어때?", "expected_intent": "stock", "accepted_queries": ["NFLX", "넷플릭스"]}
+{"case_id": "SU08", "category": "stock_us", "prompt": "넷플릭스 주가 흐름 어때?", "expected_intent": "stock", "accepted_queries": ["NFLX", "넷플릭스", "Netflix"]}
 {"case_id": "SU09", "category": "stock_us", "prompt": "AMD 어때?", "expected_intent": "stock", "accepted_queries": ["AMD"]}
 {"case_id": "SU10", "category": "stock_us", "prompt": "팔란티어 지금 들어가도 돼?", "expected_intent": "stock", "accepted_queries": ["PLTR", "팔란티어"]}
 {"case_id": "SF01", "category": "stock_fuzzy", "prompt": "삼전 어때?", "expected_intent": "stock", "accepted_queries": ["삼성전자", "삼전", "005930"]}
@@ -127,3 +127,8 @@
 {"case_id": "MR25", "category": "market_region", "prompt": "망원동에 카페 자리 알아보는데 임대료가 평당 얼마 정도야?", "expected_intent": "market", "region": "망원동"}
 {"case_id": "MR26", "category": "market_region", "prompt": "목동에서 반찬가게 하면 먹고살 수 있을까?", "expected_intent": "market", "region": "목동"}
 {"case_id": "MN11", "category": "market_noregion", "prompt": "유동인구 많고 폐업률 낮은 서울 상권 3곳만 추천해줘", "expected_intent": "market"}
+{"case_id": "MR27", "category": "market_region", "prompt": "길음동에서 떡볶이집 괜찮을까?", "expected_intent": "market", "region": "길음동"}
+{"case_id": "MR28", "category": "market_region", "prompt": "관악구는 대학가라 방학엔 장사 안 되지 않아?", "expected_intent": "market", "region": "관악구"}
+{"case_id": "MT11", "category": "multiturn", "prompt": "국밥 말고 돈까스집이면 어때?", "expected_intent": "market", "history_regions": ["노원"]}
+{"case_id": "MT12", "category": "multiturn", "prompt": "엥 나는 떡볶이집을 추천해달라고 했는데?", "expected_intent": "market", "history_regions": ["길음"]}
+{"case_id": "MN12", "category": "market_noregion", "prompt": "너네 상권 점수는 어떻게 계산하는 거야?", "expected_intent": "market"}

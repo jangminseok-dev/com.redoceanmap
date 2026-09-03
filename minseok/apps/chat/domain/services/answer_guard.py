@@ -71,10 +71,13 @@ def ensure_volume_verdict(answer: str, *, ma20: float, ma50: float, volume_ratio
         return answer
     if "거래량" in answer and _VOLUME_VERDICT.search(answer):
         return answer
+    # 삽입 문장은 수치를 담으므로 근거 마커를 함께 단다 — 마커 없는 수치 문장은 citation
+    # 커버리지를 깎는다(골든 재완주 실측: 삽입 문장이 커버리지 하락의 주범이었다).
+    # 이 가드는 stock 경로 전용이라 [1](시세·지표)이 항상 배정돼 유령 인용이 아니다.
     if volume_ratio >= _VOLUME_SURGE:
-        line = f"거래량은 20일 평균의 {volume_ratio:.1f}배로 늘어 추세를 뒷받침합니다 — 신뢰."
+        line = f"거래량은 20일 평균의 {volume_ratio:.1f}배로 늘어 추세를 뒷받침합니다 — 신뢰. [1]"
     else:
-        line = f"거래량은 20일 평균의 {volume_ratio:.1f}배에 그쳐 추세를 뒷받침하지 못합니다 — 의심."
+        line = f"거래량은 20일 평균의 {volume_ratio:.1f}배에 그쳐 추세를 뒷받침하지 못합니다 — 의심. [1]"
     return f"{answer.rstrip()}\n{line}"
 
 
@@ -102,13 +105,15 @@ def enforce_overheat_claim(
 
     def _fix(m: re.Match) -> str:
         claimed = m.group(0)
+        # 교정 표현에 수치를 넣지 않는다 — 마커 없는 수치 문장이 되어 인용 커버리지를
+        # 깎는다(골든 재완주 실측). 원값은 대개 같은 문장의 괄호 원문에 이미 있다.
         if claimed.startswith("과매수"):
             if overbought:
                 return claimed
-            return "과매도 구간" if oversold else f"중립 구간(RSI {rsi:.0f})"
+            return "과매도 구간" if oversold else "중립 구간"
         if oversold:
             return claimed
-        return "과매수 구간" if overbought else f"중립 구간(RSI {rsi:.0f})"
+        return "과매수 구간" if overbought else "중립 구간"
 
     return _OVERHEAT_WORD.sub(_fix, answer)
 

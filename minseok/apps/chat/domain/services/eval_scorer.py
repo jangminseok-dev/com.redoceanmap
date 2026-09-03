@@ -26,6 +26,7 @@ import math
 import re
 from dataclasses import dataclass
 
+from chat.domain.services import answer_guard
 from chat.domain.value_objects.eval_trace import CaseTrace, EvalCase, LlmCall
 
 # 답변을 만든 마지막 생성 호출 — 환각 숫자 판정의 대조 원본
@@ -75,6 +76,12 @@ _GRADE_HEADER = re.compile(r"\(trdar_code: (\d+)\)")
 _GRADE_LINE = re.compile(r"종합 [\d.]+점·(우수|양호|보통|주의|위험)")
 _CAUTION_GRADES = ("주의", "위험")
 _RECOMMEND_VOCAB = re.compile(r"추천|강력히|강력하게")
+
+
+# 지표 해석 결정론(4차 실측 S2·S9) — 컨텍스트 원값 표기(인터랙터 _format_stock_context)
+_CTX_RSI = re.compile(r"RSI\(14\):\s*(-?[\d.]+)")
+_CTX_BB = re.compile(r"%B\s*(-?[\d.]+)")
+_CTX_SENT = re.compile(r"뉴스 감성:\s*([+-]?[\d.]+)")
 
 
 def _context_grades(prompt: str) -> dict[int, str]:
@@ -357,6 +364,32 @@ def score(cases: list[EvalCase], traces: list[CaseTrace]) -> EvalReport:
                 m = re.search(pattern, t.answer_text)
                 if m:
                     violations.append(RuleViolation(c.case_id, "forbidden_phrase", m.group()))
+        if t.final_intent == "stock" and t.answer_text:
+            # 지표 해석 결정론(4차 실측 S2 t3·S9 t4: RSI 40.3을 "과매수"로, 감성 +0.30을
+            # "악재 다수"로 반전) — **가드 함수를 그대로 호출**해 정의처를 하나로 둔다.
+            # 가드가 교정할 문장이 답변에 남아 있으면 가드 우회·회귀다.
+            gen_stock = _generative_call(t)
+            if gen_stock is not None:
+                rsi_m = _CTX_RSI.search(gen_stock.prompt)
+                bb_m = _CTX_BB.search(gen_stock.prompt)
+                if rsi_m:
+                    fixed = answer_guard.enforce_overheat_claim(
+                        t.answer_text, rsi=float(rsi_m.group(1)),
+                        bb_percent_b=float(bb_m.group(1)) if bb_m else None,
+                    )
+                    if fixed != t.answer_text:
+                        violations.append(
+                            RuleViolation(c.case_id, "overheat_mismatch", "과매수/과매도 원값 불일치")
+                        )
+                sent_m = _CTX_SENT.search(gen_stock.prompt)
+                if sent_m:
+                    fixed = answer_guard.enforce_sentiment_claim(
+                        t.answer_text, float(sent_m.group(1)),
+                    )
+                    if fixed != t.answer_text:
+                        violations.append(
+                            RuleViolation(c.case_id, "sentiment_mismatch", "감성 원값 반전 서술")
+                        )
             if (t.recommendation_codes == () and t.answer_text
                     and not truncated and not _has_disclaimer(t.answer_text)):
                 violations.append(RuleViolation(c.case_id, "missing_disclaimer", "책임 고지 없음"))

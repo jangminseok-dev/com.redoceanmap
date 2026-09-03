@@ -140,7 +140,7 @@ def test_중립_RSI의_과매수_서술은_중립_구간으로_교정된다():
         rsi=40.3, bb_percent_b=0.5,
     )
     assert "과매수" not in out
-    assert "중립 구간(RSI 40)" in out
+    assert "중립 구간" in out
 
 
 def test_과매도_원값이면_과매수_서술을_과매도로_뒤집는다():
