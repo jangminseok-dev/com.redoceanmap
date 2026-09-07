@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth
+spec:
+  template:
+    spec:
+      containers:
+        - name: auth
+          command: ["uvicorn", "auth_main:app", "--host", "0.0.0.0", "--port", "9000", "--reload"]
+          env:
+            - name: ENV
+              value: development
+          ports:
+            - containerPort: 9000
+              hostPort: 19000
+              hostIP: 192.168.64.2
+          volumeMounts:
+            - name: src
+              mountPath: /app
+      volumes:
+        - name: src
+          hostPath:
+            path: /Users/jangminseok/Project/com.redoceanmap/minseok
+            type: Directory

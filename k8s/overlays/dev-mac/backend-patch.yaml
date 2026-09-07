@@ -1,0 +1,28 @@
+# strategic merge — env는 name, ports는 containerPort로 병합된다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  template:
+    spec:
+      containers:
+        - name: backend
+          command: ["sh", "-c", "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"]
+          env:
+            - name: ENV
+              value: development
+            - name: MARKET_DATABASE_URL   # 맥에는 market 전용 DB가 없다 — 메인 DB 폴백(기존 맥 개발 동작과 동일)
+              $patch: delete
+          ports:
+            - containerPort: 8000
+              hostPort: 18000            # 백엔드 PC 운영(8000)과 구분되는 1만 번대
+              hostIP: 192.168.64.2       # colima VM IP(col0). 127.0.0.1은 VM 안에서만 통한다(스파이크 2026-09-07)
+          volumeMounts:
+            - name: src
+              mountPath: /app
+      volumes:
+        - name: src
+          hostPath:
+            path: /Users/jangminseok/Project/com.redoceanmap/minseok   # colima가 $HOME을 VM에 같은 경로로 마운트
+            type: Directory

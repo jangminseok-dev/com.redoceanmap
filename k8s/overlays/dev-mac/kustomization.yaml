@@ -1,0 +1,23 @@
+# 맥 개발 스택(colima docker+k3s). DB 계층은 같은 VM의 도커 compose(루트 docker-compose.yaml).
+# 기동: k8s/secrets.sh redocean-dev && k8s/load-image.sh dev && kubectl apply -k k8s/overlays/dev-mac
+# 접근: http://192.168.64.2:18000 (colima VM IP — hostPort는 iptables DNAT이라 Lima 포트 포워딩에 안 잡혀 127.0.0.1로는 못 닿는다)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: redocean-dev
+resources:
+  - namespace.yaml
+  - ../../base
+images:
+  - name: minseok97/redoceanmap-backend
+    newTag: dev            # 운영 :latest와 분리 — 재빌드가 운영 태그를 덮지 않게
+configMapGenerator:
+  - name: redocean-runtime
+    behavior: merge
+    literals:
+      - OLLAMA_HOST=http://host.lima.internal:11434   # Ollama는 맥 호스트에서 돈다(VM 밖) — 파드에서 실측 도달
+      - WATCHFILES_FORCE_POLLING=true                 # virtiofs 마운트는 inotify가 안 온다 — --reload를 폴링으로
+generatorOptions:
+  disableNameSuffixHash: true
+patches:
+  - path: backend-patch.yaml
+  - path: auth-patch.yaml
