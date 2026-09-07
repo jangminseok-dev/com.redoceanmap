@@ -3,12 +3,12 @@
 #   redocean-env       ← .env      (backend·auth·CronJob 공용)
 #   redocean-auth-env  ← .env.auth (auth 전용 — JWT 개인키 발급 경계, backend에는 절대 붙이지 않는다)
 #   cloudflared-credentials ← 터널 자격증명 JSON (운영, 2번째 인자를 줄 때만)
-# 사용: k8s/secrets.sh <namespace> [cloudflared-credentials.json 경로]
-#   개발(맥):        k8s/secrets.sh redocean-dev
-#   운영(백엔드 PC): k8s/secrets.sh redocean /home/host/.cloudflared/4b03c4a0-3030-4710-9d74-592c7860acbf.json
+# 사용: infra/k8s/secrets.sh <namespace> [cloudflared-credentials.json 경로]
+#   개발(맥):        infra/k8s/secrets.sh redocean-dev
+#   운영(백엔드 PC): infra/k8s/secrets.sh redocean /home/host/.cloudflared/4b03c4a0-3030-4710-9d74-592c7860acbf.json
 # 재실행 = 갱신(apply). 값을 바꾼 뒤엔 파드 재시작: kubectl -n <ns> rollout restart deploy
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 NS="${1:?namespace 인자 필요 (redocean-dev | redocean)}"
 CF_CRED="${2:-}"
 

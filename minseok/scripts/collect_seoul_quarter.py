@@ -23,7 +23,7 @@
 
 시도 벤치마크 캐시·area_score는 최신 분기 키라 적재 후 자연 갱신된다(캐시 무효화 불요).
 
-실행(백엔드 PC — market DB). 스케줄은 k8s/overlays/prod/cronjobs/collect-seoul-quarter.yaml(매주 수 05:30,
+실행(백엔드 PC — market DB). 스케줄은 infra/k8s/overlays/prod/cronjobs/collect-seoul-quarter.yaml(매주 수 05:30,
 리포를 /work로 마운트해 체크아웃 코드를 실행):
   kubectl -n redocean create job --from=cronjob/collect-seoul-quarter collect-seoul-quarter-manual-$(date +%s)
   # 옵션이 필요하면 실행 중 파드에서(이미지 코드):

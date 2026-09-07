@@ -132,20 +132,20 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ```bash
 # DB 계층 기동(도커) — pgvector:5432 · redis:6379 · n8n:5678 (neo4j·pgadmin은 profile). 앱은 아래 k3s.
 # (모두 127.0.0.1 + 172.17.0.1(파드용) 바인딩. 0.0.0.0 금지 — LAN 노출 차단)
-docker compose up -d pgvector redis
+cd infra && docker compose up -d pgvector redis   # compose·k8s·deploy.sh는 infra/ (infra/.env → ../.env 링크)
 
 # market 앱 전용 DB (:5434) — 공유 DB와 별개로 따로 띄운다
 cd minseok/apps/market && docker compose up -d
 
 # DB 브라우저 pgadmin (선택 기동) — http://127.0.0.1:5050
 # 공유 DB·market DB 2개가 _docs/pgadmin-servers.json으로 자동 등록된다(.env에 PGADMIN_* 필요)
-docker compose --profile tools up -d pgadmin
+cd infra && docker compose --profile tools up -d pgadmin
 
 # 그래프 브라우저는 Neo4j에 내장 — http://127.0.0.1:7474 (계정은 .env의 NEO4J_USER/PASSWORD)
-docker compose --profile graph up -d neo4j
+cd infra && docker compose --profile graph up -d neo4j
 
-# 앱(backend·auth)은 k3s — 맥은 colima(docker+k3s). 설치·기동·컷오버·롤백은 k8s/README.md
-k8s/secrets.sh redocean-dev && k8s/load-image.sh dev && kubectl apply -k k8s/overlays/dev-mac
+# 앱(backend·auth)은 k3s — 맥은 colima(docker+k3s). 설치·기동·컷오버·롤백은 infra/k8s/README.md
+infra/k8s/secrets.sh redocean-dev && infra/k8s/load-image.sh dev && kubectl apply -k infra/k8s/overlays/dev-mac
 # backend http://192.168.64.2:18000 · auth :19000 (colima VM IP — 127.0.0.1로는 못 닿는다) · 코드 hostPath 핫리로드
 
 # 프론트엔드 개발 서버 (패키지 매니저는 pnpm — pnpm-lock.yaml이 정본)
@@ -200,7 +200,7 @@ docker run --rm -v /home/host/projects/com.redoceanmap:/work -w /work/minseok \
 
 - 프레임워크: **pytest 9 + pytest-asyncio**(`asyncio_mode = auto` — `@pytest.mark.asyncio` 불필요).
 - 테스트 파일: `test_*.py` 패턴, 앱별 `minseok/apps/<app>/tests/` 아래(현재 89개 파일).
-- 마커(`pytest.ini`) — 기본 검증에서 빼려면 `-m "not ollama and not network"`:
+- 마커(`minseok/pytest.ini`) — 기본 검증에서 빼려면 `-m "not ollama and not network"`:
   - `ollama`: 로컬 EXAONE 모델을 호출하는 통합 테스트
   - `network`: 외부 API(야후 파이낸스 등) 호출이 필요한 통합 테스트
 - 유스케이스는 **스텁 포트**로 검증한다(mock 프레임워크보다 스텁 구현 선호).

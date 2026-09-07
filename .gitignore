@@ -125,3 +125,6 @@ blog/vendor/
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 .omd/init-context.json
+
+# infra/.env는 루트 .env로의 심볼릭 링크(내용 없음) — compose 변수 보간이 infra/에서 .env를 찾기 때문
+!infra/.env

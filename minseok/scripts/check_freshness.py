@@ -15,7 +15,7 @@ DB·Redis 확인형으로 만들어 뒀다). 이 스크립트가 잡는 것은 "
 알림 상태를 저장하지 않으므로 장애가 이어지면 실행 주기마다 한 통씩 온다(일 1회 cron 전제).
 
 실행 (백엔드 이미지 파드 — 호스트 cron venv에는 sqlalchemy가 없다). 스케줄과 기대 커밋 판독은
-k8s/overlays/prod/cronjobs/check-freshness.yaml(매일 09:00, .git에서 HEAD를 읽어 --expect-commit으로 넘긴다):
+infra/k8s/overlays/prod/cronjobs/check-freshness.yaml(매일 09:00, .git에서 HEAD를 읽어 --expect-commit으로 넘긴다):
     kubectl -n redocean create job --from=cronjob/check-freshness check-freshness-manual-$(date +%s)
     kubectl -n redocean exec deploy/backend -- python scripts/check_freshness.py --dry-run  # 발송 생략(실행 중 파드에서)
 
@@ -148,7 +148,7 @@ def build_body(problems: list[tuple[str, str, object]], drift: str | None = None
         lines.append(f"  · {name} — {STATE_LABEL[state]} (기대 주기: {verdict.expected}, {age})")
     if drift:
         lines += ["", "배포가 저장소보다 뒤처져 있습니다.", "", f"  · {drift}",
-                  "    조치: 백엔드 PC에서 ./deploy.sh"]
+                  "    조치: 백엔드 PC에서 infra/deploy.sh"]
     lines += [
         "",
         "확인: 어드민 → 데이터소스, 그리고 백엔드 PC의 cron 로그(~/collect_*.log).",

@@ -1,5 +1,5 @@
 # 맥 개발 스택(colima docker+k3s). DB 계층은 같은 VM의 도커 compose(루트 docker-compose.yaml).
-# 기동: k8s/secrets.sh redocean-dev && k8s/load-image.sh dev && kubectl apply -k k8s/overlays/dev-mac
+# 기동: infra/k8s/secrets.sh redocean-dev && infra/k8s/load-image.sh dev && kubectl apply -k infra/k8s/overlays/dev-mac
 # 접근: http://192.168.64.2:18000 (colima VM IP — hostPort는 iptables DNAT이라 Lima 포트 포워딩에 안 잡혀 127.0.0.1로는 못 닿는다)
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization

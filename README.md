@@ -65,8 +65,8 @@ LLM 추론은 외부 API가 아니라 **온프레미스 로컬 모델(EXAONE 3.5
 ## 실행
 
 ```bash
-docker compose up -d pgvector redis           # DB 계층(도커)
-kubectl apply -k k8s/overlays/dev-mac         # 앱(k3s) — 사전: k8s/secrets.sh redocean-dev, k8s/load-image.sh dev (k8s/README.md)
+cd infra && docker compose up -d pgvector redis  # DB 계층(도커)
+kubectl apply -k infra/k8s/overlays/dev-mac         # 앱(k3s) — 사전: infra/k8s/secrets.sh redocean-dev, infra/k8s/load-image.sh dev (infra/k8s/README.md)
 cd minseok/apps/market && docker compose up -d  # market 전용 DB(:5434, 선택)
 cd www && pnpm run dev                        # 프론트(:3000) — NEXT_PUBLIC_API_URL=http://192.168.64.2:18000
 ```

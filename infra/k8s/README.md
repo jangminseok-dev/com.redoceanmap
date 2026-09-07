@@ -47,10 +47,10 @@ docker context use colima && kubectl config use-context colima
 ## 맥 — 기동
 
 ```bash
-docker compose up -d pgvector redis          # DB 계층(도커)
-k8s/secrets.sh redocean-dev
-k8s/load-image.sh dev                         # requirements 변경 때만 재실행(코드는 hostPath)
-kubectl apply -k k8s/overlays/dev-mac
+cd infra && docker compose up -d pgvector redis   # DB 계층(도커) — infra/.env → ../.env 링크로 루트 .env 보간
+infra/k8s/secrets.sh redocean-dev
+infra/k8s/load-image.sh dev                         # requirements 변경 때만 재실행(코드는 hostPath)
+kubectl apply -k infra/k8s/overlays/dev-mac
 kubectl -n redocean-dev get pods -w
 ```
 
@@ -71,18 +71,18 @@ curl -sfL https://get.k3s.io | sudo sh -s - --disable traefik,servicelb --write-
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml     # ~/.bashrc
 ```
 
-평시 배포: `./deploy.sh`(window 브랜치 pull → `load-image.sh latest` → `kubectl apply -k k8s/overlays/prod` → rollout).
+평시 배포: `infra/deploy.sh`(window 브랜치 pull → `load-image.sh latest` → `kubectl apply -k infra/k8s/overlays/prod` → rollout).
 
 ## 백엔드 PC — 컷오버(1회, 사용자 입회)
 
 1. `scripts/backup_db.sh` 수동 1회. `docker ps`·`docker volume ls` 스냅샷. 롤백 기준 커밋 기록(`git rev-parse --short HEAD`).
-2. `git pull origin window` → `k8s/secrets.sh redocean /home/host/.cloudflared/4b03c4a0-3030-4710-9d74-592c7860acbf.json` → `k8s/load-image.sh latest`.
-3. DB 계층 포트 열기(데이터 무관): `docker compose -f docker-compose.prod.yaml up -d pgvector redis`, `docker compose --profile graph up -d neo4j`,
+2. `git pull origin window` → `infra/k8s/secrets.sh redocean /home/host/.cloudflared/4b03c4a0-3030-4710-9d74-592c7860acbf.json` → `infra/k8s/load-image.sh latest`.
+3. DB 계층 포트 열기(데이터 무관): `docker compose -f infra/docker-compose.prod.yaml up -d pgvector redis`, `docker compose -f infra/docker-compose.yaml --profile graph up -d neo4j`,
    리포 밖 `/home/host/projects/n8n/docker-compose.yaml`에 `172.17.0.1:5678:5678` 바인딩 + `extra_hosts: host.docker.internal:host-gateway` 후 `up -d`.
    `ss -ltn | grep 172.17.0.1` → 5432·6379·7687·5678·5434.
-4. `kubectl apply --dry-run=server -k k8s/overlays/prod` 통과 확인. 여기까지 무중단.
+4. `kubectl apply --dry-run=server -k infra/k8s/overlays/prod` 통과 확인. 여기까지 무중단.
 5. **다운타임 시작** — `docker stop redoceanmap-backend-1 redoceanmap-auth-1 redoceanmap-cloudflared-1`(8000/9000 hostPort 충돌 방지).
-6. `kubectl apply -k k8s/overlays/prod` → 파드 Ready → `curl 127.0.0.1:8000/health`, `curl 172.17.0.1:8000/health`(도커→파드 경로).
+6. `kubectl apply -k infra/k8s/overlays/prod` → 파드 Ready → `curl 127.0.0.1:8000/health`, `curl 172.17.0.1:8000/health`(도커→파드 경로).
 7. cloudflared 파드 Ready → `api.`·`auth.`·`n8n.`·`blog.redoceanmap.com` 확인 → 로그인·대화·지도 스모크. **다운타임 종료.**
 8. n8n UI: 워크플로 HTTP Request URL `http://backend:8000` → `http://host.docker.internal:8000`(3곳). uptime-kuma 모니터 2개 → `host.docker.internal`.
 9. crontab에서 도커 기반 5줄 삭제(project_graph·check_freshness·collect_business_permits·collect_commercial_trades·collect_seoul_quarter).
@@ -93,9 +93,9 @@ export KUBECONFIG=/etc/rancher/k3s/k3s.yaml     # ~/.bashrc
 ## 롤백
 
 ```bash
-kubectl delete -k k8s/overlays/prod
-git checkout <컷오버 직전 커밋> -- docker-compose.prod.yaml
-docker compose -f docker-compose.prod.yaml up -d      # backend·auth·cloudflared 컨테이너판 복귀
+kubectl delete -k infra/k8s/overlays/prod
+git checkout <컷오버 직전 커밋> -- infra/docker-compose.prod.yaml
+docker compose -f infra/docker-compose.prod.yaml up -d      # backend·auth·cloudflared 컨테이너판 복귀
 ```
 DB 볼륨은 어느 쪽에서도 손대지 않는다. 172.17.0.1 바인딩 추가는 남아 있어도 무해.
 
@@ -104,13 +104,13 @@ DB 볼륨은 어느 쪽에서도 손대지 않는다. 172.17.0.1 바인딩 추�
 ```bash
 kubectl -n redocean logs deploy/backend --since=1h
 kubectl -n redocean create job --from=cronjob/<이름> <이름>-manual-$(date +%s); kubectl -n redocean logs job/<이름>-manual-…
-k8s/secrets.sh redocean <cloudflared.json> && kubectl -n redocean rollout restart deploy   # .env 변경 반영
+infra/k8s/secrets.sh redocean <cloudflared.json> && kubectl -n redocean rollout restart deploy   # .env 변경 반영
 ```
 
 ## 정리
 
 ```bash
-kubectl delete -k k8s/overlays/dev-mac        # 맥 개발 스택
+kubectl delete -k infra/k8s/overlays/dev-mac        # 맥 개발 스택
 colima delete                                 # 맥 VM 통째(도커 볼륨 포함 — 백업 후)
 /usr/local/bin/k3s-uninstall.sh               # 백엔드 PC k3s 제거
 ```

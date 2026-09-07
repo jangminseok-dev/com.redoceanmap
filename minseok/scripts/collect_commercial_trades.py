@@ -14,7 +14,7 @@ NO_OPENAPI_SERVICE) — 매매만 적재하고, 임대료 축은 한국부동산
     ... python scripts/collect_commercial_trades.py --dry-run                                 # 적재 없이 집계만
 
 스케줄(매월 3일 04:30 — 실거래 신고 기한 30일이라 월 단위 갱신이면 충분):
-    k8s/overlays/prod/cronjobs/collect-commercial-trades.yaml  (수동: kubectl -n redocean create job --from=cronjob/collect-commercial-trades ...)
+    infra/k8s/overlays/prod/cronjobs/collect-commercial-trades.yaml  (수동: kubectl -n redocean create job --from=cronjob/collect-commercial-trades ...)
 """
 
 import sys

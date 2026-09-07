@@ -1,4 +1,8 @@
 # 앱(backend·auth)은 k3s로 갔다(k8s/). 이 파일은 DB 계층(상태)만 띄운다 — _docs/k3s-migration-2026-09.md
+# 프로젝트 이름 고정 — 디렉토리명(infra)에서 유도되면 볼륨이 comredoceanmap_*에서 infra_*로 바뀌어 맥 데이터가 고아가 된다.
+# 루트 .env 보간은 infra/.env(→ ../.env 심볼릭 링크)로 이어진다.
+name: comredoceanmap
+
 services:
   n8n:
     image: docker.n8n.io/n8nio/n8n
@@ -82,7 +86,7 @@ services:
       - PGADMIN_SERVER_JSON_FILE=/pgadmin4/servers.json
     volumes:
       - pgadmin_data:/var/lib/pgadmin
-      - ./_docs/pgadmin-servers.json:/pgadmin4/servers.json:ro
+      - ../_docs/pgadmin-servers.json:/pgadmin4/servers.json:ro
     networks:
       - default
       - redoceanmap_shared

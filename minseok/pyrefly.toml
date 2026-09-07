@@ -1,0 +1,2 @@
+python_interpreter = "../venv/bin/python3"
+search-path = ["apps"]
