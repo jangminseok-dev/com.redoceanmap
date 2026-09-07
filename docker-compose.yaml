@@ -1,57 +1,10 @@
+# 앱(backend·auth)은 k3s로 갔다(k8s/). 이 파일은 DB 계층(상태)만 띄운다 — _docs/k3s-migration-2026-09.md
 services:
-  backend:
-    build:
-      context: ./minseok
-      dockerfile: Dockerfile
-    ports:
-      - "127.0.0.1:8000:8000"
-    volumes:
-      - ./minseok:/app
-    env_file:
-      - .env  # JWT_SECRET 등 비밀값 (environment가 같은 키보다 우선)
-    environment:
-      - ENV=development
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-redocean}:${POSTGRES_PASSWORD:-redocean}@pgvector:5432/${POSTGRES_DB:-redoceanmap}
-      - OLLAMA_HOST=http://host.docker.internal:11434
-      - REDIS_URL=redis://redis:6379/0
-      - N8N_EMAIL_WEBHOOK_URL=http://n8n:5678/webhook/redocean-email
-      - AWS_DEFAULT_REGION=ap-northeast-2
-      - VISION_S3_BUCKET=redoceanmap.com-752767405178-ap-northeast-2-an
-    depends_on:
-      pgvector:
-        condition: service_healthy
-      redis:
-        condition: service_started
-    command: sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
-
-  auth:
-    build:
-      context: ./minseok
-      dockerfile: Dockerfile
-    ports:
-      - "127.0.0.1:9000:9000"  # 루프백 잠금 — 외부 유입은 Cloudflare 터널 경유만
-    volumes:
-      - ./minseok:/app
-    env_file:
-      - .env       # 공용 (JWT_PUBLIC_KEY_B64 포함)
-      - .env.auth  # auth 전용 — JWT_PRIVATE_KEY_B64 (개인키는 이 컨테이너에만)
-    environment:
-      - ENV=development
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-redocean}:${POSTGRES_PASSWORD:-redocean}@pgvector:5432/${POSTGRES_DB:-redoceanmap}
-      - REDIS_URL=redis://redis:6379/0
-      - REDIS_URL_MOBILE=redis://redis:6379/1  # 모바일 세션 — 웹(db 0)과 논리 DB 분리
-    depends_on:
-      pgvector:
-        condition: service_healthy
-      redis:
-        condition: service_started
-    # 마이그레이션(alembic)은 backend 소유 — 이중 실행 경합 방지를 위해 여기서는 돌리지 않는다.
-    command: uvicorn auth_main:app --host 0.0.0.0 --port 9000 --reload
-
   n8n:
     image: docker.n8n.io/n8nio/n8n
     ports:
       - "127.0.0.1:5678:5678"
+      - "172.17.0.1:5678:5678"   # k3s 파드(backend → n8n 웹훅, cloudflared)용 — 도커 브리지 게이트웨이
     volumes:
       - n8n_data:/home/node/.n8n
     environment:
@@ -63,6 +16,7 @@ services:
     image: redis:7-alpine
     ports:
       - "127.0.0.1:6379:6379"
+      - "172.17.0.1:6379:6379"   # k3s 파드용
     volumes:
       - redis_data:/data
     command: ["redis-server", "--appendonly", "yes"]
@@ -72,6 +26,7 @@ services:
     ports:
       # redoceanmap이 메인 — 정식 포트 5432 사용 (ragwatson pgvector는 5433으로 이동).
       - "127.0.0.1:5432:5432"
+      - "172.17.0.1:5432:5432"   # k3s 파드용 — market compose와 같은 방식
     volumes:
       - pgvector_data:/var/lib/postgresql/data
     environment:
@@ -92,6 +47,7 @@ services:
     ports:
       - "127.0.0.1:7474:7474"
       - "127.0.0.1:7687:7687"
+      - "172.17.0.1:7687:7687"   # k3s 파드(bolt)용
     volumes:
       - neo4j_data:/data
     environment:

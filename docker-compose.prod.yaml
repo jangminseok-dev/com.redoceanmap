@@ -1,13 +1,13 @@
+# 2026-09 k3s 전환 — backend·auth·cloudflared는 k8s/overlays/prod로 갔다. 여기는 DB 계층 + uptime-kuma만.
 # 프로덕션 compose (②-M2) — dev(docker-compose.yaml)와 분리된 독립 파일.
 #
 # dev와의 차이:
 #   - --reload 제거, 소스 볼륨 마운트 제거(이미지에 구운 코드로만 실행 — 배포 = 재빌드)
 #   - 전 서비스 restart: unless-stopped (재부팅 자동 복구, docker 서비스 enable 전제)
-#   - backend·auth healthcheck (python 표준 라이브러리 — 이미지에 curl 불요)
+#   - backend·auth·cloudflared는 없다 — k3s(k8s/overlays/prod). 여기는 데이터 계층만
 #   - neo4j·pgadmin 제외 (운영 도구는 dev 프로파일로 — 그래프 투영 cron은 dev compose의 neo4j를 쓴다)
 #   - n8n 제외 (2026-08-20 실측 — 별도 프로젝트 /home/host/projects/n8n/ 에서 이미 돌고 있다.
 #     여기 다시 선언하면 포트 5678과 볼륨 n8n_data를 두 프로젝트가 다툰다)
-#   - cloudflared 포함 (공개 접점 — 빠지면 도메인이 죽는다)
 #   - name: redoceanmap 고정 (컨테이너 이름 유지 — cron의 docker exec가 이 이름을 쓴다)
 #
 # ⛔ --remove-orphans 를 붙이지 말 것. 같은 프로젝트 이름 아래 dev 프로파일로 띄운
@@ -23,7 +23,7 @@
 #   5. 되돌리려면: 이 파일로 down → 구 스택 /home/host/projects/redoceanmap/ 에서 up -d
 #      (볼륨이 external이라 데이터는 어느 쪽으로 가든 그대로다)
 #
-# 배포(평시): ./deploy.sh  (= git pull origin window && compose -f 이 파일 up -d --build)
+# 배포(평시): ./deploy.sh (k3s 반입·apply). 이 파일은 DB 계층 변경 때만 up -d 한다.
 
 # 프로젝트 이름 고정. 빼면 디렉토리명에서 `comredoceanmap`이 유도돼 컨테이너가
 # `comredoceanmap-backend-1`이 된다 — cron의 `docker exec redoceanmap-backend-1`
@@ -31,101 +31,11 @@
 name: redoceanmap
 
 services:
-  backend:
-    # 태그를 명시한다. 빼면 compose가 `redoceanmap-backend`로 태깅해서
-    # `minseok97/redoceanmap-backend:latest`를 쓰는 cron 2종(신선도 감시·인허가 수집)이
-    # 낡은 이미지를 계속 돌린다 — 배포와 배치가 조용히 갈라진다.
-    image: minseok97/redoceanmap-backend:latest
-    build:
-      context: ./minseok
-      dockerfile: Dockerfile
-      args:
-        # deploy.sh가 export한다. 직접 compose를 부르면 unknown으로 굽히는데,
-        # 그건 "커밋을 모른다"는 정직한 표시라 그대로 둔다.
-        GIT_SHA: ${GIT_SHA:-unknown}
-        BUILT_AT: ${BUILT_AT:-unknown}
-    ports:
-      - "127.0.0.1:8000:8000"   # 루프백 잠금 — 외부 유입은 Cloudflare 터널 경유만
-    env_file:
-      - .env
-    environment:
-      - ENV=production
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-redocean}:${POSTGRES_PASSWORD:-redocean}@pgvector:5432/${POSTGRES_DB:-redoceanmap}
-      - OLLAMA_HOST=http://host.docker.internal:11434
-      - REDIS_URL=redis://redis:6379/0
-      # 루트 .env의 MARKET_DATABASE_URL은 localhost — 호스트 cron용이라 컨테이너에선
-      # 자기 자신을 가리켜 메인 DB로 조용히 폴백한다(2026-07-24 실장애). 컨테이너 형태로 덮어쓴다.
-      - MARKET_DATABASE_URL=${MARKET_DATABASE_URL_DOCKER:?루트 .env에 설정 필요}
-      - LOG_FORMAT=json   # 구조화 로깅(③-M4) — docker logs에서 필드 검색 가능
-      - AWS_DEFAULT_REGION=ap-northeast-2
-      - VISION_S3_BUCKET=redoceanmap.com-752767405178-ap-northeast-2-an
-    # 없으면 host.docker.internal이 해석되지 않는다 — Ollama(11434)뿐 아니라
-    # MARKET_DATABASE_URL(host.docker.internal:5434)도 이 이름으로 붙으므로
-    # 빠뜨리면 채팅·상권이 통째로 죽는다. 구 스택과 동일.
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    depends_on:
-      pgvector:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    # 마이그레이션은 backend가 단독 소유(auth와 이중 실행 경합 방지 — dev와 동일)
-    command: sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000"
-    healthcheck:
-      # /openapi.json은 HTTP Basic으로 보호돼 있어 401이다 — 그걸 물면 영구 unhealthy가 된다.
-      # /health는 인증 없이 열려 있고, 의존성이 죽으면 503이라 헬스체크 의미도 맞다.
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s   # alembic + 앱 기동 여유
-    restart: unless-stopped
-
-  auth:
-    image: minseok97/redoceanmap-backend:latest  # backend와 같은 이미지·다른 엔트리포인트
-    build:
-      context: ./minseok
-      dockerfile: Dockerfile
-      args:
-        # deploy.sh가 export한다. 직접 compose를 부르면 unknown으로 굽히는데,
-        # 그건 "커밋을 모른다"는 정직한 표시라 그대로 둔다.
-        GIT_SHA: ${GIT_SHA:-unknown}
-        BUILT_AT: ${BUILT_AT:-unknown}
-    ports:
-      - "127.0.0.1:9000:9000"
-    env_file:
-      - .env
-      - .env.auth   # 개인키는 이 컨테이너에만 (발급 경계 — dev와 동일)
-    environment:
-      - ENV=production
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-redocean}:${POSTGRES_PASSWORD:-redocean}@pgvector:5432/${POSTGRES_DB:-redoceanmap}
-      - REDIS_URL=redis://redis:6379/0
-      - REDIS_URL_MOBILE=redis://redis:6379/1
-      - LOG_FORMAT=json   # 구조화 로깅(③-M4) — backend와 같은 스위치
-    depends_on:
-      pgvector:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    command: uvicorn auth_main:app --host 0.0.0.0 --port 9000
-    healthcheck:
-      # auth에는 /openapi.json 자체가 없다(404) — 영구 unhealthy가 된다.
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9000/health', timeout=5)"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
-    restart: unless-stopped
-
-  # n8n은 이 파일이 소유하지 않는다 — 별도 프로젝트 /home/host/projects/n8n/ 에서
-  # 이미 돌고 있다(컨테이너 n8n-n8n-1 · 네트워크 n8n_default · 볼륨 n8n_data).
-  # 여기 다시 선언하면 같은 포트(5678)와 같은 볼륨을 두 프로젝트가 다툰다.
-  # 웹훅 주소는 .env의 N8N_EMAIL_WEBHOOK_URL을 그대로 쓴다(구 스택과 동일).
-
   redis:
     image: redis:7-alpine
     ports:
       - "127.0.0.1:6379:6379"
+      - "172.17.0.1:6379:6379"   # k3s 파드용 — 도커 브리지 게이트웨이
     volumes:
       - redis_data:/data
     command: ["redis-server", "--appendonly", "yes"]
@@ -140,6 +50,7 @@ services:
     image: pgvector/pgvector:pg16
     ports:
       - "127.0.0.1:5432:5432"   # DB 비노출 — 루프백만 (백업 cron이 localhost로 붙는다)
+      - "172.17.0.1:5432:5432"   # k3s 파드용 — market compose와 같은 방식(LAN 비노출)
     volumes:
       - pgvector_data:/var/lib/postgresql/data
     environment:
@@ -166,29 +77,9 @@ services:
       - "127.0.0.1:3001:3001"   # 루프백 잠금 — 대시보드는 ssh 포워딩으로만 접근
     volumes:
       - uptime_kuma_data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # 모니터 대상이 k3s 파드(hostPort 172.17.0.1)로 옮겨감
     restart: unless-stopped
-
-  # 공개 접점 — 이게 빠지면 redoceanmap.com·auth.redoceanmap.com이 통째로 죽는다.
-  # 구 스택 정의를 그대로 옮겼다(자격증명은 호스트 ~/.cloudflared를 ro 마운트).
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    user: "1000:1000"  # 이미지 기본 비루트(65532)는 호스트 소유(600) 자격증명을 못 읽는다
-    command: tunnel --config /etc/cloudflared/config-docker.yml run
-    volumes:
-      - /home/host/.cloudflared:/etc/cloudflared:ro
-    networks:
-      - default
-      - n8n  # n8n은 별도 compose(n8n_default) — 네이티브 도커라 host 경유 불가, 네트워크 직결
-    depends_on:
-      - backend
-      - auth
-    restart: unless-stopped
-
-
-networks:
-  n8n:
-    external: true
-    name: n8n_default
 
 
 volumes:
