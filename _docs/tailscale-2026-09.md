@@ -4,7 +4,7 @@
 
 | 항목 | 실측 |
 | --- | --- |
-| 맥 | Tailscale 1.102.3 설치·로그인 완료(`jang971121@`, IP `100.76.233.68`, 테일넷 `tail4ea1e9.ts.net`) |
+| 맥 | Tailscale 1.102.3 설치·로그인 완료(`jang971121@`, IP `100.76.233.68`, 테일넷 `tail7cccce.ts.net` — `tail4ea1e9`는 공유 노드 `ubantu-kim` 쪽 이름) |
 | 백엔드 PC | Windows 10 22H2 + WSL2(Ubuntu 26.04, systemd). Tailscale은 Windows·WSL 어디에도 없음 |
 | 현재 LAN 접속 | 맥 `~/.ssh/config`의 `Host host` → `192.168.0.85:22`. Windows portproxy가 `0.0.0.0:22 → 192.168.20.72:22`(WSL NAT IP, 하드코딩)로 넘김 |
 | WSL 네트워킹 | NAT 모드(미러 모드는 Windows 11 전용). `/dev/net/tun` 있음 |
@@ -23,13 +23,13 @@ ssh -t host 'curl -fsSL https://tailscale.com/install.sh | sh'
 ssh -t host 'sudo tailscale up --hostname redocean-pc --accept-dns=false'
 ```
 - 두 번째 명령이 로그인 URL을 출력한다 → 맥 브라우저에서 열어 **`jang971121@` 계정으로 승인**(맥과 같은 테일넷이어야 한다).
-- `--hostname redocean-pc`: WSL 호스트명이 `host`라 그대로 두면 노드 이름이 `host`가 된다. MagicDNS 이름이 `redocean-pc.tail4ea1e9.ts.net`이 되게 지정.
+- `--hostname redocean-pc`: WSL 호스트명이 `host`라 그대로 두면 노드 이름이 `host`가 된다. MagicDNS 이름이 `redocean-pc.tail7cccce.ts.net`이 되게 지정.
 - `--accept-dns=false`: WSL은 `/etc/resolv.conf`를 자동 생성하고 k3s CoreDNS도 그 파일을 읽는다. MagicDNS가 이 파일을 건드리면 재부팅·재생성 때 꼬인다. PC 쪽은 맥을 이름으로 찾을 일이 없으니 끈다(맥 쪽 MagicDNS는 그대로).
 - 확인:
 ```bash
 ssh host 'tailscale ip -4; tailscale status | head -3; systemctl is-enabled tailscaled'
 ```
-`100.x.y.z` 한 줄, `enabled`.
+`100.x.y.z` 한 줄, `enabled`. (실측 2026-09-07: `redocean-pc` = `100.91.144.44`)
 
 **키 만료 해제(필수).** 테일넷 기본값은 노드 키 180일 만료라 반년 뒤 ssh가 조용히 끊긴다. https://login.tailscale.com/admin/machines → `redocean-pc` 우측 `…` → **Disable key expiry**.
 
