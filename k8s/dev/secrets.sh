@@ -15,9 +15,10 @@ NEO4J_PASSWORD="$(grep -E '^NEO4J_PASSWORD=' "$ROOT/.env" | cut -d= -f2- || true
 
 kubectl get ns "$NS" >/dev/null 2>&1 || kubectl create ns "$NS"
 
+# kubectl은 --from-env-file과 --from-literal을 같이 못 쓴다 — 프로세스 치환으로 합쳐 디스크에 남기지 않는다.
+# 앞의 개행은 .env가 개행 없이 끝날 때 마지막 키에 들러붙는 것을 막는다(실측: PGADMIN_PASSWORD 오염).
 kubectl -n "$NS" create secret generic redocean-env \
-  --from-env-file="$ROOT/.env" \
-  --from-literal=NEO4J_AUTH="neo4j/${NEO4J_PASSWORD}" \
+  --from-env-file=<(cat "$ROOT/.env"; printf "\nNEO4J_AUTH=neo4j/%s\n" "$NEO4J_PASSWORD") \
   --dry-run=client -o yaml | kubectl apply -f -
 
 kubectl -n "$NS" create secret generic redocean-auth-env \
