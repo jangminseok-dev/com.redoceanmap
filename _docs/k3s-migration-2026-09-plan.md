@@ -10,6 +10,13 @@
 
 **Spec:** `_docs/k3s-migration-2026-09.md`
 
+> **실행 결과(2026-09-07)**: Task 1~10 전부 완료. 백엔드 PC 컷오버 14:31:13→14:31:58(다운타임 45초), 도메인 4개 정상,
+> CronJob 5건 등록, uptime-kuma 3개 Up, n8n 워크플로 3개(실시간 알림·북마크 알림·메일 수신) `host.docker.internal`로 Publish.
+> 실행 중 보정: ① 폴더 재배치로 경로가 `infra/k8s/…`·`infra/docker-compose*.yaml`·`infra/deploy.sh`(이 문서의 `k8s/…` 표기는 재배치 전 기준)
+> ② auth Deployment에 `strategy: Recreate` 추가(hostPort 교착, 2bec98b) ③ 맥 `.env` JWT 공개키 교체(auth 테스트 77 통과)
+> ④ 맥 hostPort 접근은 colima VM IP(192.168.64.2) ⑤ uptime-kuma는 sqlite 직접 수정 + compose 재생성 ⑥ 백엔드 PC sudoers `k3s ctr` 무비밀번호.
+> 잔여: 24h 관찰(CronJob 이력·04:00 백업), 브라우저 로그인 스모크, 선택 보안 정리(Windows portproxy 제거·Tailscale ACL — `_docs/tailscale-2026-09.md` §4).
+
 ## Global Constraints
 
 - 전 포트 루프백 원칙: hostPort의 hostIP는 `127.0.0.1` 또는 `172.17.0.1`만. `0.0.0.0` 금지.
