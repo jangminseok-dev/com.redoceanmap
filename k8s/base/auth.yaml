@@ -1,0 +1,51 @@
+# auth — backend와 같은 이미지·다른 엔트리포인트. JWT 개인키(.env.auth → redocean-auth-env)는 이 파드에만(발급 경계).
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth
+spec:
+  selector:
+    app: auth
+  ports:
+    - port: 9000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth
+  template:
+    metadata:
+      labels:
+        app: auth
+    spec:
+      containers:
+        - name: auth
+          image: minseok97/redoceanmap-backend:latest
+          imagePullPolicy: Never
+          # 마이그레이션은 backend 소유 — 여기서는 돌리지 않는다
+          command: ["uvicorn", "auth_main:app", "--host", "0.0.0.0", "--port", "9000"]
+          envFrom:
+            - secretRef:
+                name: redocean-env
+            - secretRef:
+                name: redocean-auth-env   # auth 전용 — JWT_PRIVATE_KEY_B64
+            - configMapRef:
+                name: redocean-runtime
+          env:
+            - name: DATABASE_URL
+              value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@pgvector:5432/$(POSTGRES_DB)
+          ports:
+            - containerPort: 9000
+              hostPort: 9000
+              hostIP: 127.0.0.1
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9000
+            initialDelaySeconds: 10
+            periodSeconds: 10

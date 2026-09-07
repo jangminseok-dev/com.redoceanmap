@@ -1,0 +1,20 @@
+# 앱 계층 base — backend·auth + 도커에 남은 상태 계층(pgvector·redis·neo4j·n8n)으로의 경로.
+# 네임스페이스·포트·코드 마운트·이미지 태그는 overlays/가 정한다. 설계: _docs/k3s-migration-2026-09.md
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - external-services.yaml
+  - backend.yaml
+  - auth.yaml
+configMapGenerator:
+  # 비밀이 아닌 런타임 값 — compose의 environment: 블록에서 옮겨왔다. 비밀은 Secret(redocean-env).
+  - name: redocean-runtime
+    literals:
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL_MOBILE=redis://redis:6379/1
+      - N8N_EMAIL_WEBHOOK_URL=http://n8n:5678/webhook/redocean-email
+      - AWS_DEFAULT_REGION=ap-northeast-2
+      - VISION_S3_BUCKET=redoceanmap.com-752767405178-ap-northeast-2-an
+generatorOptions:
+  disableNameSuffixHash: true   # overlay가 이름으로 참조·병합한다

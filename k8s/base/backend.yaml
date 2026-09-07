@@ -1,0 +1,57 @@
+# backend — 마이그레이션(alembic)은 backend 단독 소유(auth와 이중 실행 경합 방지). replicas 1 · Recreate 고정.
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+spec:
+  selector:
+    app: backend
+  ports:
+    - port: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      # market DB(:5434)·Ollama(:11434)는 호스트에 있다 — 도커 브리지 게이트웨이로. 도커가 남는 한 이 IP는 고정.
+      hostAliases:
+        - ip: 172.17.0.1
+          hostnames: ["host.docker.internal"]
+      containers:
+        - name: backend
+          image: minseok97/redoceanmap-backend:latest
+          imagePullPolicy: Never   # load-image.sh로 반입한 로컬 이미지만(허브 pull 금지)
+          command: ["sh", "-c", "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000"]
+          envFrom:
+            - secretRef:
+                name: redocean-env        # 루트 .env 전체(비밀)
+            - configMapRef:
+                name: redocean-runtime    # 비밀 아닌 런타임 값
+          env:
+            # $(VAR)는 envFrom으로 들어온 값으로 전개된다(kubelet이 envFrom을 먼저 처리)
+            - name: DATABASE_URL
+              value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@pgvector:5432/$(POSTGRES_DB)
+            - name: MARKET_DATABASE_URL          # market 전용 DB(:5434) — 호스트 도커
+              value: $(MARKET_DATABASE_URL_DOCKER)
+          ports:
+            - containerPort: 8000
+              hostPort: 8000
+              hostIP: 127.0.0.1
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15    # alembic + 앱 기동 여유
+            periodSeconds: 10
