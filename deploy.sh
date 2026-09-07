@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 백엔드 PC 1커맨드 배포 (②-M2) — window 브랜치 pull → 프로덕션 compose 재빌드 기동.
-# 첫 전환 절차는 docker-compose.prod.yaml 머리말 참고(볼륨 이름 확인이 선행이다).
+# 백엔드 PC 1커맨드 배포 — window 브랜치 pull → 이미지 재빌드·k3s 반입 → 운영 overlay 적용 → 재시작.
+# DB 계층(docker-compose.prod.yaml)은 건드리지 않는다. 첫 컷오버 절차는 k8s/README.md.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -11,13 +11,15 @@ if [ "$BRANCH" != "window" ]; then
 fi
 
 git pull origin window
+echo "[deploy] 굽는 커밋: $(git rev-parse --short HEAD)"
 
-# 배포된 코드가 어느 커밋인지 이미지에 굽는다 — pull 뒤에 읽어야 방금 받은 커밋이 잡힌다.
-# 이 값이 /health의 version으로 나오고, check_freshness.py --expect-commit이 대조한다.
-export GIT_SHA=$(git rev-parse --short HEAD)
-export BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-echo "[deploy] 굽는 커밋: $GIT_SHA ($BUILT_AT)"
+# build + containerd 반입. 네임스페이스를 넘기지 않는다 — 재시작은 apply 뒤에 한 번만.
+k8s/load-image.sh latest
 
-docker compose -f docker-compose.prod.yaml up -d --build
-docker compose -f docker-compose.prod.yaml ps
-echo "[deploy] 완료 — healthcheck 안정화까지 ~1분, 이상 시: docker compose -f docker-compose.prod.yaml logs backend"
+kubectl apply -k k8s/overlays/prod
+# :latest 재반입은 태그가 같아 파드를 다시 띄워야 새 이미지를 쓴다(imagePullPolicy Never)
+kubectl -n redocean rollout restart deploy backend auth
+kubectl -n redocean rollout status deploy backend --timeout=180s
+kubectl -n redocean rollout status deploy auth --timeout=120s
+kubectl -n redocean get pods
+echo "[deploy] 완료 — 확인: curl -s 127.0.0.1:8000/health | python3 -m json.tool | grep commit"

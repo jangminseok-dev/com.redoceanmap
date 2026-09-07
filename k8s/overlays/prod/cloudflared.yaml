@@ -1,0 +1,60 @@
+# 공개 접점. 구 config-docker.yml의 ingress를 옮겼다 — backend·auth·blog-static은 k3s Service, n8n은 도커(EndpointSlice 경유).
+# 자격증명은 Secret cloudflared-credentials(secrets.sh 2번째 인자). 호스트 ~/.cloudflared/config.yml(systemd 롤백 예비)은 건드리지 않는다.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudflared-config
+data:
+  config.yml: |
+    tunnel: 4b03c4a0-3030-4710-9d74-592c7860acbf
+    credentials-file: /etc/cloudflared/creds/credentials.json
+    ingress:
+      - hostname: api.redoceanmap.com
+        service: http://backend:8000
+      - hostname: n8n.redoceanmap.com
+        service: http://n8n:5678
+      - hostname: auth.redoceanmap.com
+        service: http://auth:9000
+      - hostname: blog.redoceanmap.com
+        service: http://blog-static:80
+      - service: http_status:404
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudflared
+  template:
+    metadata:
+      labels:
+        app: cloudflared
+    spec:
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:latest   # compose와 동일(부동 태그 — 터널 클라이언트는 최신 유지가 관례)
+          # --metrics는 파드 안 포트(2000) — /ready 헬스체크용, LAN 노출 아님
+          args: ["tunnel", "--config", "/etc/cloudflared/config.yml", "--no-autoupdate", "--metrics", "0.0.0.0:2000", "run"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/cloudflared/config.yml
+              subPath: config.yml
+            - name: creds
+              mountPath: /etc/cloudflared/creds
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 2000
+            initialDelaySeconds: 20
+            periodSeconds: 30
+      volumes:
+        - name: config
+          configMap:
+            name: cloudflared-config
+        - name: creds
+          secret:
+            secretName: cloudflared-credentials

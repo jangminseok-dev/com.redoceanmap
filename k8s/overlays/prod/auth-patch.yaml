@@ -1,0 +1,14 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth
+spec:
+  template:
+    spec:
+      containers:
+        - name: auth
+          env:
+            - name: ENV
+              value: production
+            - name: LOG_FORMAT
+              value: json

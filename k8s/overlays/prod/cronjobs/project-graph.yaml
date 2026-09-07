@@ -1,0 +1,36 @@
+# PG(market) → Neo4j 그래프 투영. 상권 뉴스 수집(01:30) 뒤 · 뉴스 라벨링(02:30) 앞. 전량 MERGE 멱등(구 docker exec 02:15).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: project-graph
+spec:
+  schedule: "15 2 * * *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          hostAliases:
+            - ip: 172.17.0.1
+              hostnames: ["host.docker.internal"]
+          containers:
+            - name: job
+              image: minseok97/redoceanmap-backend:latest
+              imagePullPolicy: Never
+              workingDir: /app
+              command: ["python", "scripts/project_graph.py"]
+              envFrom:
+                - secretRef:
+                    name: redocean-env
+                - configMapRef:
+                    name: redocean-runtime
+              env:
+                - name: DATABASE_URL
+                  value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@pgvector:5432/$(POSTGRES_DB)
+                - name: MARKET_DATABASE_URL
+                  value: $(MARKET_DATABASE_URL_DOCKER)

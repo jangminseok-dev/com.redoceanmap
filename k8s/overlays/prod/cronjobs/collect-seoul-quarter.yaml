@@ -1,0 +1,47 @@
+# 상권 신규 분기 자동 적재(③-M5) — 주 1회 폴링, 신규 없으면 no-op. 미공개 분기 INFO-200은 정상. 리포 코드 실행(구 docker run -w /work).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: collect-seoul-quarter
+spec:
+  schedule: "30 5 * * 3"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          hostAliases:
+            - ip: 172.17.0.1
+              hostnames: ["host.docker.internal"]
+          containers:
+            - name: job
+              image: minseok97/redoceanmap-backend:latest
+              imagePullPolicy: Never
+              workingDir: /work
+              command: ["python", "minseok/scripts/collect_seoul_quarter.py"]
+              envFrom:
+                - secretRef:
+                    name: redocean-env
+                - configMapRef:
+                    name: redocean-runtime
+              env:
+                - name: PYTHONPATH
+                  value: /work/minseok:/work/minseok/apps
+                - name: DATABASE_URL
+                  value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@pgvector:5432/$(POSTGRES_DB)
+                - name: MARKET_DATABASE_URL
+                  value: $(MARKET_DATABASE_URL_DOCKER)
+              volumeMounts:
+                - name: repo
+                  mountPath: /work
+                  readOnly: true
+          volumes:
+            - name: repo
+              hostPath:
+                path: /home/host/projects/com.redoceanmap
+                type: Directory

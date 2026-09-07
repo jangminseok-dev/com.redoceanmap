@@ -1,0 +1,10 @@
+# crontab의 도커 기반 5건을 옮겼다. 스케줄·환경은 crontab과 동일. 호스트 venv cron 10건·backup_db.sh는 crontab에 그대로.
+# 수동 실행: kubectl -n redocean create job --from=cronjob/<이름> <이름>-manual-$(date +%s)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - project-graph.yaml
+  - check-freshness.yaml
+  - collect-business-permits.yaml
+  - collect-commercial-trades.yaml
+  - collect-seoul-quarter.yaml

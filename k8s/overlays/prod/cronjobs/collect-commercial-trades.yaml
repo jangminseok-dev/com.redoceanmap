@@ -1,0 +1,36 @@
+# 상업용 부동산 실거래 수집 — 최근 3개월. 인허가(화)·분기(수)와 요일 분산(구 docker exec 매월 3일 04:30).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: collect-commercial-trades
+spec:
+  schedule: "30 4 3 * *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          hostAliases:
+            - ip: 172.17.0.1
+              hostnames: ["host.docker.internal"]
+          containers:
+            - name: job
+              image: minseok97/redoceanmap-backend:latest
+              imagePullPolicy: Never
+              workingDir: /app
+              command: ["python", "scripts/collect_commercial_trades.py"]
+              envFrom:
+                - secretRef:
+                    name: redocean-env
+                - configMapRef:
+                    name: redocean-runtime
+              env:
+                - name: DATABASE_URL
+                  value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@pgvector:5432/$(POSTGRES_DB)
+                - name: MARKET_DATABASE_URL
+                  value: $(MARKET_DATABASE_URL_DOCKER)

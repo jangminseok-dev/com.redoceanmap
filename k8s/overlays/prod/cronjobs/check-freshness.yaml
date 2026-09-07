@@ -1,0 +1,57 @@
+# 수집 신선도 감시 + 배포 드리프트(실행 중 GIT_SHA vs 체크아웃 HEAD). 이메일 알림(ALERT_EMAIL).
+# 리포 코드를 마운트해 실행 — 이미지가 낡아도 감시 코드는 최신이어야 한다(crontab 시절과 동일). 이미지에 git이 없어 .git을 직접 읽는다.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: check-freshness
+spec:
+  schedule: "0 9 * * *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          hostAliases:
+            - ip: 172.17.0.1
+              hostnames: ["host.docker.internal"]
+          containers:
+            - name: job
+              image: minseok97/redoceanmap-backend:latest
+              imagePullPolicy: Never
+              workingDir: /work/minseok
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  head=$(cat /work/.git/HEAD)
+                  case "$head" in
+                    ref:*) ref=${head#ref: }
+                           commit=$(cat "/work/.git/$ref" 2>/dev/null || grep " $ref\$" /work/.git/packed-refs | cut -c1-40) ;;
+                    *)     commit=$head ;;
+                  esac
+                  exec python scripts/check_freshness.py --expect-commit "$(printf %s "$commit" | cut -c1-7)"
+              envFrom:
+                - secretRef:
+                    name: redocean-env
+                - configMapRef:
+                    name: redocean-runtime
+              env:
+                - name: DATABASE_URL
+                  value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@pgvector:5432/$(POSTGRES_DB)
+                - name: MARKET_DATABASE_URL
+                  value: $(MARKET_DATABASE_URL_DOCKER)
+              volumeMounts:
+                - name: repo
+                  mountPath: /work
+                  readOnly: true
+          volumes:
+            - name: repo
+              hostPath:
+                path: /home/host/projects/com.redoceanmap
+                type: Directory

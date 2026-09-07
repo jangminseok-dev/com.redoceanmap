@@ -1,0 +1,4 @@
+[
+  { "op": "add", "path": "/spec/template/spec/containers/0/ports/-",
+    "value": { "containerPort": 9000, "hostPort": 9000, "hostIP": "172.17.0.1" } }
+]
