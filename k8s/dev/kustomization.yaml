@@ -1,0 +1,12 @@
+# 개발 스택(k3s) — docker-compose.yaml의 기본 프로파일과 1:1 대응.
+# 선택 서비스(neo4j)는 optional/ 아래에서 따로 apply 한다.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: redocean-dev
+resources:
+  - namespace.yaml
+  - pgvector.yaml
+  - redis.yaml
+  - n8n.yaml
+  - backend.yaml
+  - auth.yaml

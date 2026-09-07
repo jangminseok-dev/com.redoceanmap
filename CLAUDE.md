@@ -144,6 +144,10 @@ docker compose --profile tools up -d pgadmin
 # 그래프 브라우저는 Neo4j에 내장 — http://127.0.0.1:7474 (계정은 .env의 NEO4J_USER/PASSWORD)
 docker compose --profile graph up -d neo4j
 
+# 쿠버네티스(k3s) 개발 스택 — 도커 컴포즈 대체 진행 중(2026-09-07~). 설치·포트·기동은 k8s/README.md
+# 실운영 구 스택과 포트가 겹치지 않게 backend:18000 · auth:19000 · pgvector:15432 (전부 루프백)
+kubectl apply -k k8s/dev
+
 # 프론트엔드 개발 서버 (패키지 매니저는 pnpm — pnpm-lock.yaml이 정본)
 cd www && pnpm run dev
 

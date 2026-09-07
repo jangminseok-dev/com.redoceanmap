@@ -1,0 +1,74 @@
+# 선택 기동(compose의 --profile graph 대응): kubectl apply -n redocean-dev -f k8s/dev/optional/neo4j.yaml
+# 값은 docker-compose.yaml의 neo4j와 동일하게 유지한다(neo4j-strategy §2).
+apiVersion: v1
+kind: Service
+metadata:
+  name: neo4j
+spec:
+  selector:
+    app: neo4j
+  ports:
+    - name: http
+      port: 7474
+    - name: bolt
+      port: 7687
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: neo4j
+spec:
+  serviceName: neo4j
+  replicas: 1
+  selector:
+    matchLabels:
+      app: neo4j
+  template:
+    metadata:
+      labels:
+        app: neo4j
+    spec:
+      containers:
+        - name: neo4j
+          image: neo4j:5.26                      # LTS 고정 — 부동 태그 금지
+          env:
+            - name: NEO4J_AUTH
+              valueFrom:
+                secretKeyRef:
+                  name: redocean-env
+                  key: NEO4J_AUTH                # secrets.sh가 neo4j/$NEO4J_PASSWORD 로 파생 주입
+            - name: NEO4J_server_memory_heap_initial__size
+              value: 512m
+            - name: NEO4J_server_memory_heap_max__size
+              value: 512m
+            - name: NEO4J_server_memory_pagecache_size
+              value: 512m
+            - name: NEO4J_db_transaction_timeout
+              value: 5s
+          resources:
+            limits:
+              memory: 1500Mi                     # 힙+캐시+JVM 오버헤드 하드 캡
+          ports:
+            - containerPort: 7474
+              hostPort: 17474
+              hostIP: 127.0.0.1
+            - containerPort: 7687
+              hostPort: 17687
+              hostIP: 127.0.0.1
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 7474
+            initialDelaySeconds: 40
+            periodSeconds: 30
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
