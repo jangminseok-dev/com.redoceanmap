@@ -60,14 +60,15 @@ LLM 추론은 외부 API가 아니라 **온프레미스 로컬 모델(EXAONE 3.5
 | LLM | EXAONE 3.5 7.8B(Ollama, 단일 모델 정책) · bge-m3 임베딩 · pgvector 의미 검색 |
 | 데이터 | PostgreSQL 17(pgvector) · Redis 7 · Neo4j · 서울 열린데이터광장(팩트 9종 · 인허가 68만건) |
 | 프론트 | Next.js 16 · React 19 · TS 5 · Tailwind 4 · zustand · TanStack Query |
-| 인프라 | 온프레미스(도커 컴포즈, 루프백 바인딩) · cloudflared 터널 · 일일 백업 cron |
+| 인프라 | 온프레미스(앱 k3s · DB 도커 compose, 루프백 바인딩) · cloudflared 터널 · 일일 백업 cron |
 
 ## 실행
 
 ```bash
-docker compose up -d                          # backend:8000 · auth:9000 · pgvector · redis
-cd minseok/apps/market && docker compose up -d  # market 전용 DB(:5434)
-cd www && pnpm run dev                        # 프론트(:3000)
+docker compose up -d pgvector redis           # DB 계층(도커)
+kubectl apply -k k8s/overlays/dev-mac         # 앱(k3s) — 사전: k8s/secrets.sh redocean-dev, k8s/load-image.sh dev (k8s/README.md)
+cd minseok/apps/market && docker compose up -d  # market 전용 DB(:5434, 선택)
+cd www && pnpm run dev                        # 프론트(:3000) — NEXT_PUBLIC_API_URL=http://192.168.64.2:18000
 ```
 
 검증(호스트에 파이썬 없음 — 도커 경유):

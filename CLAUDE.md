@@ -130,9 +130,9 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 둘 다 pytest·fastapi가 없다. 백엔드 검증은 전부 도커 경유다. node는 호스트에 있다(프론트는 직접 실행).
 
 ```bash
-# 전체 스택 기동 — backend:8000 · auth:9000 · pgvector:5432 · redis:6379 · neo4j:7474/7687 · n8n:5678
-# (모두 127.0.0.1 루프백 바인딩. 0.0.0.0 금지 — LAN 노출 차단)
-docker compose up -d
+# DB 계층 기동(도커) — pgvector:5432 · redis:6379 · n8n:5678 (neo4j·pgadmin은 profile). 앱은 아래 k3s.
+# (모두 127.0.0.1 + 172.17.0.1(파드용) 바인딩. 0.0.0.0 금지 — LAN 노출 차단)
+docker compose up -d pgvector redis
 
 # market 앱 전용 DB (:5434) — 공유 DB와 별개로 따로 띄운다
 cd minseok/apps/market && docker compose up -d
@@ -144,9 +144,9 @@ docker compose --profile tools up -d pgadmin
 # 그래프 브라우저는 Neo4j에 내장 — http://127.0.0.1:7474 (계정은 .env의 NEO4J_USER/PASSWORD)
 docker compose --profile graph up -d neo4j
 
-# 쿠버네티스(k3s) 개발 스택 — 도커 컴포즈 대체 진행 중(2026-09-07~). 설치·포트·기동은 k8s/README.md
-# 실운영 구 스택과 포트가 겹치지 않게 backend:18000 · auth:19000 · pgvector:15432 (전부 루프백)
-kubectl apply -k k8s/dev
+# 앱(backend·auth)은 k3s — 맥은 colima(docker+k3s). 설치·기동·컷오버·롤백은 k8s/README.md
+k8s/secrets.sh redocean-dev && k8s/load-image.sh dev && kubectl apply -k k8s/overlays/dev-mac
+# backend http://192.168.64.2:18000 · auth :19000 (colima VM IP — 127.0.0.1로는 못 닿는다) · 코드 hostPath 핫리로드
 
 # 프론트엔드 개발 서버 (패키지 매니저는 pnpm — pnpm-lock.yaml이 정본)
 cd www && pnpm run dev
@@ -169,7 +169,7 @@ docker run --rm -v /home/host/projects/com.redoceanmap:/work -w /work/minseok \
   -e PYTHONPATH=apps minseok97/redoceanmap-backend:latest lint-imports --config .importlinter
 ```
 
-- 마이그레이션은 `docker compose up` 시 backend 컨테이너가 `alembic upgrade head`로 자동 적용한다.
+- 마이그레이션은 backend 파드가 기동 시 `alembic upgrade head`로 자동 적용한다(auth는 돌리지 않는다).
   `minseok/alembic.ini`(공유 DB)와 `minseok/apps/market/alembic.ini`(market 전용 DB)는 **독립**이다.
 - 실 DB에 붙는 스크립트는 `--network host`를 추가한다(`DATABASE_URL`이 `localhost:5432`).
 - psql: `docker exec redoceanmap-pgvector-1 psql -U redocean -d redoceanmap`
@@ -240,10 +240,9 @@ docker run --rm -v /home/host/projects/com.redoceanmap:/work -w /work/minseok \
 - **스포크끼리 직접 import 금지.** 교차 협력은 허브(`apps/hub`) 포트 경유. 허브는 스포크를 모른다.
 - **공유 DB 불가침.** 앱 전용 DB(market `:5434`)와 공유 DB(`:5432`)를 섞지 않는다.
   앱 전용 테이블을 공유 DB에 만들거나 그 반대로 하지 않는다.
-- **도커 스택이 2벌 공존한다.** 실행 중인 실운영 스택은 이 저장소 밖(`/home/host/projects/redoceanmap/`)의
-  compose이고 컨테이너 이름이 `redoceanmap-*`(실 DB = `redoceanmap-pgvector-1`, pg16, `:5432`)이다.
-  이 저장소의 compose도 `:5432`를 바인딩하므로 **그대로 올리면 실운영 DB와 포트가 충돌한다** —
-  기동 전에 `docker ps`로 무엇이 떠 있는지 확인한다. 볼륨 삭제·`down -v`·스키마 파괴 명령은
+- **도커는 DB 계층, k3s는 앱.** 백엔드 PC 운영 DB는 도커 compose 소유(`redoceanmap-pgvector-1` pg16 `:5432`,
+  `market-pgvector` `:5434`), 앱은 `kubectl -n redocean`(backend·auth·cloudflared·CronJob). 맥은 colima 컨텍스트에서만
+  compose를 올린다(Docker Desktop과 동시 기동 금지 — `:5432` 충돌). 볼륨 삭제·`down -v`·스키마 파괴 명령은
   사용자 확인 없이 실행하지 않는다. 백업은 매일 04:00 cron(`scripts/backup_db.sh`).
 - **cron 스크립트는 루트 `venv/`를 쓴다.** 새 cron에 `.venv`(EXAONE 학습 전용)를 쓰면 학습 환경
   정리 시 조용히 죽는다.

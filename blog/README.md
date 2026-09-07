@@ -46,16 +46,16 @@ bundle exec jekyll serve --port 4100    # http://127.0.0.1:4100 (4000은 타 프
 백엔드 PC의 기존 인프라를 재사용한다(비용 0원 · CI 없음). 구성:
 
 - **빌드는 개발 기기에서** — 백엔드 PC에 Ruby를 깔지 않는다.
-- **정적 서빙** — 실운영 compose(리포 밖)의 `blog-static` 서비스(nginx:alpine)가
-  `blog_site/`를 읽기 전용으로 물고 있다. 포트 발행 없음 — cloudflared가 도커 네트워크로 직결.
-- **라우팅** — 운영 중인 **컨테이너판** cloudflared ingress에 `blog.redoceanmap.com` 규칙이 있다
+- **정적 서빙** — k3s `blog-static` 파드(`k8s/overlays/prod/blog-static.yaml`, nginx:alpine)가
+  `/home/host/projects/redoceanmap/blog_site/`를 읽기 전용 hostPath로 물고 있다. 포트 발행 없음 — cloudflared 파드가 Service로 직결.
+- **라우팅** — k3s cloudflared 파드(`k8s/overlays/prod/cloudflared.yaml`) ingress에 `blog.redoceanmap.com` 규칙이 있다
   (호스트 systemd판은 롤백 예비 — 건드리지 않는다). DNS CNAME도 터널에 연결되어 있다.
 
 ### 갱신 절차 (내용을 고칠 때마다)
 
 ```bash
 cd blog && bundle exec jekyll build
-rsync -az --delete _site/ <백엔드PC>:<실운영스택>/blog_site/
+rsync -az --delete _site/ <백엔드PC>:/home/host/projects/redoceanmap/blog_site/
 ```
 
 nginx는 볼륨을 그대로 읽으므로 컨테이너 재시작이 필요 없다. 반영 확인:
