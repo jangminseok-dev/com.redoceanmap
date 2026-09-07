@@ -8,13 +8,13 @@ NO_OPENAPI_SERVICE) — 매매만 적재하고, 임대료 축은 한국부동산
 해제 신고(cdealType='O')는 거래 몇 달 뒤 붙기도 하므로(6월 거래가 8월에 해제) 기본 실행이
 최근 REFRESH_MONTHS(3)개월을 재수집해 해제를 반영한다. 해제 거래는 적재하지 않는다.
 
-실행 (백엔드 컨테이너 — 호스트 cron venv에는 sqlalchemy가 없다):
-    docker exec redoceanmap-backend-1 python scripts/collect_commercial_trades.py             # 최근 3개월
+실행 (백엔드 이미지 파드 — 호스트 cron venv에는 sqlalchemy가 없다):
+    kubectl -n redocean exec deploy/backend -- python scripts/collect_commercial_trades.py    # 최근 3개월
     ... python scripts/collect_commercial_trades.py --from 202301                             # 백필
     ... python scripts/collect_commercial_trades.py --dry-run                                 # 적재 없이 집계만
 
-백엔드 PC cron(매월 3일 04:30 — 실거래 신고 기한 30일이라 월 단위 갱신이면 충분):
-    30 4 3 * * docker exec redoceanmap-backend-1 python scripts/collect_commercial_trades.py >> ~/collect_commercial_trades.log 2>&1
+스케줄(매월 3일 04:30 — 실거래 신고 기한 30일이라 월 단위 갱신이면 충분):
+    k8s/overlays/prod/cronjobs/collect-commercial-trades.yaml  (수동: kubectl -n redocean create job --from=cronjob/collect-commercial-trades ...)
 """
 
 import sys

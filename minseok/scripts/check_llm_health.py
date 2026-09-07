@@ -140,11 +140,16 @@ def host_resources() -> list[str]:
 # 카나리아는 합성 프롬프트라 하한만 본다 — **실제 프로덕션 프롬프트**가 창에 닿았는지는
 # 이 로그만 안다. 로그를 사람이 읽을 일이 없으므로 감시가 대신 읽는다.
 _WARN_MARK = "컨텍스트 창"
-_BACKEND_CONTAINER = "redoceanmap-backend-1"
+# backend는 k3s 파드(ns redocean). 이 스크립트는 호스트 venv cron에서 돌아 KUBECONFIG가 없으므로 경로를 명시한다.
+_KUBECONFIG = "/etc/rancher/k3s/k3s.yaml"
+_BACKEND_DEPLOY = "deploy/backend"
 
 
 def runtime_context_warnings() -> list[str]:
-    logs = _cmd(["docker", "logs", "--since", "24h", _BACKEND_CONTAINER])
+    logs = _cmd([
+        "kubectl", "--kubeconfig", _KUBECONFIG, "-n", "redocean",
+        "logs", "--since=24h", _BACKEND_DEPLOY,
+    ])
     hits = [ln for ln in logs.splitlines() if _WARN_MARK in ln]
     if not hits:
         return []

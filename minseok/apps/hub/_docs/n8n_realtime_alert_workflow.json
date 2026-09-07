@@ -23,7 +23,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://backend:8000/automation/price-alerts",
+        "url": "http://host.docker.internal:8000/automation/price-alerts",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -46,7 +46,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://backend:8000/automation/news-alerts",
+        "url": "http://host.docker.internal:8000/automation/news-alerts",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

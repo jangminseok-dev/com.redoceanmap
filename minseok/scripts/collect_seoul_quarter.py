@@ -23,13 +23,11 @@
 
 시도 벤치마크 캐시·area_score는 최신 분기 키라 적재 후 자연 갱신된다(캐시 무효화 불요).
 
-실행(백엔드 PC — market DB, 주 1회 cron 후보: 매주 수 05:30):
-  docker run --rm --network host \\
-    -v /home/host/projects/com.redoceanmap:/work -w /work \\
-    -e PYTHONPATH=/work/minseok:/work/minseok/apps \\
-    --env-file /home/host/projects/com.redoceanmap/.env \\
-    minseok97/redoceanmap-backend:latest \\
-    python minseok/scripts/collect_seoul_quarter.py [--probe] [--dry-run]
+실행(백엔드 PC — market DB). 스케줄은 k8s/overlays/prod/cronjobs/collect-seoul-quarter.yaml(매주 수 05:30,
+리포를 /work로 마운트해 체크아웃 코드를 실행):
+  kubectl -n redocean create job --from=cronjob/collect-seoul-quarter collect-seoul-quarter-manual-$(date +%s)
+  # 옵션이 필요하면 실행 중 파드에서(이미지 코드):
+  kubectl -n redocean exec deploy/backend -- python scripts/collect_seoul_quarter.py [--probe] [--dry-run]
 
   --probe   : DB 없이 API 최신 분기 현황만 출력(로컬 점검용)
   --dry-run : 수집·CSV 저장까지 하고 적재(ingest)만 생략

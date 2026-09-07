@@ -14,12 +14,13 @@ DB·Redis 확인형으로 만들어 뒀다). 이 스크립트가 잡는 것은 "
 `chat/adapter/outbound/gateways/email_composer_gateway.py`와 같은 창구).
 알림 상태를 저장하지 않으므로 장애가 이어지면 실행 주기마다 한 통씩 온다(일 1회 cron 전제).
 
-실행 (백엔드 컨테이너 — 호스트 cron venv에는 sqlalchemy가 없다):
-    docker exec redoceanmap-backend-1 python scripts/check_freshness.py
-    docker exec redoceanmap-backend-1 python scripts/check_freshness.py --dry-run  # 발송 생략
+실행 (백엔드 이미지 파드 — 호스트 cron venv에는 sqlalchemy가 없다). 스케줄과 기대 커밋 판독은
+k8s/overlays/prod/cronjobs/check-freshness.yaml(매일 09:00, .git에서 HEAD를 읽어 --expect-commit으로 넘긴다):
+    kubectl -n redocean create job --from=cronjob/check-freshness check-freshness-manual-$(date +%s)
+    kubectl -n redocean exec deploy/backend -- python scripts/check_freshness.py --dry-run  # 발송 생략(실행 중 파드에서)
 
-배포 드리프트까지 보려면 기대 커밋을 호스트에서 넘긴다(컨테이너 안에는 git이 없다):
-    docker exec redoceanmap-backend-1 python scripts/check_freshness.py \
+배포 드리프트까지 보려면 기대 커밋을 넘긴다(컨테이너 안에는 git이 없다):
+    kubectl -n redocean exec deploy/backend -- python scripts/check_freshness.py \
         --expect-commit "$(git -C /home/host/projects/com.redoceanmap rev-parse --short HEAD)"
 """
 

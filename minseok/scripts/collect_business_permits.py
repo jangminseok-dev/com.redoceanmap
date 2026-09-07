@@ -14,8 +14,8 @@
 상위 상권이 가산디지털단지·강남역·학동사거리로 나와 유의미함을 확인했다.
 반경 밖·좌표 없음은 trdar_code NULL로 남긴다(서울 전역 업소 중 상권 밖은 정상적으로 존재).
 
-실행 (백엔드 컨테이너 — 호스트 cron venv에는 sqlalchemy가 없다):
-    docker exec redoceanmap-backend-1 python scripts/collect_business_permits.py
+실행 (백엔드 이미지 파드 — 호스트 cron venv에는 sqlalchemy가 없다). 스케줄은 k8s/overlays/prod/cronjobs/collect-business-permits.yaml(화 05:00):
+    kubectl -n redocean create job --from=cronjob/collect-business-permits collect-business-permits-manual-$(date +%s)
     ... python scripts/collect_business_permits.py --dry-run          # 적재 없이 집계만
     ... python scripts/collect_business_permits.py --max-pages 5      # 부분 수집(점검용)
 """
