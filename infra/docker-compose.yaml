@@ -43,7 +43,8 @@ services:
       timeout: 5s
       retries: 5
 
-  # 실운영 정의는 구 스택(/home/host/projects/redoceanmap/docker-compose.yaml)에 있다.
+  # 백엔드 PC 실운영 neo4j도 이 정의로 뜬다(구 스택 compose는 2026-09-07 삭제):
+  #   docker compose -p redoceanmap -f infra/docker-compose.yaml --profile graph up -d neo4j
   # 두 파일이 갈라지면 머신마다 다른 설정으로 뜨므로 값을 동일하게 유지한다 — neo4j-strategy §2
   neo4j:
     image: neo4j:5.26                      # LTS 고정 — 부동 태그 금지

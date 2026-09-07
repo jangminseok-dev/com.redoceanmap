@@ -27,6 +27,8 @@ langgraph-harness §3이 정한다. **이 문서는 "어느 스택에 · 어떤 
 
 ### 함정 ① 서비스가 **틀린 스택**에 정의돼 있다
 
+> **2026-09-07 갱신**: 구 스택 compose는 삭제됐다. 현행은 앱=k3s(`infra/k8s/overlays/prod`), neo4j=`docker compose -p redoceanmap -f infra/docker-compose.yaml --profile graph`(볼륨 `redoceanmap_neo4j_data`, 7687은 172.17.0.1에도 바인딩). 아래 표는 작성 당시 기록이다.
+
 | 스택 | compose | 상태 |
 |---|---|---|
 | **구 스택 = 실운영** | `/home/host/projects/redoceanmap/docker-compose.yaml` | backend·auth·redis·pgvector·cloudflared 가동 중. 네트워크 `redoceanmap_default`. **neo4j 서비스 없음** |
