@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- 파비콘 — 사이드바 브랜드 핀과 같은 적색. Next 기본 favicon.ico(버셀 삼각형)를 대체한다 -->
+  <rect width="64" height="64" rx="14" fill="#a51c1c"/>
+  <path d="M32 54c-1.6 0-14-13.2-14-24a14 14 0 0 1 28 0c0 10.8-12.4 24-14 24Z" fill="#fff"/>
+  <circle cx="32" cy="30" r="5.5" fill="#a51c1c"/>
+</svg>

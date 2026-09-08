@@ -6,8 +6,8 @@ import AuthProvider from "@/components/seoul/AuthProvider";
 import Providers from "./providers";
 
 
-const TITLE = "redoceanmap — 서울 상권 분석";
-const DESCRIPTION = "예산이랑 업종만 알려주세요. 괜찮은 동네 골라드릴게요.";
+const TITLE = "redoceanmap — 상권·주식 분석";
+const DESCRIPTION = "서울 어디에 창업할지, 이 주식이 지금 어떤지 — 공공데이터·주가·뉴스를 근거로 답합니다. AI 모의투자 기록도 봅니다.";
 
 export const metadata: Metadata = {
   // 링크를 공유했을 때 미리보기가 뜨게 한다. images는 public/og.png(1200×630)를
