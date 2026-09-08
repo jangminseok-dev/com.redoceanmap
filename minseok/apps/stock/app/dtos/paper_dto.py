@@ -12,7 +12,7 @@ from stock.domain.services.paper_ledger import Position
 @dataclass(frozen=True)
 class AccountRecord:
     id: int
-    kind: str  # exaone | signal | user
+    kind: str  # exaone | signal
     user_id: int | None
     cash_krw: float
     initial_cash_krw: float
@@ -21,7 +21,7 @@ class AccountRecord:
 
     @property
     def key(self) -> str:
-        return self.kind if self.user_id is None else f"user:{self.user_id}"
+        return self.kind
 
 
 @dataclass(frozen=True)
@@ -168,26 +168,6 @@ class StepResult:
     decisions: int
     scored: int
     equity_rows: int
-
-
-@dataclass(frozen=True)
-class PlaceOrderCommand:
-    user_id: int
-    ticker: str
-    action: str
-    quantity: int
-
-
-@dataclass(frozen=True)
-class OrderReceipt:
-    ticker: str
-    action: str
-    quantity: int
-    price: float
-    fee_krw: float
-    realized_pnl_krw: float | None
-    cash_krw: float
-    price_as_of: datetime
 
 
 # ---- 화면 뷰 -------------------------------------------------------------------

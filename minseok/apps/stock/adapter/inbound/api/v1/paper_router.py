@@ -1,4 +1,4 @@
-"""paper_router.py — AI 모의투자: 리더보드·계정·판단·채점 조회 + 사람 주문."""
+"""paper_router.py — AI 모의투자: 리더보드·계정·판단·채점 조회(기록 열람 전용)."""
 from __future__ import annotations
 
 from dataclasses import asdict
@@ -6,13 +6,11 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from core.security import get_current_user_id
 from stock.adapter.inbound.api.schemas.paper_schema import (
-    DecisionSchema, OrderReceiptSchema, PaperAccountResponse, PaperBoardResponse, PaperDecisionsResponse,
-    PaperMyselfResponse, PaperScorecardResponse, PlaceOrderRequest, ScoreBucketSchema, ScoreSchema, TradeSchema,
+    DecisionSchema, PaperAccountResponse, PaperBoardResponse, PaperDecisionsResponse,
+    PaperMyselfResponse, PaperScorecardResponse, ScoreBucketSchema, ScoreSchema, TradeSchema,
 )
-from stock.app.dtos.paper_dto import AccountView, PlaceOrderCommand
-from stock.app.exceptions import PaperOrderRejected
+from stock.app.dtos.paper_dto import AccountView
 from stock.app.ports.input.paper_use_case import PaperUseCase
 from stock.dependencies.paper_provider import get_paper_use_case
 from stock.domain.services import paper_rules as rules
@@ -48,7 +46,6 @@ async def introduce_myself() -> PaperMyselfResponse:
             "GET /stock/paper/accounts/{key} — 계정(곡선·포지션·거래)",
             "GET /stock/paper/accounts/{key}/decisions — 일별 판단(후보·주문·거부·체결·채점)",
             "GET /stock/paper/accounts/{key}/scorecard — 판단 사후 채점",
-            "GET /stock/paper/me · POST /stock/paper/me/orders — 내 계정·주문(로그인)",
         ],
         rules={
             "assumed_initial_cash_krw": rules.assumed_initial_cash_krw,
@@ -65,25 +62,6 @@ async def board(use_case: PaperUseCase = Depends(get_paper_use_case)) -> PaperBo
     view = await use_case.board()
     return PaperBoardResponse(rows=[asdict(r) for r in view.rows], spy=[asdict(p) for p in view.spy],
                               replay_until=view.replay_until, rules=view.rules)
-
-
-@paper_router.get("/me", response_model=PaperAccountResponse)
-async def my_account(
-    user_id: int = Depends(get_current_user_id), use_case: PaperUseCase = Depends(get_paper_use_case),
-) -> PaperAccountResponse:
-    return _account(await use_case.me(user_id))
-
-
-@paper_router.post("/me/orders", response_model=OrderReceiptSchema)
-async def place_order(
-    payload: PlaceOrderRequest,
-    user_id: int = Depends(get_current_user_id), use_case: PaperUseCase = Depends(get_paper_use_case),
-) -> OrderReceiptSchema:
-    try:
-        receipt = await use_case.place_order(PlaceOrderCommand(user_id, payload.ticker, payload.action, payload.quantity))
-    except PaperOrderRejected as e:
-        raise HTTPException(status_code=409, detail=e.detail) from e
-    return OrderReceiptSchema(**asdict(receipt))
 
 
 @paper_router.get("/accounts/{key}", response_model=PaperAccountResponse)

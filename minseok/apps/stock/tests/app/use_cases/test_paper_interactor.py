@@ -7,10 +7,9 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 
 from stock.app.dtos.paper_dto import (
-    AccountRecord, DecisionDraft, DecisionRecord, EquityPoint, NewsFeedRow, PlaceOrderCommand,
+    AccountRecord, DecisionDraft, DecisionRecord, EquityPoint, NewsFeedRow,
     ScoreDraft, ScoreRecord, SnapshotFeedRow, StepCommand, TradeDraft, TradeRecord,
 )
-from stock.app.exceptions import PaperOrderRejected
 from stock.app.ports.output.decision_policy_port import PolicyOutput
 from stock.app.use_cases.paper_interactor import PaperInteractor
 from stock.domain.entities.price_bar import PriceBar
@@ -263,20 +262,6 @@ async def test_EXAONE_파싱_실패는_무거래로_기록되고_호출은_2회�
     await it.step(StepCommand(_day(0)))
     d = next(d for d in repo.decisions.values() if d.model == "stub")
     assert d.orders == [] and "판단 실패" in d.rejected[0]["reason"]
-
-
-async def test_사람_주문은_즉시_최신_종가로_체결되고_한도를_지킨다():
-    it, repo, feed = _make()
-    receipt = await it.place_order(PlaceOrderCommand(user_id=42, ticker="aapl", action="buy", quantity=10))
-    assert receipt.ticker == "AAPL" and receipt.price == feed.bars["AAPL"][-1].close
-    me = await it.me(42)
-    assert me.positions[0].quantity == 10 and me.cash_krw < rules.assumed_initial_cash_krw
-    with pytest.raises(PaperOrderRejected):
-        await it.place_order(PlaceOrderCommand(42, "AAPL", "BUY", 10_000_000))  # 비중 상한
-    with pytest.raises(PaperOrderRejected):
-        await it.place_order(PlaceOrderCommand(42, "ZZZZ", "BUY", 1))  # 시세 없음
-    with pytest.raises(PaperOrderRejected):
-        await it.place_order(PlaceOrderCommand(42, "AAPL", "COVER", 1))  # 숏 없음
 
 
 async def test_리더보드는_수익률순이고_SPY_기준선을_붙인다():

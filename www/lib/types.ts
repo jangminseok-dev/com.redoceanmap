@@ -601,8 +601,8 @@ export type PaperRules = {
 };
 
 export type PaperBoardRow = {
-  key: string; // exaone | signal | user:<id>
-  kind: "exaone" | "signal" | "user";
+  key: string; // exaone | signal
+  kind: "exaone" | "signal";
   label: string;
   equity_krw: number;
   return_pct: number;
@@ -650,7 +650,7 @@ export type PaperTrade = {
   fee_krw: number;
   realized_pnl_krw: number | null;
   ts: string;
-  decision_id: number | null; // null = 사람 주문
+  decision_id: number | null;
   reason: string | null;
   evidence: { news_ids?: number[]; signals?: string[] } | null;
   replayed: boolean;
@@ -658,7 +658,7 @@ export type PaperTrade = {
 
 export type PaperAccount = {
   key: string;
-  kind: "exaone" | "signal" | "user";
+  kind: "exaone" | "signal";
   label: string;
   cash_krw: number;
   equity_krw: number;
@@ -744,17 +744,6 @@ export type PaperScorecard = {
   by_reason: PaperScoreBucket[];
   by_action: PaperScoreBucket[];
   min_samples: number;
-};
-
-export type PaperOrderReceipt = {
-  ticker: string;
-  action: string;
-  quantity: number;
-  price: number;
-  fee_krw: number;
-  realized_pnl_krw: number | null;
-  cash_krw: number;
-  price_as_of: string;
 };
 
 // ── /bookmarks (직접 호출 — snake_case DTO) ──

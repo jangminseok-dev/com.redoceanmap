@@ -2,15 +2,13 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Bot, ChevronDown, Wallet } from "lucide-react";
-import { fetchPaperAccount, fetchPaperBoard, fetchPaperDecisions, fetchPaperMe, fetchPaperScorecard } from "@/lib/api";
-import { useUIStore } from "@/lib/uiStore";
+import { Bot, ChevronDown } from "lucide-react";
+import { fetchPaperAccount, fetchPaperBoard, fetchPaperDecisions, fetchPaperScorecard } from "@/lib/api";
 import Disclaimer from "@/components/stock/Disclaimer";
 import ActivityFeed from "@/components/paper/ActivityFeed";
 import DecisionFeed from "@/components/paper/DecisionFeed";
 import EquityCurve from "@/components/paper/EquityCurve";
 import HoldingsGrid from "@/components/paper/HoldingsGrid";
-import OrderForm from "@/components/paper/OrderForm";
 import RulesNotice from "@/components/paper/RulesNotice";
 import ScoreBoard from "@/components/paper/ScoreBoard";
 import Scorecard from "@/components/paper/Scorecard";
@@ -34,19 +32,16 @@ function Card({ title, sub, children }: { title: string; sub?: string; children:
 }
 
 /**
- * AI 모의투자 — 게임처럼 읽히는 순서: 점수판 → AI가 오늘 한 일 → AI 지갑 → 나도 사보기.
+ * AI 모의투자 — 게임처럼 읽히는 순서: 점수판 → AI가 오늘 한 일 → AI 지갑.
  * 곡선·판단 원문·채점 같은 분석은 맨 아래 "자세히 보기"로 접는다. 전부 기록이지 권유가 아니다.
  */
 export default function PaperPage() {
-  const user = useUIStore((s) => s.user);
-  const openAuth = useUIStore((s) => s.openAuth);
   // 단일 객체 패턴 — 상세 펼침과 되감기 위치(REACT_RULES 패턴 B)
   const [view, setView] = useState<{ details: boolean; dateIndex: number | null }>({ details: false, dateIndex: null });
 
   const boardQ = useQuery({ queryKey: ["paper-board"], queryFn: fetchPaperBoard, staleTime: DAY_STALE });
   const exaoneQ = useQuery({ queryKey: ["paper-account", "exaone"], queryFn: () => fetchPaperAccount("exaone"), staleTime: DAY_STALE, retry: false });
   const signalQ = useQuery({ queryKey: ["paper-account", "signal"], queryFn: () => fetchPaperAccount("signal"), staleTime: DAY_STALE, retry: false });
-  const meQ = useQuery({ queryKey: ["paper-me"], queryFn: fetchPaperMe, enabled: !!user, retry: false });
   const decisionsQ = useQuery({ queryKey: ["paper-decisions", "exaone"], queryFn: () => fetchPaperDecisions("exaone"), staleTime: DAY_STALE });
   const scorecardQ = useQuery({ queryKey: ["paper-scorecard", "exaone"], queryFn: () => fetchPaperScorecard("exaone"), staleTime: DAY_STALE, retry: false, enabled: view.details });
 
@@ -64,8 +59,6 @@ export default function PaperPage() {
   const series: Record<string, PaperEquityPoint[]> = {};
   if (exaoneQ.data) series.exaone = exaoneQ.data.equity;
   if (signalQ.data) series.signal = signalQ.data.equity;
-  if (meQ.data) series.me = meQ.data.equity;
-  const aiTickers = exaoneQ.data?.positions.map((p) => p.ticker) ?? [];
 
   return (
     <div className="h-full overflow-y-auto">
@@ -73,7 +66,7 @@ export default function PaperPage() {
         <div>
           <h1 className="text-xl font-bold tracking-tight flex items-center gap-2"><Bot size={20} /> AI 모의투자</h1>
           <p className="mt-1 text-sm text-foreground-muted">
-            EXAONE이 매일 우리 뉴스·신호를 읽고 1억원으로 사고팝니다. 같은 돈으로 겨뤄 보세요.
+            EXAONE이 매일 우리 뉴스·신호를 읽고 1억원으로 사고팝니다. 검증된 지표 규칙, SPY 보유와 나란히 봅니다.
           </p>
         </div>
 
@@ -85,7 +78,7 @@ export default function PaperPage() {
         )}
         {boardQ.data && (
           <>
-            <ScoreBoard board={boardQ.data} myKey={user ? `user:${user.id}` : null} onJoin={() => (user ? undefined : openAuth("login"))} />
+            <ScoreBoard board={boardQ.data} />
 
             <Card title="AI가 한 일" sub={latest ? `${fmtDay(latest.as_of)} 판단까지 · 체결은 다음 장 시가` : undefined}>
               {latest?.market_view && <p className="mb-3 text-sm leading-relaxed">💬 {latest.market_view}</p>}
@@ -94,35 +87,6 @@ export default function PaperPage() {
 
             <Card title="AI 지갑" sub={exaoneQ.data ? `보유 ${exaoneQ.data.positions.length}종목` : undefined}>
               <HoldingsGrid positions={exaoneQ.data?.positions ?? []} empty="지금은 다 현금이에요." />
-            </Card>
-
-            <Card title="나도 사보기" sub="같은 1억원 · 같은 수수료 · 최신 저장 시세에 바로 체결">
-              {!user ? (
-                <p className="text-sm text-foreground-muted">
-                  <button type="button" onClick={() => openAuth("login")} className="text-brand font-medium underline-offset-2 hover:underline">로그인</button>
-                  하면 1억원 계정이 생기고 AI와 나란히 성적이 붙습니다.
-                </p>
-              ) : meQ.isLoading ? (
-                <div className="skeleton h-24 rounded-xl" />
-              ) : meQ.data ? (
-                <div className="space-y-4">
-                  <OrderForm suggestions={aiTickers} />
-                  <div>
-                    <h3 className="text-xs font-semibold text-foreground-muted flex items-center gap-1"><Wallet size={12} /> 내 지갑</h3>
-                    <div className="mt-2">
-                      <HoldingsGrid positions={meQ.data.positions} empty="아직 아무것도 안 샀어요. 위에서 종목을 골라 보세요." />
-                    </div>
-                  </div>
-                  {meQ.data.trades.length > 0 && (
-                    <div>
-                      <h3 className="text-xs font-semibold text-foreground-muted">내 체결</h3>
-                      <TradeLog trades={meQ.data.trades} limit={10} />
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <p className="text-sm text-foreground-muted">내 계정을 불러오지 못했습니다.</p>
-              )}
             </Card>
 
             <RulesNotice rules={boardQ.data.rules} replayUntil={boardQ.data.replay_until} />

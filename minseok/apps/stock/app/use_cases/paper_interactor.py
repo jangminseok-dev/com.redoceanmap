@@ -1,4 +1,4 @@
-"""AI 모의투자 대장 — 배치 step(체결 → 청산 판정 → 평가 → 채점 → 판단)과 화면 조회, 사람 주문.
+"""AI 모의투자 대장 — 배치 step(체결 → 청산 판정 → 평가 → 채점 → 판단)과 화면 조회.
 
 시간 규칙: `StepCommand.as_of` 이후의 봉·뉴스·스냅샷은 절대 보지 않는다. 리플레이는 이 함수를
 과거 날짜로 순서대로 부르는 것뿐이라 라이브와 같은 코드 경로를 탄다.
@@ -20,8 +20,6 @@ from stock.app.dtos.paper_dto import (
     DecisionRecord,
     DecisionView,
     EquityPoint,
-    OrderReceipt,
-    PlaceOrderCommand,
     PositionView,
     ScoreBucket,
     ScorecardView,
@@ -32,7 +30,6 @@ from stock.app.dtos.paper_dto import (
     TradeDraft,
     TradeRecord,
 )
-from stock.app.exceptions import PaperOrderRejected
 from stock.app.ports.input.paper_use_case import PaperUseCase
 from stock.app.ports.output.decision_policy_port import DecisionPolicyPort
 from stock.app.ports.output.paper_account_repository import PaperAccountRepositoryPort
@@ -59,7 +56,7 @@ NEWS_WINDOW_DAYS = 3
 PENDING_EXPIRY_DAYS = 7  # 캘린더일 — 이 안에 체결 봉이 없으면 주문 폐기(휴장 연속 대비)
 SCORE_MIN_SAMPLES = 30
 MAX_CANDIDATES = 25
-LABELS = {"exaone": "EXAONE", "signal": "지표 규칙", "user": "참가자"}
+LABELS = {"exaone": "EXAONE", "signal": "지표 규칙"}
 
 
 def _positions_list(account: AccountRecord) -> list[paper_ledger.Position]:
@@ -330,10 +327,6 @@ class PaperInteractor(PaperUseCase):
         a = await self._accounts.find(kind, user_id)
         return await self._view(a) if a else None
 
-    async def me(self, user_id: int) -> AccountView:
-        a = await self._accounts.get_or_create("user", user_id, rules.assumed_initial_cash_krw, datetime.now(UTC).date())
-        return await self._view(a)
-
     async def _view(self, a: AccountRecord) -> AccountView:
         positions: list[PositionView] = []
         prices: dict[str, float] = {}
@@ -402,51 +395,14 @@ class PaperInteractor(PaperUseCase):
             baseline_up_rate=None, min_samples=SCORE_MIN_SAMPLES,
         )
 
-    # ----------------------------------------------------------------- orders
-    async def place_order(self, cmd: PlaceOrderCommand) -> OrderReceipt:
-        action = cmd.action.upper()
-        if action not in rules.ACTIONS:
-            raise PaperOrderRejected(f"알 수 없는 주문 {cmd.action}")
-        ticker = cmd.ticker.strip().upper()
-        latest = await self._feed.latest_close(ticker)
-        if latest is None:
-            raise PaperOrderRejected(f"{ticker}의 저장 시세가 없습니다 — 워치리스트 종목만 거래할 수 있어요")
-        price, price_ts = latest
-        a = await self._accounts.get_or_create("user", cmd.user_id, rules.assumed_initial_cash_krw, datetime.now(UTC).date())
-        positions = _positions_list(a)
-        qty = cmd.quantity
-        if action in ("BUY", "SHORT"):
-            prices = {p.ticker: (await self._feed.latest_close(p.ticker) or (p.avg_price, None))[0] for p in positions}
-            equity = paper_ledger.equity_krw(a.cash_krw, positions, prices)
-            cap = rules.max_quantity(equity, a.cash_krw, rules.to_krw(ticker, price), rules.assumed_max_position_weight)
-            if qty > cap:
-                raise PaperOrderRejected(f"종목당 비중 {rules.assumed_max_position_weight:.0%} 상한 — 지금은 최대 {cap}주")
-        try:
-            cash, positions, fill = paper_ledger.apply(
-                a.cash_krw, positions, ticker=ticker, action=action, quantity=qty, price=price, ts=datetime.now(UTC),
-            )
-        except paper_ledger.LedgerError as e:
-            raise PaperOrderRejected(e.reason) from e
-        await self._accounts.commit_fill(a.id, cash, positions, TradeDraft(
-            account_id=a.id, ticker=fill.ticker, side=fill.side, action=fill.action, quantity=fill.quantity,
-            price=fill.price, fee_krw=fill.fee_krw, realized_pnl_krw=fill.realized_pnl_krw, ts=fill.ts,
-            decision_id=None, reason=None, evidence=None, replayed=False,
-        ))
-        return OrderReceipt(fill.ticker, fill.action, fill.quantity, fill.price, fill.fee_krw,
-                            fill.realized_pnl_krw, cash, price_ts)
-
     # ---------------------------------------------------------------- helpers
     @staticmethod
     def _parse_key(key: str) -> tuple[str | None, int | None]:
-        if key in ("exaone", "signal"):
-            return key, None
-        if key.startswith("user:") and key[5:].isdigit():
-            return "user", int(key[5:])
-        return None, None
+        return (key, None) if key in ("exaone", "signal") else (None, None)
 
     @staticmethod
     def _label(a: AccountRecord) -> str:
-        return LABELS[a.kind] if a.kind != "user" else f"참가자 #{a.user_id}"
+        return LABELS.get(a.kind, a.kind)
 
     @staticmethod
     def _rules() -> dict:
@@ -459,5 +415,4 @@ class PaperInteractor(PaperUseCase):
             "assumed_max_positions": rules.assumed_max_positions,
             "assumed_signal_hold_sessions": rules.assumed_signal_hold_sessions,
             "ai_fill": "판단 다음 세션 시가",
-            "user_fill": "주문 시점 최신 저장 봉 종가(지연)",
         }

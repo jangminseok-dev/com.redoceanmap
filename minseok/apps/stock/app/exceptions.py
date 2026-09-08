@@ -11,7 +11,3 @@ class StockError(Exception):
 
 class MarketDataUnavailableError(StockError):
     """종목 시세 데이터를 찾지 못함(없는 심볼 또는 데이터 부족)."""
-
-
-class PaperOrderRejected(StockError):
-    """모의투자 주문 거부(현금 부족·포지션 없음·시세 없음 등) — 라우터는 409로 변환."""

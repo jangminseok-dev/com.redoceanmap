@@ -6,7 +6,6 @@ import type {
   PaperAccount,
   PaperBoard,
   PaperDecisions,
-  PaperOrderReceipt,
   PaperScorecard,
   AreaScoreDetail,
   AreaShowcase,
@@ -204,12 +203,6 @@ export const fetchPaperDecisions = (key: string, limit = 400): Promise<PaperDeci
   getJson(`/stock/paper/accounts/${encodeURIComponent(key)}/decisions?limit=${limit}`);
 export const fetchPaperScorecard = (key: string): Promise<PaperScorecard> =>
   getJson(`/stock/paper/accounts/${encodeURIComponent(key)}/scorecard`);
-export const fetchPaperMe = (): Promise<PaperAccount> => getJson("/stock/paper/me");
-export const placePaperOrder = (body: {
-  ticker: string;
-  action: "BUY" | "SELL" | "SHORT" | "COVER";
-  quantity: number;
-}): Promise<PaperOrderReceipt> => sendJson("/stock/paper/me/orders", "POST", body);
 
 export const fetchPriceAlerts = (): Promise<PriceAlertList> => getJson("/price-alerts");
 

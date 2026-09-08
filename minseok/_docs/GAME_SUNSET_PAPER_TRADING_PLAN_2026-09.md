@@ -280,7 +280,11 @@ scripts/replay_paper.py                                # 1회성 — 7/30부터 
 - 대기 주문 테이블을 따로 두지 않고 `paper_decisions.filled_at`과 `paper_trades.decision_id`로 미체결을 유도한다. 체결 봉이 7일 안에 없으면 폐기.
 - `paper_decision_scores`의 이유 유형은 `news / indicator / mixed / none`(regime 축은 인용 키에 없어 뺐다).
 - 4-①(근거 링크)을 위해 인용에 기사 url을 실었다. 4-④ chat 연동은 허브 `PaperDecisionPort`·stock 게이트웨이까지 만들었고, chat 의도 추가는 C3(window, mac C0~C2 뒤)로 미룬다 — chat_interactor를 두 세션이 동시에 만지지 않기 위해서다.
-- 사람 주문의 체결가는 "최신 저장 봉 종가"(5분봉 우선)다. quote 슬라이스(벤더 호출)를 쓰지 않는다.
+- **사람 참가는 같은 날 저녁 사용자 결정으로 제거했다**(9b45285 화면 단순화 뒤 → 열람 전용). 이유: 체결 축이
+  달라(사람 즉시·AI 다음 세션 시가) 비교가 공정하지 않고, 사용자 14명이라 "나" 타일이 비어 보였다. 의미 있는
+  비교(EXAONE · 지표 규칙 · SPY 보유)는 남는다. `paper_accounts.user_id` 열은 비어 있는 채로 둔다(행 0).
+- 화면은 게임 순서로 재배치했다: 점수판 3타일 → AI가 한 일(샀어요/팔았어요 카드) → AI 지갑(손익률 카드) →
+  자세히 보기(곡선·판단 원문 되감기·채점·지표 규칙 계정).
 
 ## 미결 (기본값으로 진행, 사용자가 뒤집을 수 있다)
 

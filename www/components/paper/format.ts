@@ -37,5 +37,4 @@ export const ACTION_TONE: Record<string, string> = {
 export const KIND_LABEL: Record<string, string> = {
   exaone: "EXAONE",
   signal: "지표 규칙",
-  user: "참가자",
 };

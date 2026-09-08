@@ -9,8 +9,7 @@ export default function RulesNotice({ rules, replayUntil }: { rules: PaperRules;
       </summary>
       <p className="mt-2">
         EXAONE 계정은 매일 14:00 동결된 예측 스냅샷과 뉴스 라벨을 읽고 종목·방향·비중을 판단하며, 그 판단은
-        다음 세션 시가에 사후 체결됩니다. 지표 규칙 계정은 검증된 지표 조합을 그대로 따르는 대조군입니다. 사람
-        참가자는 주문 시점의 최신 저장 봉 종가(지연 시세)에 즉시 체결되므로 AI와 체결 축이 다릅니다. 여기 있는
+        다음 세션 시가에 사후 체결됩니다. 지표 규칙 계정은 검증된 지표 조합을 그대로 따르는 대조군입니다.  여기 있는
         어떤 문장도 매수·매도 권유가 아니며, &ldquo;어느 계정이 무엇을 샀다&rdquo;는 사실만 적습니다.
       </p>
       <p className="mt-1.5 tabular-nums">

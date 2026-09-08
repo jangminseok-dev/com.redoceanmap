@@ -124,20 +124,3 @@ class PaperScorecardResponse(BaseModel):
     by_reason: list[ScoreBucketSchema]
     by_action: list[ScoreBucketSchema]
     min_samples: int
-
-
-class PlaceOrderRequest(BaseModel):
-    ticker: str
-    action: str = Field(description="BUY | SELL | SHORT | COVER")
-    quantity: int = Field(ge=1)
-
-
-class OrderReceiptSchema(BaseModel):
-    ticker: str
-    action: str
-    quantity: int
-    price: float
-    fee_krw: float
-    realized_pnl_krw: float | None
-    cash_krw: float
-    price_as_of: datetime
