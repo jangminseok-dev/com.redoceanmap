@@ -2258,5 +2258,12 @@ async def test_창업비용_데이터가_있으면_예산_안_업종을_문두�
     interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON], market=_CostMarket())
     result = await interactor.ask("1억으로 성수동에 카페 차릴 만해?")
     head = result.text.split("\n\n")[0]
-    assert head.startswith("※ 예산 10,000만원이면") and "분식 2,800만원" in head and "치킨" not in head  # 70% = 7,000만원 컷
+    # 질문한 업종(카페→커피)을 먼저 판정하고, 같은 예산의 다른 업종은 70%(7,000만원) 컷 안에서만
+    assert head.startswith("※ 커피 업종 평균 창업비용 5,200만원은(는) 예산 1억원의 70%(7,000만원) 안에 들어와요.")
+    assert "분식 2,800만원" in head and "치킨" not in head and "피자" not in head
     assert "임대료·인테리어는 별도" in head
+
+
+def test_원화_표기():
+    from chat.app.use_cases.chat_interactor import fmt_won
+    assert fmt_won(120_000_000) == "1억 2,000만원" and fmt_won(100_000_000) == "1억원" and fmt_won(80_360_000) == "8,036만원"

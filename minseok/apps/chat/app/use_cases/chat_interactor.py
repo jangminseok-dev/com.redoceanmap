@@ -431,6 +431,23 @@ _SUPERLATIVE_AXES = (
 # 예산 금액 파싱 — "1억 2천", "8천만원", "5000만원", "1.5억" → 원. 못 읽으면 None.
 _BUDGET_RE = re.compile(r"(\d+(?:\.\d+)?)\s*억(?:\s*(\d+)\s*천?\s*만?)?|(\d+(?:,\d{3})*)\s*(천만|만)\s*원?")
 BUDGET_RESERVE_RATIO = 0.7  # 창업비용은 예산의 70%까지 — 보증금·운영자금 몫을 남긴다(가정치)
+# 질문 어휘 → 공정위 업종 중분류명(브랜드 집계 기준). 질문한 업종을 먼저 판정하기 위한 별칭
+_INDUSTRY_ALIASES = (
+    ("카페", "커피"), ("커피", "커피"), ("치킨", "치킨"), ("분식", "분식"), ("떡볶이", "분식"), ("편의점", "편의점"),
+    ("한식", "한식"), ("피자", "피자"), ("빵집", "제과제빵"), ("베이커리", "제과제빵"), ("제과", "제과제빵"),
+    ("주점", "주점"), ("술집", "주점"), ("호프", "주점"), ("중식", "중식"), ("일식", "일식"), ("패스트푸드", "패스트푸드"),
+    ("햄버거", "패스트푸드"), ("아이스크림", "아이스크림/빙수"), ("빙수", "아이스크림/빙수"), ("음료", "음료 (커피 외)"),
+    ("미용", "이미용"), ("네일", "이미용"), ("세탁", "세탁"), ("학원", "교육 (교과)"), ("헬스", "스포츠 관련"),
+)
+
+
+def fmt_won(amount: float) -> str:
+    """1억 2,000만원 · 8,036만원 — 만원 단위, 억은 앞에 뗀다."""
+    man = int(round(amount / 10_000))
+    if man >= 10_000:
+        eok, rest = divmod(man, 10_000)
+        return f"{eok}억원" if rest == 0 else f"{eok}억 {rest:,}만원"
+    return f"{man:,}만원"
 
 
 def parse_budget_krw(text: str) -> int | None:
@@ -843,22 +860,37 @@ class ChatInteractor(ChatUseCase):
             return ("※ 예산에 맞는 자리인지는 판정하지 않았어요 — 창업비용·임대료·권리금 데이터가 없어요."
                     " 아래 점포당 월매출을 보증금·임대료 시세(부동산 중개 사이트)와 함께 보시면 감이 잡혀요.\n\n")
         year = costs[0].year
+        by_name = {c.industry_name: c for c in costs}
+        asked_names = []
+        for word, name in _INDUSTRY_ALIASES:
+            if word in prompt and name in by_name and name not in asked_names:
+                asked_names.append(name)
+        note = "가맹금·교육비·보증금·기타 합계(브랜드 중앙값)이고 점포 임대료·인테리어는 별도라 실제 총액은 이보다 커요."
         if budget is None:
-            cheapest = ", ".join(f"{c.industry_name} {round(c.total_amount / 10_000):,}만원" for c in costs[:5])
-            return (f"※ 공정위 정보공개서({year}) 업종별 평균 창업비용(가맹금·교육비·보증금·기타 합계, 임대료·인테리어 제외)은"
-                    f" 낮은 순으로 {cheapest} 등이에요. 예산을 말씀해 주시면 그 안에 드는 업종을 골라 드려요.\n\n")
+            if asked_names:
+                c = by_name[asked_names[0]]
+                return (f"※ {c.industry_name} 업종 평균 창업비용은 공정위 정보공개서({year}) 기준 {fmt_won(c.total_amount)}이에요"
+                        f" — {note} 예산을 말씀해 주시면 맞는지 봐 드려요.\n\n")
+            cheapest = ", ".join(f"{c.industry_name} {fmt_won(c.total_amount)}" for c in costs[:5])
+            return (f"※ 공정위 정보공개서({year}) 업종별 평균 창업비용은 낮은 순으로 {cheapest} 등이에요 — {note}"
+                    " 예산을 말씀해 주시면 그 안에 드는 업종을 골라 드려요.\n\n")
         cap = budget * BUDGET_RESERVE_RATIO
-        fit = [c for c in costs if c.total_amount <= cap]
-        listing = ", ".join(f"{c.industry_name} {round(c.total_amount / 10_000):,}만원" for c in fit[:8])
-        if not fit:
+        lead = ""
+        for name in asked_names[:1]:
+            c = by_name[name]
+            verdict = "들어와요" if c.total_amount <= cap else "빠듯해요(넘어요)"
+            lead = (f"{c.industry_name} 업종 평균 창업비용 {fmt_won(c.total_amount)}은(는) 예산 {fmt_won(budget)}의 70%"
+                    f"({fmt_won(cap)}) 안에 {verdict}. ")
+        fit = [c for c in costs if c.total_amount <= cap and c.industry_name not in asked_names[:1]]
+        listing = ", ".join(f"{c.industry_name} {fmt_won(c.total_amount)}" for c in fit[:6])
+        more = f" 외 {len(fit) - 6}개" if len(fit) > 6 else ""
+        if not fit and not lead:
             floor = costs[0]
-            return (f"※ 예산 {round(budget / 10_000):,}만원의 70%({round(cap / 10_000):,}만원) 안에 드는 가맹 업종이 공정위"
-                    f" 정보공개서({year}) 기준으로는 없어요 — 가장 낮은 {floor.industry_name}도 {round(floor.total_amount / 10_000):,}만원이에요."
-                    " 개인 창업(비가맹)은 이 표에 없고, 임대료·인테리어는 별도예요.\n\n")
-        more = f" 외 {len(fit) - 8}개" if len(fit) > 8 else ""
-        return (f"※ 예산 {round(budget / 10_000):,}만원이면(창업비용은 예산의 70%까지로 잡음) 공정위 정보공개서({year}) 평균 창업비용"
-                f" 기준 {listing}{more} 업종이 들어와요 — 가맹금·교육비·보증금·기타 합계이고 점포 임대료·인테리어는 별도라"
-                " 실제 총액은 이보다 커요.\n\n")
+            return (f"※ 예산 {fmt_won(budget)}의 70%({fmt_won(cap)}) 안에 드는 가맹 업종이 공정위 정보공개서({year}) 기준으로는"
+                    f" 없어요 — 가장 낮은 {floor.industry_name}도 {fmt_won(floor.total_amount)}이에요. 개인 창업(비가맹)은 이 표에 없고,"
+                    " 임대료·인테리어는 별도예요.\n\n")
+        others = f" 같은 예산에 드는 다른 업종: {listing}{more}." if fit else ""
+        return f"※ {lead}{others} 공정위 정보공개서({year}) 기준이며 {note}\n\n"
 
     async def _answer_service_candidates(self, conversation_id: int, history: list[Message], on_stage=None) -> AskResponse | None:
         """직전 추천 상권 1곳의 업종별 점포당 월매출·폐업률을 코드가 나열한다. 직전 카드가 없으면 None(기존 흐름)."""
