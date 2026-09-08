@@ -142,10 +142,13 @@ class PaperInteractor(PaperUseCase):
                     equity = paper_ledger.equity_krw(cash, positions, prices)
                     qty = rules.max_quantity(equity, cash, rules.to_krw(ticker, price), float(o.get("weight") or 0))
                     if qty <= 0:
-                        extra_rejected.append({"ticker": ticker, "action": action, "reason": "비중·현금으로 1주도 못 산다"})
+                        extra_rejected.append({"ticker": ticker, "action": action, "reason": "현금·비중 한도로 1주도 못 산다(보유 종목이 현금을 다 썼을 때가 대부분)"})
                         continue
                 else:
-                    qty = held.quantity if held else 0
+                    if held is None:
+                        extra_rejected.append({"ticker": ticker, "action": action, "reason": "청산할 포지션이 없다(진입 미체결 또는 이미 청산)"})
+                        continue
+                    qty = held.quantity
                 try:
                     cash, positions, fill = paper_ledger.apply(
                         cash, positions, ticker=ticker, action=action, quantity=qty, price=price, ts=bars[0].ts,
