@@ -24,7 +24,7 @@ permalink: /about/
 
 </div>
 
-{% include card.html img="/assets/img/question-home-2609.jpg" bg="warm" wide=true title="첫 화면 — 질문 하나로 시작한다"
+{% include card.html img="/assets/img/question-home-260908b.jpg" bg="warm" wide=true title="첫 화면 — 질문 하나로 시작한다"
    desc="상권이든 주식이든 입력 하나로 갈라진다. 의도 분류가 먼저 돌고 그다음 서로 다른 근거 파이프라인을 탄다." %}
 
 <div class="cn-card cn-bg-plain cn-body cn-wide" markdown="1">
