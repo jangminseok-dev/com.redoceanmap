@@ -187,8 +187,14 @@ def enforce_sentiment_claim(answer: str, sentiment: float | None) -> str:
     return "".join(out)
 
 
+# 7.8B가 프롬프트의 "투자 판단 책임 고지 한 문장"을 문장 대신 자리표시자 "[투자 판단 책임 고지]"로 옮겨 적는다
+# (2026-09-08 골든셋 MW16 — 답이 "]"로 끝나 잘림 판정). 꼬리의 고지 자리표시자는 걷어내고 실제 고지를 붙인다.
+_DISCLAIMER_PLACEHOLDER = re.compile(r"\s*[\[(【][^\]\)】\n]*고지[^\]\)】\n]*[\])】]\s*$")
+
+
 def ensure_disclaimer(answer: str) -> str:
     """책임 고지가 꼬리에 없으면 붙인다. 있으면 그대로 둔다(중복 고지 방지)."""
+    answer = _DISCLAIMER_PLACEHOLDER.sub("", answer)
     tail = answer[-_DISCLAIMER_TAIL:]
     if _DISCLAIMER_SUBJECT.search(tail) and _DISCLAIMER_OWNER.search(tail):
         return answer

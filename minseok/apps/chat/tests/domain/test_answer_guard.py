@@ -192,3 +192,10 @@ def test_normalize_citation_markers_괄호_번호를_대괄호_마커로_되돌�
     assert "(3)" in out and "(-0.40)" in out   # 배정 밖 번호·음수는 그대로
     assert g.normalize_citation_markers(text, set()) == text
 
+
+def test_ensure_disclaimer_자리표시자_고지는_걷어내고_실제_고지를_붙인다():
+    text = "**투자 판단 고지:** 제공된 정보는 참고용입니다. [투자 판단 책임 고지]"
+    out = g.ensure_disclaimer(text)
+    assert "[투자 판단 책임 고지]" not in out
+    assert out.rstrip()[-1] in ".!?…" and "본인" in out[-80:]
+
