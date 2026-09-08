@@ -12,6 +12,11 @@ export default function RulesNotice({ rules, replayUntil }: { rules: PaperRules;
         다음 세션 시가에 사후 체결됩니다. 지표 규칙 계정은 검증된 지표 조합을 그대로 따르는 대조군입니다.  여기 있는
         어떤 문장도 매수·매도 권유가 아니며, &ldquo;어느 계정이 무엇을 샀다&rdquo;는 사실만 적습니다.
       </p>
+      <p className="mt-1.5">
+        &ldquo;검증된 지표 규칙&rdquo;의 검증이란: 20종목 5년 백테스트에서 그 신호가 났을 때 실제로 그 방향으로 간 비율의 95%
+        신뢰구간 하한이 평소 비율보다 높았다는 뜻입니다(인샘플·홀드아웃 두 구간 모두). 우위는 몇 %p 수준이고, 매주
+        재적합으로 조합이 바뀔 수 있습니다. &ldquo;맞힌다&rdquo;가 아니라 &ldquo;동전 던지기보다 조금 낫다는 것이 확인됐다&rdquo;에 가깝습니다.
+      </p>
       <p className="mt-1.5 tabular-nums">
         가정치: 초기 자본 {(rules.assumed_initial_cash_krw / 1e8).toFixed(0)}억원 · 수수료{" "}
         {(rules.assumed_fee_rate * 100).toFixed(1)}%/체결 · 환율 고정 {rules.assumed_usdkrw.toLocaleString("ko-KR")}원/$ ·

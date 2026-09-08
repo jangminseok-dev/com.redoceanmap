@@ -41,7 +41,7 @@ def test_깨진_JSON은_ValueError():
     ("order", "held_long", "held_short", "msg"),
     [
         ({"ticker": "NVDA", "action": "BUY", "weight": 0.1}, set(), set(), "후보 목록에 없는"),
-        ({"ticker": "AAPL", "action": "HOLD"}, set(), set(), "알 수 없는 주문"),
+        ({"ticker": "AAPL", "action": "HOLD"}, set(), set(), "지원하지 않는 주문 유형"),
         ({"ticker": "AAPL", "action": "SELL"}, set(), set(), "보유하지 않은 롱"),
         ({"ticker": "AAPL", "action": "COVER"}, set(), set(), "보유하지 않은 숏"),
         ({"ticker": "AAPL", "action": "SHORT", "weight": 0.1}, {"AAPL"}, set(), "반대 포지션"),

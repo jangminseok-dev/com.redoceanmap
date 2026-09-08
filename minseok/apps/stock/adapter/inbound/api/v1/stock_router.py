@@ -1,7 +1,7 @@
 import logging
 from dataclasses import asdict
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Query, APIRouter, Depends, HTTPException
 
 from stock.adapter.inbound.api.schemas.stock_schema import StockAnalyzeResponse
 from stock.app.exceptions import MarketDataUnavailableError
@@ -16,7 +16,7 @@ stock_router = APIRouter(prefix="/stock", tags=["stock"])
 
 @stock_router.post("/analyze", response_model=StockAnalyzeResponse)
 async def analyze(
-    symbol: str = "AAPL",
+    symbol: str = Query(min_length=1, description="종목 코드·티커·이름 — 생략 불가(2026-09-08 QA: 기본값 AAPL이 다른 종목을 조용히 돌려줬다)"),
     use_case: StockUseCase = Depends(get_stock_use_case),
 ) -> StockAnalyzeResponse:
     try:

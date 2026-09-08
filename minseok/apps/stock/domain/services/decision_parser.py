@@ -79,7 +79,7 @@ def parse(
         action = str(item.get("action", "")).strip().upper()
         reason = str(item.get("reason", "")).strip()[:300]
         if action not in rules.ACTIONS:
-            rejected.append(Rejected(ticker, action, "알 수 없는 주문 유형"))
+            rejected.append(Rejected(ticker, action, f"지원하지 않는 주문 유형 '{action}' — 매수·매도·숏 진입·숏 청산만 가능하고, 관망은 주문을 내지 않으면 된다"))
             continue
         if ticker not in allowed_tickers:
             rejected.append(Rejected(ticker, action, "후보 목록에 없는 종목"))
