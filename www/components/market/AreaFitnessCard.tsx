@@ -112,8 +112,9 @@ function FitnessBody({ fitness }: { fitness: AreaFitness }) {
       </dl>
 
       <p className="mt-3 text-xs text-foreground-muted">
-        {fitness.yearQuarter}분기 서울시 상권분석서비스 실데이터 기준. 임대료·권리금·창업비용은
-        공개 데이터가 없어 포함하지 않았습니다.
+        {fitness.yearQuarter}분기 서울시 상권분석서비스 실데이터 기준. 위의 &ldquo;상권 종합점수&rdquo;(상권 전체 건강)와는
+        다른 지표로, 이 업종이 이 상권 손님·시간대·경쟁·생존 기록과 맞는지만 봅니다. 임대료·권리금·창업비용은 공개
+        데이터가 없어 포함하지 않았습니다.
       </p>
     </div>
   );

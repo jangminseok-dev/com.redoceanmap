@@ -1,6 +1,7 @@
 "use client";
 
-import { Minus, ShieldCheck, TrendingDown, TrendingUp } from "lucide-react";
+import Link from "next/link";
+import { BellRing, Minus, ShieldCheck, TrendingDown, TrendingUp } from "lucide-react";
 import type { StockAnalyzeResult } from "@/lib/types";
 import { formatPrice } from "@/lib/currency";
 import { strength } from "@/lib/verdict";
@@ -105,6 +106,14 @@ export default function StockHero({
             {asOfLabel ?? "지연 시세"}
             {quotePrice != null && " · 30초 갱신"}
           </span>
+          {/* 가격 도달 알림 진입점 — 프로필에만 있어 "여기서 걸고 싶다"가 안 됐다(2026-09-08 QA P04) */}
+          <Link
+            href={`/profile?ticker=${encodeURIComponent(symbol)}#price-alert`}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-border bg-surface text-xs text-foreground-muted hover:text-foreground hover:border-brand/40 transition-colors"
+          >
+            <BellRing size={12} strokeWidth={2} />
+            이 가격 되면 알림
+          </Link>
         </div>
       </div>
     </header>

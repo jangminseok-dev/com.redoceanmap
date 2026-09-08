@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BellRing, UserRound } from "lucide-react";
 import {
@@ -180,6 +181,12 @@ function AlertSettingSection() {
 /** 가격 도달 알림([6]) — 사용자가 직접 건 손절·익절선. 도달 시 1회 통지 후 자동 꺼짐. */
 function PriceAlertSection() {
   const queryClient = useQueryClient();
+  // 종목 화면 "이 가격 되면 알림"에서 넘어오면 ?ticker= 로 종목 칸을 미리 채운다(하이드레이션 뒤에 읽는다)
+  const [prefill, setPrefill] = useState("");
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get("ticker");
+    if (t) setPrefill(t);
+  }, []);
   const { data, isPending } = useQuery({
     queryKey: ["price-alerts"],
     queryFn: fetchPriceAlerts,
@@ -207,7 +214,7 @@ function PriceAlertSection() {
       : `$${a.target_price.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}`;
 
   return (
-    <section className="rounded-2xl bg-surface border border-border p-6">
+    <section id="price-alert" className="rounded-2xl bg-surface border border-border p-6">
       <h2 className="text-sm font-semibold flex items-center gap-1.5">
         <BellRing size={15} /> 가격 도달 알림
       </h2>
@@ -219,7 +226,7 @@ function PriceAlertSection() {
       <form onSubmit={handleSubmit} className="mt-3 flex flex-wrap items-end gap-2">
         <div className="space-y-1">
           <Label htmlFor="pa-ticker" className="text-xs font-medium">종목</Label>
-          <Input id="pa-ticker" name="ticker" placeholder="005930 · AAPL" className="w-32" />
+          <Input id="pa-ticker" name="ticker" defaultValue={prefill} key={prefill || "empty"} placeholder="005930 · AAPL" className="w-32" />
         </div>
         <div className="space-y-1">
           <Label htmlFor="pa-price" className="text-xs font-medium">가격</Label>

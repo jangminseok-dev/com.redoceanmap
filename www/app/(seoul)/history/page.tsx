@@ -227,7 +227,7 @@ export default function HistoryPage() {
                           )}
                           <span className="flex-1 min-w-0 text-sm truncate">{c.title}</span>
                           {c.label && (
-                            <span className="hidden sm:block shrink-0 max-w-[160px] text-xs text-foreground-muted truncate">
+                            <span className="shrink-0 max-w-[96px] sm:max-w-[160px] text-xs text-foreground-muted truncate">
                               {c.label}
                             </span>
                           )}

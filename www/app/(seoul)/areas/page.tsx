@@ -347,6 +347,7 @@ export default function AreasDirectoryPage() {
               pct={percentile(metric(r, q.sort.key))}
               selected={q.compare.includes(r.trdarCode)}
               onCompare={() => toggleCompare(r.trdarCode)}
+              serviceCode={q.serviceCode || undefined}
             />
           ))}
         </div>
@@ -367,11 +368,13 @@ function AreaCard({
   pct,
   selected,
   onCompare,
+  serviceCode,
 }: {
   row: AreaRankingRow;
   pct: number | null;
   selected: boolean;
   onCompare: () => void;
+  serviceCode?: string; // 업종 필터가 걸려 있으면 상세로 승계한다
 }) {
   const up = row.salesQoq != null && row.salesQoq > 0;
   return (
@@ -386,7 +389,7 @@ function AreaCard({
         ✓
       </button>
     <Link
-      href={`/market?trdar=${row.trdarCode}`}
+      href={`/market?trdar=${row.trdarCode}${serviceCode ? `&service=${encodeURIComponent(serviceCode)}` : ""}`}
       className="block rounded-2xl bg-surface border border-border p-4 hover:border-brand/40 transition-colors"
     >
       <div className="flex items-start gap-2">

@@ -109,7 +109,7 @@ export default function AreaStatsPanel({
 
       {/* 입지 적합도 — 업종은 선택값 우선, 없으면 stats가 고른 최대 매출 업종(null이면 생략) */}
       {(serviceCode ?? data.serviceCode) && (
-        <Section icon={Compass} title={`입지 적합도 · ${data.serviceName ?? ""}`}>
+        <Section icon={Compass} title={`${data.serviceName ?? "이 업종"} 업종 적합도`}>
           <AreaFitnessCard trdarCode={trdarCode} serviceCode={(serviceCode ?? data.serviceCode) as string} />
         </Section>
       )}

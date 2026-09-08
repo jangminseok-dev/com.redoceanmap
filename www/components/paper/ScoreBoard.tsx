@@ -10,6 +10,7 @@ export default function ScoreBoard({ board }: { board: PaperBoard }) {
   const signal = find("signal");
   const spy = board.spy[board.spy.length - 1];
   const spyReturn = spy ? spy.equity_krw / board.rules.assumed_initial_cash_krw - 1 : null;
+  const lastAsOf = exaone?.last_as_of ?? signal?.last_as_of ?? null;
 
   const tile = (label: string, sub: string, ret: number | null | undefined, equity: number | null | undefined) => (
     <div className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
@@ -30,7 +31,7 @@ export default function ScoreBoard({ board }: { board: PaperBoard }) {
         {tile("SPY 보유", "사서 들고만 있었다면", spyReturn, spy?.equity_krw)}
       </div>
       <p className="mt-2 text-xs text-foreground-muted tabular-nums">
-        모두 초기 자본 {(board.rules.assumed_initial_cash_krw / 1e8).toFixed(0)}억원 · 실제 돈이 아닙니다
+        {lastAsOf ? `${lastAsOf} 평가 기준(주말·휴장일엔 갱신되지 않아요) · ` : ""}모두 초기 자본 {(board.rules.assumed_initial_cash_krw / 1e8).toFixed(0)}억원 · 실제 돈이 아닙니다
       </p>
     </div>
   );

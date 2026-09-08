@@ -172,7 +172,7 @@ function buildStats(a: StockAnalyzeResult, symbol: string): Stat[] {
 function StatTile({ stat }: { stat: Stat }) {
   return (
     <div className="bg-surface border border-border rounded-lg px-3 py-2.5">
-      <div className="text-xs text-foreground-muted">{stat.label}</div>
+      <div className="text-xs text-foreground-muted" title={stat.hint}>{stat.label}</div>
       <div className="text-sm font-semibold mt-0.5 tabular-nums">{stat.value}</div>
       {stat.gauge && (
         <div className="relative mt-1.5 h-1 rounded-full bg-border/70">

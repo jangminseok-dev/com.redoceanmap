@@ -5,7 +5,8 @@ import { ExternalLink } from "lucide-react";
 import { fetchStockNews } from "@/lib/api";
 
 function sentimentChip(sentiment: number | null) {
-  if (sentiment === null) return null;
+  // 라벨 cron은 하루 1회(02:30) — 당일 기사는 비어 있는 게 정상. 빈 칸 대신 "대기"로 말한다(2026-09-08 QA P05)
+  if (sentiment === null) return { label: "라벨 대기중", className: "text-foreground-muted bg-surface border-border border-dashed" };
   if (sentiment >= 0.15) {
     return { label: `호재 +${sentiment.toFixed(2)}`, className: "text-up bg-up-weak border-up/20" };
   }

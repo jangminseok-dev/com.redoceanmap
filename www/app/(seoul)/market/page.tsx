@@ -28,7 +28,9 @@ function MarketWorkspace() {
   const recommendations = useChatStore((s) => s.recommendations);
   // 채팅이 고른 업종 — 넘기지 않으면 백엔드가 "매출 최대 업종"으로 폴백해, 답변과 지도 패널이
   // 서로 다른 업종을 말한다(실사례: 채팅 커피-음료 vs 패널 의약품). 추천 목록의 업종을 따른다.
-  const serviceCode = recommendations.find((r) => r.id === trdar)?.serviceCode
+  // 상권 둘러보기에서 업종 필터로 들어오면(?service=) 그 업종이 우선 — 랭킹의 업종을 상세가 잃지 않게(2026-09-08 QA P02)
+  const serviceCode = params?.get("service")
+    ?? recommendations.find((r) => r.id === trdar)?.serviceCode
     ?? recommendations[0]?.serviceCode;
   const conversationId = useChatStore((s) => s.conversationId);
   const messages = useChatStore((s) => s.messages);

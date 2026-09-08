@@ -112,7 +112,7 @@ export default function HomePage() {
                   initialText={draftPrompt ?? ""}
                 />
                 <p className="mt-2.5 text-center text-xs text-foreground-muted">
-                  서울 상권 통계와 주가·뉴스·펀더멘털을 근거로 답해요
+                  서울 어디에 창업할지, 이 주식이 지금 어떤지 — 공공데이터·주가·뉴스를 근거로 답해요
                 </p>
               </>
             )}

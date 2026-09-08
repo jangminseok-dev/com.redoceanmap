@@ -58,7 +58,7 @@ def rate_limit(bucket: str, limit: int, window_seconds: int):
             logger.warning("[rate_limit] %s 초과 — key=%s count=%s", bucket, key, count)
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.",
+                detail=f"요청이 너무 잦습니다. {retry_after}초 뒤 다시 시도해 주세요.",
                 headers={"Retry-After": str(retry_after)},
             )
 
