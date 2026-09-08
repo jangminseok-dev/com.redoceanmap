@@ -14,6 +14,7 @@ from hub.app.ports.output.forecast_refit_port import ForecastRefitPort
 from hub.app.ports.output.fundamental_read_port import FundamentalReadPort
 from hub.app.ports.output.stock_analysis_port import StockAnalysisPort
 from hub.app.ports.output.stock_forecast_port import StockForecastPort
+from hub.app.ports.output.paper_decision_port import PaperDecisionPort
 from hub.app.ports.output.stock_signal_board_port import StockSignalBoardPort
 from hub.app.ports.output.user_profile_port import UserProfilePort
 from hub.dependencies.commercial_data_provider import get_commercial_data_port
@@ -25,6 +26,7 @@ from hub.dependencies.news_search_provider import get_news_search_port
 from hub.dependencies.recommendation_record_provider import get_recommendation_record_port
 from hub.dependencies.stock_analysis_provider import get_stock_analysis_port
 from hub.dependencies.stock_forecast_provider import get_stock_forecast_port
+from hub.dependencies.paper_trading_provider import get_paper_decision_port
 from hub.dependencies.stock_signal_board_provider import get_stock_signal_board_port
 from hub.dependencies.user_profile_provider import get_user_profile_port
 
@@ -41,6 +43,7 @@ def get_chat_use_case(
     profiles: UserProfilePort = Depends(get_user_profile_port),
     refit: ForecastRefitPort = Depends(get_forecast_refit_port),
     signals: StockSignalBoardPort = Depends(get_stock_signal_board_port),
+    paper: PaperDecisionPort = Depends(get_paper_decision_port),
     db: AsyncSession = Depends(get_db),
 ) -> ChatUseCase:
     return ChatInteractor(
@@ -56,4 +59,5 @@ def get_chat_use_case(
         profiles=profiles,
         refit=refit,
         signals=signals,
+        paper=paper,
     )

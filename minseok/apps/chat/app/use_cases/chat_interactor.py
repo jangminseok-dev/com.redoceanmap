@@ -48,6 +48,7 @@ from hub.app.ports.output.forecast_refit_port import ForecastRefitPort
 from hub.app.ports.output.fundamental_read_port import FundamentalReadPort
 from hub.app.ports.output.stock_analysis_port import StockAnalysisPort, StockAnalysisUnavailable
 from hub.app.ports.output.stock_forecast_port import StockForecastPort
+from hub.app.ports.output.paper_decision_port import PaperDecisionPort
 from hub.app.ports.output.stock_signal_board_port import StockSignalBoardPort
 from hub.app.ports.output.user_profile_port import UserProfilePort
 
@@ -414,6 +415,22 @@ _META_VERIFY_RE = re.compile(
 
 
 # 급등주 찍기 질의(P5) — 종목/주식 명사와 결합했을 때만(보수적 — "이 주식 추천해?"는 제외)
+# AI 모의투자 기록 질의(2026-09-08 QA) — 정체성 질문("너 뭐 사?")과 구분하려고 AI·모의투자 명사를 요구한다
+_PAPER_RE = re.compile(
+    r"(?:AI|에이아이|인공지능|EXAONE|엑사원)\s*(?:는|은|가|이)?\s*(?:요즘|최근|오늘|지금|어제)?\s*(?:뭐|무엇|무슨|어떤|어느)\s*\S{0,4}\s*(?:사|샀|매수|팔|판|들고|보유|굴리)"
+    r"|모의\s*투자|AI\s*투자|엑사원|EXAONE",
+    re.IGNORECASE,
+)
+# 상대 비교 후속(2026-09-08 QA P10) — "제일 안전한 데"에 폐업률이 가장 높은 곳을 골랐다. 축이 있는 비교는 코드가 정한다
+_SUPERLATIVE_AXES = (
+    ("closure", re.compile(r"(?:제일|가장|젤)\s*(?:안전|덜\s*위험|안\s*망|망하지\s*않|폐업\s*(?:률|율)?\s*(?:이|가)?\s*(?:낮|적))")),
+    ("sales", re.compile(r"(?:제일|가장|젤)\s*(?:매출|장사|수익)\s*(?:이|가)?\s*(?:높|많|큰|잘)")),
+)
+# 업종 초점 후속(2026-09-08 QA P08) — "내 예산으로 할 수 있는 업종은?"에 직전 상권·업종을 재탕했다.
+# 직전 추천 상권이 있고 질문이 업종을 묻는데 업종명을 안 대면, 그 상권의 업종별 수치를 코드가 낸다.
+_SERVICE_FOCUS_RE = re.compile(r"업종|뭘\s*팔|무슨\s*(?:장사|가게|업)|어떤\s*(?:가게|장사|업)|아이템")
+_SERVICE_SHORTLIST = ("커피", "치킨", "한식", "분식", "편의점", "미용", "네일", "제과", "호프", "중식", "일식", "패스트푸드", "의약품", "세탁")
+_COMPARE_RE = re.compile(r"비교|vs|중에|둘\s*중|셋\s*중|어디가|어느\s*(?:쪽|게|것)|(?:랑|이랑|와|과|하고)\s")
 _SURGE_PICK_RE = re.compile(
     # 4차 실측 S4: "내일 급등할 종목 알려줘"가 관형형 어미(할/하는) 때문에 빠져나가
     # market_news로 낙하했다. 거절 후 재요구("아 그러지 말고 하나만 찍어줘")도 잡는다.
@@ -511,6 +528,11 @@ _EXPERT_DETAIL_RE = re.compile(r"추이|추세|분기별|산출\s*근거|산출\
 # (2026-08-31 실측 m5: 임대료 질문에 임대료 언급 0, q03: 배당 데이터 없이 배당주 나열,
 # s4: 확률 요구에 일반론 1,800자).
 _MARKET_UNSUPPORTED_NOTICES = (
+    # 예산 질문(2026-09-08 QA P01·P02·P08) — "1억으로 되나"에 답이 없이 끝났다. 판정 불가를 먼저 말하고
+    # 다음 행동(어디서 확인할지)을 준다. 창업비용 축은 GAME_SUNSET 계획 C1(공정위 정보공개서)에서 채운다.
+    (re.compile(r"\d+\s*(?:억|천만|만원|만)(?:\s*원)?|예산|자본금|자금으로|돈으로"),
+     "예산에 맞는 자리인지는 판정하지 않았어요 — 창업비용·임대료·권리금 데이터가 없어요."
+     " 아래 점포당 월매출을 보증금·임대료 시세(부동산 중개 사이트)와 함께 보시면 감이 잡혀요."),
     (re.compile(r"임대료|월세|보증금|권리금"),
      "임대료·보증금·권리금 데이터는 제공하지 않아요(공공데이터에 없어요)."
      " 아래는 매출·점포·유동인구 등 보유 데이터 기준이에요."),
@@ -580,7 +602,9 @@ class ChatInteractor(ChatUseCase):
         profiles: UserProfilePort | None = None,
         refit: ForecastRefitPort | None = None,
         signals: StockSignalBoardPort | None = None,
+        paper: PaperDecisionPort | None = None,
     ) -> None:
+        self._paper = paper
         self._market = market
         self._recorder = recorder
         self._conversations = conversations
@@ -755,6 +779,104 @@ class ChatInteractor(ChatUseCase):
         return None
 
     @staticmethod
+    def _superlative_pick(prompt: str, codes: list[int], raw_stats: dict, area_map: dict) -> tuple[int, str] | None:
+        """'제일 안전한/매출 높은' 질문의 결론을 코드가 정한다 — 후보 2곳 이상·지표 보유 시에만."""
+        axis = next((a for a, rx in _SUPERLATIVE_AXES if rx.search(prompt)), None)
+        if axis is None or len(codes) < 2:
+            return None
+        rows = []
+        for c in codes:
+            r = raw_stats.get(c)
+            if r is None or c not in area_map:
+                continue
+            if axis == "closure" and r.has_store and r.closure_rate is not None:
+                rows.append((c, float(r.closure_rate)))
+            elif axis == "sales" and r.has_sales and r.monthly_sales_amount and (r.store_count or 0) > 0:
+                rows.append((c, r.monthly_sales_amount / r.store_count / 10000))
+        if len(rows) < 2:
+            return None
+        rows.sort(key=lambda x: x[1] if axis == "closure" else -x[1])
+        best = rows[0][0]
+        if axis == "closure":
+            listing = " · ".join(f"{area_map[c].trdar_name} {v:g}%" for c, v in rows)
+            ties = [c for c, v in rows if v == rows[0][1]]
+            who = "·".join(area_map[c].trdar_name for c in ties)
+            line = f"분기 폐업률 기준({listing}) — 가장 낮은 곳은 {who}입니다."
+        else:
+            listing = " · ".join(f"{area_map[c].trdar_name} {round(v):,}만원" for c, v in rows)
+            line = f"점포당 월매출 기준({listing}) — 가장 높은 곳은 {area_map[best].trdar_name}입니다."
+        return best, line
+
+    async def _answer_service_candidates(self, conversation_id: int, history: list[Message], on_stage=None) -> AskResponse | None:
+        """직전 추천 상권 1곳의 업종별 점포당 월매출·폐업률을 코드가 나열한다. 직전 카드가 없으면 None(기존 흐름)."""
+        previous = None
+        for m in reversed(history):
+            recs = (m.payload or {}).get("recommendations")
+            if recs:
+                previous = recs[0]
+                break
+        if not previous or not str(previous.get("id", "")).isdigit():
+            return None
+        self._notify(on_stage, "data", "상권의 업종별 수치를 모으고 있어요")
+        code, name = int(previous["id"]), previous.get("name", "이 상권")
+        summary = await self._market.get_area_summary()
+        quarter = summary.latest_quarter
+        if not quarter:
+            return None
+        services = [sv for sv in await self._market.get_service_codes() if any(k in sv.name for k in _SERVICE_SHORTLIST)][:14]
+        rows = []
+        for sv in services:
+            raw = (await self._market.get_area_raw_stats([code], sv.code, quarter)).get(code)
+            if raw is None or not raw.has_sales or not raw.monthly_sales_amount or not (raw.store_count or 0) > 0:
+                continue
+            per_store = round(raw.monthly_sales_amount / raw.store_count / 10000)
+            closure = f"{raw.closure_rate:g}%" if raw.has_store and raw.closure_rate is not None else "폐업률 미집계"
+            rows.append((sv.name, per_store, closure, raw.store_count))
+        if not rows:
+            return None
+        rows.sort(key=lambda r: -r[1])
+        lines = [f"{i}. {n} — 점포당 월매출 {v:,}만원 · 폐업률 {c} · {cnt}개 점포" for i, (n, v, c, cnt) in enumerate(rows[:8], 1)]
+        text = (
+            f"{name}에서 업종별로 보면(최신 분기, 점포당 월매출 순):\n" + "\n".join(lines) +
+            "\n\n창업비용·임대료 데이터가 없어 예산에 맞는지는 판정하지 않았어요 — 업종을 하나 정해"
+            ' "성수역에 카페 어때?"처럼 물으면 그 업종 기준으로 상권을 다시 비교해 드려요.'
+        )
+        await self._conversations.add_message(conversation_id, "assistant", text)
+        return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
+
+    async def _answer_paper(self, conversation_id: int, on_stage=None) -> AskResponse:
+        """AI 모의투자 기록 — 허브 PaperDecisionPort를 코드가 읽어 '어느 계정이 무엇을 샀다'까지만 말한다."""
+        self._notify(on_stage, "data", "AI 모의투자 기록을 읽고 있어요")
+        try:
+            infos = await self._paper.latest(["exaone", "signal"])
+        except Exception:
+            logger.warning("[chat] 모의투자 기록 조회 실패", exc_info=True)
+            infos = []
+        act = {"BUY": "매수", "SELL": "매도", "SHORT": "숏 진입", "COVER": "숏 청산"}
+        label = {"exaone": "EXAONE 계정(AI가 직접 판단)", "signal": "지표 규칙 계정(검증된 신호만 따름)"}
+        lines = []
+        for info in infos:
+            orders = ", ".join(f"{act.get(o.action, o.action)} {o.ticker}" for o in info.orders) or "주문 없음(관망)"
+            filled = ", ".join(info.filled_tickers) if info.filled_tickers else "아직 없음(다음 장 시가 체결)"
+            ret = f"{info.return_pct * 100:+.1f}%" if info.return_pct is not None else "—"
+            lines.append(f"- {label.get(info.account, info.account)} — {info.as_of:%m/%d} 판단: {orders} · 체결: {filled} · 자산 {ret}")
+            if info.account == "exaone" and info.orders:
+                o = info.orders[0]
+                lines.append(f"  · {o.ticker} 이유: {o.reason[:120]}")
+        if not lines:
+            text = ("AI 모의투자 기록이 아직 없어요. EXAONE 계정은 매일 14:00 판단하고 다음 장 시가에 사후 체결돼요 —"
+                    " AI 모의투자 화면(/paper)에서 볼 수 있어요.")
+        else:
+            text = (
+                "AI 모의투자는 실제 돈이 아닌 기록이에요 — EXAONE이 매일 우리 예측 스냅샷·뉴스 라벨을 읽고 1억원으로"
+                " 판단한 것을 다음 장 시가에 사후 체결합니다.\n" + "\n".join(lines) +
+                "\n\n어느 계정이 무엇을 샀다는 사실이지 매수·매도 권유가 아니에요. 판단 근거·인용 기사·거부된 주문은"
+                " AI 모의투자 화면(/paper)에서 볼 수 있어요."
+            )
+        await self._conversations.add_message(conversation_id, "assistant", text)
+        return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
+
+    @staticmethod
     def _previous_service(history: list[Message]) -> tuple[str, str] | None:
         """직전 추천 카드에서 (업종 코드, 업종명)을 복원한다 — 업종 승계(P2)용."""
         for m in reversed(history):
@@ -767,7 +889,7 @@ class ChatInteractor(ChatUseCase):
 
     def _build_area_context(
         self, summary: AreaSummary, prompt: str = "", limit: int = 80,
-        ranking: dict[int, AreaRankingInfo] | None = None,
+        ranking: dict[int, AreaRankingInfo] | None = None, safety_first: bool = False,
     ) -> str:
         # 상권 1650개 전체를 넣으면 모델 컨텍스트를 초과한다.
         # 행 상한은 80을 유지한다(I-11 골든 재완주 실측): 60으로 줄이자 어간 가드가 못 잡는
@@ -779,7 +901,17 @@ class ChatInteractor(ChatUseCase):
             return summary.sales_by_code.get(a.trdar_code) or 0
 
         all_mentioned = self._mentioned_codes(summary, prompt)
-        ranked = sorted(summary.areas, key=sales_of, reverse=True)
+        ranking = ranking or {}
+        if safety_first:
+            # 안정형 프로파일(2026-09-08 QA P08) — 후보를 매출순이 아니라 폐업률 낮은 순으로 채운다.
+            # 폐업률 미집계 상권은 뒤로(없는 값을 0으로 읽지 않는다).
+            def safety_key(a):
+                row = ranking.get(a.trdar_code)
+                closure = row.closure_rate if row is not None and row.closure_rate is not None else None
+                return (closure is None, closure if closure is not None else 0.0, -sales_of(a))
+            ranked = sorted(summary.areas, key=safety_key)
+        else:
+            ranked = sorted(summary.areas, key=sales_of, reverse=True)
         picked = [a for a in ranked if a.trdar_code in all_mentioned][:limit]
         mentioned_codes = {a.trdar_code for a in picked}
         seen = set(mentioned_codes)
@@ -794,9 +926,9 @@ class ChatInteractor(ChatUseCase):
         # "증가율이 높다"고 서술한다(실측). 산출 불가 상권은 '-'로 정직하게 남긴다.
         # 판정 축 2열(I-11) — 표에 없는 축을 물으면 모델이 근거 없이 "폐업률이 낮다"고
         # 서술했다(3차 실측 M1·M6). 랭킹 집계(전 업종)에서 잇고, 미집계는 '-'로 남긴다.
-        ranking = ranking or {}
         lines = [
-            "상권코드|상권명|자치구|행정동|상권전체월매출합계(만원)|매출전년동분기대비(%)"
+            ("[질문자는 안정 최우선 — 폐업률(%)이 낮은 상권을 먼저 고를 것. 표는 폐업률 낮은 순]\n" if safety_first else "")
+            + "상권코드|상권명|자치구|행정동|상권전체월매출합계(만원)|매출전년동분기대비(%)"
             "|폐업률(%)|점포당월매출(만원)|질문지역"
         ]
         for a in picked:
@@ -947,9 +1079,11 @@ class ChatInteractor(ChatUseCase):
             text = (
                 "특정 종목을 찍어드리지는 않아요 — 단기 급등 예측은 백테스트에서 우위가"
                 " 확인되지 않았고, 매매 지시를 하지 않는 것이 이 서비스의 원칙이에요."
-                " 대신 궁금한 종목을 물어보시면 지표·과거 통계(표본·신뢰구간)로 현재"
-                " 상태를 읽어드리고, 프로필의 가격 도달 알림으로 원하는 가격 통지를"
-                " 받아보실 수 있어요."
+                " 대신 볼 수 있는 것: ① 오늘 상승·하락 신호가 뚜렷한 종목은 주식 화면의"
+                " 신호 보드(또는 \"상승 신호 나온 종목 알려줘\"), ② EXAONE이 실제 데이터로 굴리는"
+                " 모의투자 계정이 무엇을 샀는지는 AI 모의투자 화면(/paper) 또는 \"AI는 요즘 뭐 사?\","
+                " ③ 궁금한 종목을 물으면 지표·과거 통계(표본·신뢰구간)로 현재 상태를 읽어드리고,"
+                " 프로필의 가격 도달 알림으로 원하는 가격 통지를 받아보실 수 있어요."
             )
             await self._conversations.add_message(conversation_id, "assistant", text)
             return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
@@ -961,6 +1095,10 @@ class ChatInteractor(ChatUseCase):
             await self._conversations.add_message(conversation_id, "assistant", text)
             return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
 
+        if self._paper is not None and _PAPER_RE.search(prompt):
+            # AI 모의투자 기록 조회(2026-09-08 QA P06·P09) — "AI는 요즘 뭐 사?"에 정체성 답변을
+            # 하고, "AI 모의투자가 뭐야?"에 "제공하지 않는 기능"이라 했다. 허브 기록을 코드가 읽는다.
+            return await self._answer_paper(conversation_id, on_stage)
         if self._signals is not None and _SIGNAL_BOARD_RE.search(prompt):
             # 신호 보드 조회(4차 실측 S8 t4) — 워치리스트 신호를 코드가 읽어 답한다.
             return await self._answer_signal_board(conversation_id, prompt, on_stage)
@@ -970,6 +1108,11 @@ class ChatInteractor(ChatUseCase):
             if detail is not None:
                 await self._conversations.add_message(conversation_id, "assistant", detail)
                 return AskResponse(text=detail, recommendations=[], conversationId=conversation_id)
+
+        if _SERVICE_FOCUS_RE.search(prompt):
+            focus = await self._answer_service_candidates(conversation_id, history, on_stage)
+            if focus is not None:
+                return focus
 
         # phase0(의도 분류 = 도메인 판단) — 단일 모델(7.8B) 정책
         self._notify(on_stage, "intent", "질문 의도를 파악하고 있어요")
@@ -1050,7 +1193,8 @@ class ChatInteractor(ChatUseCase):
         except Exception:
             logger.warning("[chat] 랭킹 집계 조회 실패 — phase1 판정 축 생략", exc_info=True)
             ranking = {}
-        area_context = self._build_area_context(summary, prompt, ranking=ranking)
+        safety_first = profile is not None and profile.risk_label in ("안정형", "안정추구형")
+        area_context = self._build_area_context(summary, prompt, ranking=ranking, safety_first=safety_first)
 
         service_codes = await self._market.get_service_codes()
         service_code_list = "\n".join(f"{sc.code}|{sc.name}" for sc in service_codes)
@@ -1157,6 +1301,16 @@ class ChatInteractor(ChatUseCase):
         self._notify(on_stage, "data", "공공데이터를 분석하고 있어요")
         raw_stats = await self._market.get_area_raw_stats(valid_codes, service_code, quarter)
         real_stats = self._format_stats(raw_stats, quarter)
+        # 업종 데이터 없는 상권은 뒤로(2026-09-08 QA P02·P03) — "치킨 순위"에 치킨 매출이 없는 곳이
+        # 같은 비중으로 섞여 판단이 안 됐다. 데이터 있는 곳을 앞에 두고, 없는 곳은 참고용으로 고지한다.
+        no_data_codes = [c for c in valid_codes if not (raw_stats.get(c) and raw_stats[c].has_sales)]
+        if no_data_codes and len(no_data_codes) < len(valid_codes):
+            valid_codes = [c for c in valid_codes if c not in no_data_codes] + no_data_codes
+        # 상대 비교 축(P10) — "제일 안전한 데"는 코드가 폐업률로 고른다. LLM은 그 결론을 받아 쓴다.
+        superlative = self._superlative_pick(prompt, valid_codes, raw_stats, area_map)
+        if superlative is not None:
+            best_code, superlative_line = superlative
+            valid_codes = [best_code] + [c for c in valid_codes if c != best_code]
         # M3 스코어링 근거 주입 — 시도 벤치마크 대비 종합점수(산출 불가 상권은 라인 생략)
         area_scores = await self._market.get_area_scores(valid_codes)
         # 상권 성격 해석 — 고객 프로필·배후 수요·소비·객단가. 지도 오버레이만 보던 문장을
@@ -1200,13 +1354,17 @@ class ChatInteractor(ChatUseCase):
             stats_context_lines.append(self._format_area_articles(area_articles))
         if profile is not None:
             stats_context_lines.append(self._profile_market_block(profile))
+        if superlative is not None:
+            stats_context_lines.append(
+                f"[비교 결론 — 코드가 정함] {superlative_line} text의 첫 문장은 이 결론과 같아야 하고,"
+                " 다른 상권을 더 권하려면 그 기준(매출·유동인구 등)을 수치와 함께 밝힐 것."
+            )
 
         # phase2(최종 서술 = 최종 사용자 답변) → 오케스트레이터 기본 모델(7.8B)
         self._notify(on_stage, "narrate", "추천 이유를 정리하고 있어요")
+        phase2_context = "\n".join(stats_context_lines)
         try:
-            p2 = await self._orchestrate_json(
-                f"{PHASE2_PROMPT}\n\n" + "\n".join(stats_context_lines), "Phase2",
-            )
+            p2 = await self._orchestrate_json(f"{PHASE2_PROMPT}\n\n{phase2_context}", "Phase2")
         except Exception:
             logger.error("[chat] Phase2 파싱 실패(재시도 포함)")
             raise InvalidLLMResponseError("AI 서술 생성 실패")
@@ -1231,6 +1389,13 @@ class ChatInteractor(ChatUseCase):
             )
             for code, reason in reason_map.items()
         }
+        # 서술-숫자 근거 가드(2026-09-08 QA P02·P03) — 컨텍스트에 없는 숫자가 든 문장은 걷어낸다.
+        # 걷힌 유의 문장은 바로 아래 _ensure_risk_note가 데이터 기반으로 다시 채운다.
+        grounded = answer_guard.grounded_numbers(phase2_context) | answer_guard.grounded_numbers(prompt)
+        reason_map = {
+            code: answer_guard.strip_ungrounded_numbers(reason, grounded)
+            for code, reason in reason_map.items()
+        }
         # C2 리스크 의무의 결정론 보강 — 모델이 "유의할 점"을 빼먹으면(첫 재측정 준수율 31%)
         # 이미 컨텍스트에 주입된 수치를 재인용해 붙인다. 창작이 아니라 팩트의 재사용이다.
         reason_map = {
@@ -1243,6 +1408,14 @@ class ChatInteractor(ChatUseCase):
         reasoned = [c for c in valid_codes if reason_map.get(c, "").strip()]
         if reasoned:
             valid_codes = reasoned
+        text = answer_guard.strip_ungrounded_numbers(str(p2.get("text", "") or ""), grounded)
+        # 본문이 먼저 지목한 상권 = 카드 1번(2026-09-08 QA P01) — 본문은 카페거리, 카드 1번은 성수역이라
+        # 어디를 믿을지 몰랐다. 비교 축이 있으면 그 결론이 우선이라 재정렬하지 않는다.
+        if superlative is None and text:
+            mention = {c: text.find(area_map[c].trdar_name) for c in valid_codes}
+            first = min((c for c in valid_codes if mention[c] >= 0), key=lambda c: mention[c], default=None)
+            if first is not None and valid_codes[0] != first:
+                valid_codes = [first] + [c for c in valid_codes if c != first]
 
         # 등급 결정론 가드(2026-08-31 실측 p04) — '주의'/'위험' 상권은 모델이 무엇을 썼든
         # 추천 어휘를 차단하고, 등급 고지를 답변 첫 문단에 코드로 삽입한다(아래 text 조립).
@@ -1284,17 +1457,28 @@ class ChatInteractor(ChatUseCase):
                 ),
             ))
 
-        text = p2.get("text", "")
+        if superlative is not None:
+            text = f"{superlative_line}\n\n{text}" if text else superlative_line
+        if no_data_codes and len(no_data_codes) < len(valid_codes):
+            names = "·".join(area_map[c].trdar_name for c in no_data_codes if c in area_map)
+            text = f"{text.rstrip()}\n\n※ {names}은(는) 이 업종({service_name}) 매출 데이터가 없어 참고용이에요."
         if caution_codes:
             text = answer_guard.suppress_recommendation(text)
+            # 같은 대화에서 이미 고지한 상권은 한 줄로(2026-09-08 QA P10 — 매 턴 두 줄씩 반복)
+            already = [
+                code for code in caution_codes
+                if any(m.role == "assistant" and area_map[code].trdar_name in (m.content or "")
+                       and "등급으로" in (m.content or "") for m in history)
+            ]
+            fresh = [c for c in caution_codes if c not in already]
             notices = " ".join(
                 answer_guard.grade_caution_notice(
-                    area_map[code].trdar_name,
-                    area_scores[code].grade,
-                    area_scores[code].total,
+                    area_map[code].trdar_name, area_scores[code].grade, area_scores[code].total,
                 )
-                for code in caution_codes
+                for code in fresh
             )
+            if already and not fresh:
+                notices = answer_guard.GRADE_NOTICE_REPEAT
             text = f"{notices}\n\n{text}" if text else notices
         # 미지원 축 고지(I-12)가 맨 앞 — "없다"부터 말하고 보유 데이터 서술이 따른다
         text = _unsupported_notice(prompt, _MARKET_UNSUPPORTED_NOTICES) + radius_note + text
@@ -1412,7 +1596,9 @@ class ChatInteractor(ChatUseCase):
             f" · {p.debt_label} · {p.horizon_label} 관점\n"
             "- 이 프로파일에 맞춰 유의점의 강조점만 조정할 것(예: 예산이 작거나 부채 부담이"
             " 있으면 폐업률·경쟁 같은 리스크를 먼저). 프로파일을 근거로 수치를 창작하거나"
-            " 특정 상권이 이 예산으로 가능하다고 단정하지 말 것(임대료·권리금 데이터 없음)"
+            " 특정 상권이 이 예산으로 가능하다고 단정하지 말 것(임대료·권리금 데이터 없음)\n"
+            f"- text 첫 문장에 질문자 조건을 그대로 적을 것 — 예: \"{p.risk_label}·예산 {p.budget_label} 기준으로 보면 …\""
+            " (2026-09-08 QA: 프로파일이 읽혔는지 사용자가 알 수 없었다)"
         )
 
     async def _orchestrate_json(self, prompt: str, phase_label: str) -> dict:
@@ -1642,7 +1828,9 @@ class ChatInteractor(ChatUseCase):
             "신호 적중률·검증 수치를 물으면 지어내지 말고 \"'너희 서비스 적중률 알려줘'"
             "처럼 물어보면 실측 수치로 답한다\"고 안내할 것. 서비스 기능은 다음이 전부다"
             " — 상권 분석 채팅, 종목 분석 채팅, 프로필의 가격 도달 알림(이메일·텔레그램),"
-            " 북마크 종목 뉴스·신호 알림. 이 목록에 없는 기능(상권 임대료·권리금 알림 등)이나"
+            " 북마크 종목 뉴스·신호 알림, AI 모의투자 화면(/paper — EXAONE이 매일 예측 스냅샷·뉴스를"
+            " 읽고 판단한 것을 다음 장 시가에 사후 체결하는 기록, 실제 매매 아님·권유 아님)."
+            " 이 목록에 없는 기능(상권 임대료·권리금 알림 등)이나"
             " 화면 사용법(버튼 위치 등)을 지어내서 안내하지 말 것.\n\n질문: "
         )
         try:
@@ -1707,15 +1895,76 @@ class ChatInteractor(ChatUseCase):
             lines.append(f"- 근거 [{i}] ({date_text} | {ticker_text} | {label_text}) {h.title}")
         return "\n".join(lines)
 
+    async def _answer_stock_compare(
+        self, conversation_id: int, prompt: str, queries: list[str], on_stage=None,
+    ) -> AskResponse:
+        """종목 2~3개 비교표 — 방향·현재가·과거 같은 신호 상승 비율/평소·RSI·모멘텀을 나란히. 결론도 코드가 쓴다."""
+        self._notify(on_stage, "analyze", f"{len(queries)}개 종목을 나란히 보고 있어요")
+        rows, failed = [], []
+        for q in queries:
+            try:
+                a = await self._stocks.analyze(q)
+            except StockAnalysisUnavailable as e:
+                failed.append(f"{q}({e.detail})")
+                continue
+            f = None
+            if self._forecaster is not None:
+                try:
+                    f = await self._forecaster.forecast(a.symbol)
+                except Exception:
+                    f = None
+            rows.append((q, a, f))
+        if not rows:
+            text = "비교할 종목을 찾지 못했어요: " + ", ".join(failed) + " — 정확한 종목명이나 티커로 다시 물어봐 주세요."
+            await self._conversations.add_message(conversation_id, "assistant", text)
+            return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
+        direction_word = {"UP": "상승 신호", "DOWN": "하락 신호", "NEUTRAL": "중립"}
+        header = "| 종목 | 현재가(지연) | 지금 신호 | 과거 같은 신호일 때 상승 비율 / 평소 | RSI | 12-1 모멘텀 | 뉴스 감성 |\n|---|---|---|---|---|---|---|"
+        table = [header]
+        for q, a, f in rows:
+            unit = self._currency_unit(a.symbol)
+            price = f"{a.price:,.0f}{unit}" if unit == "원" else f"${a.price:,.2f}"
+            if f is not None and f.up_rate is not None and f.baseline_up_rate is not None:
+                stat = f"{f.up_rate:.0%} / {f.baseline_up_rate:.0%}(n={f.sample_size}{'' if f.ready else ', 유의성 미달'})"
+            else:
+                stat = "표본 없음"
+            table.append(
+                f"| {q}({a.symbol}) | {price} | {direction_word.get(a.direction, a.direction)} | {stat}"
+                f" | {a.rsi:.0f} | {a.momentum_12_1:+.1%} | {a.sentiment_label} |"
+            )
+        ups = [q for q, a, _ in rows if a.direction == "UP"]
+        downs = [q for q, a, _ in rows if a.direction == "DOWN"]
+        if not ups and not downs:
+            verdict = "지금은 두 종목 모두 방향 신호가 중립이라, 이 데이터로는 우열을 가르지 않아요."
+        else:
+            parts = []
+            if ups:
+                parts.append(f"{'·'.join(ups)}에 상승 참고 신호")
+            if downs:
+                parts.append(f"{'·'.join(downs)}에 하락 참고 신호")
+            verdict = " / ".join(parts) + "가 있어요 — 과거 통계 참고치이지 매매 지시가 아니에요."
+        text = (
+            "**비교**\n" + "\n".join(table) + f"\n\n**결론** {verdict}"
+            + (f"\n(찾지 못함: {', '.join(failed)})" if failed else "")
+            + "\n각 종목을 따로 물으면 뉴스·매물대·가치 근거까지 서술해 드려요."
+        )
+        text = answer_guard.ensure_disclaimer(text)
+        # 카드는 싣지 않는다 — 비교 답에 한 종목 카드만 붙으면 그 종목을 고른 것처럼 읽힌다
+        await self._conversations.add_message(conversation_id, "assistant", text)
+        return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
+
     async def _answer_stock(
         self, conversation_id: int, prompt: str, stock_queries: list[str], on_stage=None,
         profile: UserProfileSummary | None = None,
     ) -> AskResponse:
-        # 비교 질문은 아직 단일 분석만 지원한다(I-18) — 첫 종목만 분석하고 고지는
-        # LLM이 아니라 코드가 문두에 붙인다(결정론 가드 원칙).
         stock_query, extra_queries = stock_queries[0], stock_queries[1:]
+        if extra_queries and _COMPARE_RE.search(prompt):
+            # 다종목 비교(2026-09-08 QA P07) — 예전엔 첫 종목만 분석하고 "따로 물어봐 주세요"로 끝났다.
+            # 비교표는 LLM 없이 코드가 만든다(수치 비교에 서술이 끼면 우열을 지어낸다). 비교 어휘가
+            # 없는 다중 질의(분류기가 "PER 낮은 저평가"를 셋으로 쪼갠 경우)는 기존 단일 경로로 둔다.
+            return await self._answer_stock_compare(conversation_id, prompt, stock_queries[:3], on_stage)
         compare_notice = (
-            f"여러 종목 비교는 아직 지원하지 않아 '{stock_query}'만 분석했어요. "
+            f"여러 종목을 한 번에 물으셔서 '{stock_query}'만 분석했어요. "
             f"{', '.join(extra_queries)}은(는) 따로 물어봐 주세요.\n\n"
         ) if extra_queries else ""
         # 미지원 고지는 실패 경로에도 붙는다(3차 실측 P4) — "PER 낮은 5개"가 리졸버에서

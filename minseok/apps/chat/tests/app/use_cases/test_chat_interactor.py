@@ -319,7 +319,7 @@ def _area_score() -> AreaScoreInfo:
 
 def _build(monkeypatch, llm_responses, *, stocks=None, news=None, conversations=None,
            market=None, market_news=None, gemini=None, forecaster=None, fundamentals=None,
-           profiles=None, signals=None):
+           profiles=None, signals=None, paper=None):
     llm = _StubLLM(llm_responses)
     monkeypatch.setattr("chat.app.use_cases.chat_interactor.llm_orchestrator", llm)
     market, recorder = market or _StubMarket(), _StubRecorder()
@@ -334,7 +334,7 @@ def _build(monkeypatch, llm_responses, *, stocks=None, news=None, conversations=
         market=market, recorder=recorder, conversations=conversations,
         stocks=stocks, news=news, market_news=market_news, gemini=gemini,
         forecaster=forecaster, fundamentals=fundamentals, profiles=profiles,
-        signals=signals,
+        signals=signals, paper=paper,
     )
     return interactor, llm, dict(market=market, recorder=recorder,
                                  conversations=conversations, stocks=stocks, news=news,
@@ -354,32 +354,33 @@ async def test_stock_의도면_분석_포트를_호출하고_카드를_반환한
     assert result.text.endswith("투자 판단과 그 결과는 본인 책임입니다.")
 
 
-async def test_비교_질문_리스트_반환은_첫_종목만_분석하고_고지한다(monkeypatch):
-    # 7.8B가 스키마(단일 문자열) 대신 리스트를 반환한 실사례(2026-08-31 프로덕션)
+async def test_비교_질문은_종목마다_분석해_비교표와_결정론_결론을_낸다(monkeypatch):
+    # 2026-09-08 QA P07 — 예전엔 첫 종목만 분석하고 "따로 물어봐 주세요"로 끝났다.
     intent = '{"intent": "stock", "stock_query": ["테슬라", "애플"]}'
-    interactor, _, stubs = _build(monkeypatch, [intent, "주식 서술"])
+    interactor, llm, stubs = _build(monkeypatch, [intent])
     result = await interactor.ask("테슬라랑 애플 중 어디에 투자할까?")
-    assert stubs["stocks"].queries == ["테슬라"]  # 리스트 표기가 리졸버로 흘러가지 않는다
-    assert result.text.startswith("여러 종목 비교는 아직 지원하지 않아 '테슬라'만 분석했어요.")
-    assert "애플" in result.text.split("\n\n")[0]
-    assert result.text.endswith("투자 판단과 그 결과는 본인 책임입니다.")  # 고지 유지
+    assert stubs["stocks"].queries == ["테슬라", "애플"]
+    assert result.text.startswith("**비교**") and "| 종목 |" in result.text
+    assert "테슬라(005930)" in result.text and "애플(005930)" in result.text
+    assert "**결론**" in result.text and "매매 지시가 아니에요" in result.text or "우열을 가르지 않아요" in result.text
+    assert result.stock is None  # 비교 답에 한 종목 카드를 싣지 않는다
+    assert result.text.endswith("투자 판단과 그 결과는 본인 책임입니다.")
+    assert len(llm.calls) == 1  # 비교표는 LLM 없이 코드가 만든다(의도 분류 1회뿐)
 
 
-async def test_비교_질문_쉼표_결합_문자열도_첫_종목만_분석한다(monkeypatch):
-    # 세 번째 변형(2026-09-01 배포 검증 실측): "테슬라, 애플" 단일 문자열
+async def test_비교_질문_쉼표_결합_문자열도_두_종목_모두_분석한다(monkeypatch):
     intent = '{"intent": "stock", "stock_query": "테슬라, 애플"}'
-    interactor, _, stubs = _build(monkeypatch, [intent, "주식 서술"])
+    interactor, _, stubs = _build(monkeypatch, [intent])
     result = await interactor.ask("테슬라랑 애플 중 어디에 투자할까?")
-    assert stubs["stocks"].queries == ["테슬라"]
-    assert result.text.startswith("여러 종목 비교는 아직 지원하지 않아 '테슬라'만 분석했어요.")
+    assert stubs["stocks"].queries == ["테슬라", "애플"]
+    assert "| 종목 |" in result.text
 
 
-async def test_비교_질문_리스트_문자열_표기도_첫_종목만_분석한다(monkeypatch):
-    # 리스트를 문자열로 흉내낸 변형("['테슬라', '애플']") — str() 캐스팅 시절의 실패 모양
+async def test_비교_질문_리스트_문자열_표기도_두_종목_분석한다(monkeypatch):
     intent = '{"intent": "stock", "stock_query": "[\'테슬라\', \'애플\']"}'
-    interactor, _, stubs = _build(monkeypatch, [intent, "주식 서술"])
+    interactor, _, stubs = _build(monkeypatch, [intent])
     await interactor.ask("테슬라랑 애플 비교해줘")
-    assert stubs["stocks"].queries == ["테슬라"]
+    assert stubs["stocks"].queries == ["테슬라", "애플"]
 
 
 async def test_단일_종목_질문은_고지_없이_기존과_동일하다(monkeypatch):  # 무손상 회귀
@@ -750,7 +751,7 @@ async def test_주의_등급_상권은_추천_어휘가_차단되고_등급_고�
     result = await interactor.ask("역삼동 카페 어때?")
 
     # 등급 고지가 답변 첫 문단에 코드로 박힌다
-    assert result.text.startswith("※ 테스트상권 상권은 종합 44.9점 '주의' 등급")
+    assert result.text.startswith("※ 테스트상권 상권은 상권 전체 건강 점수 44.9점 '주의' 등급")
     # 추천 어휘는 본문·이유 모두에서 차단된다(eval_scorer grade_caution과 같은 어휘)
     assert "추천" not in result.text and "강력히" not in result.text
     assert "추천" not in result.recommendations[0].reason
@@ -2147,3 +2148,89 @@ async def test_괄호_별칭_지명도_언급_매칭된다(monkeypatch):
     summary = AreaSummary(areas=[balsan], latest_quarter=20254, sales_by_code={9: 1})
     assert interactor._mentioned_codes(summary, "마곡에 편의점 어때?") == {9}
     assert interactor._mentioned_codes(summary, "강남에 편의점 어때?") == set()
+
+
+# --- 2026-09-08 페르소나 QA 후속 ---
+
+class _StubPaper:
+    def __init__(self, infos):
+        self.infos = infos
+        self.calls = 0
+
+    async def latest(self, accounts):
+        self.calls += 1
+        return self.infos
+
+
+def _paper_info():
+    from datetime import date
+    from hub.app.dtos.paper_trading_dto import PaperDecisionInfo, PaperOrderInfo
+    return PaperDecisionInfo(
+        account="exaone", as_of=date(2026, 9, 4), market_view="변동성", equity_krw=94_460_000, return_pct=-0.0554,
+        orders=[PaperOrderInfo("COST", "BUY", "코스트코의 지역 경제 활성화 방안과 긍정적 감성", [1, 2]),
+                PaperOrderInfo("QCOM", "BUY", "퀄컴 기술 혁신", [3])],
+        filled_tickers=["QCOM"],
+    )
+
+
+async def test_AI가_뭐_사는지_물으면_모의투자_기록을_코드가_답한다(monkeypatch):
+    paper = _StubPaper([_paper_info()])
+    interactor, llm, _ = _build(monkeypatch, [], paper=paper)
+    result = await interactor.ask("AI는 요즘 뭐 사?")
+    assert paper.calls == 1 and llm.calls == []  # LLM 미사용
+    assert "EXAONE 계정" in result.text and "매수 COST" in result.text and "체결: QCOM" in result.text
+    assert "-5.5%" in result.text and "권유가 아니에요" in result.text and "/paper" in result.text
+
+
+async def test_모의투자가_뭐냐고_물어도_제공하지_않는다고_하지_않는다(monkeypatch):
+    paper = _StubPaper([])
+    interactor, _, _ = _build(monkeypatch, [], paper=paper)
+    result = await interactor.ask("AI 모의투자가 뭐야?")
+    assert "기록이 아직 없어요" in result.text and "/paper" in result.text
+
+
+async def test_급등주_거절문은_대안_경로를_준다(monkeypatch):
+    interactor, _, _ = _build(monkeypatch, [])
+    result = await interactor.ask("내일 급등할 종목 3개만 찍어줘")
+    assert "신호 보드" in result.text and "/paper" in result.text
+
+
+def test_최상급_비교는_코드가_폐업률로_고른다():
+    from types import SimpleNamespace as NS
+    from chat.app.use_cases.chat_interactor import ChatInteractor
+    raw = {1: NS(has_store=True, closure_rate=3.0, has_sales=True, monthly_sales_amount=1, store_count=1),
+           2: NS(has_store=True, closure_rate=0.0, has_sales=True, monthly_sales_amount=1, store_count=1),
+           3: NS(has_store=True, closure_rate=0.0, has_sales=True, monthly_sales_amount=1, store_count=1)}
+    area = {1: NS(trdar_name="성수역"), 2: NS(trdar_name="성수동카페거리"), 3: NS(trdar_name="뚝섬역상점가")}
+    pick = ChatInteractor._superlative_pick("그 중에서 제일 안전한 데 하나만", [1, 2, 3], raw, area)
+    assert pick is not None
+    best, line = pick
+    assert best == 2 and "성수동카페거리 0%" in line and "성수역 3%" in line and "가장 낮은 곳은 성수동카페거리·뚝섬역상점가" in line
+    assert ChatInteractor._superlative_pick("성수동 카페 어때", [1, 2], raw, area) is None
+
+
+async def test_직전_추천_뒤_업종을_물으면_그_상권의_업종별_수치를_코드가_낸다(monkeypatch):
+    # 2026-09-08 QA P08 — "내 예산으로 할 수 있는 업종은?"에 직전 답(상권 3곳·가방)을 재탕했다
+    conversations = _StubConversations(history=[
+        Message(id=1, conversation_id=100, role="user", content="내 상황에 맞는 상권 추천해줘", created_at=_NOW),
+        Message(id=2, conversation_id=100, role="assistant", content="광화문역을 추천", created_at=_NOW,
+                payload={"recommendations": [
+                    {"id": "3110131", "name": "광화문역", "serviceCode": "CS100010", "category": "가방"}]}),
+    ])
+    market = _StubMarket(services=[ServiceCode(code="CS100010", name="커피-음료"), ServiceCode(code="CS100001", name="한식음식점"),
+                                   ServiceCode(code="CS999", name="가방")],
+                         raw=_raw_stat(has_sales=True, monthly_sales_amount=400_000_000, has_store=True, store_count=10, closure_rate=2.0))
+    interactor, llm, _ = _build(monkeypatch, [], conversations=conversations, market=market)
+    result = await interactor.ask("내 예산으로 할 수 있는 업종은?")
+    assert llm.calls == []
+    assert result.text.startswith("광화문역에서 업종별로 보면")
+    assert "커피-음료 — 점포당 월매출 4,000만원 · 폐업률 2%" in result.text and "한식음식점" in result.text
+    assert "가방" not in result.text  # 후보 목록 밖 업종은 안 나온다
+    assert "예산에 맞는지는 판정하지 않았어요" in result.text
+
+
+async def test_예산_질문에는_판정_불가와_다음_행동을_문두에_고지한다(monkeypatch):
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON])
+    result = await interactor.ask("1억으로 성수동에 카페 차릴 만해?")
+    assert result.text.startswith("※ 예산에 맞는 자리인지는 판정하지 않았어요")
+    assert "부동산 중개 사이트" in result.text

@@ -252,8 +252,46 @@ def grade_caution_notice(name: str, grade: str, total: float) -> str:
     """등급 고지 한 줄 — 답변 첫 문단에 코드가 삽입한다(모델 서술과 무관하게 항상 정확).
 
     '주의'(30~45)·'위험'(<30)은 정의상 항상 서울 평균(50점) 미달이다(GRADE_BOUNDS).
+    점수 이름을 붙인다 — 2026-09-08 QA P01: 같은 상권이 채팅에선 "종합 44.9점 주의",
+    상권 화면에선 "적합도 67점 양호"로 나와 두 점수가 같은 것을 재는 줄 알았다.
     """
     return (
-        f"※ {name} 상권은 종합 {total:.1f}점 '{grade}' 등급으로"
-        " 서울 평균(50점)에 못 미칩니다. 아래 유의점을 먼저 확인하세요."
+        f"※ {name} 상권은 상권 전체 건강 점수 {total:.1f}점 '{grade}' 등급으로"
+        " 서울 평균(50점)에 못 미칩니다(업종 적합도와는 다른 지표예요). 아래 유의점을 먼저 확인하세요."
     )
+
+
+GRADE_NOTICE_REPEAT = "※ 앞서 안내한 상권 등급 유의점이 이 답에도 그대로 적용돼요."
+
+# 서술-숫자 근거 가드(2026-09-08 QA P02·P03) — 요약문 "37개"·"폐업 4곳"이 카드("60개"·"데이터 없음")와
+# 어긋났다. 컨텍스트에 없는 숫자(2자리 이상)가 든 문장은 통째로 걷어낸다. eval_scorer의
+# hallucinated_number 규칙과 같은 정규화라 게이트와 런타임이 같은 것을 본다.
+_NUM = re.compile(r"\d[\d,]*(?:\.\d+)?")
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+|\n+")
+_CITATION_MARK = re.compile(r"\[\d+\]")
+
+
+def grounded_numbers(text: str) -> set[str]:
+    out: set[str] = set()
+    for m in _NUM.finditer(text or ""):
+        n = m.group().replace(",", "").rstrip(".")
+        if "." in n:
+            n = n.rstrip("0").rstrip(".")
+        if len(n.replace(".", "")) >= 2:
+            out.add(n)
+    return out
+
+
+def strip_ungrounded_numbers(text: str, grounded: set[str]) -> str:
+    """근거에 없는 숫자가 든 문장을 걷어낸다. 전부 걷히면 원문을 돌려준다(빈 답보다 낫다)."""
+    if not text:
+        return text
+    kept = []
+    for sentence in _SENTENCE_SPLIT.split(text):
+        if not sentence.strip():
+            continue
+        nums = grounded_numbers(_CITATION_MARK.sub("", sentence))
+        if nums - grounded:
+            continue
+        kept.append(sentence.strip())
+    return " ".join(kept) if kept else text

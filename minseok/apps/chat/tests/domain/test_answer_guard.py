@@ -82,7 +82,7 @@ def test_추천_활용형과_명사형도_치환된다():
 
 def test_등급_고지_문장():
     line = g.grade_caution_notice("성수역", "주의", 44.9)
-    assert line.startswith("※ 성수역 상권은 종합 44.9점 '주의' 등급")
+    assert line.startswith("※ 성수역 상권은 상권 전체 건강 점수 44.9점 '주의' 등급")
     assert "서울 평균(50점)에 못 미칩니다" in line
 
 
