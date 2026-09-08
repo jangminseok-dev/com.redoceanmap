@@ -158,6 +158,7 @@ export type StockQuote = {
   delayed: boolean; // true = 지연 시세(yfinance 무료)
   previous_close?: number | null;
   change_pct?: number | null; // 전일 대비 (0.012 = +1.2%)
+  fetched_at?: string | null; // 벤더 조회 시각(UTC ISO) — 구버전 응답 호환 옵셔널
 };
 
 // ── GET /stock/board ──

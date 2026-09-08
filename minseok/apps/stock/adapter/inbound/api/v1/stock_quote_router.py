@@ -24,4 +24,5 @@ async def get_stock_quote(
         delayed=view.delayed,
         previous_close=view.previous_close,
         change_pct=view.change_pct,
+        fetched_at=view.fetched_at,
     )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from datetime import UTC, datetime
 
 from stock.app.dtos.stock_quote_dto import QuoteQuery, QuoteView
 from stock.app.ports.input.stock_quote_use_case import StockQuoteUseCase
@@ -33,6 +34,7 @@ class StockQuoteInteractor(StockQuoteUseCase):
             delayed=True,
             previous_close=quote.previous_close.value if quote.previous_close else None,
             change_pct=quote.change_pct(),
+            fetched_at=datetime.now(UTC).isoformat(timespec="seconds"),
         )
         _CACHE[symbol] = (now, view)
         return view

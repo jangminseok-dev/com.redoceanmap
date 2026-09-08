@@ -811,6 +811,24 @@ class ChatInteractor(ChatUseCase):
         return None
 
     @staticmethod
+    def _market_verdict_line(code: int, area_map: dict, real_stats: dict, service_name: str, area_scores: dict) -> str:
+        """1순위 상권 결론 한 줄 — 데이터 있는 축만 잇는다('데이터 없음'은 쓰지 않는다)."""
+        area = area_map.get(code)
+        if area is None:
+            return ""
+        st = real_stats.get(code, {})
+        parts = []
+        if st.get("revenue_text") and "없음" not in st["revenue_text"]:
+            parts.append(st["revenue_text"])
+        if st.get("closure_text") and "없음" not in st["closure_text"]:
+            parts.append(st["closure_text"])
+        score = area_scores.get(code)
+        if score is not None and getattr(score, "grade", None):
+            parts.append(f"상권 건강 {score.total:.0f}점 '{score.grade}'")
+        basis = f" — {' · '.join(parts)}" if parts else ""
+        return f"**결론** {service_name} 기준으로는 {area.trdar_name}부터 보세요{basis}."
+
+    @staticmethod
     def _superlative_pick(prompt: str, codes: list[int], raw_stats: dict, area_map: dict) -> tuple[int, str] | None:
         """'제일 안전한/매출 높은' 질문의 결론을 코드가 정한다 — 후보 2곳 이상·지표 보유 시에만."""
         axis = next((a for a, rx in _SUPERLATIVE_AXES if rx.search(prompt)), None)
@@ -1544,6 +1562,12 @@ class ChatInteractor(ChatUseCase):
 
         if superlative is not None:
             text = f"{superlative_line}\n\n{text}" if text else superlative_line
+        elif valid_codes:
+            # 결론 먼저(계획서 4장 I-21 / C2 골격의 첫 조각) — 1순위 상권과 그 근거 수치를 코드가 한 줄로.
+            # LLM 서술은 그 뒤에 온다. 숫자는 real_stats에서 그대로 인용하므로 근거 가드와 정합.
+            verdict = self._market_verdict_line(valid_codes[0], area_map, real_stats, service_name, area_scores)
+            if verdict:
+                text = f"{verdict}\n\n{text}" if text else verdict
         if no_data_codes and len(no_data_codes) < len(valid_codes):
             names = "·".join(area_map[c].trdar_name for c in no_data_codes if c in area_map)
             text = f"{text.rstrip()}\n\n※ {names}은(는) 이 업종({service_name}) 매출 데이터가 없어 참고용이에요."

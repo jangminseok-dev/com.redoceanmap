@@ -908,7 +908,9 @@ async def test_보통_이상_등급_상권은_추천_어휘를_건드리지_않�
         monkeypatch, [INTENT_MARKET, PHASE1_JSON, phase2], market=market,
     )
     result = await interactor.ask("역삼동 카페 어때?")
-    assert result.text.startswith("테스트상권을 추천합니다")
+    # 결론 한 줄(코드)이 먼저 오고 모델 서술은 그대로 — '보통' 등급은 추천 어휘를 건드리지 않는다
+    assert result.text.startswith("**결론** 커피-음료 기준으로는 테스트상권부터 보세요")
+    assert "테스트상권을 추천합니다" in result.text
     assert "추천 이유" in result.recommendations[0].reason
 
 
