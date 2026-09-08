@@ -68,8 +68,15 @@ def fetch(sector: str, op: str, year: int) -> list[dict]:
     while True:
         res = requests.get(f"{BASE}/{op}", params={
             "serviceKey": API_KEY, "pageNo": page, "numOfRows": PAGE, "resultType": "json", "yr": year,
-        }, timeout=30)
-        res.raise_for_status()
+        }, headers={"User-Agent": "Mozilla/5.0 (redoceanmap collector)"}, timeout=30)
+        if res.status_code != 200:
+            # URL에 serviceKey가 들어 있다 — 예외 메시지(URL 포함)를 그대로 찍지 않는다(비밀값 로그 금지).
+            # 포털 오류(활용신청 전 '등록되지 않은 서비스키' 등)는 본문의 사유만 남긴다.
+            try:
+                reason = res.json()["OpenAPI_ServiceResponse"]["cmmMsgHeader"].get("returnAuthMsg", "")
+            except Exception:
+                reason = ""
+            raise RuntimeError(f"HTTP {res.status_code} {reason} ({op})".replace("  ", " "))
         body = res.json()
         if "OpenAPI_ServiceResponse" in body:  # 포털 게이트웨이 오류(키 미등록 등)
             raise RuntimeError(body["OpenAPI_ServiceResponse"]["cmmMsgHeader"].get("returnAuthMsg", "포털 오류"))
