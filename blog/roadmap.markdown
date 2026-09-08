@@ -10,7 +10,7 @@ permalink: /roadmap/
 <div class="cn-card cn-bg-warm cn-statement cn-wide">
   <p class="cn-label">로드맵</p>
   <h2>① 개인 투자/분석 도구 → ② 운영·품질 기반 완성 → ③ 실사용자 서비스</h2>
-  <p>목표는 단계적이다.</p>
+  <p>①·② 완료, ③ 진행 중. 검증 게이트를 통과한 것만 완료로 적는다.</p>
 </div>
 
 <div class="cn-card cn-bg-plain cn-body cn-wide" markdown="1">
@@ -201,8 +201,6 @@ permalink: /roadmap/
 
 </div>
 </div>
-
-※ 보드는 마일스톤 진행에 따라 갱신한다. 마일스톤 종료 시점의 보드 스냅샷은 리뷰 포스트에 기록한다.
 
 </div>
 

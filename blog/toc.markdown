@@ -55,8 +55,6 @@ permalink: /toc/
 ## 5. 개발 리뷰
 
 1. [리뷰 포스트 목록]({{ '/posts/' | relative_url }})
-2. 마일스톤을 끝낼 때마다 리뷰를 추가
-3. 지난 마일스톤 소급 리뷰 <span style="font-size: 0.9rem;">(작성 예정)</span>
 
 </div>
 
@@ -64,12 +62,11 @@ permalink: /toc/
 
 ## 6. 부록
 
-1. 용어 정의 <span style="font-size: 0.9rem;">(작성 예정)</span>
-2. [탈락 아이디어 검토 근거]({{ '/roadmap/' | relative_url }}#rejected)
-3. [프로젝트·블로그 소개]({{ '/about/' | relative_url }})
+1. [탈락 아이디어 검토 근거]({{ '/roadmap/' | relative_url }}#rejected)
+2. [프로젝트·블로그 소개]({{ '/about/' | relative_url }})
 
 </div>
 
 </div>
 
-[프로젝트 개요 보기]({{ '/overview/' | relative_url }}) · [← 표지로 돌아가기]({{ '/' | relative_url }})
+[← 홈]({{ '/' | relative_url }}) · [개발 기록]({{ '/posts/' | relative_url }})
