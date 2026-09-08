@@ -21,7 +21,10 @@
           {%- for path in page_paths -%}
             {%- assign my_page = site.pages | where: "path", path | first -%}
             {%- if my_page.title -%}
-            <a class="page-link" href="{{ my_page.url | relative_url }}">{{ my_page.title | escape }}</a>
+            {%- assign is_active = false -%}
+            {%- if page.url == my_page.url -%}{%- assign is_active = true -%}{%- endif -%}
+            {%- if my_page.url == "/posts/" and page.layout == "post" -%}{%- assign is_active = true -%}{%- endif -%}
+            <a class="page-link{% if is_active %} is-active{% endif %}" href="{{ my_page.url | relative_url }}">{{ my_page.nav_title | default: my_page.title | escape }}</a>
             {%- endif -%}
           {%- endfor -%}
           <a class="page-link site-external" href="https://redoceanmap.com">서비스 바로가기 &rarr;</a>

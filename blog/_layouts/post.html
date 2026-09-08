@@ -1,0 +1,26 @@
+---
+layout: default
+---
+{%- comment -%} 리뷰 포스트 — 제목·메타 카드 + 본문 카드 + 이전/다음 이동. minima post.html을 대체한다. {%- endcomment -%}
+{%- assign words = content | strip_html | size -%}
+{%- assign minutes = words | divided_by: 700 | plus: 1 -%}
+<article class="post cn-grid cn-post" itemscope itemtype="http://schema.org/BlogPosting">
+  <header class="cn-card cn-bg-dark cn-statement cn-wide post-hero">
+    <p class="cn-label">{{ page.categories | first | default: "review" }}</p>
+    <h1 class="post-title" itemprop="name headline">{{ page.title | escape }}</h1>
+    <p class="post-meta">
+      <time datetime="{{ page.date | date_to_xmlschema }}" itemprop="datePublished">{{ page.date | date: "%Y년 %-m월 %-d일" }}</time>
+      · 약 {{ minutes }}분
+    </p>
+  </header>
+
+  <div class="cn-card cn-bg-plain cn-body cn-wide post-body" itemprop="articleBody">
+    {{ content }}
+  </div>
+
+  <nav class="cn-wide post-nav">
+    {%- if page.next -%}<a class="post-nav__link" href="{{ page.next.url | relative_url }}">← 다음 글 · {{ page.next.title | escape }}</a>{%- else -%}<span></span>{%- endif -%}
+    <a class="btn" href="{{ '/posts/' | relative_url }}">전체 기록</a>
+    {%- if page.previous -%}<a class="post-nav__link post-nav__link--right" href="{{ page.previous.url | relative_url }}">이전 글 · {{ page.previous.title | escape }} →</a>{%- else -%}<span></span>{%- endif -%}
+  </nav>
+</article>

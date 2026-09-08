@@ -5,8 +5,8 @@
 title: redoceanmap — 상권·주식 대화형 플랫폼 개발 기록
 email: jang971121@gmail.com
 description: >-
-  전국 상권 분석과 주식 대화형 서비스 redoceanmap의 개발 과정을
-  마일스톤 리뷰 형식으로 기록하는 블로그.
+  서울 상권 분석·주식 해설·AI 모의투자 서비스 redoceanmap을 1인 개발하며
+  마일스톤마다 무엇을·왜·어떻게·아쉬운 점을 남기는 개발 기록.
 baseurl: ""
 url: "https://blog.redoceanmap.com"
 github_username: jangminseok-dev
@@ -14,9 +14,11 @@ github_username: jangminseok-dev
 # Build settings
 theme: minima
 header_pages:
-  - toc.markdown
+  - posts.markdown
   - roadmap.markdown
+  - overview.markdown
   - about.markdown
+excerpt_separator: "\n\n"
 plugins:
   - jekyll-feed
 

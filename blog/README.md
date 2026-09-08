@@ -8,8 +8,12 @@ bundle install                          # 최초 1회
 bundle exec jekyll serve --port 4100    # http://127.0.0.1:4100 (4000은 타 프로젝트와 충돌)
 ```
 
-- 포스트: `_posts/YYYY-MM-DD-제목.markdown` — 리뷰 형식(무엇을 / 왜 / 어떻게 / 아쉬운 점)
-- 빌드 산출물 `_site/`·`.jekyll-cache/`는 gitignore 처리됨 — 커밋 금지
+- 포스트: `_posts/YYYY-MM-DD-제목.markdown` — 리뷰 형식(무엇을 / 왜 / 어떻게 / 아쉬운 점), `layout: post`.
+  첫 문단이 목록 카드의 요약(excerpt)으로 잘려 나가므로 **첫 문단 = 결론 한 단락**으로 쓴다
+- 페이지 내비: `_config.yml`의 `header_pages` 순서대로(개발 기록 `/posts/` · 진행 현황 · 프로젝트 개요 · 소개).
+  탭 이름은 front matter `nav_title`, 현재 페이지는 `header.html`이 `is-active`를 붙인다
+- 표지(`index.markdown`)는 `layout: default` — 상태 타일·최근 글 3편·기능 카드. 글 목록 전체는 `posts.markdown`
+- 빌드 산출물 `_site/`·`.jekyll-cache/`·`vendor/`는 gitignore 처리됨 — 커밋 금지
 
 ## 카드뉴스 형식 (전 페이지 공통)
 
@@ -53,11 +57,15 @@ bundle exec jekyll serve --port 4100    # http://127.0.0.1:4100 (4000은 타 프
 
 ### 갱신 절차 (내용을 고칠 때마다)
 
+호스트에 Ruby가 없으므로 빌드도 도커 경유다(백엔드 PC에서 직접 할 때 — `vendor/bundle`에 gem이 캐시된다).
+
 ```bash
-cd blog && bundle exec jekyll build
-rsync -az --delete _site/ <백엔드PC>:/home/host/projects/redoceanmap/blog_site/
+cd blog && docker run --rm -v "$PWD":/srv -w /srv ruby:3.2-slim \
+  sh -c "bundle config set --local path vendor/bundle >/dev/null && bundle exec jekyll build --quiet"
+cp -a _site/. /home/host/projects/redoceanmap/blog_site/
 ```
 
+다른 기기에서 빌드했다면 `rsync -az --delete _site/ <백엔드PC>:/home/host/projects/redoceanmap/blog_site/`.
 nginx는 볼륨을 그대로 읽으므로 컨테이너 재시작이 필요 없다. 반영 확인:
 
 ```bash

@@ -1,7 +1,7 @@
 ---
-# 카드뉴스 × 리퀴드 글래스 테마
-# 구조: 페이지 = 큰 둥근 카드 그리드 (유지) / 스킨: 다크 차콜 배경 + 반투명 유리 카드
-#       (backdrop blur · 상단 하이라이트 보더 · 유리 광택) — 차갑고 감성적인 톤
+# 카드뉴스 × 리퀴드 글래스 테마 (2026-09 가독성 개편)
+# 구조: 페이지 = 큰 둥근 카드 그리드 / 스킨: 다크 차콜 배경 + 반투명 유리 카드
+# 개편 원칙: 읽기 폭 1240px 상한 · 본문 대비 상향 · 블러 약화 · 글 목록/본문 레이아웃 신설
 ---
 
 // ── minima 변수 오버라이드 (!default보다 먼저) ──
@@ -17,11 +17,11 @@ $content-width:    1200px;
 
 $display: "MaruBuri", "Apple SD Gothic Neo", serif;   // 감성 헤딩 — 네이버 마루부리
 
-// 넓은 화면에서 좌우 여백이 과하지 않게 — 본문 폭을 유동으로 (최대 1560px)
-.wrapper { max-width: min(1560px, 94vw); }
-$ink: #f2f2f4;
-$muted: #b2b2ba;
-$faint: #8e8e96;
+// 읽기 폭 상한 — 1560px은 한 줄이 너무 길어 시선이 흘렀다. 표·카드 2열이 편한 1240px로 낮춘다
+.wrapper { max-width: min(1240px, 94vw); }
+$ink: #f4f4f6;
+$muted: #c3c3cb;   // 본문 보조 텍스트 — 대비 상향(구 #b2b2ba)
+$faint: #9a9aa3;
 $line: rgba(255, 255, 255, 0.12);
 $radius: 26px;
 
@@ -30,8 +30,8 @@ $radius: 26px;
   background:
     linear-gradient(150deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.02) 42%, rgba(255, 255, 255, 0) 60%),
     rgba(255, 255, 255, $alpha);
-  -webkit-backdrop-filter: blur(18px) saturate(1.3);
-  backdrop-filter: blur(18px) saturate(1.3);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  backdrop-filter: blur(12px) saturate(1.2);
   border: 1px solid rgba(255, 255, 255, 0.13);
   border-top-color: rgba(255, 255, 255, 0.28);
   box-shadow:
@@ -97,6 +97,7 @@ body::before {
     border-radius: 999px;
     transition: background 0.2s ease, color 0.2s ease;
     &:hover { color: $ink; text-decoration: none; background: rgba(255, 255, 255, 0.09); }
+    &.is-active { color: $ink; background: rgba(255, 107, 87, 0.18); border: 1px solid rgba(255, 107, 87, 0.35); padding: 7px 13px; }
     &:not(:last-child) { margin-right: 4px; }
   }
   .menu-icon > svg { fill: $ink; }
@@ -211,7 +212,7 @@ pre { background: rgba(0, 0, 0, 0.35); border: 1px solid $line; }
     -webkit-text-fill-color: transparent;
     color: #e6e6ea;   // background-clip 미지원 폴백
   }
-  p { margin: 0; color: $muted; line-height: 1.9; max-width: 36em; font-size: 1.02rem; }
+  p { margin: 0 auto; color: $muted; line-height: 1.9; max-width: 38em; font-size: 1.02rem; }
   .cn-label {
     letter-spacing: 0.55em; text-indent: 0.55em;
     font-size: 0.75rem; font-weight: 700;
@@ -220,7 +221,8 @@ pre { background: rgba(0, 0, 0, 0.35); border: 1px solid $line; }
     margin-bottom: 20px;
   }
 }
-.cn-wide.cn-statement h1 { font-size: 3.1rem; line-height: 1.45; }
+.cn-wide.cn-statement h1 { font-size: 2.6rem; line-height: 1.45; }
+.cn-hero h1 { font-size: 2.3rem !important; max-width: 24em; margin-left: auto; margin-right: auto; }
 
 // ── 텍스트/표 카드 (읽기용) ──
 .cn-body {
@@ -228,6 +230,10 @@ pre { background: rgba(0, 0, 0, 0.35); border: 1px solid $line; }
   min-height: 0;
   line-height: 1.85;
   h2, h3 { margin-top: 0; margin-bottom: 18px; font-size: 1.4rem; color: $ink; }
+  h3 { font-size: 1.15rem; }
+  // 같은 카드 안에 소제목이 여럿이면 문단 사이를 띄워 단락 경계를 살린다
+  h2:not(:first-child) { margin-top: 2.1em; }
+  h3:not(:first-child) { margin-top: 1.6em; }
   p, li { line-height: 1.85; }
   li { margin-bottom: 6px; }
   ul, ol { margin-bottom: 18px; }
@@ -276,9 +282,8 @@ pre { background: rgba(0, 0, 0, 0.35); border: 1px solid $line; }
 // p.cn-actions — .cn-statement p { margin: 0 }보다 우선하도록 셀렉터 구체화
 p.cn-actions, .cn-actions { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: 44px; }
 
-// minima 홈 레이아웃이 자동 삽입하는 RSS 구독 링크·포스트 목록 숨김 (표지를 쇼케이스로만 유지)
+// 표지는 default 레이아웃으로 바꿨다(홈 레이아웃의 자동 목록 대신 /posts/ 목록 페이지). RSS 링크만 숨긴다
 .rss-subscribe { display: none; }
-.home .post-list-heading, .home .post-list { display: none; }
 
 // 표 — 유리 위 가는 라이트 보더
 table {
@@ -336,12 +341,107 @@ blockquote {
 .post-link { color: $ink; &:visited { color: $ink; } }
 .post-list-heading, .post-list h3 { color: $ink; }
 
+.cn-dim { color: $faint; font-size: 0.9em; }
+
+// ── 표지 상태 타일 — 숫자 4개를 한 줄에 ──
+.cn-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+.cn-stat {
+  border-radius: 18px;
+  padding: 18px 20px;
+  display: flex; flex-direction: column; gap: 6px;
+  @include glass(0.04);
+  box-shadow: none;
+  &__value { font-family: $display; font-weight: 700; font-size: 1.45rem; color: $ink; letter-spacing: 0.01em; }
+  &__label { font-size: 0.84rem; color: $muted; line-height: 1.5; }
+}
+
+// ── 표지 "최근 기록" ──
+.cn-latest {
+  &__head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;
+    h2 { margin: 0; font-size: 1.3rem; }
+    a { font-size: 0.9rem; font-weight: 600; }
+  }
+}
+.cn-postlist {
+  list-style: none; margin: 0; padding: 0;
+  li + li { border-top: 1px solid rgba(255, 255, 255, 0.07); }
+  a {
+    display: flex; align-items: center; gap: 16px;
+    padding: 14px 4px; color: $ink; text-decoration: none; font-weight: 500;
+    transition: color 0.15s ease;
+    &:hover { color: $brand-color; text-decoration: none; .cn-postlist__arrow { color: $brand-color; transform: translateX(3px); } }
+  }
+  &__date { color: $faint; font-variant-numeric: tabular-nums; font-size: 0.9rem; flex: 0 0 3.2em; }
+  &__title { flex: 1; }
+  &__arrow { color: $faint; font-size: 1.15em; transition: transform 0.2s ease, color 0.15s ease; }
+}
+
+// ── 글 목록 카드(/posts/) — 카드 전체가 링크 ──
+a.cn-postcard, a.cn-postcard:visited {
+  align-items: flex-start; justify-content: flex-start; text-align: left;
+  padding: 30px 36px; min-height: 0;
+  color: $ink; text-decoration: none;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+  &:hover { text-decoration: none; transform: translateY(-2px); border-color: rgba(255, 107, 87, 0.45); .cn-postcard__more { color: $brand-color; } }
+}
+.cn-postcard {
+  &__meta { margin: 0 0 8px; color: $faint; font-size: 0.85rem; letter-spacing: 0.04em; }
+  &__title { margin: 0 0 10px; font-size: 1.35rem; line-height: 1.5; }
+  &__excerpt { margin: 0 0 14px; color: $muted; line-height: 1.75; font-size: 0.95rem; }
+  &__more { font-weight: 700; font-size: 0.9rem; color: $muted; transition: color 0.15s ease; }
+}
+
+// ── 글 본문(post 레이아웃) — 읽기 폭 900px, 왼쪽 정렬 ──
+.cn-post { max-width: 920px; margin-left: auto; margin-right: auto; }
+.post-hero {
+  text-align: left; align-items: flex-start;
+  padding: 48px 48px 40px;
+  h1 { font-size: 2.15rem !important; line-height: 1.45; max-width: none; }
+  .cn-label { margin-bottom: 14px; letter-spacing: 0.4em; text-indent: 0; }
+  .post-meta { margin: 0; color: $faint; font-size: 0.92rem; }
+}
+.post-body {
+  padding: 40px 48px;
+  font-size: 1.02rem;
+  h2 { font-size: 1.45rem; padding-bottom: 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+  h3 { font-size: 1.12rem; }
+  img { border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.14); }
+  hr { border: none; border-top: 1px solid rgba(255, 255, 255, 0.1); margin: 2em 0; }
+  table { font-size: 0.93rem; }
+  .table-wrap, .kb-wrap { overflow-x: auto; }
+}
+.post-nav {
+  display: grid; grid-template-columns: 1fr auto 1fr; gap: 14px; align-items: center;
+  padding: 0 6px;
+  &__link { color: $muted; font-size: 0.92rem; line-height: 1.5; &:hover { color: $brand-color; } }
+  &__link--right { text-align: right; }
+}
+
+// ── 표지 기능 카드(텍스트만) — 스크린샷 카드와 같은 높이 규칙 ──
+.cn-feature {
+  align-items: flex-start; justify-content: flex-start; text-align: left;
+  h2 { font-size: 1.25rem; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  p { color: $muted; }
+}
+
 // ── 모바일 ──
 @include media-query($on-palm) {
   .cn-grid { grid-template-columns: 1fr; gap: 16px; }
   .cn-card { padding: 28px 18px; min-height: 0; }
   .cn-card > img, .cn-shot, .cn-card figcaption, .cn-caption { max-width: 100%; }
   .cn-statement { padding-top: 44px; padding-bottom: 44px; }
-  .cn-statement h1, .cn-statement h2, .cn-wide.cn-statement h1 { font-size: 1.55rem; }
+  .cn-statement h1, .cn-statement h2, .cn-wide.cn-statement h1, .cn-hero h1 { font-size: 1.55rem !important; }
   .cn-body { padding: 22px 18px; }
+  .cn-stats { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .cn-stat { padding: 14px 14px; &__value { font-size: 1.15rem; } }
+  a.cn-postcard { padding: 22px 18px; }
+  .cn-postcard__title { font-size: 1.15rem; }
+  .post-hero { padding: 30px 20px 26px; h1 { font-size: 1.5rem !important; } }
+  .post-body { padding: 24px 18px; }
+  .post-nav { grid-template-columns: 1fr; text-align: center; &__link--right { text-align: center; } .btn { justify-self: center; } }
+  .site-nav .page-link.is-active { display: inline-block; }
 }

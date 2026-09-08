@@ -1,6 +1,7 @@
 ---
 layout: page
 title: 단계별 진행 현황
+nav_title: 진행 현황
 permalink: /roadmap/
 ---
 
@@ -31,10 +32,10 @@ permalink: /roadmap/
 
 | 영역 | 범위 | 주요 산출물 |
 | --- | --- | --- |
-| <span class="st st-be">백엔드</span> | FastAPI 모듈러 모놀리식 — 앱 9개(허브·스포크), 헥사고날 내부 구조 | API·유스케이스·인터랙터 테스트 |
+| <span class="st st-be">백엔드</span> | FastAPI 모듈러 모놀리식 — 앱 8개(허브·스포크 7, game은 2026-09 폐기), 헥사고날 내부 구조 | API·유스케이스·인터랙터 테스트 |
 | <span class="st st-fe">프론트</span> | Next.js 워크스페이스 — 지도·채팅·자료 3패널, 어드민 화면 | 주식/상권 워크스페이스, 북마크 보드 |
 | <span class="st st-ml">데이터·ML</span> | 수집 배치 6종, 백테스트, 평가 하네스(생성·검색), 임베딩 | 골든셋, baseline 리포트, 채택/기각 판정 문서 |
-| <span class="st st-op">운영</span> | 도커 컴포즈 배포, 백업 3계층, 로깅·모니터링, 공개 접점 | 배포 체계, 복원 리허설, 업타임 알림 |
+| <span class="st st-op">운영</span> | k3s 단일 노드 배포(앱) + 도커 컴포즈(DB 계층), 백업 3계층, 로깅·모니터링, 공개 접점 | 배포 체계, 복원 리허설, 업타임 알림 |
 
 </div>
 
@@ -60,6 +61,7 @@ permalink: /roadmap/
 | 마일스톤 | 상태 |
 | --- | --- |
 | 프로덕션 컴포즈 + 배포 스크립트 (컷오버 검증) | <span class="st st-done">완료 2026-08</span> |
+| 앱 계층 k3s 전환 — 백엔드·인증·CronJob 5종, DB는 도커에 잔류 | <span class="st st-done">완료 2026-09</span> 24h 관찰 통과 |
 | 백업 3계층 — 로컬 일간 · 오프사이트 주간 · 복원 리허설 | <span class="st st-wip">구현 완료 · 첫 실행 잔여</span> |
 | RBAC + 어드민 실구현 | <span class="st st-done">완료 2026-07</span> |
 | 상권 전용 DB 런타임 전환 (60만+ 행 이관) | <span class="st st-done">완료 2026-07</span> |
@@ -99,6 +101,9 @@ permalink: /roadmap/
 | 개인화 ⓪ 투자·창업 프로파일 / ① 관심 목록 상태 보드 | <span class="st st-done">완료 2026-08</span> |
 | 알림 v2 — 가격 도달(one-shot)·관심 종목 뉴스(커서 dedupe), 매시 스캔 | <span class="st st-done">완료 2026-09</span> |
 | 프로덕션 페르소나 테스트 3회(85턴) → 결정론 가드 일괄 | <span class="st st-done">완료 2026-09</span> |
+| game 스포크 폐기 → AI 모의투자(EXAONE 직접 판단·숏 허용·6주 리플레이) | <span class="st st-done">완료 2026-09</span> 입지 적합도는 상권으로 이관 |
+| 목적별 페르소나 10명 QA(가입→목표) → 개선 22건 중 21건 배포 | <span class="st st-done">완료 2026-09</span> 잔여 1건은 답변 골격 전환 |
+| 공정위 브랜드 창업비용 팩트 — 예산 질문에 업종 후보 제시 | <span class="st st-done">완료 2026-09</span> 월 1회 자동 적재 |
 | 개인화 ② 선호 프로파일 | <span class="st st-wait">수요 게이트 뒤</span> |
 | 매물(listing) 스포크 | <span class="st st-wait">수요 게이트 뒤</span> |
 
@@ -115,6 +120,7 @@ permalink: /roadmap/
 | 펀더멘털 → 판정 편입 | <span class="st st-drop">측정 후 기각</span> 전 조합 게이트 미달(역방향) — 서술 축 유지 |
 | LLM 라이선스 실사 | <span class="st st-done">완료</span> 공개 서비스 전 모델 교체 필수 판정 |
 | Neo4j 그래프 질의 게이트(E4) | <span class="st st-wait">측정 후 보류</span> 실질문 129건 전수 판정 — graph-only 0건, 착수 조건 미달 |
+| AI 모의투자 리플레이 30거래일(7/30~9/8) | <span class="st st-done">완료</span> EXAONE −5.5% · 지표 규칙 +7.0% · SPY 보유 +3.8% — LLM 판단이 규칙보다 뒤졌다는 기록 자체가 결과 |
 
 </div>
 
@@ -155,7 +161,7 @@ permalink: /roadmap/
 
 <div class="cn-card cn-bg-plain cn-body cn-wide" markdown="1">
 
-<h2 id="next">작업 보드 <span style="color:#9a9aa2;font-size:0.85rem;font-weight:400;">(2026-08-25 기준)</span></h2>
+<h2 id="next">작업 보드 <span style="color:#9a9aa2;font-size:0.85rem;font-weight:400;">(2026-09-08 기준)</span></h2>
 
 <div class="kb-wrap">
 <div class="kb">
@@ -171,26 +177,26 @@ permalink: /roadmap/
 <div class="kb-col">
 <h4>🗂 To Do <span style="color:#9a9aa2;font-weight:400;font-size:0.8rem;">실행·판정만 잔여</span></h4>
 <div class="kb-card">오프사이트 백업 첫 미러(Google Drive + USB 이중화) + 복원 리허설 (게이트)<span class="kb-tag kb-op">운영</span></div>
-<div class="kb-card">골든셋 124케이스 측정 — 경쟁사 예시 질문 편입분<span class="kb-tag kb-ml">데이터·ML</span></div>
-<div class="kb-card">제약·근거 결정론 가드(I-11~I-18) — 개수·정렬·시점 제약 집행<span class="kb-tag kb-be">백엔드</span></div>
+<div class="kb-card">AI 모의투자 첫 자동 step(매일 14:00 스냅샷 뒤) 로그 확인<span class="kb-tag kb-op">운영</span></div>
+<div class="kb-card">창업비용 첫 자동 적재(10/1) 확인 — 수동 적재는 완료<span class="kb-tag kb-ml">데이터·ML</span></div>
 <div class="kb-card">상권 신규 분기 첫 자동 적재<span class="kb-tag kb-ml">데이터·ML</span></div>
-<div class="kb-card">LLM 교체 후보 pull → 120문항 회귀 비교<span class="kb-tag kb-ml">데이터·ML</span></div>
+<div class="kb-card">LLM 교체 후보 pull → 134문항 회귀 비교<span class="kb-tag kb-ml">데이터·ML</span></div>
 </div>
 
 <div class="kb-col">
 <h4>🔄 In Progress</h4>
-<div class="kb-card">검색 골든셋 사람 라벨링 → baseline 기록<span class="kb-tag kb-ml">데이터·ML</span></div>
-<div class="kb-card">하이브리드 검색·청킹 전략 채택/기각 판정 (라벨 확정 대기)<span class="kb-tag kb-ml">데이터·ML</span></div>
-<div class="kb-card">개발 기록 블로그 구축·소급 리뷰 계획<span class="kb-tag kb-op">운영</span></div>
+<div class="kb-card">채팅 답변 골격(AnswerSkeleton) 전환 — 결론 첫 줄을 코드가 쓰는 파이프라인, QA 잔여 1건<span class="kb-tag kb-be">백엔드</span></div>
+<div class="kb-card">골든셋 134문항 baseline 재박제 — 9월 가드 반영 후 회귀 게이트 재실행<span class="kb-tag kb-ml">데이터·ML</span></div>
+<div class="kb-card">개발 기록 블로그 9월 개편·소급 리뷰<span class="kb-tag kb-op">운영</span></div>
 </div>
 
 <div class="kb-col">
 <h4>✅ Done <span style="color:#9a9aa2;font-weight:400;font-size:0.8rem;">최근 완료</span></h4>
-<div class="kb-card">알림 채널 텔레그램 추가 + 상권 북마크 알림 — 실발송 검증<span class="kb-tag kb-be">백엔드</span></div>
-<div class="kb-card">운영 관측 게이트 통과 — 강제 다운 → 알림 2분 28초 실측<span class="kb-tag kb-op">운영</span></div>
-<div class="kb-card">반경·YoY 질의 가드 + 상권변화지표 해석 주입<span class="kb-tag kb-ml">데이터·ML</span></div>
-<div class="kb-card">랭킹 변화지표·행정동 축 + 키워드 칩 + 텔레그램 알림 설정 화면<span class="kb-tag kb-fe">프론트</span></div>
-<div class="kb-card">Neo4j 그래프 질의(E4) — 실질문 전수 판정 후 보류 확정<span class="kb-tag kb-ml">데이터·ML</span></div>
+<div class="kb-card">game 스포크 폐기 → AI 모의투자 슬라이스 + 30거래일 리플레이<span class="kb-tag kb-be">백엔드</span></div>
+<div class="kb-card">페르소나 10명 QA → 개선 21건 배포(예산 답·비교표·결론 첫 줄·한국 종목명 KIND 소스)<span class="kb-tag kb-be">백엔드</span></div>
+<div class="kb-card">공정위 창업비용 팩트 적재 + 월 1회 CronJob<span class="kb-tag kb-ml">데이터·ML</span></div>
+<div class="kb-card">앱 계층 k3s 컷오버 — CronJob 5종 이전, DB는 도커 잔류<span class="kb-tag kb-op">운영</span></div>
+<div class="kb-card">/paper 화면 게임식 재구성(점수판·활동 피드·보유 카드), 알림 진입점·툴팁·모바일 라벨<span class="kb-tag kb-fe">프론트</span></div>
 </div>
 
 </div>
@@ -213,7 +219,7 @@ permalink: /roadmap/
 **명시적 비추천 (과설계 방지 목록)** — 이력서용 기술 나열이 되지 않도록, 규모에 맞지 않는
 도입을 목록으로 막아둔다.
 
-- 메시지 브로커 · MSA 분리 · K8s/클라우드 전환
+- 메시지 브로커 · MSA 분리 · 클라우드 전환 (k3s 단일 노드는 예외 — 배포·CronJob·재시작을 한 곳에서 보려는 운영 편의이지 확장 목적이 아니다)
 - MLflow · Airflow · DVC (배치 스크립트 + git 태그로 충분)
 - GraphQL · BFF · 벡터 DB 교체(Qdrant 등) · 청킹 라이브러리 · 실험 관리 도구
 - 결제/유료 기능 — 무료 범위 원칙과 충돌
@@ -222,4 +228,4 @@ permalink: /roadmap/
 
 </div>
 
-[← 목차로]({{ '/toc/' | relative_url }}) · [프로젝트 개요]({{ '/overview/' | relative_url }})
+[← 개발 기록]({{ '/posts/' | relative_url }}) · [프로젝트 개요]({{ '/overview/' | relative_url }}) · [목차]({{ '/toc/' | relative_url }})

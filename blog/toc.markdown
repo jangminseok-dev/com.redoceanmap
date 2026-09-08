@@ -1,6 +1,7 @@
 ---
 layout: page
 title: 목차
+nav_title: 목차
 permalink: /toc/
 ---
 
@@ -53,7 +54,7 @@ permalink: /toc/
 
 ## 5. 개발 리뷰
 
-1. [리뷰 포스트 목록]({{ '/' | relative_url }})
+1. [리뷰 포스트 목록]({{ '/posts/' | relative_url }})
 2. 마일스톤을 끝낼 때마다 리뷰를 추가
 3. 지난 마일스톤 소급 리뷰 <span style="font-size: 0.9rem;">(작성 예정)</span>
 
