@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import logging
 import re
 
@@ -70,16 +71,45 @@ _OVERSEAS_ALIASES: dict[str, str] = {
 }
 
 
+# KRX 목록을 못 받을 때의 최소 폴백 — 워치리스트 2종목 + 시총 상위 대형주. 정본은 KRX 목록이고
+# 이 표는 "삼성전자 질문이 500으로 죽는 것"(2026-09-08 페르소나 QA P04 실측: FinanceDataReader
+# KRX 엔드포인트 404)을 막기 위한 안전망이다. 여기 없는 종목은 "찾지 못했습니다"로 열화한다.
+_KR_FALLBACK_CODES: dict[str, str] = {
+    "삼성전자": "005930", "SK하이닉스": "000660", "LG에너지솔루션": "373220", "삼성바이오로직스": "207940",
+    "현대차": "005380", "기아": "000270", "셀트리온": "068270", "NAVER": "035420", "카카오": "035720",
+    "POSCO홀딩스": "005490", "LG화학": "051910", "삼성SDI": "006400", "KB금융": "105560", "신한지주": "055550",
+    "현대모비스": "012330", "삼성물산": "028260", "한국전력": "015760", "HD현대중공업": "329180",
+    "한화에어로스페이스": "012450", "LG전자": "066570", "SK이노베이션": "096770", "크래프톤": "259960",
+    "하이브": "352820", "카카오뱅크": "323410", "두산에너빌리티": "034020", "에코프로비엠": "247540",
+    "에코프로": "086520", "알테오젠": "196170", "삼성전자우": "005935", "HLB": "028300",
+}
+_KRX_RETRY_SECONDS = 600.0  # 실패 뒤 이 시간 동안은 재시도하지 않는다(질문마다 404를 때리지 않게)
+_krx_failed_at: float | None = None
+
+
 def _load_krx_names() -> dict[str, str]:
-    global _krx_names
-    if _krx_names is None:
+    """KRX 상장 목록(종목명 → 코드). 조회 실패면 폴백 표를 돌려주고 10분 뒤 다시 시도한다."""
+    global _krx_names, _krx_failed_at
+    if _krx_names is not None:
+        return _krx_names
+    if _krx_failed_at is not None and time.monotonic() - _krx_failed_at < _KRX_RETRY_SECONDS:
+        return _KR_FALLBACK_CODES
+    try:
         listing = fdr.StockListing("KRX")
-        _krx_names = {
+        names = {
             str(row.Name).strip(): str(row.Code)
             for row in listing.itertuples()
             if str(row.Market).startswith(("KOSPI", "KOSDAQ"))
         }
-        logger.info("[symbol-resolver] KRX 상장 목록 캐시: %d종목", len(_krx_names))
+    except Exception as e:  # 네트워크·404·형식 변경 — 종목 질문 전체가 죽으면 안 된다
+        _krx_failed_at = time.monotonic()
+        logger.warning("[symbol-resolver] KRX 상장 목록 조회 실패(%s) — 폴백 표 %d종목으로 열화", e, len(_KR_FALLBACK_CODES))
+        return _KR_FALLBACK_CODES
+    if not names:
+        _krx_failed_at = time.monotonic()
+        return _KR_FALLBACK_CODES
+    _krx_names = names
+    logger.info("[symbol-resolver] KRX 상장 목록 캐시: %d종목", len(_krx_names))
     return _krx_names
 
 

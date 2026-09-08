@@ -64,3 +64,24 @@ async def test_국내_국민_별칭은_상장명으로_해석한다(monkeypatch)
     )
     assert await symbol_resolver.resolve_symbol("네이버") == "035420"
     assert await symbol_resolver.resolve_symbol("케이티") == "030200"
+
+
+async def test_KRX_목록_조회_실패면_폴백_표로_열화하고_500을_내지_않는다(monkeypatch):
+    """2026-09-08 페르소나 QA P04 — FinanceDataReader KRX 404가 '삼성전자' 질문 전체를 500으로 죽였다."""
+    calls = []
+
+    def _boom(_):
+        calls.append(1)
+        raise RuntimeError("HTTP Error 404: Not Found")
+
+    monkeypatch.setattr(symbol_resolver, "_krx_names", None)
+    monkeypatch.setattr(symbol_resolver, "_krx_failed_at", None)
+    monkeypatch.setattr(symbol_resolver.fdr, "StockListing", _boom)
+
+    assert await symbol_resolver.resolve_symbol("삼성전자") == "005930"
+    assert await symbol_resolver.resolve_symbol("하이닉스") == "000660"  # 부분 일치도 폴백 표 위에서 동작
+    with pytest.raises(MarketDataUnavailableError):
+        await symbol_resolver.resolve_symbol("존재하지않는종목")  # 앱 예외(404) — 500 아님
+    # 실패는 10분 쿨다운 — 질문마다 KRX를 다시 때리지 않는다
+    await symbol_resolver.resolve_symbol("삼성전자")
+    assert len(calls) == 1
