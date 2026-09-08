@@ -66,7 +66,8 @@ cp -a _site/. /home/host/projects/redoceanmap/blog_site/
 ```
 
 다른 기기에서 빌드했다면 `rsync -az --delete _site/ <백엔드PC>:/home/host/projects/redoceanmap/blog_site/`.
-nginx는 볼륨을 그대로 읽으므로 컨테이너 재시작이 필요 없다. 반영 확인:
+nginx는 볼륨을 그대로 읽으므로 컨테이너 재시작이 필요 없다. 클라우드플레어가 정적 자산을 4시간 캐시하므로
+`head.html`이 `main.css?v=<빌드시각>`으로 링크한다 — 재빌드하면 새 URL이라 캐시가 무효화된다. 반영 확인:
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' https://blog.redoceanmap.com/
