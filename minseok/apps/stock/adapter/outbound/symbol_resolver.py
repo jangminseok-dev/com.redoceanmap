@@ -87,24 +87,55 @@ _KRX_RETRY_SECONDS = 600.0  # 실패 뒤 이 시간 동안은 재시도하지 �
 _krx_failed_at: float | None = None
 
 
+_KIND_URL = "https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13"
+
+
+def _load_from_kind() -> dict[str, str]:
+    """KIND(한국거래소 상장공시) 상장법인 목록 — FinanceDataReader의 KRX 엔드포인트가 404가 된 뒤(2026-09-08)
+    1순위 소스. 키 없이 받는 HTML 표(회사명·시장구분·종목코드), 코넥스는 뺀다."""
+    import io
+    import urllib.request
+
+    import pandas as pd
+
+    req = urllib.request.Request(_KIND_URL, headers={"User-Agent": "Mozilla/5.0"})
+    raw = urllib.request.urlopen(req, timeout=20).read()
+    df = pd.read_html(io.BytesIO(raw), encoding="euc-kr")[0]
+    out: dict[str, str] = {}
+    for name, market, code in zip(df["회사명"], df["시장구분"], df["종목코드"]):
+        if "코넥스" in str(market):
+            continue
+        code_str = str(code).strip()
+        # 종목코드는 대개 6자리 숫자지만 우선주·일부 종목은 영문이 섞인다('0220W0') — 숫자면 0 채움, 아니면 그대로
+        out[str(name).strip()] = code_str.zfill(6) if code_str.isdigit() else code_str
+    if len(out) < 100:
+        raise ValueError(f"KIND 목록이 비정상적으로 짧다: {len(out)}")
+    return out
+
+
 def _load_krx_names() -> dict[str, str]:
-    """KRX 상장 목록(종목명 → 코드). 조회 실패면 폴백 표를 돌려주고 10분 뒤 다시 시도한다."""
+    """KRX 상장 목록(종목명 → 코드). KIND → FinanceDataReader → 폴백 표 순. 실패는 10분 뒤 재시도."""
     global _krx_names, _krx_failed_at
     if _krx_names is not None:
         return _krx_names
     if _krx_failed_at is not None and time.monotonic() - _krx_failed_at < _KRX_RETRY_SECONDS:
         return _KR_FALLBACK_CODES
+    names: dict[str, str] = {}
     try:
-        listing = fdr.StockListing("KRX")
-        names = {
-            str(row.Name).strip(): str(row.Code)
-            for row in listing.itertuples()
-            if str(row.Market).startswith(("KOSPI", "KOSDAQ"))
-        }
-    except Exception as e:  # 네트워크·404·형식 변경 — 종목 질문 전체가 죽으면 안 된다
-        _krx_failed_at = time.monotonic()
-        logger.warning("[symbol-resolver] KRX 상장 목록 조회 실패(%s) — 폴백 표 %d종목으로 열화", e, len(_KR_FALLBACK_CODES))
-        return _KR_FALLBACK_CODES
+        names = _load_from_kind()
+    except Exception as e:
+        logger.warning("[symbol-resolver] KIND 상장법인 목록 실패(%s) — FinanceDataReader로 재시도", e)
+        try:
+            listing = fdr.StockListing("KRX")
+            names = {
+                str(row.Name).strip(): str(row.Code)
+                for row in listing.itertuples()
+                if str(row.Market).startswith(("KOSPI", "KOSDAQ"))
+            }
+        except Exception as e2:  # 네트워크·404·형식 변경 — 종목 질문 전체가 죽으면 안 된다
+            _krx_failed_at = time.monotonic()
+            logger.warning("[symbol-resolver] KRX 상장 목록 조회 실패(%s) — 폴백 표 %d종목으로 열화", e2, len(_KR_FALLBACK_CODES))
+            return _KR_FALLBACK_CODES
     if not names:
         _krx_failed_at = time.monotonic()
         return _KR_FALLBACK_CODES

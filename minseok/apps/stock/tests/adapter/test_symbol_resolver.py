@@ -76,6 +76,7 @@ async def test_KRX_목록_조회_실패면_폴백_표로_열화하고_500을_내
 
     monkeypatch.setattr(symbol_resolver, "_krx_names", None)
     monkeypatch.setattr(symbol_resolver, "_krx_failed_at", None)
+    monkeypatch.setattr(symbol_resolver, "_load_from_kind", lambda: (_ for _ in ()).throw(RuntimeError("kind down")))
     monkeypatch.setattr(symbol_resolver.fdr, "StockListing", _boom)
 
     assert await symbol_resolver.resolve_symbol("삼성전자") == "005930"
@@ -85,3 +86,11 @@ async def test_KRX_목록_조회_실패면_폴백_표로_열화하고_500을_내
     # 실패는 10분 쿨다운 — 질문마다 KRX를 다시 때리지 않는다
     await symbol_resolver.resolve_symbol("삼성전자")
     assert len(calls) == 1
+
+
+async def test_KIND_목록이_1순위_소스다(monkeypatch):
+    monkeypatch.setattr(symbol_resolver, "_krx_names", None)
+    monkeypatch.setattr(symbol_resolver, "_krx_failed_at", None)
+    monkeypatch.setattr(symbol_resolver, "_load_from_kind", lambda: {"삼성전자": "005930", "카카오": "035720"})
+    monkeypatch.setattr(symbol_resolver.fdr, "StockListing", lambda _: (_ for _ in ()).throw(AssertionError("fdr는 부르지 않는다")))
+    assert await symbol_resolver.resolve_symbol("카카오") == "035720"
