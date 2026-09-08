@@ -362,6 +362,8 @@ async def test_비교_질문은_종목마다_분석해_비교표와_결정론_�
     assert stubs["stocks"].queries == ["테슬라", "애플"]
     assert result.text.startswith("**비교**") and "| 종목 |" in result.text
     assert "테슬라(005930)" in result.text and "애플(005930)" in result.text
+    # 거래량 판정 열 — 골든셋 volume_verdict_rate가 비교표 경로에서도 성립해야 한다(2026-09-08 게이트 실측)
+    assert "| 거래량(20일 대비) |" in result.text and "1.8배 · 신뢰" in result.text
     assert "**결론**" in result.text and "매매 지시가 아니에요" in result.text or "우열을 가르지 않아요" in result.text
     assert result.stock is None  # 비교 답에 한 종목 카드를 싣지 않는다
     assert result.text.endswith("투자 판단과 그 결과는 본인 책임입니다.")

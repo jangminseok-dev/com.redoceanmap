@@ -81,6 +81,18 @@ def ensure_volume_verdict(answer: str, *, ma20: float, ma50: float, volume_ratio
     return f"{answer.rstrip()}\n{line}"
 
 
+def volume_verdict_cell(*, ma20: float, ma50: float, volume_ratio: float) -> str:
+    """비교표 한 칸용 거래량 판정 — `ensure_volume_verdict`와 같은 규칙을 표 셀 문자열로.
+
+    2026-09-08 골든셋 재완주: 비교표 경로(SF06 테슬라·애플)가 거래량 판정 없이 답해
+    volume_verdict_rate 1.00 → 0.97로 게이트에 걸렸다. 추세가 서 있지 않으면 배수만 적는다.
+    """
+    ratio = f"{volume_ratio:.1f}배"
+    if not _trend_is_clear(ma20, ma50):
+        return f"{ratio}(추세 불명확)"
+    return f"{ratio} · {'신뢰' if volume_ratio >= _VOLUME_SURGE else '의심'}"
+
+
 # 지표 해석 결정론(P4-3, 2026-09-02 4차 실측 S2 t3·S9 t4) — RSI 40.3을 "과매수 영역"으로
 # 서술하고 같은 대화에서 과매도↔과매수를 뒤집었다. 경계는 컨텍스트 표기와 같다
 # (30↓ 과매도 / 70↑ 과매수, %B는 0↓ 과매도 / 1↑ 과매수).

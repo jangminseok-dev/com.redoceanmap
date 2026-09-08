@@ -168,3 +168,9 @@ def test_긍정_감성을_악재로_반전한_문장을_교정한다():
 def test_감성_모호_구간은_교정하지_않는다():
     text = "뉴스 감성이 부정적입니다."
     assert g.enforce_sentiment_claim(text, sentiment=0.05) == text
+
+
+def test_volume_verdict_cell_추세가_서면_신뢰_의심_아니면_배수만():
+    assert g.volume_verdict_cell(ma20=97.0, ma50=93.0, volume_ratio=1.8) == "1.8배 · 신뢰"
+    assert g.volume_verdict_cell(ma20=97.0, ma50=93.0, volume_ratio=0.9) == "0.9배 · 의심"
+    assert g.volume_verdict_cell(ma20=100.0, ma50=100.0, volume_ratio=2.0) == "2.0배(추세 불명확)"

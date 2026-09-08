@@ -2007,7 +2007,7 @@ class ChatInteractor(ChatUseCase):
     async def _answer_stock_compare(
         self, conversation_id: int, prompt: str, queries: list[str], on_stage=None,
     ) -> AskResponse:
-        """종목 2~3개 비교표 — 방향·현재가·과거 같은 신호 상승 비율/평소·RSI·모멘텀을 나란히. 결론도 코드가 쓴다."""
+        """종목 2~3개 비교표 — 방향·현재가·과거 같은 신호 상승 비율/평소·RSI·모멘텀·거래량 판정을 나란히. 결론도 코드가 쓴다."""
         self._notify(on_stage, "analyze", f"{len(queries)}개 종목을 나란히 보고 있어요")
         rows, failed = [], []
         for q in queries:
@@ -2028,7 +2028,8 @@ class ChatInteractor(ChatUseCase):
             await self._conversations.add_message(conversation_id, "assistant", text)
             return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
         direction_word = {"UP": "상승 신호", "DOWN": "하락 신호", "NEUTRAL": "중립"}
-        header = "| 종목 | 현재가(지연) | 지금 신호 | 과거 같은 신호일 때 상승 비율 / 평소 | RSI | 12-1 모멘텀 | 뉴스 감성 |\n|---|---|---|---|---|---|---|"
+        header = ("| 종목 | 현재가(지연) | 지금 신호 | 과거 같은 신호일 때 상승 비율 / 평소 | RSI | 12-1 모멘텀"
+                  " | 거래량(20일 대비) | 뉴스 감성 |\n|---|---|---|---|---|---|---|---|")
         table = [header]
         for q, a, f in rows:
             unit = self._currency_unit(a.symbol)
@@ -2039,7 +2040,9 @@ class ChatInteractor(ChatUseCase):
                 stat = "표본 없음"
             table.append(
                 f"| {q}({a.symbol}) | {price} | {direction_word.get(a.direction, a.direction)} | {stat}"
-                f" | {a.rsi:.0f} | {a.momentum_12_1:+.1%} | {a.sentiment_label} |"
+                f" | {a.rsi:.0f} | {a.momentum_12_1:+.1%}"
+                f" | {answer_guard.volume_verdict_cell(ma20=a.ma20, ma50=a.ma50, volume_ratio=a.volume_ratio)}"
+                f" | {a.sentiment_label} |"
             )
         ups = [q for q, a, _ in rows if a.direction == "UP"]
         downs = [q for q, a, _ in rows if a.direction == "DOWN"]
