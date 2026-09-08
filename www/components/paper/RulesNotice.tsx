@@ -3,9 +3,11 @@ import type { PaperRules } from "@/lib/types";
 /** 고정 고지 — 화면당 한 번. 실제 매매가 아니고 권유가 아니라는 것, 체결 축이 다르다는 것을 먼저 말한다. */
 export default function RulesNotice({ rules, replayUntil }: { rules: PaperRules; replayUntil: string | null }) {
   return (
-    <div className="rounded-2xl border border-border bg-surface p-4 text-xs leading-relaxed text-foreground-muted">
-      <p className="text-sm font-semibold text-foreground">실제 매매가 아닙니다 — AI 판단의 기록입니다</p>
-      <p className="mt-1.5">
+    <details className="rounded-2xl border border-border bg-surface px-4 py-3 text-xs leading-relaxed text-foreground-muted">
+      <summary className="cursor-pointer select-none text-sm text-foreground">
+        <span className="font-semibold">실제 돈이 아닙니다</span> — AI 판단의 기록이고 매매 권유가 아닙니다. <span className="text-foreground-muted">규칙 보기</span>
+      </summary>
+      <p className="mt-2">
         EXAONE 계정은 매일 14:00 동결된 예측 스냅샷과 뉴스 라벨을 읽고 종목·방향·비중을 판단하며, 그 판단은
         다음 세션 시가에 사후 체결됩니다. 지표 규칙 계정은 검증된 지표 조합을 그대로 따르는 대조군입니다. 사람
         참가자는 주문 시점의 최신 저장 봉 종가(지연 시세)에 즉시 체결되므로 AI와 체결 축이 다릅니다. 여기 있는
@@ -17,6 +19,6 @@ export default function RulesNotice({ rules, replayUntil }: { rules: PaperRules;
         종목당 ≤{Math.round(rules.assumed_max_position_weight * 100)}% · 동시 ≤{rules.assumed_max_positions}종목 · 숏
         가능(레버리지 없음){replayUntil ? ` · ${replayUntil}까지는 저장된 과거 스냅샷으로 재생한 구간` : ""}
       </p>
-    </div>
+    </details>
   );
 }

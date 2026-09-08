@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, placePaperOrder } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -15,8 +16,9 @@ const ACTIONS = [
 ] as const;
 
 /** 사람 주문 — 폼 제출 흐름이라 FormData 패턴(REACT_RULES 패턴 A). 체결은 즉시, 최신 저장 봉 종가. */
-export default function OrderForm() {
+export default function OrderForm({ suggestions = [] }: { suggestions?: string[] }) {
   const queryClient = useQueryClient();
+  const tickerRef = useRef<HTMLInputElement>(null);
   const order = useMutation({
     mutationFn: placePaperOrder,
     onSuccess: () => {
@@ -50,16 +52,33 @@ export default function OrderForm() {
           ))}
         </div>
       </fieldset>
+      {suggestions.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          <span className="text-xs text-foreground-muted self-center">AI가 들고 있는 종목:</span>
+          {suggestions.map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => {
+                if (tickerRef.current) tickerRef.current.value = t;
+              }}
+              className="inline-flex items-center h-7 px-2.5 rounded-full border border-border text-xs text-foreground-muted hover:bg-accent hover:text-foreground transition-colors"
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="flex flex-wrap items-end gap-2">
         <div className="space-y-1">
           <Label htmlFor="paper-ticker" className="text-xs font-medium">종목</Label>
-          <Input id="paper-ticker" name="ticker" placeholder="AAPL · 005930.KS" className="w-36" autoComplete="off" />
+          <Input ref={tickerRef} id="paper-ticker" name="ticker" placeholder="AAPL · 005930.KS" className="w-36" autoComplete="off" />
         </div>
         <div className="space-y-1">
           <Label htmlFor="paper-qty" className="text-xs font-medium">수량</Label>
           <Input id="paper-qty" name="quantity" type="number" min={1} step={1} placeholder="10" className="w-28" />
         </div>
-        <Button type="submit" size="md" loading={order.isPending}>주문</Button>
+        <Button type="submit" size="lg" loading={order.isPending}>주문</Button>
       </div>
       {order.isError && (
         <p className="text-xs text-brand">{order.error instanceof ApiError ? order.error.message : "주문에 실패했습니다."}</p>

@@ -2,165 +2,175 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Bot, ClipboardList, LineChart as LineChartIcon, Trophy, UserRound, Wallet } from "lucide-react";
+import { Bot, ChevronDown, Wallet } from "lucide-react";
 import { fetchPaperAccount, fetchPaperBoard, fetchPaperDecisions, fetchPaperMe, fetchPaperScorecard } from "@/lib/api";
 import { useUIStore } from "@/lib/uiStore";
-import { Button } from "@/components/ui/button";
 import Disclaimer from "@/components/stock/Disclaimer";
+import ActivityFeed from "@/components/paper/ActivityFeed";
 import DecisionFeed from "@/components/paper/DecisionFeed";
 import EquityCurve from "@/components/paper/EquityCurve";
-import Leaderboard from "@/components/paper/Leaderboard";
+import HoldingsGrid from "@/components/paper/HoldingsGrid";
 import OrderForm from "@/components/paper/OrderForm";
-import PositionTable from "@/components/paper/PositionTable";
 import RulesNotice from "@/components/paper/RulesNotice";
+import ScoreBoard from "@/components/paper/ScoreBoard";
 import Scorecard from "@/components/paper/Scorecard";
 import TimeScrubber from "@/components/paper/TimeScrubber";
 import TradeLog from "@/components/paper/TradeLog";
-import { fmtKrw, fmtPct } from "@/components/paper/format";
+import { fmtDay } from "@/components/paper/format";
 import type { PaperEquityPoint } from "@/lib/types";
 
 const DAY_STALE = 10 * 60_000; // 일 1회 갱신 데이터 — 재방문마다 다시 받을 이유가 없다
 
-function Section({ icon: Icon, title, children, aside }: { icon: typeof Bot; title: string; children: React.ReactNode; aside?: React.ReactNode }) {
+function Card({ title, sub, children }: { title: string; sub?: string; children: React.ReactNode }) {
   return (
     <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
       <div className="flex items-baseline gap-2 flex-wrap">
-        <h2 className="flex items-center gap-1.5 text-sm font-semibold"><Icon size={15} /> {title}</h2>
-        {aside}
+        <h2 className="text-base font-semibold">{title}</h2>
+        {sub && <span className="text-xs text-foreground-muted">{sub}</span>}
       </div>
       <div className="mt-3">{children}</div>
     </section>
   );
 }
 
-/** AI 모의투자 — 리더보드·자산 곡선·판단 되감기·채점·내 계정. 전부 기록 열람이며 권유가 아니다. */
+/**
+ * AI 모의투자 — 게임처럼 읽히는 순서: 점수판 → AI가 오늘 한 일 → AI 지갑 → 나도 사보기.
+ * 곡선·판단 원문·채점 같은 분석은 맨 아래 "자세히 보기"로 접는다. 전부 기록이지 권유가 아니다.
+ */
 export default function PaperPage() {
   const user = useUIStore((s) => s.user);
   const openAuth = useUIStore((s) => s.openAuth);
-  // 단일 객체 패턴 — 선택 계정과 되감기 위치는 함께 움직인다(REACT_RULES 패턴 B)
-  const [view, setView] = useState<{ account: string; dateIndex: number | null }>({ account: "exaone", dateIndex: null });
+  // 단일 객체 패턴 — 상세 펼침과 되감기 위치(REACT_RULES 패턴 B)
+  const [view, setView] = useState<{ details: boolean; dateIndex: number | null }>({ details: false, dateIndex: null });
 
   const boardQ = useQuery({ queryKey: ["paper-board"], queryFn: fetchPaperBoard, staleTime: DAY_STALE });
   const exaoneQ = useQuery({ queryKey: ["paper-account", "exaone"], queryFn: () => fetchPaperAccount("exaone"), staleTime: DAY_STALE, retry: false });
   const signalQ = useQuery({ queryKey: ["paper-account", "signal"], queryFn: () => fetchPaperAccount("signal"), staleTime: DAY_STALE, retry: false });
   const meQ = useQuery({ queryKey: ["paper-me"], queryFn: fetchPaperMe, enabled: !!user, retry: false });
-  const selectedIsAi = view.account === "exaone" || view.account === "signal";
-  // 다른 참가자 계정 — AI 두 계정은 위 쿼리를 그대로 쓴다
-  const otherQ = useQuery({
-    queryKey: ["paper-account", view.account],
-    queryFn: () => fetchPaperAccount(view.account),
-    enabled: view.account.startsWith("user:"),
-    staleTime: DAY_STALE,
-    retry: false,
-  });
-  const decisionsQ = useQuery({
-    queryKey: ["paper-decisions", view.account],
-    queryFn: () => fetchPaperDecisions(view.account),
-    enabled: selectedIsAi,
-    staleTime: DAY_STALE,
-  });
-  const scorecardQ = useQuery({ queryKey: ["paper-scorecard", "exaone"], queryFn: () => fetchPaperScorecard("exaone"), staleTime: DAY_STALE, retry: false });
+  const decisionsQ = useQuery({ queryKey: ["paper-decisions", "exaone"], queryFn: () => fetchPaperDecisions("exaone"), staleTime: DAY_STALE });
+  const scorecardQ = useQuery({ queryKey: ["paper-scorecard", "exaone"], queryFn: () => fetchPaperScorecard("exaone"), staleTime: DAY_STALE, retry: false, enabled: view.details });
+
+  const decisions = decisionsQ.data?.decisions ?? []; // as_of 내림차순
+  const latest = decisions[0] ?? null;
+  const dates = decisions.map((d) => d.as_of.slice(0, 10)).reverse();
+  const dateIndex = view.dateIndex ?? Math.max(dates.length - 1, 0);
+  const selectedDate = dates[dateIndex] ?? null;
+  const selected = selectedDate ? decisions.find((d) => d.as_of.startsWith(selectedDate)) ?? null : null;
+  const pickDate = (date: string) => {
+    const i = dates.indexOf(date);
+    if (i >= 0) setView((prev) => ({ ...prev, details: true, dateIndex: i }));
+  };
 
   const series: Record<string, PaperEquityPoint[]> = {};
   if (exaoneQ.data) series.exaone = exaoneQ.data.equity;
   if (signalQ.data) series.signal = signalQ.data.equity;
   if (meQ.data) series.me = meQ.data.equity;
-  const markerKey = selectedIsAi ? view.account : "me";
-  const selectedAccount = view.account === "exaone" ? exaoneQ.data : view.account === "signal" ? signalQ.data : otherQ.data;
-  const markerTrades = selectedIsAi ? selectedAccount?.trades : meQ.data?.trades;
-
-  // 되감기 — 판단이 있는 날짜(오름차순). 기본은 최신.
-  const decisions = decisionsQ.data?.decisions ?? [];
-  const dates = decisions.map((d) => d.as_of.slice(0, 10)).reverse();
-  const dateIndex = view.dateIndex ?? Math.max(dates.length - 1, 0);
-  const selectedDate = dates[dateIndex] ?? null;
-  const decision = selectedDate ? decisions.find((d) => d.as_of.startsWith(selectedDate)) ?? null : null;
-  const pickDate = (date: string) => {
-    const i = dates.indexOf(date);
-    if (i >= 0) setView((prev) => ({ ...prev, dateIndex: i }));
-  };
+  const aiTickers = exaoneQ.data?.positions.map((p) => p.ticker) ?? [];
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="max-w-5xl mx-auto px-4 py-6 space-y-5">
+      <div className="max-w-4xl mx-auto px-4 py-6 space-y-5">
         <div>
           <h1 className="text-xl font-bold tracking-tight flex items-center gap-2"><Bot size={20} /> AI 모의투자</h1>
           <p className="mt-1 text-sm text-foreground-muted">
-            EXAONE이 매일 우리 데이터(예측 스냅샷·뉴스 라벨)를 읽고 내린 매매 판단을 사후 체결해 기록합니다.
-            검증된 지표 규칙 계정과 SPY 보유를 나란히 두고, 같은 규칙으로 직접 참가할 수도 있습니다.
+            EXAONE이 매일 우리 뉴스·신호를 읽고 1억원으로 사고팝니다. 같은 돈으로 겨뤄 보세요.
           </p>
         </div>
 
         {boardQ.isLoading && <div className="skeleton h-40 rounded-2xl" />}
         {boardQ.isError && (
           <p className="rounded-2xl border border-border bg-surface p-6 text-center text-sm text-foreground-muted">
-            모의투자 기록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
+            기록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.
           </p>
         )}
         {boardQ.data && (
           <>
-            <RulesNotice rules={boardQ.data.rules} replayUntil={boardQ.data.replay_until} />
+            <ScoreBoard board={boardQ.data} myKey={user ? `user:${user.id}` : null} onJoin={() => (user ? undefined : openAuth("login"))} />
 
-            {boardQ.data.rows.length === 0 ? (
-              <p className="rounded-2xl border border-border bg-surface p-6 text-center text-sm text-foreground-muted">
-                아직 판단 기록이 없습니다. 첫 배치(매일 14:00) 뒤에 리더보드가 생깁니다.
-              </p>
-            ) : (
-              <Leaderboard board={boardQ.data} selected={view.account} onSelect={(key) => setView({ account: key, dateIndex: null })} />
-            )}
+            <Card title="AI가 한 일" sub={latest ? `${fmtDay(latest.as_of)} 판단까지 · 체결은 다음 장 시가` : undefined}>
+              {latest?.market_view && <p className="mb-3 text-sm leading-relaxed">💬 {latest.market_view}</p>}
+              <ActivityFeed trades={exaoneQ.data?.trades ?? []} latest={latest} />
+            </Card>
 
-            <Section icon={LineChartIcon} title="자산 곡선" aside={<span className="text-xs text-foreground-muted">점은 선택 계정의 체결 · 음영은 리플레이 구간 · 클릭하면 그날 판단으로</span>}>
-              <EquityCurve
-                series={series}
-                spy={boardQ.data.spy}
-                markerKey={markerKey}
-                trades={markerTrades ?? []}
-                replayUntil={boardQ.data.replay_until}
-                selectedDate={selectedIsAi ? selectedDate : null}
-                onPickDate={selectedIsAi ? pickDate : undefined}
-              />
-            </Section>
+            <Card title="AI 지갑" sub={exaoneQ.data ? `보유 ${exaoneQ.data.positions.length}종목` : undefined}>
+              <HoldingsGrid positions={exaoneQ.data?.positions ?? []} empty="지금은 다 현금이에요." />
+            </Card>
 
-            {selectedIsAi && (
-              <Section icon={ClipboardList} title={`${view.account === "exaone" ? "EXAONE" : "지표 규칙"}의 판단`} aside={decisionsQ.data && <span className="text-xs text-foreground-muted">{dates.length}일치 기록</span>}>
-                <TimeScrubber dates={dates} index={dateIndex} onChange={(i) => setView((prev) => ({ ...prev, dateIndex: i }))} />
-                <div className="mt-4">
-                  {decisionsQ.isLoading ? <div className="skeleton h-32 rounded-xl" /> : <DecisionFeed decision={decision} />}
-                </div>
-              </Section>
-            )}
-
-            {selectedAccount && (
-              <Section icon={Wallet} title={`${selectedAccount.label} 계정`} aside={<span className="text-xs text-foreground-muted tabular-nums">자산 {fmtKrw(selectedAccount.equity_krw)} · 현금 {fmtKrw(selectedAccount.cash_krw)} · {fmtPct(selectedAccount.equity_krw / selectedAccount.initial_cash_krw - 1, 2)}</span>}>
-                <PositionTable positions={selectedAccount.positions} />
-                <h3 className="mt-4 text-xs font-semibold text-foreground-muted">최근 체결</h3>
-                <TradeLog trades={selectedAccount.trades} />
-              </Section>
-            )}
-
-            <Section icon={Trophy} title="EXAONE 판단 채점" aside={<span className="rounded-full bg-border/40 px-2 py-0.5 text-[11px] text-foreground-muted">검증되지 않은 판단 — 표본이 쌓이면 숫자가 열립니다</span>}>
-              {scorecardQ.data ? <Scorecard card={scorecardQ.data} /> : <p className="text-sm text-foreground-muted">아직 채점된 판단이 없습니다.</p>}
-            </Section>
-
-            <Section icon={UserRound} title="내 계정" aside={meQ.data && <span className="text-xs text-foreground-muted tabular-nums">자산 {fmtKrw(meQ.data.equity_krw)} · {fmtPct(meQ.data.equity_krw / meQ.data.initial_cash_krw - 1, 2)}</span>}>
+            <Card title="나도 사보기" sub="같은 1억원 · 같은 수수료 · 최신 저장 시세에 바로 체결">
               {!user ? (
-                <div className="flex flex-wrap items-center gap-3">
-                  <p className="text-sm text-foreground-muted">로그인하면 같은 규칙으로 참가해 AI와 성적을 겨룰 수 있습니다.</p>
-                  <Button size="md" onClick={() => openAuth("login")}>로그인</Button>
-                </div>
+                <p className="text-sm text-foreground-muted">
+                  <button type="button" onClick={() => openAuth("login")} className="text-brand font-medium underline-offset-2 hover:underline">로그인</button>
+                  하면 1억원 계정이 생기고 AI와 나란히 성적이 붙습니다.
+                </p>
               ) : meQ.isLoading ? (
                 <div className="skeleton h-24 rounded-xl" />
               ) : meQ.data ? (
                 <div className="space-y-4">
-                  <OrderForm />
-                  <PositionTable positions={meQ.data.positions} />
-                  <h3 className="text-xs font-semibold text-foreground-muted">내 체결</h3>
-                  <TradeLog trades={meQ.data.trades} />
+                  <OrderForm suggestions={aiTickers} />
+                  <div>
+                    <h3 className="text-xs font-semibold text-foreground-muted flex items-center gap-1"><Wallet size={12} /> 내 지갑</h3>
+                    <div className="mt-2">
+                      <HoldingsGrid positions={meQ.data.positions} empty="아직 아무것도 안 샀어요. 위에서 종목을 골라 보세요." />
+                    </div>
+                  </div>
+                  {meQ.data.trades.length > 0 && (
+                    <div>
+                      <h3 className="text-xs font-semibold text-foreground-muted">내 체결</h3>
+                      <TradeLog trades={meQ.data.trades} limit={10} />
+                    </div>
+                  )}
                 </div>
               ) : (
                 <p className="text-sm text-foreground-muted">내 계정을 불러오지 못했습니다.</p>
               )}
-            </Section>
+            </Card>
+
+            <RulesNotice rules={boardQ.data.rules} replayUntil={boardQ.data.replay_until} />
+
+            {/* 분석은 접어 둔다 — 궁금한 사람만 연다 */}
+            <button
+              type="button"
+              onClick={() => setView((prev) => ({ ...prev, details: !prev.details }))}
+              aria-expanded={view.details}
+              className="w-full flex items-center justify-center gap-1.5 py-3 text-sm text-foreground-muted hover:text-foreground transition-colors"
+            >
+              <ChevronDown size={15} className={`transition-transform ${view.details ? "rotate-180" : ""}`} />
+              자세히 보기 — 자산 곡선 · 판단 원문 · 채점 · 지표 규칙 계정
+            </button>
+
+            {view.details && (
+              <div className="space-y-5">
+                <Card title="자산 곡선" sub="점은 EXAONE의 체결 · 음영은 리플레이 구간 · 클릭하면 그날 판단으로">
+                  <EquityCurve
+                    series={series}
+                    spy={boardQ.data.spy}
+                    markerKey="exaone"
+                    trades={exaoneQ.data?.trades ?? []}
+                    replayUntil={boardQ.data.replay_until}
+                    selectedDate={selectedDate}
+                    onPickDate={pickDate}
+                  />
+                </Card>
+                <Card title="EXAONE의 판단 원문" sub={`${dates.length}일치 · 되감기`}>
+                  <TimeScrubber dates={dates} index={dateIndex} onChange={(i) => setView((prev) => ({ ...prev, dateIndex: i }))} />
+                  <div className="mt-4">
+                    {decisionsQ.isLoading ? <div className="skeleton h-32 rounded-xl" /> : <DecisionFeed decision={selected} />}
+                  </div>
+                </Card>
+                <Card title="EXAONE 판단 채점" sub="검증되지 않은 판단 — 표본이 쌓이면 숫자가 열립니다">
+                  {scorecardQ.data ? <Scorecard card={scorecardQ.data} /> : <p className="text-sm text-foreground-muted">아직 채점된 판단이 없습니다.</p>}
+                </Card>
+                <Card title="지표 규칙 계정" sub="검증된 신호만 그대로 따르는 대조군">
+                  <HoldingsGrid positions={signalQ.data?.positions ?? []} empty="지금은 다 현금이에요." />
+                  {signalQ.data && signalQ.data.trades.length > 0 && (
+                    <div className="mt-4">
+                      <h3 className="text-xs font-semibold text-foreground-muted">최근 체결</h3>
+                      <TradeLog trades={signalQ.data.trades} limit={10} />
+                    </div>
+                  )}
+                </Card>
+              </div>
+            )}
           </>
         )}
 
