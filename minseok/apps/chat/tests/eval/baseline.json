@@ -1,15 +1,15 @@
 {
-  "intent_accuracy": 1.0,
+  "intent_accuracy": 0.9925373134328358,
   "stock_query_accuracy": 1.0,
   "region_hit_rate": 1.0,
   "inherit_rate": 1.0,
   "inherit_focus_rate": 1.0,
   "volume_verdict_rate": 1.0,
   "risk_mention_rate": 1.0,
-  "citation_coverage": 0.9827586206896551,
+  "citation_coverage": 0.9722222222222222,
   "phase0_parse_failure_rate": 0.0,
-  "phase1_guard_activation_rate": 0.723404255319149,
-  "hallucination_count": 2,
+  "phase1_guard_activation_rate": 0.6808510638297872,
+  "hallucination_count": 0,
   "truncation_count": 0,
   "total": 134
 }
