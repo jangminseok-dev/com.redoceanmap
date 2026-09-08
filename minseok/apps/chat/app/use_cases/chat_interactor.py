@@ -428,6 +428,24 @@ _SUPERLATIVE_AXES = (
 )
 # 업종 초점 후속(2026-09-08 QA P08) — "내 예산으로 할 수 있는 업종은?"에 직전 상권·업종을 재탕했다.
 # 직전 추천 상권이 있고 질문이 업종을 묻는데 업종명을 안 대면, 그 상권의 업종별 수치를 코드가 낸다.
+# 예산 금액 파싱 — "1억 2천", "8천만원", "5000만원", "1.5억" → 원. 못 읽으면 None.
+_BUDGET_RE = re.compile(r"(\d+(?:\.\d+)?)\s*억(?:\s*(\d+)\s*천?\s*만?)?|(\d+(?:,\d{3})*)\s*(천만|만)\s*원?")
+BUDGET_RESERVE_RATIO = 0.7  # 창업비용은 예산의 70%까지 — 보증금·운영자금 몫을 남긴다(가정치)
+
+
+def parse_budget_krw(text: str) -> int | None:
+    m = _BUDGET_RE.search(text)
+    if not m:
+        return None
+    if m.group(1):
+        won = float(m.group(1)) * 100_000_000
+        if m.group(2):
+            won += int(m.group(2)) * 10_000_000  # "1억 2천" — 천 단위는 천만원으로 읽는다
+        return int(won)
+    n = int(m.group(3).replace(",", ""))
+    return n * (10_000_000 if m.group(4) == "천만" else 10_000)
+
+
 _SERVICE_FOCUS_RE = re.compile(r"업종|뭘\s*팔|무슨\s*(?:장사|가게|업)|어떤\s*(?:가게|장사|업)|아이템")
 _SERVICE_SHORTLIST = ("커피", "치킨", "한식", "분식", "편의점", "미용", "네일", "제과", "호프", "중식", "일식", "패스트푸드", "의약품", "세탁")
 _COMPARE_RE = re.compile(r"비교|vs|중에|둘\s*중|셋\s*중|어디가|어느\s*(?:쪽|게|것)|(?:랑|이랑|와|과|하고)\s")
@@ -530,9 +548,6 @@ _EXPERT_DETAIL_RE = re.compile(r"추이|추세|분기별|산출\s*근거|산출\
 _MARKET_UNSUPPORTED_NOTICES = (
     # 예산 질문(2026-09-08 QA P01·P02·P08) — "1억으로 되나"에 답이 없이 끝났다. 판정 불가를 먼저 말하고
     # 다음 행동(어디서 확인할지)을 준다. 창업비용 축은 GAME_SUNSET 계획 C1(공정위 정보공개서)에서 채운다.
-    (re.compile(r"\d+\s*(?:억|천만|만원|만)(?:\s*원)?|예산|자본금|자금으로|돈으로"),
-     "예산에 맞는 자리인지는 판정하지 않았어요 — 창업비용·임대료·권리금 데이터가 없어요."
-     " 아래 점포당 월매출을 보증금·임대료 시세(부동산 중개 사이트)와 함께 보시면 감이 잡혀요."),
     (re.compile(r"임대료|월세|보증금|권리금"),
      "임대료·보증금·권리금 데이터는 제공하지 않아요(공공데이터에 없어요)."
      " 아래는 매출·점포·유동인구 등 보유 데이터 기준이에요."),
@@ -806,6 +821,44 @@ class ChatInteractor(ChatUseCase):
             listing = " · ".join(f"{area_map[c].trdar_name} {round(v):,}만원" for c, v in rows)
             line = f"점포당 월매출 기준({listing}) — 가장 높은 곳은 {area_map[best].trdar_name}입니다."
         return best, line
+
+    async def _budget_notice(self, prompt: str, profile: UserProfileSummary | None) -> str:
+        """예산 질문의 첫 문단 — 공정위 창업비용이 있으면 예산 안 업종을 나열, 없으면 판정 불가+다음 행동.
+
+        2026-09-08 QA P01·P02·P08: "1억으로 되나"에 답 없이 끝났다. 창업비용은 가맹 기준 평균이라
+        임대료·인테리어를 뺀 금액이고, 예산의 70%(가정치)까지만 창업비용으로 잡는다.
+        """
+        asked = bool(re.search(r"예산|자본금|자금으로|돈으로", prompt)) or parse_budget_krw(prompt) is not None
+        if not asked:
+            return ""
+        budget = parse_budget_krw(prompt)
+        if budget is None and profile is not None:
+            budget = parse_budget_krw(profile.budget_label.replace("~", " ").split()[-1]) if profile.budget_label else None
+        try:
+            costs = await self._market.get_startup_costs()
+        except Exception:
+            logger.warning("[chat] 창업비용 조회 실패", exc_info=True)
+            costs = []
+        if not costs:
+            return ("※ 예산에 맞는 자리인지는 판정하지 않았어요 — 창업비용·임대료·권리금 데이터가 없어요."
+                    " 아래 점포당 월매출을 보증금·임대료 시세(부동산 중개 사이트)와 함께 보시면 감이 잡혀요.\n\n")
+        year = costs[0].year
+        if budget is None:
+            cheapest = ", ".join(f"{c.industry_name} {round(c.total_amount / 10_000):,}만원" for c in costs[:5])
+            return (f"※ 공정위 정보공개서({year}) 업종별 평균 창업비용(가맹금·교육비·보증금·기타 합계, 임대료·인테리어 제외)은"
+                    f" 낮은 순으로 {cheapest} 등이에요. 예산을 말씀해 주시면 그 안에 드는 업종을 골라 드려요.\n\n")
+        cap = budget * BUDGET_RESERVE_RATIO
+        fit = [c for c in costs if c.total_amount <= cap]
+        listing = ", ".join(f"{c.industry_name} {round(c.total_amount / 10_000):,}만원" for c in fit[:8])
+        if not fit:
+            floor = costs[0]
+            return (f"※ 예산 {round(budget / 10_000):,}만원의 70%({round(cap / 10_000):,}만원) 안에 드는 가맹 업종이 공정위"
+                    f" 정보공개서({year}) 기준으로는 없어요 — 가장 낮은 {floor.industry_name}도 {round(floor.total_amount / 10_000):,}만원이에요."
+                    " 개인 창업(비가맹)은 이 표에 없고, 임대료·인테리어는 별도예요.\n\n")
+        more = f" 외 {len(fit) - 8}개" if len(fit) > 8 else ""
+        return (f"※ 예산 {round(budget / 10_000):,}만원이면(창업비용은 예산의 70%까지로 잡음) 공정위 정보공개서({year}) 평균 창업비용"
+                f" 기준 {listing}{more} 업종이 들어와요 — 가맹금·교육비·보증금·기타 합계이고 점포 임대료·인테리어는 별도라"
+                " 실제 총액은 이보다 커요.\n\n")
 
     async def _answer_service_candidates(self, conversation_id: int, history: list[Message], on_stage=None) -> AskResponse | None:
         """직전 추천 상권 1곳의 업종별 점포당 월매출·폐업률을 코드가 나열한다. 직전 카드가 없으면 None(기존 흐름)."""
@@ -1481,7 +1534,7 @@ class ChatInteractor(ChatUseCase):
                 notices = answer_guard.GRADE_NOTICE_REPEAT
             text = f"{notices}\n\n{text}" if text else notices
         # 미지원 축 고지(I-12)가 맨 앞 — "없다"부터 말하고 보유 데이터 서술이 따른다
-        text = _unsupported_notice(prompt, _MARKET_UNSUPPORTED_NOTICES) + radius_note + text
+        text = (await self._budget_notice(prompt, profile)) + _unsupported_notice(prompt, _MARKET_UNSUPPORTED_NOTICES) + radius_note + text
         # 구조화 카드를 payload로 동반 저장 — 히스토리 재진입 시 카드 복원용
         await self._conversations.add_message(
             conversation_id, "assistant", text,

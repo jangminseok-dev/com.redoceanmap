@@ -1,0 +1,49 @@
+# 공정위 업종별 창업비용(정보공개서 평균) — 월 1회. data.go.kr 활용신청이 안 돼 있으면 키 미등록 오류로 실패(no-op).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: collect-franchise-costs
+spec:
+  schedule: "30 3 1 * *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          hostAliases:
+            - ip: 172.17.0.1
+              hostnames: ["host.docker.internal"]
+          containers:
+            - name: job
+              image: minseok97/redoceanmap-backend:latest
+              imagePullPolicy: Never
+              workingDir: /work
+              command: ["python", "minseok/scripts/collect_franchise_costs.py"]
+              envFrom:
+                - secretRef:
+                    name: redocean-env
+                - configMapRef:
+                    name: redocean-runtime
+              env:
+                - name: PYTHONPATH
+                  value: /work/minseok:/work/minseok/apps
+                - name: DATABASE_URL
+                  value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@pgvector:5432/$(POSTGRES_DB)
+                - name: MARKET_DATABASE_URL
+                  value: $(MARKET_DATABASE_URL_DOCKER)
+                - name: HUB_URL
+                  value: http://backend:8000
+              volumeMounts:
+                - name: repo
+                  mountPath: /work
+                  readOnly: true
+          volumes:
+            - name: repo
+              hostPath:
+                path: /home/host/projects/com.redoceanmap
+                type: Directory

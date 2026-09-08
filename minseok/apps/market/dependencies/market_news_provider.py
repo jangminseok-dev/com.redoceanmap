@@ -23,3 +23,9 @@ def get_market_news_search_gateway(db: AsyncSession = Depends(get_market_db)) ->
     return MarketNewsSearchGateway(use_case=MarketNewsInteractor(
         news=MarketNewsPgRepository(session=db), embeddings=OllamaEmbeddingAdapter(),
     ))
+
+
+def get_franchise_cost_storage_gateway(db: AsyncSession = Depends(get_market_db)):
+    """허브 FranchiseCostStoragePort 구현 프로바이더 — 공정위 창업비용 적재(main.py가 override)."""
+    from market.adapter.outbound.gateways.franchise_cost_storage_gateway import FranchiseCostStorageGateway
+    return FranchiseCostStorageGateway(session=db)

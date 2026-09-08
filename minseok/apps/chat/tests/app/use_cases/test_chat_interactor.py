@@ -2234,3 +2234,29 @@ async def test_예산_질문에는_판정_불가와_다음_행동을_문두에_�
     result = await interactor.ask("1억으로 성수동에 카페 차릴 만해?")
     assert result.text.startswith("※ 예산에 맞는 자리인지는 판정하지 않았어요")
     assert "부동산 중개 사이트" in result.text
+
+
+def test_예산_금액_파싱():
+    from chat.app.use_cases.chat_interactor import parse_budget_krw
+    assert parse_budget_krw("1억 2천으로 카페") == 120_000_000
+    assert parse_budget_krw("8천만원이면") == 80_000_000
+    assert parse_budget_krw("5000만원") == 50_000_000
+    assert parse_budget_krw("1.5억") == 150_000_000
+    assert parse_budget_krw("성수동 카페 어때") is None
+
+
+async def test_창업비용_데이터가_있으면_예산_안_업종을_문두에_나열한다(monkeypatch):
+    from hub.app.dtos.franchise_cost_dto import StartupCostRow
+
+    class _CostMarket(_StubMarket):
+        async def get_startup_costs(self, year=None):
+            return [StartupCostRow(2024, "외식", "분식", 28_000_000, 1, 1, 1, 1),
+                    StartupCostRow(2024, "외식", "커피", 52_000_000, 1, 1, 1, 1),
+                    StartupCostRow(2024, "외식", "치킨", 75_000_000, 1, 1, 1, 1),
+                    StartupCostRow(2024, "외식", "피자", 150_000_000, 1, 1, 1, 1)]
+
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON], market=_CostMarket())
+    result = await interactor.ask("1억으로 성수동에 카페 차릴 만해?")
+    head = result.text.split("\n\n")[0]
+    assert head.startswith("※ 예산 10,000만원이면") and "분식 2,800만원" in head and "치킨" not in head  # 70% = 7,000만원 컷
+    assert "임대료·인테리어는 별도" in head

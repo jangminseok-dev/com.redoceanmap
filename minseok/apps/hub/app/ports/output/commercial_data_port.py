@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from hub.app.dtos.franchise_cost_dto import StartupCostRow
 from hub.app.dtos.commercial_data_dto import (
     AreaInsight,
     AreaOverviewRow,
@@ -81,3 +82,10 @@ class CommercialDataPort(ABC):
     async def get_dataset_stats(self) -> list[DatasetStat]:
         """어드민 데이터소스 현황 — market 데이터셋별 행수·최신 시점."""
         ...
+
+    async def get_startup_costs(self, year: int | None = None) -> list[StartupCostRow]:
+        """공정위 정보공개서 업종별 평균 창업비용(가맹 기준, 임대료 제외). 미적재면 빈 리스트.
+
+        비추상 기본값인 이유: 이 포트를 흉내내는 스텁이 많다(chat·admin 테스트) — 기존 구현을 깨지 않는다.
+        """
+        return []

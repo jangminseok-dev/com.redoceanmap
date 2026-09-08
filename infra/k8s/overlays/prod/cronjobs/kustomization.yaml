@@ -8,3 +8,4 @@ resources:
   - collect-business-permits.yaml
   - collect-commercial-trades.yaml
   - collect-seoul-quarter.yaml
+  - collect-franchise-costs.yaml

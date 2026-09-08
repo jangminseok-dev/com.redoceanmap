@@ -52,6 +52,7 @@ import market.adapter.outbound.orm.commercial_change_benchmark_orm  # noqa: F401
 import market.adapter.outbound.orm.market_news_article_orm  # noqa: F401
 import market.adapter.outbound.orm.area_backtest_report_orm  # noqa: F401
 import market.adapter.outbound.orm.commercial_trade_orm  # noqa: F401
+import market.adapter.outbound.orm.franchise_industry_cost_orm  # noqa: F401
 
 target_metadata = Base.metadata
 

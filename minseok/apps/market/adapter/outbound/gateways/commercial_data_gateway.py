@@ -4,6 +4,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from hub.app.dtos.franchise_cost_dto import StartupCostRow
+from market.adapter.outbound.orm.franchise_industry_cost_orm import FranchiseIndustryCostOrm
 from hub.app.dtos.commercial_data_dto import (
     AreaInfo,
     AreaInsight,
@@ -420,3 +422,17 @@ class CommercialDataGateway(CommercialDataPort):
                 region_closure_months_avg=bench.closure_months_avg if bench else None,
             )
         return result
+
+    async def get_startup_costs(self, year: int | None = None) -> list[StartupCostRow]:
+        """업종별 창업비용(공정위, 원). year 생략 시 최신 적재 연도. 미적재면 []."""
+        if year is None:
+            year = await self._session.scalar(select(func.max(FranchiseIndustryCostOrm.year)))
+            if year is None:
+                return []
+        rows = (await self._session.execute(
+            select(FranchiseIndustryCostOrm).where(FranchiseIndustryCostOrm.year == year)
+            .order_by(FranchiseIndustryCostOrm.total_amount.asc())
+        )).scalars().all()
+        return [StartupCostRow(year=r.year, sector=r.sector, industry_name=r.industry_name, total_amount=int(r.total_amount),
+                               franchise_fee=int(r.franchise_fee), education_fee=int(r.education_fee),
+                               deposit=int(r.deposit), other_fee=int(r.other_fee)) for r in rows]

@@ -56,6 +56,7 @@ from hub.adapter.inbound.api.v1.langchain_semantic_router import langchain_seman
 from hub.adapter.inbound.api.v1.semantic_router import semantic_router
 from hub.adapter.inbound.api.v1.mail_ingest_router import mail_ingest_router
 from hub.adapter.inbound.api.v1.market_news_ingest_router import market_news_ingest_router
+from hub.adapter.inbound.api.v1.franchise_cost_ingest_router import franchise_cost_ingest_router
 from hub.adapter.inbound.api.v1.news_ingest_router import news_ingest_router
 from hub.adapter.inbound.api.v1.news_label_ingest_router import news_label_ingest_router
 from hub.adapter.inbound.api.v1.postmaster_router import postmaster_router
@@ -72,6 +73,7 @@ from hub.dependencies.paper_trading_provider import get_paper_decision_port, get
 from hub.dependencies.fundamental_ingest_provider import get_fundamental_storage_port
 from hub.dependencies.mail_ingest_provider import get_mail_storage_port
 from hub.dependencies.market_news_ingest_provider import get_market_news_storage_port
+from hub.dependencies.franchise_cost_provider import get_franchise_cost_storage_port
 from hub.dependencies.market_news_search_provider import get_market_news_search_port
 from hub.dependencies.news_ingest_provider import get_news_storage_port
 from hub.dependencies.news_label_ingest_provider import get_news_label_storage_port
@@ -109,6 +111,7 @@ from hub.dependencies.news_event_study_provider import get_news_event_study_port
 from market.dependencies.area_backtest_report_provider import get_area_backtest_report_gateway
 from market.dependencies.commercial_data_provider import get_commercial_data_gateway
 from market.dependencies.market_news_provider import (
+    get_franchise_cost_storage_gateway,
     get_market_news_search_gateway,
     get_market_news_storage_gateway,
 )
@@ -234,6 +237,7 @@ _authenticated = [Depends(get_current_user_id)]
 # 공개 — 외부 자동화 창구(/automation/*), X-Webhook-Token 자체 검증 (dispatcher는 자기소개라 토큰 없음)
 app.include_router(news_ingest_router)
 app.include_router(market_news_ingest_router)
+app.include_router(franchise_cost_ingest_router)
 app.include_router(price_bar_ingest_router)
 app.include_router(stock_demand_router)
 app.include_router(news_label_ingest_router)
@@ -315,6 +319,7 @@ app.dependency_overrides[get_news_label_storage_port] = get_news_label_storage_g
 app.dependency_overrides[get_fundamental_storage_port] = get_fundamental_storage_gateway
 app.dependency_overrides[get_news_search_port] = get_news_search_gateway
 app.dependency_overrides[get_market_news_storage_port] = get_market_news_storage_gateway
+app.dependency_overrides[get_franchise_cost_storage_port] = get_franchise_cost_storage_gateway
 app.dependency_overrides[get_market_news_search_port] = get_market_news_search_gateway
 app.dependency_overrides[get_email_composer] = lambda: EmailComposerN8nGateway()
 app.dependency_overrides[get_member_directory_port] = get_member_directory_gateway
