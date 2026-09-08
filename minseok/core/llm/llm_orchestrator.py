@@ -69,6 +69,10 @@ class LLMOrchestrator:
         if default or self._default is None:
             self._default = key
 
+    @property
+    def default_model_name(self) -> str:
+        return self._resolve_model(None)
+
     def _resolve_model(self, model: str | None) -> str:
         if model is None:
             if self._default is None:
@@ -98,16 +102,18 @@ class LLMOrchestrator:
         system: str | None = None,
         history: list[dict[str, str]] | None = None,
         format: str | None = None,
+        options: dict | None = None,
     ) -> str:
         """프롬프트를 추론한다. model 미지정이면 기본 모델(EXAONE 7.8B — 단일 모델 정책).
-        system/history로 멀티턴 지원. format="json"이면 유효 JSON 출력을 강제한다."""
+        system/history로 멀티턴 지원. format="json"이면 유효 JSON 출력을 강제한다.
+        options는 Ollama 옵션 추가분(예: {"temperature": 0} — 재현성이 필요한 배치 판단)."""
         kwargs: dict = {}
         if format:
             kwargs["format"] = format
         response = await self._client.chat(
             model=self._resolve_model(model),
             messages=self._build_messages(prompt, system, history),
-            options={"num_ctx": NUM_CTX},
+            options={"num_ctx": NUM_CTX, **(options or {})},
             **kwargs,
         )
         _warn_if_near_context(response.get("prompt_eval_count"))

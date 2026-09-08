@@ -361,6 +361,7 @@ apps/hub/
 | 펀더멘털 수집 | cron(`scripts/collect_fundamentals.py`, 주 1회, yfinance+DART) → `POST /automation/fundamentals` → FundamentalIngestInteractor → `FundamentalStoragePort` → stock 저장 |
 | 예측 스냅샷 | cron(`scripts/snapshot_forecasts.py`, 매일 14:00) → `POST /automation/forecast-snapshots`(캡처) + `POST /automation/forecast-snapshots/score`(채점) → ForecastSnapshotInteractor → `ForecastSnapshotPort` → stock 저장·채점 |
 | 가중치 재적합 | cron(`scripts/refit_forecast_weights.py`, 매주 토 15:00) → `POST /automation/forecast-refit` → ForecastRefitInteractor → `ForecastRefitPort` → stock 재채점·게이트 통과 시 활성 조합 교체 |
+| AI 모의투자 step | 같은 cron이 스냅샷 캡처·채점 **뒤** `POST /automation/paper/step`(리플레이는 `scripts/replay_paper.py`가 과거 as_of를 순서대로) → `PaperTradingPort` → stock이 체결(다음 세션 시가)·평가·판단 채점·EXAONE/지표 규칙 판단을 한 바퀴. 멱등((account, as_of) 유니크). chat용 최근 판단은 `PaperDecisionPort`(기록 보고 문형만) |
 
 - n8n 워크플로: [[minseok/apps/hub/_docs/n8n_news_collector_workflow.json]] ·
   [[minseok/apps/hub/_docs/n8n_stock_signal_alert_workflow.json]] — n8n UI에서 임포트,

@@ -225,6 +225,18 @@
 - **신호 보드 제공(2026-09-03)**: 허브 `StockSignalBoardPort`를 `StockSignalBoardGateway`가
   구현 — `StockBoardUseCase.board()`를 지평 5·상한 limit으로 호출해 허브 DTO로 옮긴다(정렬·
   한글명 그대로). chat이 "상승 신호 나온 종목" 질문에 소비한다.
+- **AI 모의투자(`paper` 슬라이스, 2026-09-08 — GAME_SUNSET_PAPER_TRADING_PLAN 3단계)**: 참가 계정 세 종류
+  (`exaone`·`signal`·`user:<id>`)가 같은 원장 엔진을 탄다. **EXAONE 계정**은 하루 1회 `ExaoneDecisionAdapter`
+  (오케스트레이터 `format="json"`·temperature 0)로 후보 ≤25종목(그날 스냅샷 + 3일 뉴스 라벨)·보유 포지션을
+  읽고 JSON 주문을 낸다 — `decision_parser`가 후보 밖 종목·제시하지 않은 news_id·한도 위반을 **거부 사유와
+  함께** 걸러낸다(환각 인용 차단). **지표 규칙 계정**은 `signal_rule_policy`(UP 롱·DOWN 숏·5거래일 청산·반대
+  신호 조기 청산)가 결정론으로 판단하는 대조군. 사람은 `POST /stock/paper/me/orders`로 최신 저장 봉 종가에
+  즉시 체결(AI는 판단 다음 세션 **시가** — 체결 축이 다름을 화면·자기소개에 고지). 규칙값은 전부
+  `paper_rules.py`의 `assumed_*`(초기 1억·수수료 0.1%·환율 고정 1380·종목 ≤20%·≤10종목). 원장 산술은
+  순수 `paper_ledger.py`(숏은 명목가 담보, 평가 `(2E−P)q`). 배치 `step(as_of)`은 체결 → 판단 채점(5거래일,
+  스냅샷과 같은 `hit_unit` 정의, 숏 부호 반전) → 평가 → 판단 순서이며 **as_of 이후 봉·뉴스·스냅샷을 절대
+  읽지 않는다**(`PaperFeedPort` 계약 — 리플레이가 라이브와 같은 코드 경로). 테이블 6개(`paper_*`, alembic
+  `p5c6d7e8f9a0`). 매매 권유 문형 금지 — "어느 계정이 무엇을 샀다"까지만(사업자·신고 없음, 영구).
 
 ## 레이어
 

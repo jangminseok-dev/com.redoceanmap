@@ -74,6 +74,13 @@ def score() -> tuple[int, int]:
     return body["scored"], body["pending"]
 
 
+def paper_step() -> dict:
+    """모의투자 일일 step — 스냅샷 캡처·채점 **뒤**에 돈다(판단이 오늘 스냅샷을 읽어야 한다)."""
+    res = requests.post(f"{HUB_URL}/automation/paper/step", json={}, headers=HEADERS, timeout=TIMEOUT)
+    res.raise_for_status()
+    return res.json()
+
+
 def main() -> int:
     dry_run = "--dry-run" in sys.argv
     tickers = [ticker for _, ticker, _ in load_watchlist() if ticker]
@@ -89,6 +96,14 @@ def main() -> int:
 
     scored, pending = score()
     print(f"채점: {scored}건 완료, {pending}건 대기(horizon 미도래)")
+
+    try:
+        step = paper_step()
+        print(f"모의투자 step: 체결 {step['filled']} · 판단 {step['decisions']} · 채점 {step['scored']}"
+              + (f" · skip({step['skipped']})" if step.get("skipped") else ""))
+    except requests.RequestException as e:
+        print(f"  [경고] 모의투자 step 실패: {e} — 다음 실행에서 자연 재시도(멱등)")
+        failed_batches += 1
     return 1 if failed_batches else 0
 
 
