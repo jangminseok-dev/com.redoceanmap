@@ -11,6 +11,7 @@ from market.adapter.outbound.orm.store_orm import StoreOrm
 from market.adapter.outbound.orm.trade_area_orm import TradeAreaOrm
 from market.app.dtos.area_demand_profile_dto import AreaDemandProfile
 from market.app.ports.output.area_demand_profile_port import AreaDemandProfilePort
+from market.domain.value_objects.sales_unit import monthly_from_quarter
 _WEEKDAY_COLUMNS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 _HOUR_COLUMNS = ("time_00_06", "time_06_11", "time_11_14", "time_14_17", "time_17_21", "time_21_24")
 _AGE_COLUMNS = ("age_10", "age_20", "age_30", "age_40", "age_50", "age_60_plus")
@@ -93,8 +94,9 @@ class AreaDemandProfilePgRepository(AreaDemandProfilePort):
             service_code=service_code,
             service_name=service_name,
             year_quarter=year_quarter,
-            observed_monthly_sales_amount=int(sales.monthly_sales_amount) if sales else 0,
-            observed_monthly_sales_count=int(sales.monthly_sales_count) if sales else 0,
+            # 분기 합계 → 월 환산. 금액·건수를 같이 나눠 객단가(금액÷건수)는 그대로다
+            observed_monthly_sales_amount=monthly_from_quarter(sales.monthly_sales_amount) if sales else 0,
+            observed_monthly_sales_count=monthly_from_quarter(sales.monthly_sales_count) if sales else 0,
             observed_store_count=int(store.store_count) if store else 0,
             observed_similar_store_count=int(store.similar_industry_store_count or 0)
             if store

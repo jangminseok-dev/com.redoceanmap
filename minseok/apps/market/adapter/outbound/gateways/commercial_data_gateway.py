@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -43,6 +45,9 @@ from market.adapter.outbound.orm.service_category_orm import ServiceCategoryOrm
 from market.adapter.outbound.orm.store_orm import StoreOrm
 from market.adapter.outbound.orm.trade_area_orm import TradeAreaOrm
 from market.domain.services.area_scorer import prev_year_quarter
+from market.domain.value_objects.sales_unit import monthly_from_quarter
+
+GENERIC_SERVICE_CODE = "CS000000"   # chat이 업종 미지정 질문에 쓰는 범용 코드
 from hub.app.ports.output.commercial_data_port import CommercialDataPort
 
 
@@ -95,7 +100,7 @@ class CommercialDataGateway(CommercialDataPort):
                 .where(EstimatedSalesOrm.year_quarter == latest_quarter)
                 .group_by(EstimatedSalesOrm.trdar_code)
             )
-            sales_by_code = {r.trdar_code: r.total for r in result.all()}
+            sales_by_code = {r.trdar_code: monthly_from_quarter(r.total) for r in result.all()}
 
         # 전년 동분기 대비(%) — phase1 후보 표의 YoY 열(I-10). 전년 결측·0이면 None.
         yoy_by_code: dict[int, float | None] = {}
@@ -109,7 +114,7 @@ class CommercialDataGateway(CommercialDataPort):
                 .where(EstimatedSalesOrm.year_quarter == base_quarter)
                 .group_by(EstimatedSalesOrm.trdar_code)
             )
-            base_by_code = {r.trdar_code: r.total for r in result.all()}
+            base_by_code = {r.trdar_code: monthly_from_quarter(r.total) for r in result.all()}
             for code, current in sales_by_code.items():
                 base = base_by_code.get(code)
                 yoy_by_code[code] = (
@@ -266,7 +271,7 @@ class CommercialDataGateway(CommercialDataPort):
                 .where(EstimatedSalesOrm.year_quarter == sales_quarter)
                 .group_by(EstimatedSalesOrm.trdar_code)
             )
-            sales_map = {r.trdar_code: r.total for r in result.all()}
+            sales_map = {r.trdar_code: monthly_from_quarter(r.total) for r in result.all()}
 
         return [
             AreaOverviewRow(
@@ -323,23 +328,28 @@ class CommercialDataGateway(CommercialDataPort):
     async def get_area_raw_stats(
         self, trdar_codes: list[int], service_code: str, quarter: int
     ) -> dict[int, AreaRawStat]:
-        sales_rows = (await self._session.execute(
-            select(EstimatedSalesOrm).where(
-                EstimatedSalesOrm.trdar_code.in_(trdar_codes),
-                EstimatedSalesOrm.service_code == service_code,
-                EstimatedSalesOrm.year_quarter == quarter,
-            )
-        )).scalars().all()
-        sales_map = {r.trdar_code: r for r in sales_rows}
+        if service_code == GENERIC_SERVICE_CODE:
+            # 업종 미지정(범용) — 범용 행은 없다. 전 업종 합계로 답한다(2026-09-08 감사 F:
+            # "강남역 폐업률"에 '데이터 없음'으로 끝났지만 137폐업/5,074점포=2.7%를 낼 수 있었다).
+            sales_map, store_map = await self._all_industry_maps(trdar_codes, quarter)
+        else:
+            sales_rows = (await self._session.execute(
+                select(EstimatedSalesOrm).where(
+                    EstimatedSalesOrm.trdar_code.in_(trdar_codes),
+                    EstimatedSalesOrm.service_code == service_code,
+                    EstimatedSalesOrm.year_quarter == quarter,
+                )
+            )).scalars().all()
+            sales_map = {r.trdar_code: r for r in sales_rows}
 
-        store_rows = (await self._session.execute(
-            select(StoreOrm).where(
-                StoreOrm.trdar_code.in_(trdar_codes),
-                StoreOrm.service_code == service_code,
-                StoreOrm.year_quarter == quarter,
-            )
-        )).scalars().all()
-        store_map = {r.trdar_code: r for r in store_rows}
+            store_rows = (await self._session.execute(
+                select(StoreOrm).where(
+                    StoreOrm.trdar_code.in_(trdar_codes),
+                    StoreOrm.service_code == service_code,
+                    StoreOrm.year_quarter == quarter,
+                )
+            )).scalars().all()
+            store_map = {r.trdar_code: r for r in store_rows}
 
         fp_rows = (await self._session.execute(
             select(FloatingPopulationOrm).where(
@@ -390,8 +400,9 @@ class CommercialDataGateway(CommercialDataPort):
             bench = bench_map.get(sido_map.get(code))
             result[code] = AreaRawStat(
                 has_sales=s is not None,
-                monthly_sales_amount=s.monthly_sales_amount if s else None,
-                weekday_sales_amount=s.weekday_sales_amount if s else None,
+                # 분기 합계 → 월 환산(sales_unit). 주중 비중은 둘 다 나누므로 불변
+                monthly_sales_amount=monthly_from_quarter(s.monthly_sales_amount) if s else None,
+                weekday_sales_amount=monthly_from_quarter(s.weekday_sales_amount) if s else None,
                 has_store=st is not None,
                 store_count=st.store_count if st else None,
                 closure_rate=st.closure_rate if st else None,
@@ -422,6 +433,47 @@ class CommercialDataGateway(CommercialDataPort):
                 region_closure_months_avg=bench.closure_months_avg if bench else None,
             )
         return result
+
+    async def _all_industry_maps(self, trdar_codes: list[int], quarter: int) -> tuple[dict, dict]:
+        """범용 업종용 — 상권별 전 업종 합계를 ORM 행과 같은 속성 이름으로 돌려준다."""
+        sales_rows = (await self._session.execute(
+            select(
+                EstimatedSalesOrm.trdar_code,
+                func.sum(EstimatedSalesOrm.monthly_sales_amount),
+                func.sum(EstimatedSalesOrm.weekday_sales_amount),
+            )
+            .where(EstimatedSalesOrm.trdar_code.in_(trdar_codes), EstimatedSalesOrm.year_quarter == quarter)
+            .group_by(EstimatedSalesOrm.trdar_code)
+        )).all()
+        sales_map = {
+            code: SimpleNamespace(monthly_sales_amount=int(amt or 0), weekday_sales_amount=int(wd or 0))
+            for code, amt, wd in sales_rows
+        }
+        store_rows = (await self._session.execute(
+            select(
+                StoreOrm.trdar_code,
+                func.sum(StoreOrm.store_count),
+                func.sum(StoreOrm.closure_store_count),
+                func.sum(StoreOrm.opening_store_count),
+                func.sum(StoreOrm.franchise_store_count),
+                func.sum(StoreOrm.similar_industry_store_count),
+            )
+            .where(StoreOrm.trdar_code.in_(trdar_codes), StoreOrm.year_quarter == quarter)
+            .group_by(StoreOrm.trdar_code)
+        )).all()
+        store_map = {}
+        for code, stores, closures, openings, franchise, similar in store_rows:
+            stores = int(stores or 0)
+            store_map[code] = SimpleNamespace(
+                store_count=stores,
+                closure_store_count=int(closures or 0),
+                opening_store_count=int(openings or 0),
+                franchise_store_count=int(franchise or 0),
+                similar_industry_store_count=int(similar or 0),
+                closure_rate=round(int(closures or 0) / stores * 100) if stores else None,
+                opening_rate=round(int(openings or 0) / stores * 100) if stores else None,
+            )
+        return sales_map, store_map
 
     async def get_startup_costs(self, year: int | None = None) -> list[StartupCostRow]:
         """업종별 창업비용(공정위, 원). year 생략 시 최신 적재 연도. 미적재면 []."""

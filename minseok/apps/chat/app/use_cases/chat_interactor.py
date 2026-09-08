@@ -430,6 +430,8 @@ _SUPERLATIVE_AXES = (
 # 직전 추천 상권이 있고 질문이 업종을 묻는데 업종명을 안 대면, 그 상권의 업종별 수치를 코드가 낸다.
 # 예산 금액 파싱 — "1억 2천", "8천만원", "5000만원", "1.5억" → 원. 못 읽으면 None.
 _BUDGET_RE = re.compile(r"(\d+(?:\.\d+)?)\s*억(?:\s*(\d+)\s*천?\s*만?)?|(\d+(?:,\d{3})*)\s*(천만|만)\s*원?")
+SMALL_SAMPLE_STORES = 5   # 점포 수가 이 미만이면 점포당 매출·폐업률을 결론 근거로 쓰지 않는다(2026-09-08 감사)
+GENERIC_SERVICE_CODE = "CS000000"   # 업종 미지정 질문의 범용 코드 — market 게이트웨이가 전 업종 합계로 답한다
 BUDGET_RESERVE_RATIO = 0.7  # 창업비용은 예산의 70%까지 — 보증금·운영자금 몫을 남긴다(가정치)
 # 질문 어휘 → 공정위 업종 중분류명(브랜드 집계 기준). 질문한 업종을 먼저 판정하기 위한 별칭
 _INDUSTRY_ALIASES = (
@@ -818,10 +820,14 @@ class ChatInteractor(ChatUseCase):
             return ""
         st = real_stats.get(code, {})
         parts = []
-        if st.get("revenue_text") and "없음" not in st["revenue_text"]:
-            parts.append(st["revenue_text"])
-        if st.get("closure_text") and "없음" not in st["closure_text"]:
-            parts.append(st["closure_text"])
+        if st.get("small_sample"):
+            # 점포 5개 미만은 점포당 매출·폐업률이 튄다 — 결론 근거로 쓰지 않고 표본 사실만 적는다
+            parts.append(st.get("store_count_text", "점포 수 적음") + "(표본 작음)")
+        else:
+            if st.get("revenue_text") and "없음" not in st["revenue_text"]:
+                parts.append(st["revenue_text"])
+            if st.get("closure_text") and "없음" not in st["closure_text"]:
+                parts.append(st["closure_text"])
         score = area_scores.get(code)
         if score is not None and getattr(score, "grade", None):
             parts.append(f"상권 건강 {score.total:.0f}점 '{score.grade}'")
@@ -839,6 +845,8 @@ class ChatInteractor(ChatUseCase):
             r = raw_stats.get(c)
             if r is None or c not in area_map:
                 continue
+            if r.has_store and r.store_count is not None and 0 < r.store_count < SMALL_SAMPLE_STORES:
+                continue  # 점포 5개 미만 — 폐업률 0%(0개)·점포당 매출이 표본 때문에 튄다
             if axis == "closure" and r.has_store and r.closure_rate is not None:
                 rows.append((c, float(r.closure_rate)))
             elif axis == "sales" and r.has_sales and r.monthly_sales_amount and (r.store_count or 0) > 0:
@@ -1052,22 +1060,30 @@ class ChatInteractor(ChatUseCase):
         return "\n".join(lines)
 
     def _format_stats(
-        self, raw_stats: dict[int, AreaRawStat], quarter: int,
+        self, raw_stats: dict[int, AreaRawStat], quarter: int, generic: bool = False,
     ) -> dict[int, AreaStatDto]:
         quarter_label = f"{str(quarter)[:4]}년 {str(quarter)[4]}분기"
+        scope = "전 업종 합계" if generic else "업종"
 
         result: dict[int, AreaStatDto] = {}
         for code, raw in raw_stats.items():
             has_data = raw.has_sales or raw.has_store or raw.has_fp
 
+            # monthly_sales_amount는 market 경계에서 분기÷3으로 환산된 값이다(sales_unit).
+            # 2026-09-08 감사: "수서역 분식 점포당 월평균 18,544만원"은 분기 합계를 월로 표기한 3배 과장 +
+            # 점포 2개 분모였다. 점포 5개 미만은 표본이 작다고 적고 결론·1순위에서 뺀다.
+            small_sample = bool(raw.has_store and raw.store_count is not None and 0 < raw.store_count < SMALL_SAMPLE_STORES)
             if raw.has_sales and raw.has_store and raw.store_count and raw.store_count > 0:
                 sales_wan = round(raw.monthly_sales_amount / 10000)
                 per_store_wan = round(sales_wan / raw.store_count)
                 revenue_text = f"점포당 월평균 {per_store_wan:,}만원"
-                revenue_source = f"업종 월 총매출 {sales_wan / 10000:.1f}억원 ÷ {raw.store_count}개 점포로 계산"
+                if small_sample:
+                    revenue_text += f" (점포 {raw.store_count}개 — 표본 작음, 참고만)"
+                revenue_source = (f"{scope} 분기 매출 {sales_wan * 3 / 10000:.1f}억원 ÷ 3개월 ÷ {raw.store_count}개 점포"
+                                  " (서울시 추정매출은 분기 합계)")
             elif raw.has_sales:
                 sales_wan = round(raw.monthly_sales_amount / 10000)
-                revenue_text = f"업종 월 총매출 {sales_wan:,}만원 (점포수 미집계)"
+                revenue_text = f"{scope} 월 매출 {sales_wan:,}만원 (점포수 미집계, 분기÷3 환산)"
                 revenue_source = "점포당 매출 계산 불가 (점포수 데이터 없음)"
             else:
                 # 축을 명시한다 — 이 값은 질문 업종 한정이라, 상권 전체 매출이 있는 상세
@@ -1136,6 +1152,7 @@ class ChatInteractor(ChatUseCase):
             result[code] = {
                 "revenue_text": revenue_text,
                 "revenue_source": revenue_source,
+                "small_sample": small_sample,
                 "weekday_text": weekday_text,
                 "store_count_text": store_count_text,
                 "closure_text": closure_text,
@@ -1403,12 +1420,18 @@ class ChatInteractor(ChatUseCase):
 
         self._notify(on_stage, "data", "공공데이터를 분석하고 있어요")
         raw_stats = await self._market.get_area_raw_stats(valid_codes, service_code, quarter)
-        real_stats = self._format_stats(raw_stats, quarter)
+        real_stats = self._format_stats(raw_stats, quarter, generic=(service_code == GENERIC_SERVICE_CODE))
         # 업종 데이터 없는 상권은 뒤로(2026-09-08 QA P02·P03) — "치킨 순위"에 치킨 매출이 없는 곳이
         # 같은 비중으로 섞여 판단이 안 됐다. 데이터 있는 곳을 앞에 두고, 없는 곳은 참고용으로 고지한다.
         no_data_codes = [c for c in valid_codes if not (raw_stats.get(c) and raw_stats[c].has_sales)]
-        if no_data_codes and len(no_data_codes) < len(valid_codes):
-            valid_codes = [c for c in valid_codes if c not in no_data_codes] + no_data_codes
+
+        def _tier(c: int) -> int:  # 0 정상 · 1 표본 작음(점포 5개 미만) · 2 업종 데이터 없음 — 안정 정렬
+            if c in no_data_codes:
+                return 2
+            return 1 if real_stats.get(c, {}).get("small_sample") else 0
+
+        if len({_tier(c) for c in valid_codes}) > 1:
+            valid_codes = sorted(valid_codes, key=_tier)
         # 상대 비교 축(P10) — "제일 안전한 데"는 코드가 폐업률로 고른다. LLM은 그 결론을 받아 쓴다.
         superlative = self._superlative_pick(prompt, valid_codes, raw_stats, area_map)
         if superlative is not None:
@@ -1496,7 +1519,7 @@ class ChatInteractor(ChatUseCase):
         # 걷힌 유의 문장은 바로 아래 _ensure_risk_note가 데이터 기반으로 다시 채운다.
         grounded = answer_guard.grounded_numbers(phase2_context) | answer_guard.grounded_numbers(prompt)
         reason_map = {
-            code: answer_guard.strip_ungrounded_numbers(reason, grounded)
+            code: answer_guard.strip_forecast_claims(answer_guard.strip_ungrounded_numbers(reason, grounded))
             for code, reason in reason_map.items()
         }
         # C2 리스크 의무의 결정론 보강 — 모델이 "유의할 점"을 빼먹으면(첫 재측정 준수율 31%)
@@ -1511,7 +1534,9 @@ class ChatInteractor(ChatUseCase):
         reasoned = [c for c in valid_codes if reason_map.get(c, "").strip()]
         if reasoned:
             valid_codes = reasoned
-        text = answer_guard.strip_ungrounded_numbers(str(p2.get("text", "") or ""), grounded)
+        text = answer_guard.strip_forecast_claims(
+            answer_guard.strip_ungrounded_numbers(str(p2.get("text", "") or ""), grounded)
+        )
         # 본문이 먼저 지목한 상권 = 카드 1번(2026-09-08 QA P01) — 본문은 카페거리, 카드 1번은 성수역이라
         # 어디를 믿을지 몰랐다. 비교 축이 있으면 그 결론이 우선이라 재정렬하지 않는다.
         if superlative is None and text:
@@ -1962,7 +1987,10 @@ class ChatInteractor(ChatUseCase):
         # 최종 서술(최종 사용자 답변) → 오케스트레이터 기본 모델(7.8B)
         text = await llm_orchestrator.orchestrate(f"{MARKET_NEWS_ANSWER_PROMPT}\n\n{context}")
         # 절대 규칙은 프롬프트가 아니라 코드가 지킨다(2026-08-28 골든셋 위반 13건)
-        text = answer_guard.strip_dangling_citations(text, answer_guard.allowed_citations(context))
+        text = answer_guard.strip_dangling_citations(
+            answer_guard.normalize_citation_markers(text, answer_guard.allowed_citations(context)),
+            answer_guard.allowed_citations(context),
+        )
         text = answer_guard.ensure_disclaimer(text)
         # 미지원 축 고지(I-12) — 배당 질의는 종목 미추출 시 이 경로로 낙하한다(q03 실측)
         text = _unsupported_notice(prompt, _STOCK_UNSUPPORTED_NOTICES) + text
@@ -2128,7 +2156,10 @@ class ChatInteractor(ChatUseCase):
         text = await llm_orchestrator.orchestrate(f"{STOCK_ANSWER_PROMPT}\n\n{context}")
         # 절대 규칙은 프롬프트가 아니라 코드가 지킨다(2026-08-28 골든셋 위반 13건).
         # 프롬프트에 이미 두 규칙이 다 적혀 있었다 — 7.8B가 안 지킨 것이라 문구로는 못 막는다.
-        text = answer_guard.strip_dangling_citations(text, answer_guard.allowed_citations(context))
+        text = answer_guard.strip_dangling_citations(
+            answer_guard.normalize_citation_markers(text, answer_guard.allowed_citations(context)),
+            answer_guard.allowed_citations(context),
+        )
         # 거래량 판정(C1 골격)도 같은 이유로 코드가 보장한다 — 압축 뒤 포함률 0.70 → 0.467
         text = answer_guard.ensure_volume_verdict(
             text, ma20=analysis.ma20, ma50=analysis.ma50, volume_ratio=analysis.volume_ratio,

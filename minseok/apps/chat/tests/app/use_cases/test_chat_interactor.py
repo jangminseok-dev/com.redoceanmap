@@ -6,6 +6,7 @@ monkeypatch로 모듈 네임스페이스의 이름만 갈아끼운다(다른 모
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 
@@ -2202,9 +2203,10 @@ async def test_급등주_거절문은_대안_경로를_준다(monkeypatch):
 def test_최상급_비교는_코드가_폐업률로_고른다():
     from types import SimpleNamespace as NS
     from chat.app.use_cases.chat_interactor import ChatInteractor
-    raw = {1: NS(has_store=True, closure_rate=3.0, has_sales=True, monthly_sales_amount=1, store_count=1),
-           2: NS(has_store=True, closure_rate=0.0, has_sales=True, monthly_sales_amount=1, store_count=1),
-           3: NS(has_store=True, closure_rate=0.0, has_sales=True, monthly_sales_amount=1, store_count=1)}
+    # store_count는 5 이상 — 점포 5개 미만은 표본이 작아 후보에서 빠진다(2026-09-08 감사)
+    raw = {1: NS(has_store=True, closure_rate=3.0, has_sales=True, monthly_sales_amount=1, store_count=10),
+           2: NS(has_store=True, closure_rate=0.0, has_sales=True, monthly_sales_amount=1, store_count=10),
+           3: NS(has_store=True, closure_rate=0.0, has_sales=True, monthly_sales_amount=1, store_count=10)}
     area = {1: NS(trdar_name="성수역"), 2: NS(trdar_name="성수동카페거리"), 3: NS(trdar_name="뚝섬역상점가")}
     pick = ChatInteractor._superlative_pick("그 중에서 제일 안전한 데 하나만", [1, 2, 3], raw, area)
     assert pick is not None
@@ -2271,3 +2273,43 @@ async def test_창업비용_데이터가_있으면_예산_안_업종을_문두�
 def test_원화_표기():
     from chat.app.use_cases.chat_interactor import fmt_won
     assert fmt_won(120_000_000) == "1억 2,000만원" and fmt_won(100_000_000) == "1억원" and fmt_won(80_360_000) == "8,036만원"
+
+
+async def test_점포_5개_미만은_표본_작음을_적고_출처는_분기_합계_환산을_밝힌다(monkeypatch):
+    # 2026-09-08 감사 — 수서역 분식 "월평균 18,544만원"(분기 합계 ÷ 점포 2개). 게이트웨이가 ÷3한 값이 들어온다.
+    interactor, _, _ = _build(monkeypatch, [])
+    stats = interactor._format_stats({
+        1000001: _raw_stat(has_sales=True, monthly_sales_amount=123_625_285, weekday_sales_amount=100_000_000,
+                           has_store=True, store_count=2, closure_rate=0, franchise_store_count=2),
+        1000002: _raw_stat(has_sales=True, monthly_sales_amount=453_325_135, weekday_sales_amount=300_000_000,
+                           has_store=True, store_count=43, closure_rate=0, franchise_store_count=8),
+    }, 20261)
+    small, normal = stats[1000001], stats[1000002]
+    assert small["small_sample"] is True and "표본 작음" in small["revenue_text"]
+    assert normal["small_sample"] is False and "표본 작음" not in normal["revenue_text"]
+    assert "점포당 월평균 6,182만원" in small["revenue_text"]
+    assert "분기 매출 3.7억원 ÷ 3개월 ÷ 2개 점포" in small["revenue_source"]
+    generic = interactor._format_stats({1000002: _raw_stat(has_sales=True, monthly_sales_amount=1_000_000_000,
+                                                          weekday_sales_amount=1, has_store=True, store_count=100,
+                                                          closure_rate=3, franchise_store_count=1)}, 20261, generic=True)
+    assert generic[1000002]["revenue_source"].startswith("전 업종 합계")
+
+
+def test_결론_줄은_표본_작은_상권의_매출_폐업률을_근거로_쓰지_않는다():
+    area_map = {1: SimpleNamespace(trdar_name="수서역")}
+    real_stats = {1: {"revenue_text": "점포당 월평균 6,181만원 (점포 2개 — 표본 작음, 참고만)", "closure_text": "분기 폐업률 0%(0개)",
+                      "store_count_text": "2개 점포 영업 중", "small_sample": True}}
+    line = ChatInteractor._market_verdict_line(1, area_map, real_stats, "분식전문점", {})
+    assert "6,181" not in line and "폐업률" not in line and "표본 작음" in line
+
+
+def test_최상급_선택은_점포_5개_미만_상권을_후보에서_뺀다():
+    area_map = {1: SimpleNamespace(trdar_name="A"), 2: SimpleNamespace(trdar_name="B"), 3: SimpleNamespace(trdar_name="C")}
+    raw = {
+        1: _raw_stat(has_store=True, store_count=2, closure_rate=0),    # 표본 작음 — 0%지만 제외
+        2: _raw_stat(has_store=True, store_count=30, closure_rate=3),
+        3: _raw_stat(has_store=True, store_count=12, closure_rate=5),
+    }
+    best, line = ChatInteractor._superlative_pick("제일 안전한 데가 어디야", [1, 2, 3], raw, area_map)
+    assert best == 2 and "A" not in line
+

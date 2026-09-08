@@ -43,7 +43,11 @@
 - "강남역 폐업률"처럼 업종이 없으면 범용 행이 비어 "데이터 없음"으로 답한다. store 테이블 합계로 상권 전체 개·폐업률을 낼 수 있다.
 - 수정안: `AreaRawStat`에 업종 합계 폴백(전 업종 sum) 추가, `revenueSourceText`에 "전 업종 합계" 명시.
 
-## 처리
+## 처리 (2026-09-08 밤, 사용자 "하던거 마저 하자"로 진행)
 
-- 1·2·3·4 모두 미수정 — 사용자 승인 대기(2026-09-08 밤). 1은 화면·API·chat 세 곳을 한 번에 바꿔야 하므로 별도 커밋으로.
+- **1 단위**: `market/domain/value_objects/sales_unit.py`(`QUARTER_MONTHS=3`, `monthly_from_quarter`). DB·ORM은 원본 유지, 월 이름으로 내보내는 어댑터 경계에서만 ÷3 — stats·ranking·score(trend)·demand_profile(금액·건수)·게이트웨이(raw stat·요약·오버뷰). chat 출처 문구 "분기 매출 X억원 ÷ 3개월 ÷ N개 점포 (서울시 추정매출은 분기 합계)". 차트 라벨 "월 매출 (추정 · 분기÷3)".
+- **2 소표본**: `SMALL_SAMPLE_STORES=5` — 점포 5개 미만은 "(점포 N개 — 표본 작음, 참고만)" 부기, 결론 줄 근거에서 제외, 최상급 선택 후보에서 제외, 후보 정렬 2순위(정상 → 소표본 → 업종 데이터 없음).
+- **3 전망 문구**: `answer_guard.strip_forecast_claims` — 회수·성장 예상·성공 가능성·수익성·매력적·유리한 선택·보장 문장 제거(상권 본문·카드 이유).
+- **4 업종 미지정**: 게이트웨이가 `CS000000`이면 전 업종 합계(매출·점포·개폐업·프랜차이즈)로 raw stat을 만들고 chat 출처에 "전 업종 합계" 명시.
+- 덤: 7.8B가 `(1)`로 쓴 인용을 `[1]`로 되돌리는 `normalize_citation_markers`(골든셋 citation_coverage 회귀 원인).
 - 감사에 쓴 질문·응답 원문은 세션 스크래치(`audit/*.txt`)에만 있다. 재현: `qa/lib.sh`의 `qa_ask`.

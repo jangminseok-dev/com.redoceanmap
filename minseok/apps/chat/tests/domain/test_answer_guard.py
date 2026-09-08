@@ -174,3 +174,21 @@ def test_volume_verdict_cell_추세가_서면_신뢰_의심_아니면_배수만(
     assert g.volume_verdict_cell(ma20=97.0, ma50=93.0, volume_ratio=1.8) == "1.8배 · 신뢰"
     assert g.volume_verdict_cell(ma20=97.0, ma50=93.0, volume_ratio=0.9) == "0.9배 · 의심"
     assert g.volume_verdict_cell(ma20=100.0, ma50=100.0, volume_ratio=2.0) == "2.0배(추세 불명확)"
+
+
+def test_strip_forecast_claims_전망_문장만_지우고_사실_문장은_남긴다():
+    text = ("수서역 상권은 점포당 월평균 6,181만원의 매출을 보입니다. 이는 3천만원 초기 자본으로도 빠르게 회수가 가능함을 시사합니다.\n"
+            "유의할 점: 유동인구의 주요 연령대가 60대 이상입니다. 빠른 매출 성장이 예상됩니다.")
+    out = g.strip_forecast_claims(text)
+    assert "6,181만원" in out and "60대 이상" in out
+    assert "회수" not in out and "성장이 예상" not in out
+    assert g.strip_forecast_claims("전망 문구 없는 문장.") == "전망 문구 없는 문장."
+
+
+def test_normalize_citation_markers_괄호_번호를_대괄호_마커로_되돌린다():
+    text = "12-1 모멘텀이 -8.5%로 하락 추세를 나타내고 있어 (1), 뉴스 감성(-0.40)으로 신뢰도가 떨어집니다(4). 2024년(3)에는"
+    out = g.normalize_citation_markers(text, {1, 4})
+    assert "[1]" in out and "[4]" in out
+    assert "(3)" in out and "(-0.40)" in out   # 배정 밖 번호·음수는 그대로
+    assert g.normalize_citation_markers(text, set()) == text
+

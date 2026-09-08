@@ -20,6 +20,7 @@ from market.app.ports.output.area_ranking_repository import (
     StoreAgg,
 )
 from market.utils.coords import tm_to_wgs84
+from market.domain.value_objects.sales_unit import monthly_from_quarter
 
 
 class AreaRankingPgRepository(AreaRankingRepositoryPort):
@@ -96,7 +97,7 @@ class AreaRankingPgRepository(AreaRankingRepositoryPort):
         if service_code:
             stmt = stmt.where(EstimatedSalesOrm.service_code == service_code)
         return [
-            SalesAgg(trdar_code=code, year_quarter=yq, monthly_sales=int(total or 0))
+            SalesAgg(trdar_code=code, year_quarter=yq, monthly_sales=monthly_from_quarter(int(total or 0)))
             for code, yq, total in (await self._session.execute(stmt)).all()
         ]
 

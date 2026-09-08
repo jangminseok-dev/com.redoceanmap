@@ -24,6 +24,7 @@ from market.app.dtos.area_stats_dto import (
     StoreQuarter,
 )
 from market.app.ports.output.area_stats_repository import AreaStatsRepositoryPort
+from market.domain.value_objects.sales_unit import monthly_from_quarter
 
 
 class AreaStatsPgRepository(AreaStatsRepositoryPort):
@@ -84,8 +85,9 @@ class AreaStatsPgRepository(AreaStatsRepositoryPort):
         return [
             SalesQuarter(
                 year_quarter=r.year_quarter,
-                monthly_sales_amount=r.monthly_sales_amount,
-                weekday_sales_amount=r.weekday_sales_amount,
+                # 원본은 분기 합계 — 월 이름으로 내보내는 경계에서 ÷3 (sales_unit 참고)
+                monthly_sales_amount=monthly_from_quarter(r.monthly_sales_amount),
+                weekday_sales_amount=monthly_from_quarter(r.weekday_sales_amount),
             )
             for r in reversed(rows)
         ]

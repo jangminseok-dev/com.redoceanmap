@@ -33,7 +33,7 @@ export default function SalesTrendChart({ series }: { series: QuarterStat[] }) {
   if (points.length === 1) {
     return (
       <div className="bg-surface border border-border rounded-lg px-3 py-2.5">
-        <div className="text-xs text-foreground-muted">{points[0].quarter} 월 매출 (추정)</div>
+        <div className="text-xs text-foreground-muted">{points[0].quarter} 월 매출 (추정 · 분기÷3)</div>
         <div className="text-base font-bold mt-0.5">{formatWon(points[0].sales)}원</div>
       </div>
     );

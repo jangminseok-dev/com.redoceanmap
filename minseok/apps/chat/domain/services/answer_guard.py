@@ -28,6 +28,22 @@ def allowed_citations(context: str) -> set[int]:
     return {int(n) for n in _CONTEXT_CITATION.findall(context)}
 
 
+_PAREN_CITATION = re.compile(r"\((\d{1,2})\)")
+
+
+def normalize_citation_markers(answer: str, allowed: set[int]) -> str:
+    """7.8B가 `[1]` 대신 `(1)`로 쓴 근거 번호를 표준 마커로 되돌린다.
+
+    2026-09-08 골든셋 재완주: SK08·SK10이 "(1)", "(4)"로 인용해 citation_coverage 0.983 → 0.943 회귀.
+    배정된 번호만 바꾼다 — 배정 밖 숫자 괄호(연도·개수)는 건드리지 않는다.
+    """
+    if not allowed:
+        return answer
+    return _PAREN_CITATION.sub(
+        lambda m: f"[{m.group(1)}]" if int(m.group(1)) in allowed else m.group(0), answer,
+    )
+
+
 def strip_dangling_citations(answer: str, allowed: set[int]) -> str:
     """배정되지 않은 번호 인용을 지운다 — 없는 근거를 가리키느니 마커가 없는 편이 낫다.
 
@@ -79,6 +95,27 @@ def ensure_volume_verdict(answer: str, *, ma20: float, ma50: float, volume_ratio
     else:
         line = f"거래량은 20일 평균의 {volume_ratio:.1f}배에 그쳐 추세를 뒷받침하지 못합니다 — 의심. [1]"
     return f"{answer.rstrip()}\n{line}"
+
+
+# 전망·평가 문구 가드(2026-09-08 데이터 감사) — 상권 답에서 "빠르게 회수 가능", "빠른 매출 성장이 예상",
+# "장기적인 성공 가능성", "안정적인 수익성"이 나왔다. 데이터에 없는 미래 주장이고 유사투자자문 미신고
+# 원칙(권유 표현 금지)과 부딪친다. 해당 문장을 통째로 지운다 — 숫자 가드처럼 문장 단위가 가장 안전하다.
+_FORECAST_CLAIM = re.compile(
+    r"회수(가|할 수|를|에)|성장이 예상|성장이 기대|성공 가능성|수익성을 (보여|기대|자랑)|안정적인 수익|"
+    r"기대할 수 있|매력적|유리한 선택|보장(하|합|되)|수익을 기대|빠른 매출|급성장"
+)
+
+
+def strip_forecast_claims(text: str) -> str:
+    """전망·평가 문장을 제거한다. 문장 경계(마침표·줄바꿈)를 기준으로 나눠 해당 문장만 뺀다."""
+    if not text or not _FORECAST_CLAIM.search(text):
+        return text
+    out_lines = []
+    for line in text.split("\n"):
+        parts = re.split(r"(?<=[.!?])\s+", line)
+        kept = [s for s in parts if not _FORECAST_CLAIM.search(s)]
+        out_lines.append(" ".join(kept).strip())
+    return "\n".join(out_lines).strip()
 
 
 def volume_verdict_cell(*, ma20: float, ma50: float, volume_ratio: float) -> str:

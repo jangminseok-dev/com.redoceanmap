@@ -21,6 +21,7 @@ from market.app.dtos.area_score_dto import (
 from market.app.ports.output.area_score_repository import AreaScoreRepositoryPort
 from market.domain.services.area_scorer import MAX_QUARTERS
 from market.domain.value_objects.area_score_vo import QuarterValue
+from market.domain.value_objects.sales_unit import monthly_from_quarter
 
 
 def _sido_join(stmt, fact_orm):
@@ -95,7 +96,11 @@ class AreaScorePgRepository(AreaScoreRepositoryPort):
             .order_by(EstimatedSalesOrm.year_quarter.desc())
             .limit(quarters)
         )).all()
-        return [QuarterValue(year_quarter=yq, value=float(total)) for yq, total in reversed(rows)]
+        # 화면 trend.monthlySales로 나가는 절대값 — 분기 합계를 월로 환산(성장률은 비율이라 불변)
+        return [
+            QuarterValue(year_quarter=yq, value=float(monthly_from_quarter(total)))
+            for yq, total in reversed(rows)
+        ]
 
     async def find_floating_series(self, trdar_code: int, quarters: int) -> list[QuarterValue]:
         rows = (await self._session.execute(
