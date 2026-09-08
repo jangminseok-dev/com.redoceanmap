@@ -26,6 +26,6 @@ class FranchiseCostStorageGateway(FranchiseCostStoragePort):
             set_={c: getattr(stmt.excluded, c) for c in ("franchise_fee", "education_fee", "deposit", "other_fee",
                                                           "total_amount", "brand_count", "raw")},
         )
-        result = await self._session.execute(stmt)
+        await self._session.execute(stmt)
         await self._session.commit()
-        return result.rowcount or 0
+        return len(rows)  # 대량 upsert는 드라이버가 rowcount(-1)를 안 준다 — 보낸 건수를 반영 건수로
