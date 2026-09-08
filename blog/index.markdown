@@ -46,13 +46,13 @@ title: 홈
   <h2>지도에서 고르고, 대화로 묻고, AI가 굴리는 것을 지켜본다</h2>
 </div>
 
-{% include card.html img="/assets/img/question-home.jpg" bg="warm" title="질문 홈 — 상권이든 주식이든 질문 하나로"
+{% include card.html img="/assets/img/question-home-2609.jpg" bg="warm" title="질문 홈 — 상권이든 주식이든 질문 하나로"
    desc="의도를 먼저 읽고 맞는 데이터로 연결합니다. 결론 첫 줄은 LLM이 아니라 코드가 씁니다." %}
-{% include card.html img="/assets/img/market-map.jpg" bg="sage" title="상권 — 지도 위에서 묻는다"
+{% include card.html img="/assets/img/market-map-2609.jpg" bg="sage" title="상권 — 지도 위에서 묻는다"
    desc="동네·업종·예산을 말하면 서울시 분기 데이터와 공정위 창업비용으로 답합니다." %}
-{% include card.html img="/assets/img/paper-board.jpg" bg="dark" title="AI 모의투자 — EXAONE이 굴리는 가상 1억"
+{% include card.html img="/assets/img/paper-board-2609.jpg" bg="dark" title="AI 모의투자 — EXAONE이 굴리는 가상 1억"
    desc="매일 우리 예측·뉴스 라벨을 읽고 판단한 것을 다음 장 시가에 사후 체결. 검증된 지표 규칙·SPY 보유와 나란히 둡니다. 권유는 없습니다." %}
-{% include card.html img="/assets/img/stock-board.jpg" bg="warm" title="주식 — 오늘의 신호 보드"
+{% include card.html img="/assets/img/stock-board-2609.jpg" bg="warm" title="주식 — 오늘의 신호 보드"
    desc="워치리스트 종목의 5거래일 방향 신호와 과거 같은 신호일 때의 적중 비율을 평소 비율과 함께 보여 줍니다." %}
 
 <div class="cn-card cn-bg-plain cn-body cn-wide" markdown="1">
