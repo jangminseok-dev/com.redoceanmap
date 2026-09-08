@@ -118,6 +118,9 @@ from market.adapter.inbound.api.v1.area_detail_router import area_detail_router
 from market.adapter.inbound.api.v1.area_router import area_router
 from market.adapter.inbound.api.v1.area_ranking_router import area_ranking_router
 from market.adapter.inbound.api.v1.area_score_router import area_score_router
+from market.adapter.inbound.api.v1.area_fitness_router import (
+    area_fitness_router as market_area_fitness_router,
+)
 from market.adapter.inbound.api.v1.area_showcase_router import area_showcase_router
 from market.adapter.inbound.api.v1.area_stats_router import area_stats_router
 from market.adapter.inbound.api.v1.cartographer_router import cartographer_router
@@ -263,6 +266,7 @@ app.include_router(concierge_router, dependencies=_authenticated)
 app.include_router(area_detail_router, dependencies=_authenticated)
 app.include_router(area_router, dependencies=_authenticated)
 app.include_router(area_score_router, dependencies=_authenticated)
+app.include_router(market_area_fitness_router, dependencies=_authenticated)
 app.include_router(area_ranking_router, dependencies=_authenticated)
 app.include_router(area_stats_router, dependencies=_authenticated)
 app.include_router(cartographer_router, dependencies=_authenticated)

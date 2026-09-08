@@ -1,5 +1,6 @@
 import type {
   AreaDetail,
+  AreaFitness,
   AreaRanking,
   Bookmark,
   AreaScoreDetail,
@@ -118,6 +119,12 @@ export const fetchAreaScore = (
   quarters = 8,
 ): Promise<AreaScoreDetail> =>
   getJson(`/market/trdar/${trdarCode}/score?quarters=${quarters}`);
+
+export const fetchAreaFitness = (
+  trdarCode: string | number,
+  serviceCode: string,
+): Promise<AreaFitness> =>
+  getJson(`/market/trdar/${trdarCode}/fitness?service_code=${encodeURIComponent(serviceCode)}`);
 
 export const fetchAreaInfo = (trdarCode: string | number): Promise<MarketArea> =>
   getJson(`/market/trdar/${trdarCode}/area`);

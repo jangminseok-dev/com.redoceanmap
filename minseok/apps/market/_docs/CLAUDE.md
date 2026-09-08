@@ -70,6 +70,7 @@ market의 모든 테이블(3NF 15 + market_news_articles + area_score_backtest_r
 | 프론트 `/market/trdar/{code}/stats` | `area_stats` 조회 슬라이스 — 상권 1곳의 분기 시계열(매출·점포·유동인구 병합) + 최신 분해축(연령/시간대) + 변화지표·시도 벤치마크. `service_code` 생략 시 최신 분기 매출 최대 업종 자동 선택 |
 | 프론트 `/market/trdar/{code}/score` | `area_score` 조회 슬라이스 — 분기 추이(전 업종 합계 매출·유동인구 QoQ) + 시도 벤치마크 대비 종합점수. 계산은 순수 도메인 서비스 `domain/services/area_scorer.py`(4개 컴포넌트 0~100, 50=벤치마크 동률, 가용 평균) |
 | 프론트 `/market/trdar/{code}/detail` | `area_detail` 조회 슬라이스 — 팩트별 최신 분기 구조 분해(요일·시간대·성별·연령대 매출, 상주·직장인구 피라미드, 가구·아파트, 소비 카테고리) + 규칙 기반 해석 문장. 문장 생성은 순수 도메인 서비스 `domain/services/area_narrator.py`(임계값 기반, LLM 미사용). 지도 오버레이 패널용 + 허브 `get_area_insights`로 chat에도 공급 |
+| 프론트 `/market/trdar/{code}/fitness?service_code=` | `area_fitness` 조회 슬라이스(2026-09 game에서 이관) — 상권×업종 **입지 적합도 4축**(수요 정합·시간대 정합·경쟁 여유·생존 신호, 가중 합 0~1) + 실데이터 숫자로 말하는 진단 문장. 판정은 순수 도메인 `domain/services/area_fitness.py`, 문장은 `area_fitness_narrator.py`(템플릿, LLM 미사용). 입력 분포·서울 백분위는 `pg/area_demand_profile_pg_repository.py`(조회 6번, **최신 적재 분기**). 창업비용·임대료 같은 가정치는 없다(ROADMAP B4). 상권·업종 부재는 404 |
 
 **객단가 분해·통행 대조(2026-07-27)** — `estimated_sales`의 건수 축과 `floating_population`의
 요일 축을 처음 쓴다. 금액만으론 "많이 오는 층"과 "비싸게 쓰는 층"이 구분되지 않는다.

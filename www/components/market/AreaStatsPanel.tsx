@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, ChevronDown, Gauge, Store, TrendingUp, Users } from "lucide-react";
+import { BarChart3, ChevronDown, Compass, Gauge, Store, TrendingUp, Users } from "lucide-react";
 import { fetchAreaStats } from "@/lib/api";
 import type { QuarterStat } from "@/lib/types";
 import AreaScoreCard from "./AreaScoreCard";
+import AreaFitnessCard from "./AreaFitnessCard";
 import SalesTrendChart from "./SalesTrendChart";
 import PopulationCharts from "./PopulationCharts";
 import StorePanel from "./StorePanel";
@@ -105,6 +106,13 @@ export default function AreaStatsPanel({
       <Section icon={Gauge} title="상권 종합점수">
         <AreaScoreCard trdarCode={trdarCode} quarters={view.quarters} />
       </Section>
+
+      {/* 입지 적합도 — 업종은 선택값 우선, 없으면 stats가 고른 최대 매출 업종(null이면 생략) */}
+      {(serviceCode ?? data.serviceCode) && (
+        <Section icon={Compass} title={`입지 적합도 · ${data.serviceName ?? ""}`}>
+          <AreaFitnessCard trdarCode={trdarCode} serviceCode={(serviceCode ?? data.serviceCode) as string} />
+        </Section>
+      )}
 
       <details className="group">
         <summary className="flex cursor-pointer list-none select-none items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-foreground-muted">

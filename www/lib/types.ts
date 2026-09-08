@@ -302,6 +302,39 @@ export type ScoreComponent = {
   benchmark: number;
 };
 
+export type FitnessComponent = {
+  key: "demand_match" | "hour_match" | "saturation" | "survival";
+  label: string;
+  score: number; // 0~1
+  weight: number;
+};
+
+export type FitnessDiagnosis = {
+  tone: "good" | "warn" | "bad";
+  message: string;
+};
+
+// 입지 적합도 — /market/trdar/{code}/fitness. observed*는 실데이터, 가정치 필드는 없다
+export type AreaFitness = {
+  trdarCode: number;
+  trdarName: string;
+  serviceCode: string;
+  serviceName: string;
+  yearQuarter: number;
+  observedMonthlySalesAmount: number;
+  observedStoreCount: number;
+  observedSimilarStoreCount: number;
+  observedSalesPerStore: number;
+  observedTicketPrice: number;
+  observedClosureRate: number;
+  observedOperatingMonthsAvg: number;
+  totalScore: number; // 0~1
+  components: FitnessComponent[];
+  diagnoses: FitnessDiagnosis[];
+  hasSales: boolean;
+  hasStore: boolean;
+};
+
 export type AreaScoreDetail = {
   trdarCode: number;
   trdarName: string;
