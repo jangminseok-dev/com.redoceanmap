@@ -9,19 +9,6 @@ import type {
   ConversationMessage,
   ConversationSummary,
   Fundamentals,
-  GameAreaFitness,
-  GameMarketPrices,
-  GameOpenStoreReceipt,
-  GameRulebook,
-  GameSettlementList,
-  GameCloseStoreReceipt,
-  GameStoreDaily,
-  GameStoreDecisionReceipt,
-  GameStoreSummary,
-  GameOrderList,
-  GameOrderReceipt,
-  GameTradeReceipt,
-  GameWallet,
   InvestorProfile,
   AlertSetting,
   PriceAlert,
@@ -162,117 +149,6 @@ export const fetchAreaRanking = (params: {
 // 첫 화면 쇼케이스 — 이 앱에서 로그인 없이 열리는 유일한 조회다(자치구별 점포당 매출 1위).
 export const fetchAreaShowcase = (): Promise<AreaShowcase> =>
   getJson(`/market/areas/showcase`);
-
-// 게임 — 규칙 안내 + 현재 게임 시각. 화면 진입 시 한 번 부른다.
-export const fetchGameRulebook = (): Promise<GameRulebook> => getJson(`/game/myself`);
-
-// 게임 시세 — 가격은 서버가 틱마다 계산한다(저장하지 않는다).
-// 같은 틱을 다시 물으면 같은 값이라 폴링이 안전하다.
-// candleSymbol을 넘기면 그 종목의 일봉과 종목 카드가 함께 온다.
-// 한 종목만 받는 이유는 비용이다 — 하루당 60틱을 훑으므로 전 종목이면 응답 목표를 넘긴다.
-export const fetchGamePrices = (
-  ticks = 120,
-  candleSymbol?: string,
-  candleDays = 7,
-): Promise<GameMarketPrices> => {
-  const params = new URLSearchParams({ ticks: String(ticks) });
-  if (candleSymbol) {
-    params.set("candle_symbol", candleSymbol);
-    params.set("candle_days", String(candleDays));
-  }
-  return getJson(`/game/market/prices?${params.toString()}`);
-};
-
-export const fetchGameWallet = (): Promise<GameWallet> => getJson(`/game/wallet`);
-
-// 매매 — 체결가는 요청이 도착한 틱의 가격이다(예약 주문·지연 체결 없음).
-async function postGame<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`/api/backend${path}`, {
-    method: "POST",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) {
-    const detail = await res.json().catch(() => null);
-    throw new ApiError(res.status, detail?.detail ?? "요청에 실패했습니다.");
-  }
-  return res.json();
-}
-
-// leverage 2배 이상은 만료(게임 3일)와 강제청산이 붙는다 — 규칙은 /game/myself가 내려준다.
-export const openGameTrade = (
-  symbol: string,
-  side: "LONG" | "SHORT",
-  quantity: number,
-  leverage = 1,
-): Promise<GameTradeReceipt> => postGame(`/game/trades`, { symbol, side, quantity, leverage });
-
-export const closeGameTrade = (positionId: number): Promise<GameTradeReceipt> =>
-  postGame(`/game/trades/${positionId}/close`);
-
-// 지정가 주문 — cron이 없다. **이 조회가 곧 체결 판정 시점이다**(지연 실행):
-// 서버가 placed~min(now, expires) 구간을 훑어 확정하고 그 결과를 돌려준다.
-// 그래서 폴링을 멈추면 체결도 멈춘 것처럼 보인다 — 화면이 열려 있는 동안 계속 부른다.
-export const fetchGameOrders = (): Promise<GameOrderList> => getJson(`/game/orders`);
-
-// 진입 예약 — 서버가 체결에 쓸 현금을 지금 묶는다(취소·만료 시 반환).
-export const placeGameEntryOrder = (body: {
-  symbol: string;
-  side: "LONG" | "SHORT";
-  quantity: number;
-  limitPriceKrw: number;
-  leverage: number;
-}): Promise<GameOrderReceipt> => postGame(`/game/orders`, body);
-
-// 익절·손절 — 둘 다 넣으면 OCO 한 쌍이 되어 한쪽이 체결되면 나머지가 취소된다.
-// 같은 포지션에 다시 걸면 기존 예약을 갈아끼운다(서버 규칙).
-export const placeGameExitOrder = (body: {
-  positionId: number;
-  takeProfitKrw: number | null;
-  stopLossKrw: number | null;
-}): Promise<GameOrderReceipt> => postGame(`/game/orders/exits`, body);
-
-export const cancelGameOrder = (orderId: number): Promise<GameOrderReceipt> =>
-  postGame(`/game/orders/${orderId}/cancel`);
-
-// 만료 연장 — 만료 자체는 없앨 수 없다(체결 스캔 범위를 묶는 성능 장치).
-export const extendGameOrder = (orderId: number): Promise<GameOrderReceipt> =>
-  postGame(`/game/orders/${orderId}/extend`);
-
-// 창업 — 적합도 미리보기는 실데이터 근거, 매출·비용은 게임 규칙이다(응답 필드 접두사로 구분).
-export const fetchGameAreaFitness = (
-  trdarCode: number,
-  serviceCode: string,
-): Promise<GameAreaFitness> =>
-  getJson(`/game/areas/${trdarCode}/fitness?service_code=${encodeURIComponent(serviceCode)}`);
-
-export const openGameStore = (body: {
-  trdarCode: number;
-  serviceCode: string;
-  budgetKrw: number;
-  staffCount: number;
-  priceFactor: number;
-}): Promise<GameOpenStoreReceipt> => postGame(`/game/stores`, body);
-
-export const fetchGameStores = (): Promise<GameStoreSummary[]> => getJson(`/game/stores`);
-
-// 운영 결정 — 다음 게임일부터 적용된다. 넣지 않은 항목은 직전 결정을 잇는다.
-export const decideGameStore = (
-  storeId: number,
-  body: { priceFactor?: number; staffCount?: number; facilityScore?: number },
-): Promise<GameStoreDecisionReceipt> => postGame(`/game/stores/${storeId}/decisions`, body);
-
-// 폐업 — 보증금은 회수되고 인테리어는 회수되지 않는다.
-export const closeGameStore = (storeId: number): Promise<GameCloseStoreReceipt> =>
-  postGame(`/game/stores/${storeId}/close`);
-
-export const fetchGameStoreDaily = (storeId: number, days = 14): Promise<GameStoreDaily> =>
-  getJson(`/game/stores/${storeId}?days=${days}`);
-
-// 분기 결산 — 조회가 곧 정산 시점이다(지연 실행). cron이 없어 밀린 분기를 여기서 확정한다.
-// 멱등하므로 여러 번 불러도 안전하다.
-export const fetchGameSettlements = (): Promise<GameSettlementList> =>
-  getJson(`/game/settlements`);
 
 // ── 북마크 — 관심 종목·상권. 인증은 httpOnly 쿠키가 자동 동행한다. ──
 async function sendJson<T>(path: string, method: "POST" | "PUT" | "DELETE", body?: unknown): Promise<T> {

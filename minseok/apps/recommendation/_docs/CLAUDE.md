@@ -29,7 +29,6 @@
   label은 저장 시점 표시명 동결(재등록으로 덮지 않는다). 사용자당 상한 200(초과 409).
 - **프론트**: `/bookmarks` 페이지(내 목록·삭제) + 주식 히어로·상권 오버레이의
   `BookmarkButton`(서버 목록이 단일 진실 — 로컬 상태 없음, 비로그인 클릭은 로그인 모달).
-  game의 `useFavorites`(localStorage 관심종목)와는 별개다 — 그쪽은 시즌 화면 취향.
 - **알림 열람(③-M3)**: 허브 `BookmarkDirectoryPort`를 `BookmarkDirectoryGateway`(직접 조회)가
   구현 — 전 사용자 종목 북마크를 허브 관심 종목 알림(`bookmark_alert`)에 준다.
   수신을 끈 회원(`user_alert_settings.email_alerts=false`)은 제외(행 부재 = 기본 수신).

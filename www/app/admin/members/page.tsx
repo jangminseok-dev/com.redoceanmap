@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { Ban, Coins, Download, KeyRound, LogOut, RotateCcw, Search, ShieldCheck, UserX } from "lucide-react";
+import { Ban, Download, KeyRound, LogOut, RotateCcw, Search, ShieldCheck, UserX } from "lucide-react";
 import {
   downloadCsv,
   fetchAdminMembers,
@@ -40,8 +40,6 @@ const PERMISSION_DESC: Record<string, string> = {
   "analytics:read": "예측 채점·백테스트 조회",
   "documents:read": "문서(PDF 요약) 조회",
   "documents:write": "문서 업로드·요약 실행",
-  "game:read": "게임 운영 현황 조회",
-  "game:write": "게임 자본 지급·주가 개입·신고 처리",
 };
 
 type DialogAction = "suspend" | "revoke-sessions" | "withdraw";
@@ -465,15 +463,6 @@ function MemberActions({
   if (member.deleted_at) return <span className="block text-right text-xs text-foreground-muted">—</span>;
   return (
     <div className="flex justify-end gap-1">
-      {/* 게임운영은 회원 ID로만 지갑을 찾는다 — 사람이 숫자를 옮겨 적지 않게 링크로 넘긴다. */}
-      <Link
-        href={`/admin/game?userId=${member.id}`}
-        title="게임 지갑 열기"
-        aria-label="게임 지갑 열기"
-        className="grid place-items-center w-8 h-8 rounded-full border border-border text-foreground-muted transition-colors hover:bg-accent hover:text-foreground"
-      >
-        <Coins size={15} />
-      </Link>
       {member.suspended_at ? (
         <ActionIcon title="정지 해제" onClick={onReinstate} disabled={disabled}>
           <RotateCcw size={15} />

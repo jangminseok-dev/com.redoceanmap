@@ -123,7 +123,7 @@ shadcn 표준 이름은 **기존 색을 가리키는 별칭**이다(`app/globals
 | --- | --- |
 | `<select>` | `value`/`onChange` → `onValueChange` + Trigger/Content/Item 구조로 전면 재작성 필요 |
 | 체크박스 | 회원가입 "전체 동의"가 `form.elements`를 직접 조작한다 |
-| 탭 3곳(워크스페이스·게임·주식) | 패널을 한 번만 마운트하고 CSS로 전환하는 구조 — 지도·차트 이중 인스턴스 방지가 목적이라 `Tabs`로 옮기면 `forceMount`가 필요해진다 |
+| 탭 2곳(워크스페이스·주식) | 패널을 한 번만 마운트하고 CSS로 전환하는 구조 — 지도·차트 이중 인스턴스 방지가 목적이라 `Tabs`로 옮기면 `forceMount`가 필요해진다 |
 | 필터 칩·세그먼트 토글 | `Button` 스케일과 섞이면 안 되는 낮은 위계 요소다. 알약(`rounded-full`)을 유지한다 — DESIGN.md §5 |
 
 ### 5. 모션은 의존성 없이 만든다

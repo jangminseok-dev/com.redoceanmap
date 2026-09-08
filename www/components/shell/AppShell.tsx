@@ -7,7 +7,6 @@ import {
   Bookmark,
   CandlestickChart,
   Compass,
-  Gamepad2,
   LogOut,
   MapPin,
   MessageSquare,
@@ -43,7 +42,6 @@ const PRIMARY: NavItem[] = [
   { icon: MapPin, label: "상권", href: "/market", key: "market" },
   { icon: CandlestickChart, label: "주식", href: "/stock", key: "stock" },
   // 게임은 등급 게이팅 대상이 아니다(전 유저 공개) — key가 없는 것이 의도다
-  { icon: Gamepad2, label: "게임", href: "/game" },
 ];
 
 // 더보기 시트에만 있는 부 항목. 매일 쓰지 않는 것과 하위 화면을 여기로 내린다.

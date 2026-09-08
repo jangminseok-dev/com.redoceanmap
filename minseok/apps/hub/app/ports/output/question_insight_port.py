@@ -10,7 +10,7 @@ class QuestionInsightPort(ABC):
 
     조회 전용이다(Record ↔ Directory 분리 선례 — 쓰기는 chat의 대화 저장 경로가 이미 한다).
     두 메서드를 한 포트에 두는 이유: 소비자가 하나(admin 질문 로그 화면)이고 둘 다
-    "저장된 질문을 읽는다"는 같은 성질이다(GameOpsPort 선례).
+    "저장된 질문을 읽는다"는 같은 성질이다.
     """
 
     @abstractmethod

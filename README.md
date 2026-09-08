@@ -33,7 +33,7 @@ LLM 추론은 외부 API가 아니라 **온프레미스 로컬 모델(EXAONE 3.5
   │   계약(포트+DTO)만 소유 — 스포크를 모른다               │
   └──┬──────┬──────┬──────┬──────┬──────┬──────┬────────┘
      ▼      ▼      ▼      ▼      ▼      ▼      ▼
-   chat   market  stock  auth  admin  game  recommendation · mail
+   chat   market  stock  auth  admin  recommendation · mail
    (LLM)  (상권)  (주식)  (JWT)  (RBAC) (모의투자)
      각 앱 내부 = 헥사고날: adapter → app(ports/use_cases) → domain
 ```
