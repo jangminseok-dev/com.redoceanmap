@@ -232,7 +232,7 @@ class PaperInteractor(PaperUseCase):
                 baseline_up_rate=s.baseline_up_rate, ready=s.ready, atr_pct=s.atr_pct, regime=s.regime,
                 earnings_veto=s.earnings_veto,
                 sentiment_3d=(sum(sentiments) / len(sentiments)) if sentiments else None,
-                news=tuple(NewsCite(n.news_id, n.title, n.sentiment, n.event_type, n.published_at.date()) for n in news[:2]),
+                news=tuple(NewsCite(n.news_id, n.title, n.sentiment, n.event_type, n.published_at.date(), n.url) for n in news[:2]),
             ))
         held: list[HeldView] = []
         prices: dict[str, float] = {}

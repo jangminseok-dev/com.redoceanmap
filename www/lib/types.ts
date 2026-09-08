@@ -587,6 +587,176 @@ export type AreaShowcase = {
   divisionMedians: DivisionMedian[];
 };
 
+// ── /stock/paper/* (직접 호출 — snake_case DTO) — AI 모의투자. 실제 매매 아님·권유 아님(기록 보고) ──
+export type PaperRules = {
+  rules_version?: string;
+  assumed_initial_cash_krw: number;
+  assumed_fee_rate: number;
+  assumed_usdkrw: number; // 고정 환율 — 수집이 없어 상수
+  assumed_max_position_weight: number;
+  assumed_max_positions: number;
+  assumed_signal_hold_sessions?: number;
+  ai_fill?: string;
+  user_fill?: string;
+};
+
+export type PaperBoardRow = {
+  key: string; // exaone | signal | user:<id>
+  kind: "exaone" | "signal" | "user";
+  label: string;
+  equity_krw: number;
+  return_pct: number;
+  open_positions: number;
+  trades: number;
+  last_as_of: string | null;
+};
+
+export type PaperBenchmarkPoint = { as_of: string; equity_krw: number };
+
+export type PaperBoard = {
+  rows: PaperBoardRow[];
+  spy: PaperBenchmarkPoint[]; // 초기 자본을 SPY에 넣고 들고 있었을 때
+  replay_until: string | null; // 이 날짜까지는 리플레이 구간
+  rules: PaperRules;
+};
+
+export type PaperPosition = {
+  ticker: string;
+  name: string;
+  side: "LONG" | "SHORT";
+  quantity: number;
+  avg_price: number; // 종목 통화
+  last_price: number | null;
+  unrealized_pct: number | null;
+  value_krw: number;
+  opened_at: string;
+};
+
+export type PaperEquityPoint = {
+  as_of: string;
+  cash_krw: number;
+  positions_value_krw: number;
+  equity_krw: number;
+  replayed: boolean;
+};
+
+export type PaperTrade = {
+  id: number;
+  ticker: string;
+  side: "LONG" | "SHORT";
+  action: "BUY" | "SELL" | "SHORT" | "COVER";
+  quantity: number;
+  price: number;
+  fee_krw: number;
+  realized_pnl_krw: number | null;
+  ts: string;
+  decision_id: number | null; // null = 사람 주문
+  reason: string | null;
+  evidence: { news_ids?: number[]; signals?: string[] } | null;
+  replayed: boolean;
+};
+
+export type PaperAccount = {
+  key: string;
+  kind: "exaone" | "signal" | "user";
+  label: string;
+  cash_krw: number;
+  equity_krw: number;
+  initial_cash_krw: number;
+  started_on: string;
+  positions: PaperPosition[];
+  equity: PaperEquityPoint[];
+  trades: PaperTrade[];
+};
+
+export type PaperOrder = {
+  ticker: string;
+  action: "BUY" | "SELL" | "SHORT" | "COVER";
+  weight: number;
+  reason: string;
+  cites: { news_ids: number[]; signals: string[] };
+  reason_kind: "news" | "indicator" | "mixed" | "none";
+};
+
+export type PaperRejected = { ticker: string; action: string; reason: string };
+
+export type PaperCandidateNews = {
+  news_id: number;
+  title: string;
+  sentiment: number | null;
+  event_type: string | null;
+  published_on: string;
+  url?: string;
+};
+
+export type PaperCandidate = {
+  ticker: string;
+  name: string;
+  last_close: number;
+  return_5d_pct: number | null;
+  direction: "UP" | "DOWN" | "NEUTRAL" | "NONE";
+  score: number | null;
+  up_rate: number | null;
+  baseline_up_rate: number | null;
+  ready: boolean;
+  atr_pct: number | null;
+  regime: string | null;
+  earnings_veto: boolean;
+  sentiment_3d: number | null;
+  news: PaperCandidateNews[];
+};
+
+export type PaperScore = {
+  ticker: string;
+  action: string;
+  reason_kind: string;
+  realized_return_pct: number;
+  hit: boolean;
+};
+
+export type PaperDecision = {
+  id: number;
+  as_of: string;
+  market_view: string;
+  orders: PaperOrder[];
+  rejected: PaperRejected[];
+  candidates: PaperCandidate[];
+  fills: PaperTrade[];
+  scores: PaperScore[];
+  replayed: boolean;
+  latency_ms: number;
+};
+
+export type PaperDecisions = { key: string; decisions: PaperDecision[] }; // as_of 내림차순
+
+export type PaperScoreBucket = {
+  key: string;
+  n: number;
+  hits: number;
+  hit_rate: number | null; // 표본이 min_samples 미만이면 null — 숫자를 노출하지 않는다
+  ci_low: number | null;
+  ci_high: number | null;
+};
+
+export type PaperScorecard = {
+  key: string;
+  total: PaperScoreBucket;
+  by_reason: PaperScoreBucket[];
+  by_action: PaperScoreBucket[];
+  min_samples: number;
+};
+
+export type PaperOrderReceipt = {
+  ticker: string;
+  action: string;
+  quantity: number;
+  price: number;
+  fee_krw: number;
+  realized_pnl_krw: number | null;
+  cash_krw: number;
+  price_as_of: string;
+};
+
 // ── /bookmarks (직접 호출 — snake_case DTO) ──
 export type Bookmark = {
   id: number;

@@ -3,6 +3,11 @@ import type {
   AreaFitness,
   AreaRanking,
   Bookmark,
+  PaperAccount,
+  PaperBoard,
+  PaperDecisions,
+  PaperOrderReceipt,
+  PaperScorecard,
   AreaScoreDetail,
   AreaShowcase,
   AreaStatsDetail,
@@ -191,6 +196,21 @@ export const saveAlertSetting = (body: {
 }): Promise<AlertSetting> => sendJson("/alert-settings", "PUT", body);
 
 // 가격 도달 알림 조건([6]) — 도달 시 1회 통지 후 자동 비활성(재알림은 재등록)
+// ── AI 모의투자 — 실제 매매 아님. 리더보드·곡선은 일 1회 갱신이라 폴링하지 않는다 ──
+export const fetchPaperBoard = (): Promise<PaperBoard> => getJson("/stock/paper/board");
+export const fetchPaperAccount = (key: string): Promise<PaperAccount> =>
+  getJson(`/stock/paper/accounts/${encodeURIComponent(key)}`);
+export const fetchPaperDecisions = (key: string, limit = 400): Promise<PaperDecisions> =>
+  getJson(`/stock/paper/accounts/${encodeURIComponent(key)}/decisions?limit=${limit}`);
+export const fetchPaperScorecard = (key: string): Promise<PaperScorecard> =>
+  getJson(`/stock/paper/accounts/${encodeURIComponent(key)}/scorecard`);
+export const fetchPaperMe = (): Promise<PaperAccount> => getJson("/stock/paper/me");
+export const placePaperOrder = (body: {
+  ticker: string;
+  action: "BUY" | "SELL" | "SHORT" | "COVER";
+  quantity: number;
+}): Promise<PaperOrderReceipt> => sendJson("/stock/paper/me/orders", "POST", body);
+
 export const fetchPriceAlerts = (): Promise<PriceAlertList> => getJson("/price-alerts");
 
 export const createPriceAlert = (body: {

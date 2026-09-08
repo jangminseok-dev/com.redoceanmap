@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Bookmark,
+  Bot,
   CandlestickChart,
   Compass,
   LogOut,
@@ -41,7 +42,8 @@ const PRIMARY: NavItem[] = [
   { icon: Plus, label: "질문", href: "/" },
   { icon: MapPin, label: "상권", href: "/market", key: "market" },
   { icon: CandlestickChart, label: "주식", href: "/stock", key: "stock" },
-  // 게임은 등급 게이팅 대상이 아니다(전 유저 공개) — key가 없는 것이 의도다
+  // AI 모의투자는 등급 게이팅 대상이 아니다(전 유저 공개, 기록 열람) — key가 없는 것이 의도다
+  { icon: Bot, label: "AI투자", href: "/paper" },
 ];
 
 // 더보기 시트에만 있는 부 항목. 매일 쓰지 않는 것과 하위 화면을 여기로 내린다.

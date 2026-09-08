@@ -22,6 +22,7 @@ class NewsCite:
     sentiment: float | None
     event_type: str | None
     published_on: date
+    url: str = ""
 
 
 @dataclass(frozen=True)
