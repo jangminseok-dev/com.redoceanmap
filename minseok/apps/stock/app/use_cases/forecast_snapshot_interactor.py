@@ -76,7 +76,10 @@ class ForecastSnapshotInteractor(ForecastSnapshotUseCase):
             "[forecast-snapshot] 캡처 %d건(신규 %d) skip %d티커",
             len(entities), captured, len(skipped),
         )
-        return CaptureResult(captured=captured, skipped=skipped)
+        return CaptureResult(
+            captured=captured, skipped=skipped,
+            as_of=max(e.as_of for e in entities) if entities else None,
+        )
 
     async def _capture_one(
         self, ticker: str, horizons: list[int], active: ActiveSignalConfig

@@ -8,6 +8,7 @@ from datetime import datetime
 class ForecastCaptureOutcome:
     captured: int          # 신규 저장 건수(중복 제외)
     skipped: list[str]     # 미수집·봉 부족으로 건너뛴 티커
+    as_of: datetime | None = None  # 캡처가 본 최신 봉 기준일 — 모의투자 step의 날짜 축(신규 0건이어도 채움)
 
 
 @dataclass(frozen=True)

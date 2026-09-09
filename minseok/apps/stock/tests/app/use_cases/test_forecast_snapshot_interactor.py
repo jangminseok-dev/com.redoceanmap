@@ -238,6 +238,21 @@ async def test_capture_probability_none_and_breakdown_once_per_ticker():
     assert all(s.up_rate is None and s.ready is False for s in repo.saved)
 
 
+async def test_capture_returns_bar_as_of_even_when_nothing_new():
+    # 모의투자 step의 날짜 축 — 리포지토리가 전부 중복으로 걸러 신규 0건이어도 봉 기준일은 돌려준다.
+    # (2026-09-09 사고: step이 as_of=지금으로 "오늘" 스냅샷을 찾아 라이브에서 항상 휴장일 skip)
+    class _DedupRepo(_StubRepo):
+        async def save_many(self, snapshots):
+            return 0
+
+    forecaster = _StubForecaster({("TEST", 5): _view("TEST", 5)})
+    result = await _interactor(forecaster, _StubHistory({"TEST": _bars(60)}), _DedupRepo()).capture(
+        CaptureCommand(tickers=["test"], horizons=[5])
+    )
+
+    assert result.captured == 0 and result.as_of == AS_OF
+
+
 async def test_capture_skips_uncollected_ticker():
     forecaster = _StubForecaster({("TEST", 5): _view("TEST", 5)})
     repo = _StubRepo()

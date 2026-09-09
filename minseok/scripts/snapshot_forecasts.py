@@ -22,7 +22,7 @@ DB에 동결하고, horizon(5·20거래일)이 도래한 과거 스냅샷을 실
 """
 
 import sys
-from datetime import datetime
+from datetime import UTC, datetime, time
 from pathlib import Path
 
 import requests
@@ -41,12 +41,17 @@ TOKEN = _secrets.get("N8N_INBOUND_TOKEN")
 HEADERS = {"X-Webhook-Token": TOKEN}
 
 HORIZONS = [5, 20]   # 단기(1주) + 스윙(1개월) — 두 지평 모두 채점 데이터 축적
+# 모의투자 step의 as_of = 캡처 봉 기준일 + 05:00 UTC(14:00 KST). replay_paper.py의 AS_OF_UTC와 같은 규약 —
+# 판단 시각이 아니라 "어느 세션 종가를 보고 낸 판단인가"의 날짜 라벨이다. 14:00 실행의 최신 봉은 항상
+# 전날 세션이라, 지금 시각을 쓰면 step이 "오늘" 스냅샷을 찾다 매일 휴장일 skip이 된다(2026-09-09 사고).
+STEP_AS_OF_UTC = time(5, 0)
 BATCH_SIZE = 20      # 요청당 티커 수 — 서버 계산 시간 상한(배치당 1~2분)
 TIMEOUT = 1800
 
 
-def capture(tickers: list[str]) -> tuple[int, list[str], int]:
+def capture(tickers: list[str]) -> tuple[int, list[str], int, datetime | None]:
     captured, skipped, failed_batches = 0, [], 0
+    bar_as_of: datetime | None = None  # 배치들이 본 최신 봉 기준일 — step의 날짜 축
     for i in range(0, len(tickers), BATCH_SIZE):
         batch = tickers[i:i + BATCH_SIZE]
         try:
@@ -59,10 +64,13 @@ def capture(tickers: list[str]) -> tuple[int, list[str], int]:
             body = res.json()
             captured += body["captured"]
             skipped.extend(body["skipped"])
+            if body.get("as_of"):
+                seen = datetime.fromisoformat(body["as_of"])
+                bar_as_of = seen if bar_as_of is None or seen > bar_as_of else bar_as_of
         except requests.RequestException as e:
             print(f"  [경고] 배치 실패({batch[0]}~{batch[-1]}): {e} — 다음 배치 계속")
             failed_batches += 1
-    return captured, skipped, failed_batches
+    return captured, skipped, failed_batches, bar_as_of
 
 
 def score() -> tuple[int, int]:
@@ -74,9 +82,16 @@ def score() -> tuple[int, int]:
     return body["scored"], body["pending"]
 
 
-def paper_step() -> dict:
-    """모의투자 일일 step — 스냅샷 캡처·채점 **뒤**에 돈다(판단이 오늘 스냅샷을 읽어야 한다)."""
-    res = requests.post(f"{HUB_URL}/automation/paper/step", json={}, headers=HEADERS, timeout=TIMEOUT)
+def paper_step(bar_as_of: datetime) -> dict:
+    """모의투자 일일 step — 스냅샷 캡처·채점 **뒤**에 돈다(판단이 방금 캡처한 스냅샷을 읽어야 한다).
+
+    as_of는 캡처 봉 기준일의 05:00 UTC로 고정한다 — 스냅샷 조회(snapshots_on)·뉴스 컷오프·
+    다음 세션 시가 체결(bars_after)이 리플레이와 같은 축이 되고, 같은 날 재실행은 (계정, as_of)
+    유니크로 멱등하다.
+    """
+    as_of = datetime.combine(bar_as_of.date(), STEP_AS_OF_UTC, tzinfo=UTC)
+    res = requests.post(f"{HUB_URL}/automation/paper/step", json={"as_of": as_of.isoformat()},
+                        headers=HEADERS, timeout=TIMEOUT)
     res.raise_for_status()
     return res.json()
 
@@ -89,7 +104,7 @@ def main() -> int:
         print(" ".join(tickers))
         return 0
 
-    captured, skipped, failed_batches = capture(tickers)
+    captured, skipped, failed_batches, bar_as_of = capture(tickers)
     print(f"캡처: 신규 {captured}건, skip {len(skipped)}티커"
           + (f" ({', '.join(skipped[:10])}{'…' if len(skipped) > 10 else ''})" if skipped else "")
           + (f" / 배치 실패 {failed_batches}건" if failed_batches else ""))
@@ -97,10 +112,13 @@ def main() -> int:
     scored, pending = score()
     print(f"채점: {scored}건 완료, {pending}건 대기(horizon 미도래)")
 
+    if bar_as_of is None:
+        print("  [경고] 캡처 응답에 봉 기준일이 없어 모의투자 step을 건너뜁니다 — 다음 실행에서 자연 재시도")
+        return 1
     try:
-        step = paper_step()
-        print(f"모의투자 step: 체결 {step['filled']} · 판단 {step['decisions']} · 채점 {step['scored']}"
-              + (f" · skip({step['skipped']})" if step.get("skipped") else ""))
+        step = paper_step(bar_as_of)
+        print(f"모의투자 step(기준 {bar_as_of:%Y-%m-%d}): 체결 {step['filled']} · 판단 {step['decisions']}"
+              f" · 채점 {step['scored']}" + (f" · skip({step['skipped']})" if step.get("skipped") else ""))
     except requests.RequestException as e:
         print(f"  [경고] 모의투자 step 실패: {e} — 다음 실행에서 자연 재시도(멱등)")
         failed_batches += 1

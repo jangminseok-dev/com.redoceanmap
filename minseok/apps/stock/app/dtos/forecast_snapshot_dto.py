@@ -16,6 +16,9 @@ class CaptureCommand:
 class CaptureResult:
     captured: int          # 신규 저장 건수(중복 제외)
     skipped: list[str]     # 미수집·봉 부족으로 건너뛴 티커
+    # 이번 캡처가 본 스냅샷의 최신 봉 기준일. 모의투자 step이 같은 날짜 축으로 스냅샷을 찾도록
+    # 배치 스크립트에 돌려준다 — 신규 저장 0건(주말·중복)이어도 채운다(금요일 세션 step의 멱등 재호출).
+    as_of: datetime | None = None
 
 
 @dataclass(frozen=True)

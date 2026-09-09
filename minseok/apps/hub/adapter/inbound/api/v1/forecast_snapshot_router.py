@@ -27,7 +27,9 @@ async def capture_snapshots(
     use_case: ForecastSnapshotIngestUseCase = Depends(get_forecast_snapshot_use_case),
 ) -> SnapshotCaptureResponse:
     outcome = await use_case.capture(payload.tickers, payload.horizons)
-    return SnapshotCaptureResponse(captured=outcome.captured, skipped=outcome.skipped)
+    return SnapshotCaptureResponse(
+        captured=outcome.captured, skipped=outcome.skipped, as_of=outcome.as_of,
+    )
 
 
 @forecast_snapshot_router.post(

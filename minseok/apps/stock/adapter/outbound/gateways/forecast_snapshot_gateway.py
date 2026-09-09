@@ -24,7 +24,9 @@ class ForecastSnapshotGateway(ForecastSnapshotPort):
 
     async def capture(self, tickers: list[str], horizons: list[int]) -> ForecastCaptureOutcome:
         result = await self._use_case.capture(CaptureCommand(tickers=tickers, horizons=horizons))
-        return ForecastCaptureOutcome(captured=result.captured, skipped=result.skipped)
+        return ForecastCaptureOutcome(
+            captured=result.captured, skipped=result.skipped, as_of=result.as_of,
+        )
 
     async def score(self) -> ForecastScoreOutcome:
         result = await self._use_case.score()
