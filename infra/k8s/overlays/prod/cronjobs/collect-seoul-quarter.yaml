@@ -39,7 +39,9 @@ spec:
               volumeMounts:
                 - name: repo
                   mountPath: /work
-                  readOnly: true
+                  # 쓰기 필요 — 새 분기를 받으면 data/raw/seoul/*.csv 캐시에 병합 저장한다(구 docker run -v와 동일).
+                  # 2026-09-09 읽기 전용이라 OSError(EROFS)로 새 분기 적재가 막혔던 사고.
+                  readOnly: false
           volumes:
             - name: repo
               hostPath:
