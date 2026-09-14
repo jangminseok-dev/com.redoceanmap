@@ -4,6 +4,13 @@
 
 Next.js 프론트엔드. UI 원자(버튼·모달·입력)는 **shadcn/ui**로 만든다(2026-08-04 도입).
 
+## 공개 페이지 — 서버 컴포넌트 (2026-09-14, A-4)
+
+`app/areas/[trdarCode]/page.tsx`·`app/sitemap.ts`·`app/robots.ts`는 이 저장소의 **첫 서버 컴포넌트
+경로**다. `(seoul)` 그룹 밖이라 TabGuard가 걸리지 않고, 백엔드 **공개** 엔드포인트만 읽는다.
+서버 fetch는 `lib/publicApi.server.ts` 하나로 모은다 — "브라우저 fetch 절대 URL 금지"의 서버 측 예외이며,
+클라이언트 컴포넌트에서 import하면 안 된다(그쪽은 `lib/api.ts`). ISR은 하루(분기 데이터).
+
 ## 개발 서버 — `--webpack`을 떼지 말 것
 
 ```bash

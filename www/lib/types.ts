@@ -588,6 +588,36 @@ export type AreaShowcase = {
   divisionMedians: DivisionMedian[];
 };
 
+// ── GET /market/areas/{code}/public · /market/areas/public-index (서버 컴포넌트 직접 호출) ──
+// 비로그인 공개 페이지(A-4). 백엔드 AreaPublicView가 필드를 절제한다 — 여기서 늘리지 않는다.
+export type AreaPublic = {
+  trdarCode: number;
+  trdarName: string;
+  districtName: string;
+  divisionName: string;
+  yearQuarter: number | null;
+  score: {
+    total: number;
+    grade: string; // 우수 / 양호 / 보통 / 주의 / 위험
+    components: ScoreComponent[];
+  } | null;
+  serviceCode: string | null;
+  serviceName: string | null;
+  storeCount: number | null;
+  salesPerStore: number | null; // 원/월
+  salesQoq: number | null; // %
+  closureRate: number | null; // %
+  floatingPop: number | null; // 주중+주말 통행 인구
+  insights: Insight[];
+};
+
+export type AreaIndexRow = {
+  trdarCode: number;
+  trdarName: string;
+  districtName: string;
+  divisionName: string;
+};
+
 // ── /stock/paper/* (직접 호출 — snake_case DTO) — AI 모의투자. 실제 매매 아님·권유 아님(기록 보고) ──
 export type PaperRules = {
   rules_version?: string;

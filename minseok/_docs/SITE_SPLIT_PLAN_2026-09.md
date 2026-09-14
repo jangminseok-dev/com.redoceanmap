@@ -117,9 +117,14 @@
 3. **A-3 auth 쿠키 전략 결정**(코드보다 결정이 먼저): 새 도메인은 `.redoceanmap.com` 쿠키가
    안 붙는다. 선택지 — (a) 사이트별 독립 로그인(단순, 권장 초기값) (b) auth 오리진 공유 SSO
    (redirect 왕복, ③-M1 이중문 구조 재사용). **결정 전까지 auth 코드 무변경.**
-4. **A-4 상권 공개 상세 = SEO 앵커**: `/areas/[trdarCode]` 공개 라우트(로그인 불요 —
-   showcase 선례의 필드 절제 규칙 적용) + 메타/OG/sitemap 1,650건. 재개발닷컴 문법의 핵심 이식.
-   ⚠ 공개 엔드포인트 rate limit(③-M1 잔여)과 같이 간다.
+4. ~~**A-4 상권 공개 상세 = SEO 앵커**~~ — **완료(2026-09-14, mac)**. 백엔드 `area_public`
+   슬라이스(`GET /market/areas/{code}/public` 60/분 · `/market/areas/public-index` 10/분,
+   `core/rate_limit` 재사용, 하루 캐시) — 상세·점수 유스케이스 조합만, 공개 필드는 `AreaPublicView`가
+   명시(사용자 결정: 핵심 요약+해석 문장, 좌표·인허가 상호·인구 피라미드·업종 랭킹 표 제외).
+   프론트 `www/app/areas/[trdarCode]/page.tsx`(`(seoul)` 밖 서버 컴포넌트, ISR 하루,
+   `generateMetadata`) + `app/sitemap.ts`(1,650건) + `app/robots.ts`. 서버 fetch는
+   `lib/publicApi.server.ts`(브라우저 절대 URL 금지 규칙의 서버 측 예외 — 파일 주석). 챗 도크는
+   LLM 교체 뒤. `tests/test_public_routes.py`가 공개 집합 3경로 + rate limit 부착을 고정.
 5. **A-5 이름 후보 정리(사용자)**: 도메인 2개 후보. 백엔드 API는 `api.redoceanmap.com` 유지.
 
 ### Phase B — 도메인 구매 시 (반나절 규모)

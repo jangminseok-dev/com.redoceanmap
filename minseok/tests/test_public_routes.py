@@ -15,6 +15,12 @@ PUBLIC_PATHS = {
     "/health",  # 헬스체크
     # 비로그인 첫 화면 쇼케이스 — 읽기 전용, 서울시 공개 데이터, 최소 6필드
     "/market/areas/showcase",
+    # 공개 상권 상세(A-4, 2026-09-14 사용자 결정) — 상권 1곳 단위·핵심 요약+해석 문장만.
+    # 좌표·인허가 상호·인구 피라미드·업종 랭킹 표는 뷰에 없다(test_area_public_interactor가 고정).
+    # IP당 60/분 rate limit. 랭킹(1,650행 일괄)은 계속 인증.
+    "/market/areas/{trdar_code}/public",
+    # sitemap용 인덱스 — 코드·이름·자치구·유형뿐(서울시 공개 차원 데이터), IP당 10/분
+    "/market/areas/public-index",
 }
 
 # 이 프로젝트가 쓰는 인증 가드 전부. JWT(데이터 API)와 HTTP Basic(/docs·/openapi.json)이
@@ -43,12 +49,26 @@ def test_상권_디렉터리는_여전히_인증을_요구한다():
     assert _guarded(route)
 
 
-def test_market_조회_경로_중_공개는_쇼케이스뿐():
+def test_market_조회_경로_중_공개는_쇼케이스와_공개_상세뿐():
     opened = {
         r.path for r in _app_routes()
         if r.path.startswith("/market") and not _guarded(r)
     }
-    assert opened == {"/market/areas/showcase"}
+    assert opened == {
+        "/market/areas/showcase",
+        "/market/areas/{trdar_code}/public",
+        "/market/areas/public-index",
+    }
+
+
+def test_공개_상세와_인덱스는_rate_limit이_걸려_있다():
+    # 인증이 없는 대신 빈도 제한이 방어선이다 — 의존성에서 빠지면 조용히 무제한이 된다
+    from core import rate_limit as rl
+
+    for path in ("/market/areas/{trdar_code}/public", "/market/areas/public-index"):
+        route = next(r for r in _app_routes() if r.path == path)
+        names = {getattr(d.dependency, "__qualname__", "") for d in route.dependencies}
+        assert any(n.startswith(rl.rate_limit.__name__) for n in names), path
 
 
 def test_화이트리스트_밖의_경로는_모두_인증을_요구한다():

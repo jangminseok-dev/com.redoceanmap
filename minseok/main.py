@@ -122,6 +122,7 @@ from market.adapter.inbound.api.v1.area_score_router import area_score_router
 from market.adapter.inbound.api.v1.area_fitness_router import (
     area_fitness_router as market_area_fitness_router,
 )
+from market.adapter.inbound.api.v1.area_public_router import area_public_router
 from market.adapter.inbound.api.v1.area_showcase_router import area_showcase_router
 from market.adapter.inbound.api.v1.area_stats_router import area_stats_router
 from market.adapter.inbound.api.v1.cartographer_router import cartographer_router
@@ -254,6 +255,9 @@ app.include_router(dispatcher_router)
 # 공개 — 비로그인 첫 화면 쇼케이스(읽기 전용·최소 필드). 데이터 라우터 중 유일하게
 # 인증 없이 열린다. 여기에 라우터를 더 얹기 전에 tests/test_public_routes.py를 볼 것.
 app.include_router(area_showcase_router)
+# 공개 — 상권 1곳 공개 페이지(A-4, 2026-09-14) + sitemap 인덱스. 인증 대신 IP rate limit,
+# 뷰 필드는 AreaPublicView가 명시적으로 절제한다(좌표·인허가 상호·인구 피라미드 없음).
+app.include_router(area_public_router)
 app.include_router(chat_router, dependencies=_authenticated)
 app.include_router(concierge_router, dependencies=_authenticated)
 app.include_router(area_detail_router, dependencies=_authenticated)
