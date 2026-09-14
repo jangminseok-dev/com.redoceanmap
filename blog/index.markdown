@@ -8,7 +8,7 @@ title: 홈
 <div class="cn-card cn-bg-dark cn-statement cn-wide cn-hero">
   <p class="cn-label">redoceanmap 개발 기록</p>
   <h1>서울 어디에 창업할지, 이 주식이 지금 어떤지 —<br>공공데이터와 로컬 LLM으로 답하는 서비스를<br>혼자 만들고 운영하는 기록</h1>
-  <p>상권 분석 · 주식 해설 · AI 모의투자. 매매 권유는 하지 않고, 검증에 떨어진 것은 기각해 기록합니다.</p>
+  <p>상권 분석 · 주식 해설 · AI 모의투자. 매매 권유는 하지 않고 검증에 떨어진 것은 기각해 기록합니다.</p>
   <p class="cn-actions">
     <a class="btn btn--primary" href="{{ '/posts/' | relative_url }}">개발 기록 읽기</a>
     <a class="btn" href="{{ '/overview/' | relative_url }}">프로젝트 개요</a>
