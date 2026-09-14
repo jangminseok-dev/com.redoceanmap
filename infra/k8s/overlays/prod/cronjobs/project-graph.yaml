@@ -34,3 +34,9 @@ spec:
                   value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@pgvector:5432/$(POSTGRES_DB)
                 - name: MARKET_DATABASE_URL
                   value: $(MARKET_DATABASE_URL_DOCKER)
+                # 9/11·9/12 02:15 _zoneinfo 세그폴트(exit 139, 재현 안 됨) 진단용 — 크래시 시 파이썬 스택을 남기고
+                # stdout 버퍼 유실로 로그가 비는 것을 막는다
+                - name: PYTHONFAULTHANDLER
+                  value: "1"
+                - name: PYTHONUNBUFFERED
+                  value: "1"
