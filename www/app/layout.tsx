@@ -4,6 +4,7 @@ import AppShell from "@/components/shell/AppShell";
 import AuthModal from "@/components/seoul/AuthModal";
 import AuthProvider from "@/components/seoul/AuthProvider";
 import Providers from "./providers";
+import { SITE_URL } from "@/lib/siteUrl";
 
 
 const TITLE = "redoceanmap — 상권·주식 분석";
@@ -12,7 +13,7 @@ const DESCRIPTION = "서울 어디에 창업할지, 이 주식이 지금 어떤�
 export const metadata: Metadata = {
   // 링크를 공유했을 때 미리보기가 뜨게 한다. images는 public/og.png(1200×630)를
   // 만든 뒤에 붙인다 — 자산 없이 넣으면 깨진 카드가 뜬다.
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000"),
+  metadataBase: new URL(SITE_URL),
   title: TITLE,
   description: DESCRIPTION,
   openGraph: {
