@@ -18,6 +18,7 @@ from market.adapter.outbound.orm.consumption_orm import ConsumptionOrm
 from market.adapter.outbound.orm.estimated_sales_orm import EstimatedSalesOrm
 from market.adapter.outbound.orm.facility_orm import FacilityOrm
 from market.adapter.outbound.orm.floating_population_orm import FloatingPopulationOrm
+from market.adapter.outbound.orm.franchise_industry_cost_orm import FranchiseIndustryCostOrm
 from market.adapter.outbound.orm.region_orm import RegionOrm
 from market.adapter.outbound.orm.resident_population_orm import ResidentPopulationOrm
 from market.adapter.outbound.orm.service_category_orm import ServiceCategoryOrm
@@ -40,8 +41,10 @@ from market.domain.value_objects.area_profile_vo import (
     ServiceRank,
     SpendingCategory,
     SpendingProfile,
+    StartupCost,
     WorkingProfile,
 )
+from market.domain.value_objects.sales_unit import monthly_from_quarter
 
 _SPENDING_LABELS = [
     ("food", "식료품"),
@@ -276,8 +279,10 @@ class AreaDetailPgRepository(AreaDetailRepositoryPort):
             select(ServiceCategoryOrm.code, ServiceCategoryOrm.name)
         )).all())
 
-        now = {c: int(v or 0) for c, yq, v in sales_rows if yq == latest}
-        before = {c: int(v or 0) for c, yq, v in sales_rows if yq == prev}
+        # 원본은 분기 합계 — 월 이름(monthly_sales·sales_per_store)으로 내보내는 경계에서 ÷3
+        # (sales_unit 참고). QoQ는 분자·분모를 같이 나누므로 불변.
+        now = {c: monthly_from_quarter(int(v or 0)) for c, yq, v in sales_rows if yq == latest}
+        before = {c: monthly_from_quarter(int(v or 0)) for c, yq, v in sales_rows if yq == prev}
         stores = {c: (int(n or 0), float(r) if r is not None else None) for c, n, r in store_rows}
 
         out = []
@@ -493,6 +498,22 @@ class AreaDetailPgRepository(AreaDetailRepositoryPort):
         )).one()
         lower, total = row
         return lower / total if total else None
+
+    async def find_startup_cost(self, industry_name: str) -> StartupCost | None:
+        # 최신 적재 연도 1행 — 같은 업종이 대분류(외식·도소매·서비스)별로 갈리면 브랜드 수가 많은 쪽
+        r = (await self._session.execute(
+            select(FranchiseIndustryCostOrm)
+            .where(FranchiseIndustryCostOrm.industry_name == industry_name)
+            .order_by(FranchiseIndustryCostOrm.year.desc(),
+                      FranchiseIndustryCostOrm.brand_count.desc().nulls_last())
+            .limit(1)
+        )).scalar_one_or_none()
+        if r is None:
+            return None
+        return StartupCost(
+            industry_name=r.industry_name, year=r.year,
+            total_amount=int(r.total_amount), brand_count=r.brand_count,
+        )
 
 
 def _openings(rows) -> list[PermitOpening]:

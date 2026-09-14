@@ -3,7 +3,7 @@ from __future__ import annotations
 from market.app.dtos.area_detail_dto import AreaDetailQuery, AreaDetailView
 from market.app.ports.input.area_detail_use_case import AreaDetailUseCase
 from market.app.ports.output.area_detail_repository import AreaDetailRepositoryPort
-from market.domain.services.area_narrator import narrate
+from market.domain.services.area_narrator import franchise_industry_for, narrate
 
 
 class AreaDetailInteractor(AreaDetailUseCase):
@@ -33,6 +33,12 @@ class AreaDetailInteractor(AreaDetailUseCase):
         asset_price = await self._detail.find_asset_price(query.trdar_code)
         change = await self._detail.find_change(query.trdar_code)
 
+        # 회수기간(B8) — 선택 업종의 점포당 월매출(랭킹 행) × 공정위 창업비용. 랭킹 상위 밖이거나
+        # 가맹 업종이 아니면 조회를 생략한다(문장 침묵).
+        service_rank = next((r for r in service_ranking if service and r.code == service.code), None)
+        industry = franchise_industry_for(service.name) if service else None
+        startup_cost = await self._detail.find_startup_cost(industry) if industry else None
+
         return AreaDetailView(
             trdar_code=header.trdar_code,
             trdar_name=header.trdar_name,
@@ -50,6 +56,6 @@ class AreaDetailInteractor(AreaDetailUseCase):
             service_ranking=service_ranking,
             insights=narrate(
                 sales_mix, resident, working, spending, floating, facility, apartment,
-                permit_churn, asset_price, change,
+                permit_churn, asset_price, change, service_rank, startup_cost,
             ),
         )

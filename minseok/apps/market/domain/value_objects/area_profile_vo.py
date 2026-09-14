@@ -166,6 +166,20 @@ class AssetPrice:
 
 
 @dataclass(frozen=True)
+class StartupCost:
+    """공정위 가맹 정보공개서 기준 업종별 창업비용(원) — 상권 축의 비용 공백을 메우는 팩트(B7).
+
+    가맹금·교육비·보증금·기타의 합계 **중앙값**이라 점포 임대료·권리금은 없다 — 문장이 한계를 함께 말한다.
+    업종은 공정위 중분류(커피·치킨·주점 …)이며 서울시 업종명과 다르다 — 매핑은 narrator가 소유한다.
+    """
+
+    industry_name: str
+    year: int
+    total_amount: int
+    brand_count: int | None
+
+
+@dataclass(frozen=True)
 class ChangeProfile:
     """상권변화지표 — 운영·폐업 영업개월을 시도 평균과 비교한 2×2 분류(서울시 1급 축).
 

@@ -157,6 +157,19 @@ market의 모든 테이블(3NF 15 + market_news_articles + area_score_backtest_r
   중앙)와 서울 내 순위만 사실 서술한다. 구 이름·"매매"를 문장에 명시한다(상권 시세·임대료로
   오독 방지).
 
+## 창업비용 회수기간 (B8, 2026-09-14)
+
+`franchise_industry_costs`(B7)를 상권 서술에 처음 결합한 팩트 — `area_detail`의 `payback` 한 줄(구조 필드 없음).
+`창업비용 ÷ 선택 업종 점포당 월매출`로 **매출 N개월치**(가정 없는 사실)와 **영업이익률 15% 가정 시 회수 약 k년**
+(가정치 `PAYBACK_MARGIN`, 사용자 확정)을 한 문장에 병기하고, 창업비용에 임대료·권리금이 없음을 명시한다.
+
+- 서울시 업종명 → 공정위 중분류 매핑(`_FRANCHISE_INDUSTRY_BY_SERVICE`, 14종)은 narrator가 소유한다 —
+  가맹 업종이 아니면(의약품 등) 조회 자체를 생략한다. 창업비용 조회는 `find_startup_cost(industry_name)`(최신 연도).
+- 침묵: 창업비용 미적재 · 선택 업종이 랭킹 상위 12 밖 · 점포 5개 미만(9/8 소표본 규칙) · 점포당 월매출 0.
+- ⚠ `find_service_ranking`의 `monthly_sales`·`sales_per_store`는 9/8 분기→월 환산(÷3)에서 **빠져 있었다**
+  (다른 repo 4곳은 적용됨) — 이 팩트의 분모라 같이 고쳤다. 상세 응답의 업종 랭킹 금액도 이때부터 월 단위다.
+- chat 노출은 `_INSIGHT_PRIORITY`(상위 4개)에 `payback`이 없어 아직 도달하지 않는다 — window 후속.
+
 ## 상권 뉴스 (RAG 코퍼스)
 
 market이 소유하는 두 번째 데이터 축 — 분기 공공데이터의 시의성 공백을 일 단위 기사로 보완한다.

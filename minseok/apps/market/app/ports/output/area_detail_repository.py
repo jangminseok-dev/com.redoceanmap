@@ -13,6 +13,7 @@ from market.domain.value_objects.area_profile_vo import (
     SalesMix,
     ServiceRank,
     SpendingProfile,
+    StartupCost,
     WorkingProfile,
 )
 
@@ -92,4 +93,9 @@ class AreaDetailRepositoryPort(ABC):
         좌표로 상권에 붙인 업소만 센다(반경 밖·좌표 없음은 애초에 trdar_code가 NULL).
         수집 전이거나 붙은 업소가 없으면 None — 화면은 해당 섹션을 통째로 생략한다.
         """
+        ...
+
+    @abstractmethod
+    async def find_startup_cost(self, industry_name: str) -> StartupCost | None:
+        """공정위 업종(중분류)별 창업비용 — 최신 적재 연도. 미적재·없는 업종은 None(문장 생략)."""
         ...

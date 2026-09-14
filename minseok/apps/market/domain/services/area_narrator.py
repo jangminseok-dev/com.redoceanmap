@@ -9,7 +9,9 @@ from market.domain.value_objects.area_profile_vo import (
     PermitChurn,
     ResidentProfile,
     SalesMix,
+    ServiceRank,
     SpendingProfile,
+    StartupCost,
     WorkingProfile,
 )
 from market.domain.value_objects.insight_vo import Insight
@@ -65,6 +67,29 @@ CHURN_TURNOVER_HIGH = 0.38  # 교체율((개업+폐업)/영업중) p90 = 0.381. 
 ASSET_TRADES_MIN = 30
 PYEONG_PER_M2 = 3.3058  # 평 ↔ ㎡ — 상가 시세는 평당 표기가 관례
 
+# 창업비용 회수기간(B8) — 영업이익률은 우리 데이터에 없는 **가정치**다(2026-09-14 사용자 확정 15%).
+# 문장에 "가정"으로 명시하고, 가정 없는 사실(매출 배수)을 나란히 둔다.
+PAYBACK_MARGIN = 0.15
+PAYBACK_MIN_STORES = 5  # 점포 5개 미만은 점포당 매출이 표본 잡음(2026-09-08 소표본 규칙과 동일)
+
+# 서울시 업종명 → 공정위 가맹 업종 중분류. 가맹 업종이 아닌 것(의약품·부동산 …)은 비워 둔다.
+_FRANCHISE_INDUSTRY_BY_SERVICE = {
+    "커피-음료": "커피",
+    "치킨전문점": "치킨",
+    "분식전문점": "분식",
+    "한식음식점": "한식",
+    "중식음식점": "중식",
+    "일식음식점": "일식",
+    "양식음식점": "서양식",
+    "제과점": "제과제빵",
+    "패스트푸드점": "패스트푸드",
+    "호프-간이주점": "주점",
+    "편의점": "편의점",
+    "미용실": "이미용",
+    "네일숍": "이미용",
+    "세탁소": "세탁",
+}
+
 _HIGH_PRICE_KEYS = ("b4", "b5", "over6b")
 _LARGE_AREA_KEYS = ("a132", "a165")
 
@@ -98,6 +123,8 @@ def narrate(
     permit_churn: PermitChurn | None = None,
     asset_price: AssetPrice | None = None,
     change: ChangeProfile | None = None,
+    service_rank: ServiceRank | None = None,
+    startup_cost: StartupCost | None = None,
 ) -> list[Insight]:
     """최신 분기 구조 수치 → 초보자용 해석 문장. 결측 축은 해당 문장을 생략한다."""
     insights: list[Insight] = []
@@ -134,7 +161,37 @@ def narrate(
     asset = _asset_price_insight(asset_price)
     if asset is not None:
         insights.append(asset)
+    payback = _payback_insight(service_rank, startup_cost)
+    if payback is not None:
+        insights.append(payback)
     return insights
+
+
+def franchise_industry_for(service_name: str) -> str | None:
+    """서울시 업종명 → 공정위 중분류. 가맹 업종이 아니면 None(창업비용 조회 자체를 생략)."""
+    return _FRANCHISE_INDUSTRY_BY_SERVICE.get(service_name)
+
+
+def _payback_insight(rank: ServiceRank | None, cost: StartupCost | None) -> Insight | None:
+    """창업비용 ÷ 점포당 월매출 — "이 돈 넣으면 언제 뽑나"를 한 문장으로.
+
+    가정 없는 사실(창업비용이 월매출의 몇 개월치인가)과 가정 있는 추정(영업이익률 상수 →
+    회수 년)을 병기하고, 창업비용에 임대료·권리금이 빠져 있음을 명시한다(I-9 한계 명시).
+    점포가 적으면 점포당 매출이 튀므로 침묵한다.
+    """
+    if rank is None or cost is None or not rank.sales_per_store:
+        return None
+    if rank.store_count is None or rank.store_count < PAYBACK_MIN_STORES:
+        return None
+    months = cost.total_amount / rank.sales_per_store
+    years = cost.total_amount / (rank.sales_per_store * PAYBACK_MARGIN) / 12
+    return Insight(
+        key="payback", tone="neutral",
+        text=(f"{cost.industry_name} 업종 창업비용은 공정위 정보공개서({cost.year}) 중앙 "
+              f"{_money(cost.total_amount)}(가맹금·교육비·보증금·기타 합, 임대료·권리금 제외) — "
+              f"이 상권 {rank.name} 점포당 월매출 {_money(rank.sales_per_store)}의 {months:.1f}개월치, "
+              f"영업이익률 {PAYBACK_MARGIN:.0%} 가정 시 회수 약 {years:.1f}년입니다."),
+    )
 
 
 def _sales_insights(sales: SalesMix) -> list[Insight]:

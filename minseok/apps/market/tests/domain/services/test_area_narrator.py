@@ -638,6 +638,67 @@ def test_평단가가_1억을_넘으면_억_단위로_말한다():
     assert got is not None and "억원" in got.text
 
 
+# ── 창업비용 회수기간 (payback, ROADMAP B8) ────────────────────────────────────
+# 공정위 창업비용(B7) ÷ 이 상권 업종 점포당 월매출. 가정 없는 사실(매출 배수)과 가정 있는
+# 추정(영업이익률 상수 → 회수 년)을 한 문장에 병기하고, 임대료·권리금 제외를 명시한다.
+
+def _rank(store_count=46, per_store=7_750_000):
+    from market.domain.value_objects.area_profile_vo import ServiceRank
+    return ServiceRank(
+        code="CS100010", name="커피-음료", monthly_sales=(per_store or 0) * store_count,
+        store_count=store_count, sales_per_store=per_store, sales_qoq=None, closure_rate=None,
+    )
+
+
+def _cost(total=80_360_000, year=2025):
+    from market.domain.value_objects.area_profile_vo import StartupCost
+    return StartupCost(industry_name="커피", year=year, total_amount=total, brand_count=812)
+
+
+def _payback_text(rank, cost):
+    said = [i for i in narrate(None, None, None, None, service_rank=rank, startup_cost=cost)
+            if i.key == "payback"]
+    return said[0] if said else None
+
+
+def test_창업비용이_없으면_침묵한다():
+    assert _payback_text(_rank(), None) is None
+
+
+def test_업종_실적이_없으면_침묵한다():
+    assert _payback_text(None, _cost()) is None
+
+
+def test_점포_5개_미만이면_침묵한다():  # 9/8 소표본 규칙과 같은 경계
+    assert _payback_text(_rank(store_count=4), _cost()) is None
+    assert _payback_text(_rank(store_count=5), _cost()) is not None
+
+
+def test_점포당_월매출이_없으면_침묵한다():
+    assert _payback_text(_rank(per_store=0), _cost()) is None
+    assert _payback_text(_rank(per_store=None), _cost()) is None
+
+
+def test_매출_배수와_이익률_가정_회수기간을_한_문장에_병기한다():
+    got = _payback_text(_rank(), _cost())
+    assert got is not None and got.tone == "neutral"
+    # 출처·연도·금액 구성과 한계(임대료·권리금 제외)를 명시한다
+    assert "커피" in got.text and "공정위 정보공개서(2025)" in got.text
+    assert "8,036만원" in got.text and "임대료" in got.text and "권리금" in got.text
+    # 8,036만원 ÷ 775만원 = 10.37 → 10.4개월치 (가정 없는 사실)
+    assert "775만원" in got.text and "10.4개월치" in got.text
+    # 8,036만원 ÷ (775만원 × 0.15) ÷ 12 = 5.76 → 5.8년 (가정 명시)
+    assert "영업이익률 15% 가정" in got.text and "약 5.8년" in got.text
+
+
+def test_서울_업종명을_공정위_중분류로_잇는다():
+    from market.domain.services.area_narrator import franchise_industry_for
+    assert franchise_industry_for("커피-음료") == "커피"
+    assert franchise_industry_for("호프-간이주점") == "주점"
+    assert franchise_industry_for("네일숍") == "이미용"
+    assert franchise_industry_for("의약품") is None  # 가맹 업종이 아니면 없다
+
+
 # --- 상권변화지표 해석 (I-1) ---
 
 

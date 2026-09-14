@@ -25,9 +25,11 @@ class _StubRepo:
     def __init__(self, header=None, service=None, sales_mix=None,
                  resident=None, working=None, apartment=None, spending=None,
                  floating=None, facility=None, service_ranking=None, permit_churn=None,
-                 asset_price=None, change=None):
+                 asset_price=None, change=None, startup_cost=None):
         self.asset_price = asset_price
         self.change = change
+        self.startup_cost = startup_cost
+        self.startup_cost_called_with: str | None = None
         self.header = header
         self.service = service
         self.sales_mix = sales_mix
@@ -82,6 +84,10 @@ class _StubRepo:
 
     async def find_change(self, trdar_code):
         return self.change
+
+    async def find_startup_cost(self, industry_name):
+        self.startup_cost_called_with = industry_name
+        return self.startup_cost
 
 
 _HEADER = AreaHeader(trdar_code=1000123, trdar_name="성수동 카페거리", district_name="성동구")
@@ -200,6 +206,39 @@ async def test_업종_실적이_없으면_빈_랭킹():  # 열화
         AreaDetailQuery(trdar_code=1000123)
     )
     assert view.service_ranking == []
+
+
+def _coffee_rank():
+    from market.domain.value_objects.area_profile_vo import ServiceRank
+    return ServiceRank(code="CS100010", name="커피-음료", monthly_sales=356_500_000,
+                       store_count=46, sales_per_store=7_750_000, sales_qoq=None, closure_rate=None)
+
+
+async def test_선택_업종의_창업비용을_찾아_회수기간_문장을_붙인다():  # B8
+    from market.domain.value_objects.area_profile_vo import StartupCost
+
+    repo = _StubRepo(
+        header=_HEADER,
+        service=ServiceRef(code="CS100010", name="커피-음료"),
+        service_ranking=[_coffee_rank()],
+        startup_cost=StartupCost(industry_name="커피", year=2025, total_amount=80_360_000, brand_count=812),
+    )
+    view = await AreaDetailInteractor(detail=repo).get_detail(AreaDetailQuery(trdar_code=1000123))
+
+    assert repo.startup_cost_called_with == "커피"  # 서울 업종명 → 공정위 중분류로 조회
+    assert "payback" in {i.key for i in view.insights}
+
+
+async def test_가맹_업종이_아니면_창업비용을_조회하지_않는다():
+    repo = _StubRepo(
+        header=_HEADER,
+        service=ServiceRef(code="CS200030", name="의약품"),
+        service_ranking=[_coffee_rank()],
+    )
+    view = await AreaDetailInteractor(detail=repo).get_detail(AreaDetailQuery(trdar_code=1000123))
+
+    assert repo.startup_cost_called_with is None
+    assert "payback" not in {i.key for i in view.insights}
 
 
 async def test_상권변화지표가_해석_문장으로_뷰에_실린다():  # I-1
