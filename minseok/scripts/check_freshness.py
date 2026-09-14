@@ -25,7 +25,7 @@ infra/k8s/overlays/prod/cronjobs/check-freshness.yaml(매일 09:00, .git에서 H
 """
 
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 
 import requests
@@ -122,6 +122,38 @@ def deploy_drift(expect_commit: str | None, now: datetime) -> str | None:
     )
 
 
+# 모의투자 step 누락 — 위 DATASETS(적재 시각 나이)로는 못 잡는다. step은 거래 세션마다 한 번이라
+# 주말 3일 공백이 정상이고, 2026-09-12~14 PC 다운처럼 한 세션만 빠지면 나이가 임계값에 닿지 않는다.
+# 그래서 SPY 일봉을 세션 달력으로 삼아 "판단 예정 시각이 지났는데 판단이 없는 세션"을 센다.
+# 세션 D(미국 날짜)의 step은 D+1일 14:00 KST(05:00 UTC, snapshot_forecasts cron)에 돌고 약 1시간 걸린다.
+PAPER_CALENDAR_TICKER = "SPY"
+PAPER_STEP_DUE = timedelta(days=1, hours=7)  # 세션 날짜 00:00 UTC 기준 — D+1일 16:00 KST
+
+
+def overdue_paper_sessions(session_dates: list[date], last_decision: date, now: datetime) -> list[date]:
+    """마지막 라이브 판단 이후 세션 중 step 예정 시각이 지난 것. 순수 함수(now 주입)."""
+    return sorted(d for d in session_dates
+                  if d > last_decision and datetime.combine(d, time(0), tzinfo=UTC) + PAPER_STEP_DUE <= now)
+
+
+def paper_lag(engine, now: datetime) -> str | None:
+    """누락 세션이 있으면 사유 문자열, 아니면 None."""
+    with engine.connect() as conn:
+        last = conn.execute(text("SELECT max(as_of) FROM paper_decisions WHERE NOT replayed")).scalar()
+        if last is None:
+            return None  # 라이브 운용 전
+        sessions = conn.execute(
+            text("SELECT ts FROM price_bars WHERE ticker = :t AND timeframe = '1d' AND ts > :last"),
+            {"t": PAPER_CALENDAR_TICKER, "last": last},
+        ).scalars().all()
+    # SPY 일봉 ts는 미국 날짜 00:00 ET(04~05:00 UTC)라 UTC 날짜가 곧 세션 날짜다
+    overdue = overdue_paper_sessions([ts.astimezone(UTC).date() for ts in sessions], last.date(), now)
+    if not overdue:
+        return None
+    return (f"AI 모의투자 판단 누락 {len(overdue)}세션 — 마지막 판단 기준일 {last:%Y-%m-%d}, "
+            f"빠진 세션 {', '.join(f'{d:%m/%d}' for d in overdue)}")
+
+
 def collect_verdicts() -> list[tuple[str, str, object]]:
     """(표시명, 상태 라벨, 판정) 목록. DB 접속 자체가 실패하면 예외를 그대로 올린다."""
     now = datetime.now(UTC)
@@ -139,13 +171,17 @@ def collect_verdicts() -> list[tuple[str, str, object]]:
     return rows
 
 
-def build_body(problems: list[tuple[str, str, object]], drift: str | None = None) -> str:
+def build_body(problems: list[tuple[str, str, object]], drift: str | None = None,
+               paper: str | None = None) -> str:
     lines = []
     if problems:
         lines += ["다음 수집이 기대 주기를 넘겼습니다.", ""]
     for name, state, verdict in problems:
         age = "적재 이력 없음" if verdict.age_seconds is None else f"{verdict.age_seconds // 3600}시간 경과"
         lines.append(f"  · {name} — {STATE_LABEL[state]} (기대 주기: {verdict.expected}, {age})")
+    if paper:
+        lines += ["", "모의투자 일일 step이 돌지 않았습니다.", "", f"  · {paper}",
+                  "    조치: 백엔드 PC에서 minseok/ 기준 ../venv/bin/python scripts/snapshot_forecasts.py (멱등)"]
     if drift:
         lines += ["", "배포가 저장소보다 뒤처져 있습니다.", "", f"  · {drift}",
                   "    조치: 백엔드 PC에서 infra/deploy.sh"]
@@ -189,14 +225,22 @@ def main() -> int:
     drift = deploy_drift(_arg_value("--expect-commit"), datetime.now(UTC))
     print(f"  배포: {drift or '기대 커밋과 일치(또는 대조 생략)'}")
 
+    engine = create_engine(shared_url(), pool_pre_ping=True)
+    try:
+        paper = paper_lag(engine, datetime.now(UTC))
+    finally:
+        engine.dispose()
+    print(f"  모의투자: {paper or '누락 세션 없음'}")
+
     problems = [r for r in rows if r[1] in ALERT_STATES]
-    if not problems and not drift:
-        print(f"{stamp} 전 데이터셋·배포 정상 — 알림 없음", flush=True)
+    if not problems and not drift and not paper:
+        print(f"{stamp} 전 데이터셋·배포·모의투자 정상 — 알림 없음", flush=True)
         return 0
 
-    parts = ([f"수집 지연·정지 {len(problems)}건"] if problems else []) + (["배포 드리프트"] if drift else [])
+    parts = (([f"수집 지연·정지 {len(problems)}건"] if problems else []) + (["배포 드리프트"] if drift else [])
+             + (["모의투자 step 누락"] if paper else []))
     subject = f"[redoceanmap] {' / '.join(parts)}"
-    body = build_body(problems, drift)
+    body = build_body(problems, drift, paper)
     print(f"{stamp} 이상 감지\n{body}", flush=True)
     if dry_run:
         print("[dry-run] 메일 발송 생략", flush=True)
