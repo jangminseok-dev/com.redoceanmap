@@ -1544,6 +1544,8 @@ def test_티커로_통화를_정한다(symbol, expected):
 def test_주식_컨텍스트의_가격에는_통화가_붙는다():
     """단위를 안 주면 모델이 추측해 미국 종목을 '원'으로 서술했다(실측 회귀)."""
     context = ChatInteractor._format_stock_context("샌디스크 어때?", _analysis(symbol="SNDK"))
+    # 배정 번호 열거(LLM 교체 실측): 분석 데이터 [1]·뉴스 [4]만 배정된 컨텍스트
+    assert context.rstrip().endswith("쓸 수 있는 근거 번호: [1] [4] — 이 밖의 번호는 없다")
     assert "90,000.00달러" in context  # 현재가
     assert "88,000.00달러" in context and "85,000.00달러" in context  # 이동평균
     assert "80,000.00달러" in context and "95,000.00달러" in context  # 지지·저항
@@ -1892,6 +1894,27 @@ async def test_지역이_언급된_점수_질문은_기존_추천_흐름을_탄�
     assert result.recommendations  # 설명 가로채기 없이 추천 흐름 유지
 
 
+async def test_상권명을_지목한_질문은_그_상권이_반드시_포함된다(monkeypatch):
+    # LLM 교체 실측(Gemma 4, MR03): "강남역 근처"에 ★가 강남구 전부에 찍혀 강남역이 빠졌다
+    areas = [
+        AreaInfo(trdar_code=1000001, trdar_name="강남역", district_name="서초구",
+                 adm_dong_name="서초2동", lat=37.50, lng=127.03),
+        AreaInfo(trdar_code=1000002, trdar_name="학동사거리", district_name="강남구",
+                 adm_dong_name="청담동", lat=37.52, lng=127.04),
+        AreaInfo(trdar_code=1000003, trdar_name="논현역", district_name="강남구",
+                 adm_dong_name="논현1동", lat=37.51, lng=127.02),
+    ]
+    market = _StubMarket(areas=areas)
+    phase1 = '{"service_code": "CS100010", "service_name": "커피-음료", "trdar_codes": [1000002, 1000003]}'
+    phase2 = ('{"text": "요약", "areas": [{"trdar_code": 1000001, "reason": "이유. 유의할 점: x"},'
+              ' {"trdar_code": 1000002, "reason": "이유. 유의할 점: x"},'
+              ' {"trdar_code": 1000003, "reason": "이유. 유의할 점: x"}]}')
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, phase1, phase2], market=market)
+    result = await interactor.ask("강남역 근처에 샐러드 가게 어떨까?")
+    names = [r.name for r in result.recommendations]
+    assert names[0] == "강남역" and "학동사거리" in names  # 지목 상권을 앞에 두고 나머지는 유지
+
+
 async def test_동음이의_지명은_장소_접미가_있어야_지역으로_인정한다(monkeypatch):
     # 4차 실측 M8 t2: "방학엔 장사 안 되지 않아?"의 '방학'이 도봉구 방학역에 걸렸다
     areas = [
@@ -1932,6 +1955,28 @@ async def test_general_판정_후속은_직전_상권_도메인을_승계한다(
     )
     result = await interactor.ask("거기 경쟁 가게는 몇 개나 돼?", conversation_id=100)
     assert result.recommendations  # general이 아니라 market 경로로 승계
+
+
+async def test_general_판정_업종_변경_후속도_직전_상권_도메인을_승계한다(monkeypatch):
+    # LLM 교체 실측(Gemma 4, MT11·MT12): "국밥 말고 돈까스집이면 어때?"·"떡볶이집을
+    # 추천해달라고 했는데?"가 지시어·도메인 어휘 없이 general로 빠졌다
+    conversations = _StubConversations(history=[
+        Message(id=1, conversation_id=100, role="user", content="노원 국밥집 어때?",
+                created_at=_NOW, payload=None),
+        Message(id=2, conversation_id=100, role="assistant", content="상권 추천",
+                created_at=_NOW,
+                payload={"recommendations": [
+                    {"id": "1000001", "name": "테스트상권",
+                     "serviceCode": "CS100010", "category": "한식음식점"}]}),
+    ])
+    intent_general = '{"intent": "general", "stock_query": ""}'
+    phase2 = '{"text": "요약", "areas": [{"trdar_code": 1000001, "reason": "이유. 유의할 점: x"}]}'
+    for prompt in ("국밥 말고 돈까스집이면 어때?", "엥 나는 떡볶이집을 추천해달라고 했는데?"):
+        interactor, _, _ = _build(
+            monkeypatch, [intent_general, PHASE1_JSON, phase2], conversations=conversations,
+        )
+        result = await interactor.ask(prompt, conversation_id=100)
+        assert result.recommendations, prompt
 
 
 async def test_general_판정이어도_도메인_단서가_없으면_그대로_general이다(monkeypatch):
@@ -2006,6 +2051,8 @@ def test_공백_결합_티커_혼재_질의를_분해한다():
     assert ChatInteractor._normalize_stock_queries("테슬라 AAPL 애플") == ["테슬라", "AAPL", "애플"]
     # 공백 있는 단일 종목명은 쪼개지 않는다
     assert ChatInteractor._normalize_stock_queries("버크셔 해서웨이") == ["버크셔 해서웨이"]
+    # LLM 교체 실측(Gemma 4, SF06): 슬래시 결합 "TSLA/AAPL"
+    assert ChatInteractor._normalize_stock_queries("TSLA/AAPL") == ["TSLA", "AAPL"]
 
 
 # --- 신호 보드 조회 결정론(4차 실측 S8 t4) ---

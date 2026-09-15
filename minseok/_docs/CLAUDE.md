@@ -95,7 +95,7 @@ Python / FastAPI 백엔드. 앱 **내부**는 헥사고날/클린 아키텍처(`
   `sys.path`에 `apps/`를 등록하고, lint/스크립트는 `PYTHONPATH=apps`로 맞춘다.
 - 세션·베이스: `from core.database import get_db, Base`.
 - LLM 추론은 단일 LLM 오케스트레이터 `core/llm/llm_orchestrator.py`로 수렴한다 —
-  오케스트레이터가 EXAONE 7.8B 하나만 보유한다(단일 모델 정책, 2026-07-15).
+  오케스트레이터가 기본 모델 하나만 보유한다(단일 모델 정책, 2026-07-15 — 2026-09-15부터 Gemma 4 e4b QAT).
 - **비밀값·환경 변수는 `core/key/secret_manager.py`로 수렴한다** — 아래 참고.
 
 ## 비밀값 규칙 — `.env` 로드는 한 곳에서만 (필수)
@@ -119,8 +119,8 @@ Python / FastAPI 백엔드. 앱 **내부**는 헥사고날/클린 아키텍처(`
 
 | 지점 | 모델 |
 |------|------|
-| 도메인 내부 추론(예: chat phase1 상권/업종 선택) | EXAONE **7.8B** (단일 모델 정책 — 2.4B 폐지) |
-| 최종 사용자 답변(예: chat phase2·스트리밍) | EXAONE **7.8B** (오케스트레이터 기본) |
+| 도메인 내부 추론(예: chat phase1 상권/업종 선택) | **Gemma 4 e4b QAT** (단일 모델 정책 — `LLM_MODEL`) |
+| 최종 사용자 답변(예: chat phase2·스트리밍) | **Gemma 4 e4b QAT** (오케스트레이터 기본, `LLM_THINK=off`) |
 
 ## async def vs def
 

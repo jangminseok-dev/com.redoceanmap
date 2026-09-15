@@ -1,4 +1,4 @@
-"""평가 러너 — 골든셋 120문항을 실제 EXAONE 7.8B로 돌려 trace.jsonl을 만든다.
+"""평가 러너 — 골든셋 134문항을 실제 기본 LLM(LLM_MODEL, 2026-09-15부터 Gemma 4 e4b)로 돌려 trace.jsonl을 만든다.
 
 프로덕션 코드는 건드리지 않는다: 기존 test_chat_interactor와 같은 기법으로
 모듈 네임스페이스의 llm_orchestrator를 "진짜 호출 + 기록" 프록시로 갈아끼운다.

@@ -46,7 +46,9 @@ LOG_FORMAT = _secrets.get("LOG_FORMAT", "plain")
 
 # 기본 LLM 모델 태그(③-M5 교체 스위치) — 실소비처는 core/llm/llm_orchestrator.py
 # (그쪽은 DATABASE_URL 없는 환경 지원을 위해 관리자를 직접 읽는다). 여기는 상수 등록 규칙 준수용.
-LLM_MODEL = _secrets.get("LLM_MODEL", "exaone3.5:7.8b")
+LLM_MODEL = _secrets.get("LLM_MODEL", "gemma4:e4b-it-qat")
+# 사고(thinking) 모드 스위치 — "off"/"on"/빈값(서버 기본). 실소비처는 위와 같이 오케스트레이터.
+LLM_THINK = _secrets.get("LLM_THINK", "off")
 
 # 배포 식별 — Dockerfile ARG로 이미지에 굽는 값이다(.env 키가 아니다).
 # 소스 마운트로 도는 dev나 --build-arg 없이 만든 이미지에서는 "unknown"이 맞다.

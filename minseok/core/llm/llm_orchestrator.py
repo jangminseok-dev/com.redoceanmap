@@ -7,11 +7,13 @@
 모든 지점이 이 오케스트레이터로 수렴한다.
 
 ③-M5(2026-08-23): 기본 모델 태그는 `LLM_MODEL` env로 갈아끼운다 — '동시 보유'가 아니라
-'교체' 스위치다(단일 모델 정책 유지). 미설정 기본은 EXAONE 3.5 7.8B.
-⚠ EXAONE 3.5는 NC 라이선스(연구 전용 — E5 실사 2026-08-17). 공개 서비스 전 상용 가능
-모델(Llama 3.x·Gemma 3·카카오 Kanana — 중국 모델·중국 베이스 파인튜닝 배제)로 교체 필수.
-교체 절차: ollama pull → `.env`의 LLM_MODEL 교체 → chat 품질 회귀(eval 하네스 120문항,
-`LLM_MODEL=<후보>`로 러너 재실행 → test_quality_gate baseline 대조)로 판정 후 확정.
+'교체' 스위치다(단일 모델 정책 유지).
+③-M5②(2026-09-15) 교체 확정: 기본은 **Gemma 4 e4b QAT(`gemma4:e4b-it-qat`, Apache 2.0) + 사고 모드 off**.
+EXAONE 3.5는 NC 라이선스(연구 전용 — E5 실사 2026-08-17)라 공개 서비스에 쓸 수 없어 교체했다
+(골든셋 134문항 게이트 통과 — `_docs/LLM_SWAP_EVAL_2026-09-14.md`). 코드 기본값도 Gemma다 —
+`.env`가 비어도 NC 모델로 조용히 되돌아가지 않게 하기 위해서다.
+교체 절차: ollama pull → `.env`의 LLM_MODEL(·LLM_THINK) 교체 → chat 품질 회귀(eval 하네스,
+`LLM_MODEL=<후보>`로 러너 재실행 → test_quality_gate baseline 대조)로 판정 후 확정 → baseline 재박제.
 """
 from __future__ import annotations
 
@@ -104,12 +106,14 @@ class LLMOrchestrator:
         format: str | None = None,
         options: dict | None = None,
     ) -> str:
-        """프롬프트를 추론한다. model 미지정이면 기본 모델(EXAONE 7.8B — 단일 모델 정책).
+        """프롬프트를 추론한다. model 미지정이면 기본 모델(LLM_MODEL — 단일 모델 정책).
         system/history로 멀티턴 지원. format="json"이면 유효 JSON 출력을 강제한다.
         options는 Ollama 옵션 추가분(예: {"temperature": 0} — 재현성이 필요한 배치 판단)."""
         kwargs: dict = {}
         if format:
             kwargs["format"] = format
+        if THINK is not None:
+            kwargs["think"] = THINK
         response = await self._client.chat(
             model=self._resolve_model(model),
             messages=self._build_messages(prompt, system, history),
@@ -143,6 +147,7 @@ class LLMOrchestrator:
             messages=self._build_messages(prompt, system, history),
             options={"num_ctx": NUM_CTX},
             stream=True,
+            **({"think": THINK} if THINK is not None else {}),
         )
         async for part in stream:
             if part.get("done"):
@@ -158,7 +163,12 @@ class LLMOrchestrator:
 # (학습·연구 스크립트)에서도 import돼야 한다 — core.config는 그 키를 필수로 요구한다.
 from core.key.secret_manager import get_secret_manager
 
-_MODEL_TAG = get_secret_manager().get("LLM_MODEL", "exaone3.5:7.8b")
+_MODEL_TAG = get_secret_manager().get("LLM_MODEL", "gemma4:e4b-it-qat")
+# 사고(thinking) 모드 스위치(③-M5② 2026-09-14 실측): Gemma 4 계열은 Ollama 기본이 사고 모드 켜짐이라
+# 답변당 수십 초가 걸리고 사고 토큰이 출력 예산을 잠식한다. "off"면 think=False, "on"이면 think=True,
+# 비우면 서버 기본(모델별)에 맡긴다. 비사고 모델(EXAONE)에 think=False를 넘겨도 Ollama는 오류 없이 무시한다.
+_THINK_ENV = get_secret_manager().get("LLM_THINK", "off").strip().lower()
+THINK: bool | None = {"off": False, "on": True}.get(_THINK_ENV)
 DEFAULT_MODEL = ModelSpec(name=_MODEL_TAG, label=f"기본 모델 ({_MODEL_TAG})")
 
 llm_orchestrator = LLMOrchestrator()

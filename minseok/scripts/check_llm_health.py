@@ -34,7 +34,7 @@ from core.key.secret_manager import get_secret_manager  # noqa: E402
 _secrets = get_secret_manager()
 
 OLLAMA = _secrets.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
-MODEL = _secrets.get("LLM_MODEL", "exaone3.5:7.8b")
+MODEL = _secrets.get("LLM_MODEL", "gemma4:e4b-it-qat")
 
 # llm_orchestrator.NUM_CTX와 같은 값이어야 한다. 앱 코드를 import하지 않는 이유: 이 스크립트는
 # sqlalchemy 없는 호스트 venv에서 돈다(core.llm은 ollama 패키지를 끌어온다).

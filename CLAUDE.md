@@ -18,7 +18,7 @@
 | 인증 | 위와 동일 (별도 프로세스 `auth_main.py` — 개인키를 분리 보유) | `minseok/apps/auth` |
 | 프론트엔드 | Next.js 16 · React 19 · TypeScript 5 · Tailwind 4 · zustand · TanStack Query | `www/` |
 | 데이터 | PostgreSQL 17(pgvector) · Redis 7 · Neo4j | 도커 컴포즈 |
-| LLM | EXAONE 3.5 7.8B 로컬 추론(Ollama) — 단일 모델 정책 | `minseok/core/llm` |
+| LLM | Gemma 4 e4b QAT 로컬 추론(Ollama, 사고 모드 off) — 단일 모델 정책(2026-09-15 EXAONE NC에서 교체) | `minseok/core/llm` |
 
 백엔드는 **모듈러 모놀리식**이다. 앱 내부는 헥사고날/클린(`adapter → app → domain`),
 앱 사이는 스타 토폴로지(허브 `hub` + 스포크)이며 두 구조는 `minseok/.importlinter`로 강제된다.
@@ -201,7 +201,7 @@ docker run --rm -v /home/host/projects/com.redoceanmap:/work -w /work/minseok \
 - 프레임워크: **pytest 9 + pytest-asyncio**(`asyncio_mode = auto` — `@pytest.mark.asyncio` 불필요).
 - 테스트 파일: `test_*.py` 패턴, 앱별 `minseok/apps/<app>/tests/` 아래(현재 89개 파일).
 - 마커(`minseok/pytest.ini`) — 기본 검증에서 빼려면 `-m "not ollama and not network"`:
-  - `ollama`: 로컬 EXAONE 모델을 호출하는 통합 테스트
+  - `ollama`: 로컬 LLM(Ollama 기본 모델)을 호출하는 통합 테스트
   - `network`: 외부 API(야후 파이낸스 등) 호출이 필요한 통합 테스트
 - 유스케이스는 **스텁 포트**로 검증한다(mock 프레임워크보다 스텁 구현 선호).
 - 구조 위반은 테스트가 아니라 import-linter가 잡는다. 아키텍처를 건드린 변경은 둘 다 돌린다.

@@ -119,12 +119,20 @@ _INSIGHT_PRIORITY = (
 INTENT_PROMPT = """사용자 질문의 의도를 분류하라.
 - "stock": 특정 회사/종목(시세·전망·분석)을 묻는 질문. 회사 이름만 언급해도 stock이다.
 - "market_news": 특정 종목이 아니라 업종·산업·증시 전반의 동향/뉴스를 묻는 질문.
-- "market": 동네/상권/창업/입지를 묻는 질문.
+- "market": 동네/상권/창업/입지를 묻는 질문. 이 서비스의 상권 점수·등급·추천 방식을 묻는
+  질문도 market이다.
 - "general": 위 셋에 해당하지 않는 질문 — 인사·잡담·일반 상식·인물·기술 등 상권/주식과 무관한 것 전부.
 
+이전 대화가 있으면 그 흐름을 잇는 후속 질문은 이전 도메인을 따른다 — 상권 추천 뒤의
+업종 변경("국밥 말고 돈까스집이면?")·정정("떡볶이집을 추천해달라고 했는데?")·되묻기는 market,
+종목 답변 뒤의 되묻기는 stock이다. general로 빠뜨리지 않는다.
+
 stock이면 종목을 stock_query에 추출한다. 한국 회사는 **한국어 이름 그대로** 쓰고 절대
-티커를 지어내지 않는다. 해외(미국) 회사만 널리 알려진 공식 티커로 정규화한다
-(예: 테슬라 → "TSLA", 애플 → "AAPL"). 티커가 확실하지 않으면 이름 그대로 둔다.
+티커를 지어내지 않는다. 해외(미국) 회사는 아래 표에 있는 것만 티커로 바꾸고, 표에 없으면
+**한국어 이름 그대로** 둔다(티커를 추측하지 않는다):
+애플 AAPL · 마이크로소프트 MSFT · 엔비디아 NVDA · 구글/알파벳 GOOGL · 아마존 AMZN · 메타 META ·
+테슬라 TSLA · 넷플릭스 NFLX · 팔란티어 PLTR · 브로드컴 AVGO · 인텔 INTC · AMD AMD
+종목이 둘 이상이면 **첫 번째 종목 하나만** stock_query에 넣는다.
 
 예시:
 - "삼성전자 주가 어때?" → {"intent": "stock", "stock_query": "삼성전자"}
@@ -137,6 +145,9 @@ stock이면 종목을 stock_query에 추출한다. 한국 회사는 **한국어 
 - "AI 관련주 분위기 어때?" → {"intent": "market_news", "stock_query": ""}
 - "성수동은 어때?" → {"intent": "market", "stock_query": ""}
 - "홍대에 카페 차릴만해?" → {"intent": "market", "stock_query": ""}
+- "너네 상권 점수는 어떻게 계산해?" → {"intent": "market", "stock_query": ""}
+- "테슬라랑 애플 중에 뭐가 나아?" → {"intent": "stock", "stock_query": "TSLA"}
+- (이전 대화: 노원 상권 추천) "국밥 말고 돈까스집이면 어때?" → {"intent": "market", "stock_query": ""}
 - "카파시가 누구야?" → {"intent": "general", "stock_query": ""}
 - "안녕! 뭐 할 수 있어?" → {"intent": "general", "stock_query": ""}
 
@@ -170,8 +181,10 @@ STOCK_ANSWER_PROMPT = """당신은 주식 분석 상담사입니다.
 - 주식 초보자도 이해할 수 있게 설명 — 전문 용어를 처음 쓸 때는 괄호로 짧은 우리말 풀이를 붙인다
   (예: RSI(최근 상승·하락 힘의 균형을 0~100으로 나타낸 지표), 지지선(주가가 잘 안 내려가는 가격대))
 - 수치가 의미하는 바를 일상적인 말로 해석해 서술 — 전문성은 유지하되 어려운 표현만 나열하지 말 것
-- 출처 표기: 수치나 사실을 말하는 문장 끝에 근거 번호를 [1]처럼 붙일 것(복수 근거면 [1][5]).
-  컨텍스트에 '근거 [n]'으로 표시된 번호만 쓰고, 표시되지 않은 번호를 만들지 말 것
+- 출처 표기: 수치나 사실을 말하는 문장은 **예외 없이** 문장 끝에 근거 번호를 [1]처럼 붙일 것
+  (복수 근거면 [1][5]). 컨텍스트에 '근거 [n]'으로 표시된 번호만 쓰고, 표시되지 않은 번호를 만들지 말 것.
+  '[분석 데이터] — 근거 [1]' 블록의 항목(현재가·RSI·이동평균·거래량·모멘텀 등)은 **전부 [1] 하나**다 —
+  항목의 나열 순서를 번호로 쓰지 말 것. 쓸 수 있는 번호는 컨텍스트 끝의 '쓸 수 있는 근거 번호' 줄에 있다
 - 마지막에 투자 판단은 본인 책임이라는 고지 한 문장을 포함 — 이 고지 문장에는 근거 번호를 붙이지 않는다"""
 
 MARKET_NEWS_ANSWER_PROMPT = """당신은 시장·업황 분석 상담사입니다.
@@ -284,6 +297,9 @@ def _top_time_field(obj, fields: list[tuple[str, str, int]]) -> str:
 _DOMAIN_FOLLOWUP_RE = re.compile(
     r"등급|점수|상권|경쟁|폐업|유동인구|매출|배후|업종|창업|가게|점포"
     r"|종목|주가|매물대|지지선|저항선|수급|거래량|신호|차트"
+    # 업종 변경·정정 후속(LLM 교체 실측 MT11·MT12 — "국밥 말고 돈까스집이면?",
+    # "떡볶이집을 추천해달라고 했는데?"). 직전 카드가 있을 때만 걸리므로 잡담 "추천"은 안 탄다.
+    r"|말고|추천"
 )
 
 DEICTIC_TOKENS = (
@@ -698,6 +714,19 @@ class ChatInteractor(ChatUseCase):
         return {
             a.trdar_code for a in summary.areas if self._area_mentioned_in(a, prompt)
         }
+
+    def _named_codes(self, summary: AreaSummary, prompt: str) -> set[int]:
+        """상권명(괄호 별칭 포함) 어간이 그대로 질문에 들어간 상권 — 자치구·행정동 언급은 세지 않는다.
+        어간 3자 이상만 본다("강남역"은 되고 자치구 통칭 2자는 안 된다)."""
+        codes: set[int] = set()
+        for a in summary.areas:
+            aliases = re.findall(r"\(([가-힣]+)\)", a.trdar_name or "")
+            for name in (a.trdar_name, *aliases):
+                stem = self._place_stem(name)
+                if len(stem) >= 3 and stem in prompt and _stem_means_place(stem, prompt):
+                    codes.add(a.trdar_code)
+                    break
+        return codes
 
     def _excluded_area_codes(self, summary: AreaSummary, prompt: str) -> set[int]:
         """제외 어휘 바로 앞에 언급된 지역의 상권 집합 — "홍대 말고 다른 데"(4차 실측
@@ -1402,6 +1431,16 @@ class ChatInteractor(ChatUseCase):
             valid_codes = kept or sorted(
                 radius_codes, key=lambda c: summary.sales_by_code.get(c) or 0, reverse=True,
             )[:3]
+        if mentioned_codes:
+            # 상권명을 그대로 지목한 질문("강남역 근처")은 그 상권이 반드시 들어간다 — 자치구 어간
+            # ("강남")으로 ★가 30곳에 찍히면 모델은 그중 아무 곳이나 고른다(LLM 교체 실측 MR03:
+            # Gemma 4가 학동사거리·압구정로데오·논현역을 골라 강남역이 빠졌다). 매출 상위 하나만
+            # 앞에 둔다. 반경 가드 뒤에 두는 이유: 반경 폴백(교집합 공집합 → 반경 안 전체)을
+            # 미리 채워 좁히지 않기 위해서다.
+            named = self._named_codes(summary, prompt) - excluded_codes
+            if named and not any(c in named for c in valid_codes):
+                top = max(named, key=lambda c: summary.sales_by_code.get(c) or 0)
+                valid_codes = [top, *valid_codes]
         if not valid_codes:
             # 매칭 실패는 오류(422)가 아니라 안내 답변이다 — "목동 반찬가게"·"유동인구 많은
             # 상권 3곳" 질문이 62~86초 기다린 끝에 오류 원문을 받았다(2026-08-31 프로덕션).
@@ -1799,8 +1838,9 @@ class ChatInteractor(ChatUseCase):
                     items = list(parsed) if isinstance(parsed, (list, tuple)) else [text]
                 except (ValueError, SyntaxError):
                     items = [p.strip(" '\"") for p in text[1:-1].split(",")]
-            elif re.search(r"[,·]", text):
-                items = re.split(r"\s*[,·]\s*", text)
+            elif re.search(r"[,·/]", text):
+                # 슬래시 결합("TSLA/AAPL")은 LLM 교체 실측(Gemma 4, SF06)에서 추가
+                items = re.split(r"\s*[,·/]\s*", text)
             elif " " in text and any(
                 re.fullmatch(r"[A-Z][A-Z.\-]{0,5}", tok) for tok in text.split()
             ):
@@ -2566,6 +2606,12 @@ class ChatInteractor(ChatUseCase):
                     direction = "호재" if h.sentiment > 0 else "악재" if h.sentiment < 0 else "중립"
                     label_text = f"감성 {h.sentiment:+.1f}({direction})·{h.event_type or '기타'}"
                 lines += f"\n  - 근거 [{i}] ({date_text} | {label_text}) {h.title}"
+        # 배정된 번호를 끝에 열거한다 — LLM 교체 실측(Gemma 4, 2026-09-15): 분석 데이터 블록의
+        # 항목 순서를 근거 번호로 오해해([2][3][7]…) 주식 답변 52건 중 29건이 유령 인용이 됐고,
+        # 가드가 지우면서 인용 커버리지가 0.97→0.87로 떨어졌다. '근거 [n]' 표기가 아니라
+        # 채점기·가드의 번호 집합에는 영향이 없다.
+        assigned = sorted({int(n) for n in re.findall(r"근거 \[(\d+)\]", lines)})
+        lines += "\n\n쓸 수 있는 근거 번호: " + " ".join(f"[{n}]" for n in assigned) + " — 이 밖의 번호는 없다"
         return lines
 
     async def list_conversations(self, user_id: int, limit: int = 30) -> list[ConversationSummary]:
