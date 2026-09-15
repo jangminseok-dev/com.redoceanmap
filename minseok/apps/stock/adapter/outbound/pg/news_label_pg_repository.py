@@ -47,7 +47,9 @@ class NewsLabelPgRepository(NewsLabelRepositoryPort):
         stmt = (
             select(NewsArticleOrm.id, NewsArticleOrm.ticker, NewsArticleOrm.title)
             .where(~exists_label)
-            .order_by(NewsArticleOrm.id)
+            # 최신 기사부터 — 모델 교체로 전량이 미라벨이 되면(2026-09-15 EXAONE→Gemma 10.5만 건)
+            # 소비처(RAG·피드·알림)가 먼저 보는 최근 기사를 먼저 채운다. 평시에도 신규 기사가 먼저다.
+            .order_by(NewsArticleOrm.id.desc())
             .limit(limit)
         )
         result = await self._session.execute(stmt)

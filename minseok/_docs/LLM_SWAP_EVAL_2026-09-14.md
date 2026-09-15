@@ -99,6 +99,21 @@ trace·채점 원본은 세션 스크래치패드에만 남겼다(저장소 미�
 - `.env`: `LLM_MODEL=gemma4:e4b-it-qat` · `LLM_THINK=off`. 코드 기본값(`core/config.py`·오케스트레이터·
   `check_llm_health.py`)도 같은 값으로 바꿨다 — `.env`가 비어도 NC 모델로 조용히 되돌아가지 않게.
 - baseline.json 재박제(위 2차 값). trace.jsonl은 2차 실행본.
-- 남은 EXAONE 참조: `scripts/label_news.py`(뉴스 라벨링 cron, `OLLAMA_MODEL`·`LABELER` 상수 하드코딩)는 이번 범위 밖 —
-  라벨 일관성(labeler 태그) 영향이 있어 별도 판단. 골든셋 러너의 `register("exaone-7.8b", …)`는 기본값이 아니라 무해.
+- 골든셋 러너의 `register("exaone-7.8b", …)`는 기본값이 아니라 무해.
+
+## 후속 — 뉴스 라벨링·상주 시간 (2026-09-15 오후)
+
+- **뉴스 라벨링 cron도 Gemma로**: NC 라이선스는 출력물(라벨)까지 걸리므로 EXAONE 라벨 10.5만 건을 전량 재라벨한다.
+  판단 근거 — Gemma 80건 표본: 파싱 실패 0, EXAONE 라벨과 감성 부호 일치 62/80, 정반대 3(셋 다 Gemma가 맞음:
+  "공급제약 전례 없는 수준"을 EXAONE이 규제·소송 −0.5로 봤다), 이벤트 일치 60/80, 1건 1.08초.
+  - `scripts/label_news.py`: 모델·사고 모드를 `LLM_MODEL`·`LLM_THINK`로, labeler 태그는 `core/llm/labeler.py`의
+    `labeler_tag()`(읽는 쪽 `stock news_pg_repository.DEFAULT_LABELER`와 같은 함수) → `gemma4-e4b-it-qat`.
+  - 미라벨 조회(`news_label_pg_repository.unlabeled`)를 **최신 기사 우선**으로 바꿨다 — 전량 미라벨 상태에서
+    소비처(RAG·피드·알림)가 먼저 보는 최근 기사를 먼저 채운다. 1건 1.08초 → 10.5만 건 ≈ 32시간, 밤 cron
+    (02:30, `--limit 25000`) 4~5일. 첫날은 배포 직후 최신 6,000건을 즉시 배치로 채워 낮 동안의 공백을 줄였다.
+  - 재라벨 완료 뒤 `labeler='exaone-7.8b'` 행 삭제(라이선스 정리)는 별도 실행 — 완료 확인:
+    `select labeler, count(*) from news_labels group by 1`.
+- **모델 상주**: Ollama 기본 keep_alive 5분이라 유휴 뒤 첫 질문에 10~20초 콜드 로드. 백엔드 PC는 sudo 없이
+  systemd 오버라이드를 못 바꾸므로 오케스트레이터가 요청마다 `keep_alive`(`LLM_KEEP_ALIVE`, 기본 24h)를 넘긴다
+  — 채팅·임베딩(bge-m3) 둘 다. Gemma 2.9GiB + bge-m3 1.1GiB 상주는 8GB VRAM 안.
 - 라이선스: `ollama show gemma4:e4b-it-qat`는 Apache 2.0(9/14 실측) — E5 표기 갱신은 이 문서와 ROADMAP ③-M5②에 반영.

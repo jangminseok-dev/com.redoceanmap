@@ -1,10 +1,14 @@
-"""뉴스 LLM 라벨링 — EXAONE 7.8B(Ollama)로 감성·이벤트·확신도 라벨 → 허브 적재.
+"""뉴스 LLM 라벨링 — 기본 LLM(LLM_MODEL, 2026-09-15부터 Gemma 4 e4b QAT)로 감성·이벤트·확신도 라벨 → 허브 적재.
 
 허브에서 미라벨 뉴스를 받아(/automation/news-labels/pending) 라벨 후 되돌린다
 (/automation/news-labels). 라벨은 학습 피처 — 정답은 실현 수익률(price_bars 조인)이 담당한다.
 
-단일 모델 정책(2026-07-15): 프로젝트는 EXAONE 7.8B 하나만 쓴다. AWQ 2.4B 직로딩을
-Ollama HTTP(exaone3.5:7.8b, 상주 서빙)로 교체 — 결과는 허브 HTTP 계약으로만 적재한다.
+단일 모델 정책(2026-07-15): 프로젝트는 기본 모델 하나만 쓴다. Ollama HTTP(상주 서빙)로 호출하고
+결과는 허브 HTTP 계약으로만 적재한다. 모델 태그는 오케스트레이터와 같은 `LLM_MODEL`·`LLM_THINK` env를 따르며
+labeler 태그는 모델 태그에서 만든다(`gemma4:e4b-it-qat` → `gemma4-e4b-it-qat`). 모델을 바꾸면 전 기사가
+새 labeler 기준 미라벨이 되어 cron이 밤마다 --limit만큼 재라벨한다(EXAONE NC 라이선스 해소 — 출력물까지).
+Gemma 80건 표본(2026-09-15): EXAONE 라벨과 감성 부호 일치 62/80·정반대 3(정반대 3건은 Gemma가 맞음)·
+이벤트 일치 60/80, 1건 1.08초.
 
 실행 (루트 .venv — requests만 필요):
     ../.venv/bin/python scripts/label_news.py              # 미라벨 전부(기본 상한 3000)
@@ -27,6 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]  # minseok
 sys.path.insert(0, str(ROOT))
 
 from core.key.secret_manager import get_secret_manager  # noqa: E402
+from core.llm.labeler import labeler_tag  # noqa: E402
 
 _secrets = get_secret_manager()
 
@@ -35,8 +40,10 @@ TOKEN = _secrets.get("N8N_INBOUND_TOKEN")
 HEADERS = {"X-Webhook-Token": TOKEN}
 
 OLLAMA_URL = _secrets.get("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL = "exaone3.5:7.8b"
-LABELER = "exaone-7.8b"
+OLLAMA_MODEL = _secrets.get("LLM_MODEL", "gemma4:e4b-it-qat")
+LABELER = labeler_tag(OLLAMA_MODEL)  # 읽는 쪽(stock DEFAULT_LABELER)과 같은 규칙
+# 사고 모드 — Gemma 4는 서버 기본 켜짐이라 num_predict 64를 사고 토큰이 먹어 파싱 실패가 난다
+_THINK = {"off": False, "on": True}.get(_secrets.get("LLM_THINK", "off").strip().lower())
 EVENT_TYPES = ("실적", "목표가·투자의견", "신제품·기술", "규제·소송", "거시", "수급·지분", "기타")
 POST_CHUNK = 200
 
@@ -113,6 +120,7 @@ def warmup() -> None:
     requests.post(
         f"{OLLAMA_URL}/api/generate",
         json={"model": OLLAMA_MODEL, "prompt": "1", "stream": False,
+              **({"think": _THINK} if _THINK is not None else {}),
               "options": {"num_predict": 1}},
         timeout=600,
     ).raise_for_status()
@@ -128,6 +136,7 @@ def label_one(ticker: str, title: str) -> dict:
         ],
         "stream": False,
         "format": "json",
+        **({"think": _THINK} if _THINK is not None else {}),
         "options": {"temperature": 0, "num_predict": 64, "num_ctx": 2048},
     }
     for attempt in (1, 2):  # 일시 장애(모델 재로드·Ollama 재시작)는 1회 재시도

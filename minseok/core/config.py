@@ -49,6 +49,8 @@ LOG_FORMAT = _secrets.get("LOG_FORMAT", "plain")
 LLM_MODEL = _secrets.get("LLM_MODEL", "gemma4:e4b-it-qat")
 # 사고(thinking) 모드 스위치 — "off"/"on"/빈값(서버 기본). 실소비처는 위와 같이 오케스트레이터.
 LLM_THINK = _secrets.get("LLM_THINK", "off")
+# 모델 상주 시간(Ollama keep_alive) — 기본 5분이면 유휴 뒤 첫 질문에 10~20초 콜드 스타트가 붙는다.
+LLM_KEEP_ALIVE = _secrets.get("LLM_KEEP_ALIVE", "24h")
 
 # 배포 식별 — Dockerfile ARG로 이미지에 굽는 값이다(.env 키가 아니다).
 # 소스 마운트로 도는 dev나 --build-arg 없이 만든 이미지에서는 "unknown"이 맞다.

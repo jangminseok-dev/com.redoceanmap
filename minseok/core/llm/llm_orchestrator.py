@@ -115,6 +115,7 @@ class LLMOrchestrator:
         if THINK is not None:
             kwargs["think"] = THINK
         response = await self._client.chat(
+            keep_alive=KEEP_ALIVE,
             model=self._resolve_model(model),
             messages=self._build_messages(prompt, system, history),
             options={"num_ctx": NUM_CTX, **(options or {})},
@@ -125,12 +126,12 @@ class LLMOrchestrator:
 
     async def embed(self, text: str, *, model: str = "bge-m3") -> list[float]:
         """텍스트 임베딩(pgvector 저장·검색용). 채팅과 동일하게 오케스트레이터로 수렴한다."""
-        response = await self._client.embed(model=model, input=text)
+        response = await self._client.embed(model=model, input=text, keep_alive=KEEP_ALIVE)
         return list(response["embeddings"][0])
 
     async def embed_many(self, texts: list[str], *, model: str = "bge-m3") -> list[list[float]]:
         """배치 임베딩 — 여러 텍스트를 HTTP 1콜로 처리한다(수집 주기 지연 최소화)."""
-        response = await self._client.embed(model=model, input=texts)
+        response = await self._client.embed(model=model, input=texts, keep_alive=KEEP_ALIVE)
         return [list(e) for e in response["embeddings"]]
 
     async def orchestrate_stream(
@@ -147,6 +148,7 @@ class LLMOrchestrator:
             messages=self._build_messages(prompt, system, history),
             options={"num_ctx": NUM_CTX},
             stream=True,
+            keep_alive=KEEP_ALIVE,
             **({"think": THINK} if THINK is not None else {}),
         )
         async for part in stream:
@@ -169,6 +171,9 @@ _MODEL_TAG = get_secret_manager().get("LLM_MODEL", "gemma4:e4b-it-qat")
 # 비우면 서버 기본(모델별)에 맡긴다. 비사고 모델(EXAONE)에 think=False를 넘겨도 Ollama는 오류 없이 무시한다.
 _THINK_ENV = get_secret_manager().get("LLM_THINK", "off").strip().lower()
 THINK: bool | None = {"off": False, "on": True}.get(_THINK_ENV)
+# 모델 상주 시간(2026-09-15): Ollama 기본 keep_alive 5분이면 유휴 뒤 첫 질문에 10~20초 콜드 로드가 붙는다.
+# 백엔드 PC는 sudo 없이 systemd 오버라이드를 못 바꾸므로 요청마다 넘긴다. 채팅·임베딩(bge-m3) 둘 다.
+KEEP_ALIVE = get_secret_manager().get("LLM_KEEP_ALIVE", "24h").strip() or "24h"
 DEFAULT_MODEL = ModelSpec(name=_MODEL_TAG, label=f"기본 모델 ({_MODEL_TAG})")
 
 llm_orchestrator = LLMOrchestrator()

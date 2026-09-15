@@ -8,7 +8,9 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import LLM_MODEL
 from core.db_errors import is_infra_failure
+from core.llm.labeler import labeler_tag
 from stock.adapter.outbound.orm.news_article_orm import NewsArticleOrm
 from stock.adapter.outbound.orm.news_label_orm import NewsLabelOrm
 from stock.app.dtos.news_search_dto import NewsSearchRow
@@ -18,7 +20,9 @@ from stock.domain.services.rrf_fusion import rrf_merge
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_LABELER = "exaone-7.8b"  # 검색 히트에 동반할 라벨 버전 — 상위 모델 도입 시 교체 지점
+# 검색 히트에 동반할 라벨 버전 — 기본 LLM(LLM_MODEL)의 라벨. 모델을 바꾸면 라벨링 cron이 새 태그로
+# 재라벨하고(scripts/label_news.py, 최신 기사부터) 여기가 자동으로 따라간다.
+DEFAULT_LABELER = labeler_tag(LLM_MODEL)
 
 # 하이브리드 검색(R2) — 채널별 후보 폭. 라벨 확정 후 파라미터 스윕(R2 ③)의 조정 대상.
 HYBRID_CHANNEL_LIMIT = 30
