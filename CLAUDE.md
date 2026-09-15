@@ -18,7 +18,7 @@
 | 인증 | 위와 동일 (별도 프로세스 `auth_main.py` — 개인키를 분리 보유) | `minseok/apps/auth` |
 | 프론트엔드 | Next.js 16 · React 19 · TypeScript 5 · Tailwind 4 · zustand · TanStack Query | `www/` |
 | 데이터 | PostgreSQL 17(pgvector) · Redis 7 · Neo4j | 도커 컴포즈 |
-| LLM | Gemma 4 e4b QAT 로컬 추론(Ollama, 사고 모드 off) — 단일 모델 정책(2026-09-15 EXAONE NC에서 교체) | `minseok/core/llm` |
+| LLM | 오케스트레이터 3갈래 — 로컬 생성 Gemma 4 e4b QAT(Ollama, 사고 off) · 임베딩 embeddinggemma(768) · 외부 Gemini(일반 질문·폴백). 2026-09-15 EXAONE(NC)·bge-m3(중국) 교체 | `minseok/core/llm` |
 
 백엔드는 **모듈러 모놀리식**이다. 앱 내부는 헥사고날/클린(`adapter → app → domain`),
 앱 사이는 스타 토폴로지(허브 `hub` + 스포크)이며 두 구조는 `minseok/.importlinter`로 강제된다.

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from core.database import Base
 
-EMBEDDING_DIM = 1024  # bge-m3
+EMBEDDING_DIM = 768  # embeddinggemma (2026-09-15, bge-m3 1024에서 교체)
 
 
 class InboundMailOrm(Base):

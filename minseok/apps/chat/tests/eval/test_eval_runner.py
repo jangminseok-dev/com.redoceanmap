@@ -4,7 +4,7 @@
 모듈 네임스페이스의 llm_orchestrator를 "진짜 호출 + 기록" 프록시로 갈아끼운다.
 phase 식별은 프롬프트 접두사(INTENT/PHASE1/PHASE2/답변 프롬프트)로 확정한다.
 
-실행(백엔드 PC — ollama에 exaone3.5:7.8b 필요, DB는 불필요):
+실행(백엔드 PC — ollama에 LLM_MODEL 모델 필요, DB는 불필요, LLM_FALLBACK은 off):
   docker run --rm --network host \
     -v /home/host/projects/com.redoceanmap:/work -w /work \
     -e PYTHONPATH=/work/minseok:/work/minseok/apps \
@@ -39,7 +39,7 @@ from chat.tests.eval.snapshot_stubs import (
     SnapshotStocks,
     seeded_conversations,
 )
-from core.llm.llm_orchestrator import ModelSpec, llm_orchestrator
+from core.llm.llm_orchestrator import llm_orchestrator
 
 _PHASE_PREFIXES = (
     ("phase0", ci_module.INTENT_PROMPT[:40]),
@@ -108,11 +108,6 @@ def _ollama_reachable() -> bool:
 async def test_run_eval_and_write_trace(monkeypatch):
     if not _ollama_reachable():
         pytest.skip("ollama(127.0.0.1:11434) 미가동 — 백엔드 PC에서 실행")
-
-    # 테스트 프로세스에는 main.py의 모델 등록이 없다 — 첫 등록이 기본값이 된다.
-    llm_orchestrator.register(
-        "exaone-7.8b", ModelSpec(name="exaone3.5:7.8b", label="EXAONE 3.5 7.8B"),
-    )
 
     cases = load_cases()
     traces: list[CaseTrace] = []

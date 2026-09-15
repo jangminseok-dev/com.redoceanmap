@@ -22,12 +22,12 @@ class _StubRepository:
 
 
 class _StubEmbeddings:
-    async def embed(self, text: str) -> list[float]:
+    async def embed(self, text: str, *, kind: str = "query") -> list[float]:
         return [0.1] * 1024
 
 
 class _FailingEmbeddings:
-    async def embed(self, text: str) -> list[float]:
+    async def embed(self, text: str, *, kind: str = "query") -> list[float]:
         raise RuntimeError("모델 없음")
 
 

@@ -1,7 +1,7 @@
 """검색 평가 러너(R1·R2) — 골든셋 40질의를 실 코퍼스에 돌려 트레이스·pooling 후보를 만든다.
 
 두 시스템을 나란히 실행한다:
-- **현행**(R1 baseline 대상): 제목 bge-m3 임베딩 × pgvector 코사인 top-k —
+- **현행**(R1 baseline 대상): 제목 임베딩(EMBED_MODEL — 2026-09-15부터 embeddinggemma) × pgvector 코사인 top-k —
   **프로덕션과 같은 유스케이스**로 호출한다.
 - **하이브리드**(R2 실험): 벡터 + trigram 키워드 채널 RRF 결합 —
   리포지토리의 search_hybrid(아직 프로덕션 경로 아님)를 직접 호출한다.
@@ -21,7 +21,7 @@ market_news_articles(market 전용 DB)를 검색한다.
 함께 조립해야 하는데 chat/tests 안에서는 스포크 상호 독립 계약(import-linter)에 걸린다 —
 main.py가 스포크들을 조립하는 것과 같은 자리다.
 
-실행(백엔드 PC — ollama bge-m3 + 실 DB 필요, market DB는 MARKET_DATABASE_URL):
+실행(백엔드 PC — ollama 임베딩 모델 + 실 DB 필요, market DB는 MARKET_DATABASE_URL):
   docker run --rm --network host \
     -v /home/host/projects/com.redoceanmap:/work -w /work \
     -e PYTHONPATH=/work/minseok:/work/minseok/apps \

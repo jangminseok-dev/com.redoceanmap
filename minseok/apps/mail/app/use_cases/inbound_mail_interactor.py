@@ -45,7 +45,7 @@ class InboundMailInteractor(InboundMailUseCase):
         if self._embeddings is None:
             return None
         try:
-            return await self._embeddings.embed(text)
+            return await self._embeddings.embed(text, kind="document")
         except Exception:
             logger.warning("[mail] 임베딩 생성 실패 — 벡터 없이 저장", exc_info=True)
             return None

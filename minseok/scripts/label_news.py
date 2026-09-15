@@ -10,13 +10,13 @@ labeler 태그는 모델 태그에서 만든다(`gemma4:e4b-it-qat` → `gemma4-
 Gemma 80건 표본(2026-09-15): EXAONE 라벨과 감성 부호 일치 62/80·정반대 3(정반대 3건은 Gemma가 맞음)·
 이벤트 일치 60/80, 1건 1.08초.
 
-실행 (루트 .venv — requests만 필요):
-    ../.venv/bin/python scripts/label_news.py              # 미라벨 전부(기본 상한 3000)
-    ../.venv/bin/python scripts/label_news.py --limit 20   # 상한 지정
-    ../.venv/bin/python scripts/label_news.py --dry-run    # 라벨 출력만, 허브 POST 안 함
+실행 (루트 venv — cron 전용 경량, requests만 필요. 학습용 .venv는 2026-09-15 삭제됨):
+    ../venv/bin/python scripts/label_news.py                  # 미라벨 전부(기본 상한 3000)
+    ../venv/bin/python scripts/label_news.py --limit 25000    # 상한 지정(cron 값)
+    ../venv/bin/python scripts/label_news.py --dry-run        # 라벨 출력만, 허브 POST 안 함
 
-백엔드 PC cron 예시(매일 02:30 — GPU 유휴 시간대):
-    30 2 * * * cd /path/to/minseok && ../.venv/bin/python scripts/label_news.py >> ~/label_news.log 2>&1
+백엔드 PC cron(매일 02:30 — GPU 유휴 시간대):
+    30 2 * * * cd /path/to/minseok && ../venv/bin/python scripts/label_news.py --limit 25000 >> ~/label_news.log 2>&1
 """
 
 import json

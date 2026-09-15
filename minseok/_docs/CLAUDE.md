@@ -94,8 +94,10 @@ Python / FastAPI 백엔드. 앱 **내부**는 헥사고날/클린 아키텍처(`
 - 앱은 최상위 패키지로 인식된다(`from market.app.ports... import ...`). `main.py`가
   `sys.path`에 `apps/`를 등록하고, lint/스크립트는 `PYTHONPATH=apps`로 맞춘다.
 - 세션·베이스: `from core.database import get_db, Base`.
-- LLM 추론은 단일 LLM 오케스트레이터 `core/llm/llm_orchestrator.py`로 수렴한다 —
-  오케스트레이터가 기본 모델 하나만 보유한다(단일 모델 정책, 2026-07-15 — 2026-09-15부터 Gemma 4 e4b QAT).
+- LLM 호출은 전부 단일 LLM 오케스트레이터 `core/llm/llm_orchestrator.py`로 수렴한다 — 외부 API(Gemini)도
+  허브 포트 → 오케스트레이터 외부 갈래로 간다. 세 갈래: 로컬 생성(Gemma 4 e4b QAT) · 임베딩(embeddinggemma
+  768차원) · 외부 생성(Gemini, 일반 질문 + Ollama 장애 폴백 `LLM_FALLBACK`). 단일 모델 정책(2026-07-15,
+  2026-09-15 개정): 생성 모델 하나 + 임베딩 모델 하나 + 외부 폴백 — 생성 모델을 동시에 여러 개 두지 않는다.
 - **비밀값·환경 변수는 `core/key/secret_manager.py`로 수렴한다** — 아래 참고.
 
 ## 비밀값 규칙 — `.env` 로드는 한 곳에서만 (필수)
@@ -119,8 +121,10 @@ Python / FastAPI 백엔드. 앱 **내부**는 헥사고날/클린 아키텍처(`
 
 | 지점 | 모델 |
 |------|------|
-| 도메인 내부 추론(예: chat phase1 상권/업종 선택) | **Gemma 4 e4b QAT** (단일 모델 정책 — `LLM_MODEL`) |
-| 최종 사용자 답변(예: chat phase2·스트리밍) | **Gemma 4 e4b QAT** (오케스트레이터 기본, `LLM_THINK=off`) |
+| 도메인 내부 추론(예: chat phase1 상권/업종 선택) | **Gemma 4 e4b QAT** (`LLM_MODEL`, 사고 모드는 호출 단위 `think=`로 덮어쓰기) |
+| 최종 사용자 답변(예: chat phase2·스트리밍) | **Gemma 4 e4b QAT** (`LLM_THINK=off` 기본) |
+| 임베딩(pgvector 저장·검색 — 뉴스·상권뉴스·공시·메일) | **embeddinggemma 768차원** (`EMBED_MODEL`, 질의/문서 프롬프트는 오케스트레이터가 붙인다 — `kind`) |
+| 일반 질문(상권·주식 무관) · Ollama 장애 폴백 | **Gemini** (`GEMINI_MODEL`, 오케스트레이터 외부 갈래 — `orchestrate_external`) |
 
 ## async def vs def
 

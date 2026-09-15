@@ -51,6 +51,10 @@ LLM_MODEL = _secrets.get("LLM_MODEL", "gemma4:e4b-it-qat")
 LLM_THINK = _secrets.get("LLM_THINK", "off")
 # 모델 상주 시간(Ollama keep_alive) — 기본 5분이면 유휴 뒤 첫 질문에 10~20초 콜드 스타트가 붙는다.
 LLM_KEEP_ALIVE = _secrets.get("LLM_KEEP_ALIVE", "24h")
+# 임베딩 모델(pgvector 768차원) — 2026-09-15 bge-m3(1024)에서 교체. 바꾸면 차원 마이그레이션 + 전량 재임베딩.
+EMBED_MODEL = _secrets.get("EMBED_MODEL", "embeddinggemma")
+# Ollama 장애 시 외부 생성(Gemini) 폴백 — "external"이면 켬. 평가 러너는 off.
+LLM_FALLBACK = _secrets.get("LLM_FALLBACK", "off")
 
 # 배포 식별 — Dockerfile ARG로 이미지에 굽는 값이다(.env 키가 아니다).
 # 소스 마운트로 도는 dev나 --build-arg 없이 만든 이미지에서는 "unknown"이 맞다.
