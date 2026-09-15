@@ -74,7 +74,7 @@ permalink: /roadmap/
 <h2 id="r-track">R 트랙 — 검색(RAG) 품질</h2>
 
 생성 품질만 재던 평가 하네스에 **검색 품질 축**(recall@k·nDCG·MRR)을 추가하는 트랙.
-라벨링은 사람이 한다 — LLM이 자기 검색을 심판하는 순환은 금지.
+라벨링은 사람이 한다 — LLM이 자기 검색을 심판하는 순환은 금지(검색 모델과 무관한 외부 모델의 보조는 예외로 기록해 둔다).
 
 | 마일스톤 | 상태 |
 | --- | --- |
@@ -104,6 +104,7 @@ permalink: /roadmap/
 | game 스포크 폐기 → AI 모의투자(EXAONE 직접 판단·숏 허용·6주 리플레이) | <span class="st st-done">완료 2026-09</span> 입지 적합도는 상권으로 이관 |
 | 목적별 페르소나 10명 QA(가입→목표) → 개선 22건 중 21건 배포 | <span class="st st-done">완료 2026-09</span> 잔여 1건은 답변 골격 전환 |
 | 공정위 브랜드 창업비용 팩트 — 예산 질문에 업종 후보 제시 | <span class="st st-done">완료 2026-09</span> 월 1회 자동 적재 |
+| LLM 교체 실행 — EXAONE(연구 전용)→Gemma 4, 임베딩 bge-m3→embeddinggemma, 오케스트레이터 3갈래(로컬·임베딩·외부 폴백) | <span class="st st-done">완료 2026-09-15</span> 134문항 게이트 통과 · 벡터 21만 건 재임베딩 |
 | 개인화 ② 선호 프로파일 | <span class="st st-wait">수요 게이트 뒤</span> |
 | 매물(listing) 스포크 | <span class="st st-wait">수요 게이트 뒤</span> |
 
@@ -118,7 +119,9 @@ permalink: /roadmap/
 | 5분봉 이벤트 연구 — 뉴스 후 30·60분 초과수익 | <span class="st st-done">완료</span> 초과수익 사실상 없음 — 값은 되돌림에서 나온다 |
 | 가중치 재적합·자동 승격 루프 | <span class="st st-done">완료</span> 채점→재적합→승격 자동화 — 변동성 초과 적중 정의로 첫 실전 승격(하한 0.50 > 기준선 0.34) |
 | 펀더멘털 → 판정 편입 | <span class="st st-drop">측정 후 기각</span> 전 조합 게이트 미달(역방향) — 서술 축 유지 |
-| LLM 라이선스 실사 | <span class="st st-done">완료</span> 공개 서비스 전 모델 교체 필수 판정 |
+| LLM 라이선스 실사 | <span class="st st-done">완료</span> 공개 서비스 전 모델 교체 필수 판정 → 2026-09-15 교체 완료 |
+| LLM 교체 후보 4종 판정(Llama 3.1 · Kanana · Gemma 4 e2b/e4b) | <span class="st st-done">완료</span> e4b QAT 채택 — 환각 0·지연 절반, 프롬프트 재튜닝 2회로 게이트 통과 |
+| 임베딩 후보 4종 판정(bge-m3 · e5-large · embeddinggemma · granite) | <span class="st st-done">완료</span> embeddinggemma 채택 — 같은 라벨 공정 비교 nDCG@5 0.743→0.878, 하이브리드는 새 모델에서 기각 |
 | Neo4j 그래프 질의 게이트(E4) | <span class="st st-wait">측정 후 보류</span> 실질문 129건 전수 판정 — graph-only 0건, 착수 조건 미달 |
 | AI 모의투자 리플레이 30거래일(7/30~9/8) | <span class="st st-done">완료</span> EXAONE −5.5% · 지표 규칙 +7.0% · SPY 보유 +3.8% — LLM 판단이 규칙보다 뒤졌다는 기록 자체가 결과 |
 
@@ -153,7 +156,7 @@ permalink: /roadmap/
 | --- | --- |
 | 데이터 유실 | 백업 3계층 — 일간 로컬 로테이션 + 주간 오프사이트 미러 + 분기 복원 리허설(실복원으로 검증, 백업 파일 존재만 믿지 않는다) |
 | 서비스 다운을 모르고 지나감 | 구조화 로깅 + 업타임 모니터링, 강제 다운 시 5분 내 알림을 게이트로 검증 |
-| LLM 라이선스 리스크 | 현행 모델은 연구 전용(비상용) — 실사로 확인했고 공개 서비스 전 상용 가능 모델로 교체하는 스위치·회귀 절차를 준비해뒀다 |
+| LLM 라이선스 리스크 | 해소(2026-09-15) — 연구 전용 모델을 상용 가능 모델로 교체했고 그 모델이 만든 라벨까지 재생성 중. 교체는 스위치 + 회귀 게이트로만 |
 | 잘못된 통계로 인한 오도 | 표본 기준 미달 통계는 확률 주장 금지, 백테스트 게이트(유효표본 보정·Wilson 하한) 미달 시 기각 |
 | 품질 저하를 모르고 배포 | 평가 하네스 baseline 회귀 게이트 — 프롬프트·모델 변경은 골든셋 대조 후에만 |
 
@@ -180,18 +183,19 @@ permalink: /roadmap/
 <div class="kb-card">AI 모의투자 첫 자동 step(매일 14:00 스냅샷 뒤) 로그 확인<span class="kb-tag kb-op">운영</span></div>
 <div class="kb-card">창업비용 첫 자동 적재(10/1) 확인 — 수동 적재는 완료<span class="kb-tag kb-ml">데이터·ML</span></div>
 <div class="kb-card">상권 신규 분기 첫 자동 적재<span class="kb-tag kb-ml">데이터·ML</span></div>
-<div class="kb-card">LLM 교체 후보 pull → 134문항 회귀 비교<span class="kb-tag kb-ml">데이터·ML</span></div>
+<div class="kb-card">EXAONE 뉴스 라벨 10.5만 건 재라벨 완료 확인 후 구 라벨 삭제<span class="kb-tag kb-ml">데이터·ML</span></div>
+<div class="kb-card">모의투자 화면·계정 라벨 "EXAONE" 표기를 모델 중립 이름으로<span class="kb-tag kb-fe">프론트</span></div>
 </div>
 
 <div class="kb-col">
 <h4>🔄 In Progress</h4>
 <div class="kb-card">채팅 답변 골격(AnswerSkeleton) 전환 — 결론 첫 줄을 코드가 쓰는 파이프라인, QA 잔여 1건<span class="kb-tag kb-be">백엔드</span></div>
-<div class="kb-card">골든셋 134문항 baseline 재박제 — 9월 가드 반영 후 회귀 게이트 재실행<span class="kb-tag kb-ml">데이터·ML</span></div>
 <div class="kb-card">개발 기록 블로그 9월 개편·소급 리뷰<span class="kb-tag kb-op">운영</span></div>
 </div>
 
 <div class="kb-col">
 <h4>✅ Done <span style="color:#9a9aa2;font-weight:400;font-size:0.8rem;">최근 완료</span></h4>
+<div class="kb-card">LLM 교체(Gemma 4)·임베딩 교체(embeddinggemma)·오케스트레이터 3갈래 — 게이트 통과·baseline 재박제<span class="kb-tag kb-ml">데이터·ML</span></div>
 <div class="kb-card">game 스포크 폐기 → AI 모의투자 슬라이스 + 30거래일 리플레이<span class="kb-tag kb-be">백엔드</span></div>
 <div class="kb-card">페르소나 10명 QA → 개선 21건 배포(예산 답·비교표·결론 첫 줄·한국 종목명 KIND 소스)<span class="kb-tag kb-be">백엔드</span></div>
 <div class="kb-card">공정위 창업비용 팩트 적재 + 월 1회 CronJob<span class="kb-tag kb-ml">데이터·ML</span></div>
