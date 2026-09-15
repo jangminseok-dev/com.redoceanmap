@@ -169,3 +169,33 @@ source_context: "/Users/jangminseok/Project/com.redoceanmap/www/components/game/
 ```
 
 Introduced off-palette color(s) #4ade80, #e8b45a, #fb923c in /Users/jangminseok/Project/com.redoceanmap/www/components/game/GameChart.tsx — not in DESIGN.md
+
+## 2026-09-14T02:45:54.317Z — introduced-off-palette-color-s-a51c1c-in
+
+```omd-meta
+id: pref_mu0n57gt_87b149de
+timestamp: 2026-09-14T02:45:54.317Z
+scope: color
+signal: ambient
+confidence: inferred
+status: pending
+source_agent: claude-code
+source_context: "/home/host/projects/com.redoceanmap/www/app/apple-icon.tsx"
+```
+
+Introduced off-palette color(s) #a51c1c in /home/host/projects/com.redoceanmap/www/app/apple-icon.tsx — not in DESIGN.md
+
+## 2026-09-14T02:53:40.106Z — introduced-off-palette-color-s-d33a3a-a5
+
+```omd-meta
+id: pref_mu0nf6ve_0619fcc1
+timestamp: 2026-09-14T02:53:40.106Z
+scope: color
+signal: ambient
+confidence: inferred
+status: pending
+source_agent: claude-code
+source_context: "/home/host/projects/com.redoceanmap/www/app/apple-icon.tsx"
+```
+
+Introduced off-palette color(s) #d33a3a, #a51c1c, #6e0e0e in /home/host/projects/com.redoceanmap/www/app/apple-icon.tsx — not in DESIGN.md

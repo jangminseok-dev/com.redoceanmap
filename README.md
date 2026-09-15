@@ -1,10 +1,10 @@
 # RedOceanMap
 
 서울 상권 공공데이터와 주식 시세를 **대화로 분석하는** 웹 서비스.
-LLM 추론은 외부 API가 아니라 **온프레미스 로컬 모델(EXAONE 3.5 7.8B / Ollama)** 하나로 수행하며,
+핵심 LLM 추론은 **온프레미스 로컬 모델(Gemma 4 e4b QAT / Ollama)**로 수행하고 외부 API(Gemini)는 일반 질문·폴백에만 쓰며,
 소형 모델의 한계를 **아키텍처(결정론 가드·컨텍스트 예산·품질 게이트)**로 보완하는 것이 이 저장소의 주제다.
 
-> 개발 기간 2026-05 ~ 현재 · 1인 개발 · Python 63k줄 / TS 120파일 · 테스트 130파일
+> 개발 기간 2026-05 ~ 현재 · 1인 개발 · Python 69k줄 / TS 128파일 · 테스트 151파일
 
 ## 무엇이 다른가
 
@@ -17,7 +17,7 @@ LLM 추론은 외부 API가 아니라 **온프레미스 로컬 모델(EXAONE 3.5
 - **주장에는 숫자를 붙인다** — 상권 종합점수는 워크포워드 백테스트로 예측력을 실측하고
   (우수 등급 t+1 상대 유동인구 +5.07%p, 컴포넌트 ρ는 약함 — "예측기가 아니라 현황 요약"으로 한계 명시),
   조회 성능은 인덱스 재설계 2.2ms→0.065ms · 벤치마크 캐시 330ms→12.4ms로 계측했다.
-- **LLM 품질을 회귀 테스트한다** — 골든셋 120문항 → 실모델 러너 → 결정론 채점(의도 정확도·상권 적중률·
+- **LLM 품질을 회귀 테스트한다** — 골든셋 134문항 → 실모델 러너 → 결정론 채점(의도 정확도·상권 적중률·
   환각 숫자·금지 표현·가드 발동률·p95 지연) → baseline 대비 게이트. LLM-as-judge를 쓰지 않는다.
   → [minseok/apps/chat/_docs/EVAL.md](minseok/apps/chat/_docs/EVAL.md)
 
@@ -46,9 +46,9 @@ LLM 추론은 외부 API가 아니라 **온프레미스 로컬 모델(EXAONE 3.5
 
 ```
 질문 → phase0 의도분류(4종) ─┬─ market: phase1 상권·업종 선택 → 팩트·점수·인사이트·기사 주입 → phase2 서술
-      EXAONE 7.8B 단일 모델   ├─ stock: 종목 해석 → 지표·뉴스RAG·과거통계·펀더멘털 → 서술(매매지시 금지)
-                             ├─ market_news: 뉴스 의미검색(bge-m3+pgvector) → 서술
-                             └─ general: 외부 위임
+   Gemma 4 e4b QAT(로컬 생성)  ├─ stock: 종목 해석 → 지표·뉴스RAG·과거통계·펀더멘털 → 서술(매매지시 금지)
+                             ├─ market_news: 뉴스 의미검색(embeddinggemma+pgvector) → 서술
+                             └─ general: 외부 Gemini 위임(폴백)
         각 단계 사이에 결정론 가드 — LLM 오답을 코드가 보정하고, 보정률 자체를 평가 지표로 측정
 ```
 
@@ -57,7 +57,7 @@ LLM 추론은 외부 API가 아니라 **온프레미스 로컬 모델(EXAONE 3.5
 | 영역 | 기술 |
 | --- | --- |
 | 백엔드 | Python 3.13 · FastAPI · SQLAlchemy 2(asyncio) · Pydantic 2 · Alembic |
-| LLM | EXAONE 3.5 7.8B(Ollama, 단일 모델 정책) · bge-m3 임베딩 · pgvector 의미 검색 |
+| LLM | 오케스트레이터 3갈래 — 로컬 생성 Gemma 4 e4b QAT(Ollama, 사고 off) · 임베딩 embeddinggemma(768) · 외부 Gemini(일반 질문·폴백) · pgvector 의미 검색 |
 | 데이터 | PostgreSQL 17(pgvector) · Redis 7 · Neo4j · 서울 열린데이터광장(팩트 9종 · 인허가 68만건) |
 | 프론트 | Next.js 16 · React 19 · TS 5 · Tailwind 4 · zustand · TanStack Query |
 | 인프라 | 온프레미스(앱 k3s · DB 도커 compose, 루프백 바인딩) · cloudflared 터널 · 일일 백업 cron |
@@ -74,7 +74,7 @@ cd www && pnpm run dev                        # 프론트(:3000) — NEXT_PUBLIC
 검증(호스트에 파이썬 없음 — 도커 경유):
 
 ```bash
-# 테스트 130파일
+# 테스트 151파일
 docker run --rm -v $PWD:/work -w /work -e PYTHONPATH=/work/minseok:/work/minseok/apps \
   minseok97/redoceanmap-backend:latest python -m pytest minseok/apps -q -m "not ollama and not network"
 # 아키텍처 계약 5종

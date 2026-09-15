@@ -4,7 +4,7 @@ phase0(의도 분류) → phase1(상권·업종 선택) → phase2(최종 서술
 **결정론 지표**로 재고, 프롬프트·모델 변경 시 회귀를 pytest 게이트로 잡는다.
 
 ```
-golden_set.jsonl ──[러너: 실제 EXAONE 7.8B, -m ollama]──> trace.jsonl (커밋)
+golden_set.jsonl ──[러너: 실제 Gemma 4 e4b QAT, -m ollama]──> trace.jsonl (커밋)
                                                               │
                                         [채점기: 순수 함수, LLM 불필요]
                                                               │
@@ -28,7 +28,7 @@ golden_set.jsonl ──[러너: 실제 EXAONE 7.8B, -m ollama]──> trace.json
 
 | 파일 | 역할 |
 | --- | --- |
-| `tests/eval/golden_set.jsonl` | 골든셋 120문항 — market 40(지역 20·미지정 10·서울외 10) · stock 30(한국 15·해외 10·모호 5) · market_news 20 · general 20 · multiturn 10 |
+| `tests/eval/golden_set.jsonl` | 골든셋 134문항 — market 62 · stock 32 · market_news 20 · general 20 |
 | `tests/eval/snapshot_stubs.py` | 허브 포트 고정 스텁(실덤프 우선, 없으면 내장 합성) |
 | `tests/eval/test_eval_runner.py` | 러너(`-m ollama`) — trace.jsonl 생성 |
 | `tests/eval/trace.jsonl` | 실행 기록(케이스별 phase 호출·응답·지연) — 커밋 대상 |
