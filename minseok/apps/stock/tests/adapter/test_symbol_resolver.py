@@ -94,3 +94,13 @@ async def test_KIND_목록이_1순위_소스다(monkeypatch):
     monkeypatch.setattr(symbol_resolver, "_load_from_kind", lambda: {"삼성전자": "005930", "카카오": "035720"})
     monkeypatch.setattr(symbol_resolver.fdr, "StockListing", lambda _: (_ for _ in ()).throw(AssertionError("fdr는 부르지 않는다")))
     assert await symbol_resolver.resolve_symbol("카카오") == "035720"
+
+
+async def test_현대차는_현대차증권이_아니라_현대자동차로_해석한다(monkeypatch):
+    # 5차 실측 S7: 상장명 "현대자동차"에는 "현대차"가 포함되지 않아 부분 일치가 증권사에만 걸렸다
+    monkeypatch.setattr(
+        symbol_resolver, "_load_krx_names",
+        lambda: {"현대자동차": "005380", "현대차증권": "001500"},
+    )
+    assert await symbol_resolver.resolve_symbol("현대차") == "005380"
+    assert await symbol_resolver.resolve_symbol("현대차증권") == "001500"

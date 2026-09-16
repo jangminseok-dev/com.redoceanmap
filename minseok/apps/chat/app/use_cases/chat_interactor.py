@@ -202,6 +202,13 @@ MARKET_NEWS_ANSWER_PROMPT = """당신은 시장·업황 분석 상담사입니�
 - 근거가 헤드라인(제목) 수준임을 감안해 단정을 피하고, 마지막에 투자 판단 책임 고지 한 문장
   (고지 문장에는 근거 번호를 붙이지 않는다)"""
 
+# 서술 경로에 직전 대화(history)를 넘길 때만 컨텍스트 끝에 붙인다 — 프롬프트 상수에 상시로 넣으면
+# 단일턴 골든셋의 인용 커버리지가 0.976→0.943으로 떨어졌다(2026-09-16 게이트 실측, 규칙 희석).
+HISTORY_NOTE = (
+    "[이전 대화 이어짐] 위 대화의 답변과 일관되게 **이어서** 답할 것 — 후속 질문(리스크·차이·결론·객단가 등)은"
+    " 물은 것에 집중하고 이미 말한 개요를 되풀이하지 말 것. 수치 근거는 이번 컨텍스트만 쓴다."
+)
+
 PHASE1_PROMPT = """당신은 서울 상권 분석 전문가입니다.
 사용자 질문을 보고 다음을 결정하세요:
 1. 가장 적합한 service_code (업종 코드)
@@ -300,6 +307,8 @@ _DOMAIN_FOLLOWUP_RE = re.compile(
     # 업종 변경·정정 후속(LLM 교체 실측 MT11·MT12 — "국밥 말고 돈까스집이면?",
     # "떡볶이집을 추천해달라고 했는데?"). 직전 카드가 있을 때만 걸리므로 잡담 "추천"은 안 탄다.
     r"|말고|추천"
+    # 회상 후속(5차 실측 S10 t5 "결론만 다시 말해줘"가 general로 이탈)
+    r"|결론|정리"
 )
 
 DEICTIC_TOKENS = (
@@ -313,10 +322,13 @@ def _has_deixis(prompt: str) -> bool:
 
 # 제외 조건 어휘(P2·P7) — "강남 말고" 류는 직전 추천으로 제한하면 정반대 답이 된다
 EXCLUSION_TOKENS = ("말고", "빼고", "제외", "다른 데", "다른 곳", "다른 동네", "딴 데")
+# "다른 구/지역/자치구"(5차 실측 S8 t3: "다른 구도 추천해줘"가 직전 추천으로 제한돼 같은 상권을
+# 냈다) — 직전 추천 상권의 자치구 전체를 제외한다. 조사·문장 끝 경계를 요구해 "다른 구체적…"은 뺀다.
+_OTHER_DISTRICT_RE = re.compile(r"다른\s?(?:구|지역|자치구)(?=[도는은를로의에]|\s|[?.!,]|$)")
 
 
 def _has_exclusion(prompt: str) -> bool:
-    return any(token in prompt for token in EXCLUSION_TOKENS)
+    return any(token in prompt for token in EXCLUSION_TOKENS) or bool(_OTHER_DISTRICT_RE.search(prompt))
 
 
 # 일반명사와 동음인 지명 어간(4차 실측 M8 t2: "방학엔 장사 안 되지 않아?"의 '방학'이
@@ -399,6 +411,103 @@ _CORRECTION_TOKENS = (
 
 def _has_correction(prompt: str) -> bool:
     return any(token in prompt for token in _CORRECTION_TOKENS)
+
+
+# 회상 질문(5차 실측 2026-09-16) — "결론만 다시 말해줘"·"정리하면 네 결론이 뭐였지?"·
+# "아까 말한 리스크 다시 말해줘"가 매번 새 분석(또는 무관 뉴스 검색·general)으로 갔다.
+# 서술 모델은 이전 턴을 못 보므로 직전 답변을 코드가 다시 보여준다(뉴스 상세 후속과 같은 태도).
+_RECALL_RE = re.compile(
+    r"(?:결론|정리|요약)(?:만|이|은|을|좀)?\s*(?:다시|뭐였|뭐야|뭐지|정리|말해)"
+    r"|다시\s*(?:한\s*번\s*)?(?:말|설명|알려|정리|요약|보여)"
+    r"|(?:뭐|어디|뭐라고)\s*(?:였|라고\s*했|라고\s*말했)"
+)
+# 턴 지목 회상 — "두 번째 답변에서 말한 거 다시", "첫 질문에 대한 답 보여줘"(잔여 소진 2026-09-16 저녁)
+_TURN_RECALL_RE = re.compile(
+    r"(?:(첫|두|세|네|다섯)\s*번째|([1-5])\s*번째|(처음|첫|마지막))\s*(답변|대답|답|질문|물음)"
+)
+_TURN_RECALL_VERB_RE = re.compile(r"다시|뭐|보여|요약|정리|알려|말해")
+
+
+def _ordinal_label(idx: int, count: int) -> str:
+    """0→"첫 번째", 1→"두 번째", -1→"마지막" — 재제시 문두 라벨."""
+    if idx == -1:
+        return "마지막"
+    return {0: "첫 번째", 1: "두 번째", 2: "세 번째", 3: "네 번째", 4: "다섯 번째"}.get(idx, f"{idx + 1}번째")
+
+
+def _recall_turn(prompt: str) -> tuple[str, int] | None:
+    """("answer"|"question", 인덱스) — 인덱스는 0부터, "마지막"은 -1. 지목이 없으면 None."""
+    m = _TURN_RECALL_RE.search(prompt)
+    if m is None:
+        return None
+    if m.group(1):
+        idx = _ORDINAL_WORDS[m.group(1)]
+    elif m.group(2):
+        idx = int(m.group(2)) - 1
+    else:
+        idx = -1 if m.group(3) == "마지막" else 0
+    kind = "question" if m.group(4) in ("질문", "물음") else "answer"
+    return kind, idx
+
+
+# 사용자 자신의 발화 회상 — "내가 처음에 물어본 업종이 뭐였지?"·"내 예산 기억해?"
+_USER_RECALL_RE = re.compile(r"(?:내가|제가|내)\s.*(?:뭐였|뭐라고|기억)")
+# 서수 지시(5차 실측 S4 t8·S5 t2) — "두 번째로 추천한 데"·"마지막 곳"은 직전 복수 추천의 인덱스다
+_ORDINAL_RE = re.compile(r"(첫|두|세|네|다섯)\s*번째|([1-5])\s*번째|마지막")
+_ORDINAL_WORDS = {"첫": 0, "두": 1, "세": 2, "네": 3, "다섯": 4}
+# 뉴스 검색 앵커용 지시 표현(원인 B) — 지시어 가드(DEICTIC_TOKENS)와 분리한다: 가드는 후보를
+# 자르지만 이쪽은 검색 질의에 직전 질문을 앞에 붙일 뿐이라 넓게 잡아도 해가 없다.
+_ANAPHORA_RE = re.compile(
+    r"그게|그거|그것|그런|그\s?(?:뉴스|기사|종목|둘|얘기|내용|중)|이\s?종목|아까|방금|다시|그럼|그러면|거기"
+)
+# 상권↔종목 교차 비교(5차 실측 S3 t4) — 기준이 달라 우열을 매기면 지어낸 결론이 된다
+_CROSS_COMPARE_RE = re.compile(r"(?:상권|창업|가게).{0,20}(?:주식|종목)|(?:주식|종목).{0,20}(?:상권|창업|가게)")
+_CROSS_COMPARE_TEXT = (
+    "상권과 종목은 기준이 달라 한 축으로 비교해 드리지 않아요 — 상권은 분기 공공데이터(매출·폐업률),"
+    " 종목은 시세·지표·뉴스라 우열을 매기면 지어낸 결론이 돼요. 각각 따로 물어보시면 그 데이터로 답해 드려요."
+)
+
+
+# 사용자 발화 회상 + 재요청("그 업종으로 제일 나은 데 다시 골라줘") — 인용만 하지 않고 원 질문으로 다시 돈다
+_REPICK_RE = re.compile(r"골라|추천|찾아|분석|비교")
+# 비교 질문의 종목 쌍 분해(5차 S10 t1: Gemma가 "삼성전자랑 SK하이닉스 중"에서 종목 하나만 반환)
+_COMPARE_PAIR_RE = re.compile(
+    r"([A-Za-z가-힣0-9&.\-]+?)(?:이랑|랑|와|과|하고|,|\s+vs\.?\s+)\s*([A-Za-z가-힣0-9&.\-]+)"
+)
+_COMPARE_STOPWORDS = {
+    "뭐", "어디", "둘", "셋", "주가", "거래량", "지금", "오늘", "비교", "중에", "어느",
+    "배당", "확률", "뉴스", "실적", "전망", "신호", "차트", "모멘텀", "매물대", "리스크",
+}
+# 분해는 연결어("랑")만으로는 하지 않는다 — "배당이랑 오를 확률 알려줘"가 비교로 잡혔다(단위 테스트 실측).
+# 우열을 묻는 표현이 함께 있을 때만.
+_COMPARE_ASK_RE = re.compile(r"비교|vs|\s중에?\s|둘\s*중|셋\s*중|어디가|어느\s*(?:쪽|게|것)|(?:뭐|누)가\s*(?:더|낫|나아)")
+
+
+def _split_compare_queries(prompt: str, known: str) -> list[str]:
+    """비교 질문에서 phase0가 하나만 뽑았을 때 연결어 앞뒤 어절로 나머지 종목을 보탠다.
+    확신이 없는 어절은 stopword로 거른다 — 리졸버 실패는 비교 경로가 건너뛰므로 오탐 비용이 낮다."""
+    found: list[str] = [known]
+    for m in _COMPARE_PAIR_RE.finditer(prompt):
+        for raw in m.groups():
+            token = re.sub(r"(?:은|는|이|가|을|를)$", "", raw)
+            if len(token) < 2 or token in _COMPARE_STOPWORDS:
+                continue
+            if any(token in f or f in token for f in found):
+                continue
+            found.append(token)
+    return found[:3]
+
+
+def _ordinal_index(prompt: str) -> int | None:
+    """서수 → 0부터 시작하는 인덱스, "마지막"은 -1. 없으면 None."""
+    m = _ORDINAL_RE.search(prompt)
+    if m is None:
+        return None
+    if m.group(1):
+        return _ORDINAL_WORDS[m.group(1)]
+    if m.group(2):
+        return int(m.group(2)) - 1
+    return -1
 
 
 def _detect_service(prompt: str, service_codes) -> tuple[str, str] | None:
@@ -508,7 +617,7 @@ _SIGNAL_BOARD_LIMIT = 5  # 답변에 싣는 종목 수 — 전체는 화면 보�
 # 근거 뉴스(제목·날짜·라벨)를 코드가 그대로 보여준다. 지시어 동반 조건으로 새 질문
 # ("반도체 뉴스 알려줘")과 가른다.
 _NEWS_DETAIL_RE = re.compile(
-    r"(?:그|아까|방금)\s*(?:뉴스|기사)"
+    r"(?:그|아까|방금)\s*(?:종목\s*)?(?:뉴스|기사)"  # "아까 그 종목 뉴스"(5차 S6 t5)
     r"|(?:뉴스|기사)(?:가|는|은|를|들)?\s*(?:뭔데|뭐였|뭐길래|뭐지|자세히|상세|제목)"
 )
 
@@ -675,6 +784,135 @@ class ChatInteractor(ChatUseCase):
         return f"이전 대화(맥락 참고용):\n{turns}\n\n"
 
     @staticmethod
+    def _narration_history(history: list[Message], turns: int = 2) -> list[dict[str, str]]:
+        """서술 모델에 넘길 직전 대화 — 최근 user/assistant `turns`쌍, 답변은 400자·질문은 150자.
+
+        5차 실측(2026-09-16): 히스토리는 phase0·phase1에만 들어가고 최종 서술 4경로는 못 봐서
+        "리스크는?"에 개요를 다시 말하고 "결론이 뭐였지?"에 새 분석을 냈다. phase1(≈5,000토큰)에는
+        넣지 않는다 — 창(NUM_CTX 8,192)에 닿는다. 서술 프롬프트는 짧아 ≈600토큰 추가로 충분하다.
+        """
+        recent = [m for m in history if m.role in ("user", "assistant") and (m.content or "").strip()]
+        return [
+            {"role": m.role, "content": (m.content or "")[: 400 if m.role == "assistant" else 150]}
+            for m in recent[-(turns * 2):]
+        ]
+
+    @staticmethod
+    def _recall_body(m: Message) -> str:
+        body = (m.content or "").strip()
+        recs = (m.payload or {}).get("recommendations") or []
+        if len(recs) >= 2:
+            order = " · ".join(f"{i}. {r.get('name', '')}" for i, r in enumerate(recs, 1))
+            body = f"{body}\n\n추천 순서: {order}"
+        return body
+
+    @classmethod
+    def _recall_text(cls, prompt: str, history: list[Message]) -> str | None:
+        """회상 질문이면 이전 발화를 코드가 다시 보여준다 — 아니면 None(정상 흐름)."""
+        if not history:
+            return None
+        turn = _recall_turn(prompt)
+        if _USER_RECALL_RE.search(prompt):
+            users = [m for m in history if m.role == "user" and (m.content or "").strip()]
+            if not users:
+                return None
+            if turn is not None and turn[0] == "question" and (turn[1] == -1 or turn[1] < len(users)):
+                # "내가 두 번째 질문에서 뭐라고 했지?" — 그 질문을 인용한다
+                return f'{_ordinal_label(turn[1], len(users))} "{users[turn[1]].content.strip()}"라고 물으셨어요.'
+
+            if "예산" in prompt:
+                for m in reversed(users):
+                    budget = parse_budget_krw(m.content)
+                    if budget is not None:
+                        return (f'앞서 "{m.content.strip()}"라고 말씀하셨어요 — 예산 {fmt_won(budget)}이에요.'
+                                " 이어서 물어보시면 그 예산을 그대로 반영해요.")
+                return "이 대화에서 예산을 말씀하신 기록이 없어요. 예산을 알려주시면 창업비용과 견줘 드려요."
+            target = users[0] if "처음" in prompt else users[-1]
+            when = "처음에" if "처음" in prompt else "직전에"
+            return f'{when} "{target.content.strip()}"라고 물으셨어요. 그 기준으로 다시 보려면 같은 질문을 이어서 해 주세요.'
+        if turn is not None and (_RECALL_RE.search(prompt) or _TURN_RECALL_VERB_RE.search(prompt)):
+            # 턴 지목 회상 — "두 번째 답변"은 답변 순서, "첫 질문"은 그 질문 바로 뒤의 답변
+            kind, idx = turn
+            target = None
+            if kind == "question":
+                positions = [i for i, m in enumerate(history) if m.role == "user" and (m.content or "").strip()]
+                if positions and (idx == -1 or idx < len(positions)):
+                    pos = positions[idx]
+                    target = next((m for m in history[pos + 1:] if m.role == "assistant" and (m.content or "").strip()), None)
+                    count = len(positions)
+            else:
+                answers = [m for m in history if m.role == "assistant" and (m.content or "").strip()]
+                if answers and (idx == -1 or idx < len(answers)):
+                    target = answers[idx]
+                    count = len(answers)
+            if target is not None:
+                return f"{_ordinal_label(idx, count)} 답변을 다시 보여드려요.\n\n{cls._recall_body(target)}"
+            return None
+        if _RECALL_RE.search(prompt):
+            answers = [m for m in history if m.role == "assistant" and (m.content or "").strip()]
+            # 무엇을 되묻는지에 맞춰 고른다 — 결정론 고지(카드 없음)가 직전이면 그것을 되풀이하지
+            # 않는다(수정본 실측 S3 t5: "처음에 추천한 데가 어디였지?"에 교차 비교 고지를 재제시).
+            if re.search(r"추천|상권", prompt):
+                pool = [m for m in answers if (m.payload or {}).get("recommendations")]
+            elif re.search(r"종목|주식", prompt):
+                pool = [m for m in answers if (m.payload or {}).get("stock")]
+            elif re.search(r"리스크|위험|우려", prompt):
+                # 특정 주제를 겨눈 회상 — 그 말을 한 답변이 없으면 재제시하지 않고 정상 흐름으로
+                # 보낸다(서술 경로가 히스토리를 받으므로 앞 대화를 근거로 다시 설명한다)
+                pool = [m for m in answers if re.search(r"리스크|위험|우려", m.content)]
+                if not pool:
+                    return None
+            else:
+                pool = [m for m in answers if m.payload]
+            pool = pool or answers
+            if pool:
+                m = pool[0] if "처음" in prompt else pool[-1]
+                label = "처음 답변" if "처음" in prompt else "직전 답변"
+                return f"{label}을 다시 보여드려요.\n\n{cls._recall_body(m)}"
+        return None
+
+    @staticmethod
+    def _recalled_user_prompt(prompt: str, history: list[Message]) -> str | None:
+        """사용자 발화 회상이 가리키는 원 질문 — "처음"이면 첫 질문, 아니면 직전 질문."""
+        users = [m for m in history if m.role == "user" and (m.content or "").strip()]
+        if not users:
+            return None
+        return (users[0] if "처음" in prompt else users[-1]).content.strip()
+
+    @staticmethod
+    def _news_query(prompt: str, history: list[Message]) -> tuple[str, str | None]:
+        """뉴스 검색 질의 — 지시 표현이 있으면 직전 비지시 질문을 앞에 붙이고, 직전 카드가 종목이면
+        그 심볼로 범위를 좁힌다(5차 실측 S2 t4·S6 t5: 후속 문장 그대로 검색해 무관 기사가 근거가 됐다)."""
+        if not history or not _ANAPHORA_RE.search(prompt):
+            return prompt, None
+        anchor = next(
+            (m.content.strip() for m in reversed(history)
+             if m.role == "user" and m.content and not _ANAPHORA_RE.search(m.content)),
+            "",
+        )
+        ticker = None
+        for m in reversed(history):
+            payload = m.payload or {}
+            if payload.get("recommendations") or payload.get("news"):
+                break
+            card = payload.get("stock")
+            if card and card.get("symbol"):
+                ticker = str(card["symbol"])
+                break
+        query = f"{anchor[:80]} {prompt}".strip() if anchor else prompt
+        return query, ticker
+
+    @staticmethod
+    def _previous_multi_codes(history: list[Message], area_map: dict[int, AreaInfo]) -> list[int]:
+        """직전 **복수** 추천 카드의 상권 코드(순서 유지) — 서수 지시("두 번째"·"마지막")의 앵커."""
+        for m in reversed(history):
+            recs = (m.payload or {}).get("recommendations") or []
+            codes = [int(r["id"]) for r in recs if str(r.get("id", "")).isdigit() and int(r["id"]) in area_map]
+            if len(codes) >= 2:
+                return codes
+        return []
+
+    @staticmethod
     def _place_stem(name: str) -> str:
         """지명 어간 — 선행 한글 구간에서 행정 접미(구·동·가·로 등)를 뗀다 (예: 성수1가1동 → 성수).
 
@@ -709,6 +947,28 @@ class ChatInteractor(ChatUseCase):
                 return True
         return False
 
+    def _compare_place_groups(self, summary: AreaSummary, prompt: str) -> list[tuple[str, set[int]]]:
+        """비교 질문의 지역 구절별 상권 집합 — "성수동이랑 연남동 중", "잠실역 vs 석촌고분역".
+        연결어 앞뒤 어절을 지명으로 보고 각각 언급 판정을 돌린다. 2개 미만이면 자치구 묶음으로 폴백."""
+        groups: list[tuple[str, set[int]]] = []
+        for m in _COMPARE_PAIR_RE.finditer(prompt):
+            for raw in m.groups():
+                token = re.sub(r"(?:은|는|이|가|을|를)$", "", raw)
+                if len(token) < 2 or any(token == g[0] for g in groups):
+                    continue
+                codes = self._mentioned_codes(summary, token)
+                if codes:
+                    groups.append((token, codes))
+        if len(groups) >= 2:
+            return groups[:3]
+        mentioned = self._mentioned_codes(summary, prompt)
+        area_map = {a.trdar_code: a for a in summary.areas}
+        districts = {area_map[c].district_name for c in mentioned}
+        if len(districts) < 2:
+            return []
+        ordered = sorted(districts, key=lambda d: (prompt.find(d[:2]) if d[:2] in prompt else 10**6, d))
+        return [(d, {c for c in mentioned if area_map[c].district_name == d}) for d in ordered]
+
     def _mentioned_codes(self, summary: AreaSummary, prompt: str) -> set[int]:
         """질문에 지역(자치구·행정동·상권명 어간)이 언급된 상권 코드 집합."""
         return {
@@ -728,15 +988,26 @@ class ChatInteractor(ChatUseCase):
                     break
         return codes
 
-    def _excluded_area_codes(self, summary: AreaSummary, prompt: str) -> set[int]:
+    def _excluded_area_codes(
+        self, summary: AreaSummary, prompt: str, history: list[Message] | None = None,
+    ) -> set[int]:
         """제외 어휘 바로 앞에 언급된 지역의 상권 집합 — "홍대 말고 다른 데"(4차 실측
-        M2 t4: 홍대 계열을 다시 추천했다). 어간 매칭은 언급 판정과 같은 규칙을 쓴다."""
+        M2 t4: 홍대 계열을 다시 추천했다). 어간 매칭은 언급 판정과 같은 규칙을 쓴다.
+        "다른 구/지역"(5차 S8 t3)은 직전 추천 상권이 속한 자치구 전체를 제외한다."""
+        codes: set[int] = set()
+        if history and _OTHER_DISTRICT_RE.search(prompt):
+            area_map = {a.trdar_code: a for a in summary.areas}
+            districts = {
+                area_map[c].district_name
+                for c in self._previous_area_codes(history, area_map)
+            }
+            codes |= {a.trdar_code for a in summary.areas if a.district_name in districts}
         heads = [
             prompt[max(0, m.start() - 10):m.start()]
             for m in re.finditer(r"말고|빼고|제외", prompt)
         ]
         if not heads:
-            return set()
+            return codes
         # 제외 어휘 바로 앞 어절("홍대")은 상권명("홍대입구역")의 어간보다 짧은 통칭일 수
         # 있다 — 역방향 포함(어절 ⊂ 상권명)도 본다. 위치가 '말고' 직전이라 지명일 개연이
         # 높아 동음이의 가드는 걸지 않는다.
@@ -744,7 +1015,6 @@ class ChatInteractor(ChatUseCase):
             tokens[-1] for head in heads
             if (tokens := re.findall(r"[가-힣]{2,}", head))
         ]
-        codes: set[int] = set()
         for a in summary.areas:
             if any(self._area_mentioned_in(a, head) for head in heads):
                 codes.add(a.trdar_code)
@@ -864,9 +1134,12 @@ class ChatInteractor(ChatUseCase):
         return f"**결론** {service_name} 기준으로는 {area.trdar_name}부터 보세요{basis}."
 
     @staticmethod
-    def _superlative_pick(prompt: str, codes: list[int], raw_stats: dict, area_map: dict) -> tuple[int, str] | None:
-        """'제일 안전한/매출 높은' 질문의 결론을 코드가 정한다 — 후보 2곳 이상·지표 보유 시에만."""
-        axis = next((a for a, rx in _SUPERLATIVE_AXES if rx.search(prompt)), None)
+    def _superlative_pick(
+        prompt: str, codes: list[int], raw_stats: dict, area_map: dict, default_axis: str | None = None,
+    ) -> tuple[int, str] | None:
+        """'제일 안전한/매출 높은' 질문의 결론을 코드가 정한다 — 후보 2곳 이상·지표 보유 시에만.
+        default_axis는 축 어휘가 없을 때 쓰는 기본 축(지역 비교 "어디가 나아" → 점포당 월매출)."""
+        axis = next((a for a, rx in _SUPERLATIVE_AXES if rx.search(prompt)), default_axis)
         if axis is None or len(codes) < 2:
             return None
         rows = []
@@ -894,7 +1167,9 @@ class ChatInteractor(ChatUseCase):
             line = f"점포당 월매출 기준({listing}) — 가장 높은 곳은 {area_map[best].trdar_name}입니다."
         return best, line
 
-    async def _budget_notice(self, prompt: str, profile: UserProfileSummary | None) -> str:
+    async def _budget_notice(
+        self, prompt: str, profile: UserProfileSummary | None, history: list[Message] = (),
+    ) -> str:
         """예산 질문의 첫 문단 — 공정위 창업비용이 있으면 예산 안 업종을 나열, 없으면 판정 불가+다음 행동.
 
         2026-09-08 QA P01·P02·P08: "1억으로 되나"에 답 없이 끝났다. 창업비용은 가맹 기준 평균이라
@@ -904,6 +1179,13 @@ class ChatInteractor(ChatUseCase):
         if not asked:
             return ""
         budget = parse_budget_krw(prompt)
+        if budget is None:
+            # 앞 턴에서 말한 예산을 이어받는다(5차 실측 S8 t2·t5: "그 예산 안에서"에 "예산을 말씀해 주시면")
+            budget = next(
+                (b for m in reversed(history) if m.role == "user"
+                 and (b := parse_budget_krw(m.content or "")) is not None),
+                None,
+            )
         if budget is None and profile is not None:
             budget = parse_budget_krw(profile.budget_label.replace("~", " ").split()[-1]) if profile.budget_label else None
         try:
@@ -933,7 +1215,7 @@ class ChatInteractor(ChatUseCase):
         lead = ""
         for name in asked_names[:1]:
             c = by_name[name]
-            verdict = "들어와요" if c.total_amount <= cap else "빠듯해요(넘어요)"
+            verdict = "들어와요" if c.total_amount <= cap else "넘어요"
             lead = (f"{c.industry_name} 업종 평균 창업비용 {fmt_won(c.total_amount)}은(는) 예산 {fmt_won(budget)}의 70%"
                     f"({fmt_won(cap)}) 안에 {verdict}. ")
         fit = [c for c in costs if c.total_amount <= cap and c.industry_name not in asked_names[:1]]
@@ -944,7 +1226,11 @@ class ChatInteractor(ChatUseCase):
             return (f"※ 예산 {fmt_won(budget)}의 70%({fmt_won(cap)}) 안에 드는 가맹 업종이 공정위 정보공개서({year}) 기준으로는"
                     f" 없어요 — 가장 낮은 {floor.industry_name}도 {fmt_won(floor.total_amount)}이에요. 개인 창업(비가맹)은 이 표에 없고,"
                     " 임대료·인테리어는 별도예요.\n\n")
-        others = f" 같은 예산에 드는 다른 업종: {listing}{more}." if fit else ""
+        if lead:
+            others = f" 같은 예산에 드는 다른 업종: {listing}{more}." if fit else ""
+        else:
+            # 업종 언급 없는 예산 후속("그 예산 안에서 가능한 데야?") — 예산 자체를 먼저 말한다
+            others = f"예산 {fmt_won(budget)}의 70%({fmt_won(cap)}) 안에 드는 가맹 업종: {listing}{more}."
         return f"※ {lead}{others} 공정위 정보공개서({year}) 기준이며 {note}\n\n"
 
     async def _answer_service_candidates(self, conversation_id: int, history: list[Message], on_stage=None) -> AskResponse | None:
@@ -1258,6 +1544,31 @@ class ChatInteractor(ChatUseCase):
                 await self._conversations.add_message(conversation_id, "assistant", detail)
                 return AskResponse(text=detail, recommendations=[], conversationId=conversation_id)
 
+        # 회상 후속(5차 실측) — 결정론 가드(업종 랭킹 등)·phase0보다 앞: "처음 물어본 업종이
+        # 뭐였지?"가 업종 랭킹으로, "결론만 다시 말해줘"가 general로 가로채였다.
+        if _USER_RECALL_RE.search(prompt) and _REPICK_RE.search(prompt):
+            # "처음 물어본 업종이 뭐였지? 그 업종으로 다시 골라줘" — 인용에서 끝내지 않고 원 질문으로
+            # 다시 돈다(수정본 실측 S4 t7). 업종 랭킹 가드("업종")를 타지 않게 원 질문을 그대로 쓴다.
+            original = self._recalled_user_prompt(prompt, history)
+            if original:
+                when = "처음에" if "처음" in prompt else "직전에"
+                quote = f'{when} "{original}"라고 물으셨어요 — 그 기준으로 다시 봤어요.'
+                result = await self._route_domain(conversation_id, original, user_id, on_stage, history)
+                return result.model_copy(update={"text": f"{quote}\n\n{result.text}"})
+        recall = self._recall_text(prompt, history)
+        if recall is not None:
+            await self._conversations.add_message(conversation_id, "assistant", recall)
+            return AskResponse(text=recall, recommendations=[], conversationId=conversation_id)
+        if _CROSS_COMPARE_RE.search(prompt) and _COMPARE_RE.search(prompt):
+            await self._conversations.add_message(conversation_id, "assistant", _CROSS_COMPARE_TEXT)
+            return AskResponse(text=_CROSS_COMPARE_TEXT, recommendations=[], conversationId=conversation_id)
+        return await self._route_domain(conversation_id, prompt, user_id, on_stage, history)
+
+    async def _route_domain(
+        self, conversation_id: int, prompt: str, user_id: int | None, on_stage,
+        history: list[Message],
+    ) -> AskResponse:
+        """결정론 회상·비교 게이트 뒤의 도메인 라우팅 — 업종 후보·phase0·stock/market_news/general/market."""
         if _SERVICE_FOCUS_RE.search(prompt):
             focus = await self._answer_service_candidates(conversation_id, history, on_stage)
             if focus is not None:
@@ -1269,12 +1580,14 @@ class ChatInteractor(ChatUseCase):
         # 프로파일은 데이터 근거 서술(stock·market)에만 주입한다 — 미작성·실패는 None(무손상)
         profile = await self._load_profile(user_id) if intent in ("stock", "market") else None
         if intent == "stock":
-            return await self._answer_stock(conversation_id, prompt, stock_queries, on_stage, profile)
+            return await self._answer_stock(
+                conversation_id, prompt, stock_queries, on_stage, profile, history=history,
+            )
         if intent == "market_news":
-            return await self._answer_market_news(conversation_id, prompt, on_stage)
+            return await self._answer_market_news(conversation_id, prompt, on_stage, history=history)
         if intent == "general":
             self._notify(on_stage, "answer", "답변을 만들고 있어요")
-            return await self._answer_general(conversation_id, prompt)
+            return await self._answer_general(conversation_id, prompt, history=history)
 
         summary = await self._market.get_area_summary()
         quarter = summary.latest_quarter
@@ -1374,8 +1687,10 @@ class ChatInteractor(ChatUseCase):
             service_code, service_name = detected
         else:
             prev_service = self._previous_service(history)
+            # 정정 신호는 업종을 겨눌 때만 승계를 푼다(5차 실측 S8 t4·S9 t2: "얼마라고 했는지"·
+            # "잘못 말했어, 강동구야"의 '라고 했'·'잘못'이 걸려 카페→중식, 헬스장→운동용품으로 표류)
             if (prev_service and not _service_hinted(prompt, service_name)
-                    and not _has_correction(prompt)):
+                    and not (_has_correction(prompt) and "업종" in prompt)):
                 service_code, service_name = prev_service
         trdar_codes: list[int] = [int(c) for c in p1.get("trdar_codes", []) if str(c).isdigit()]
         valid_codes = [c for c in trdar_codes if c in area_map]
@@ -1383,11 +1698,35 @@ class ChatInteractor(ChatUseCase):
         # 결정론적 지역 가드 — 질문에 지역이 언급되면 그 지역 상권으로 보정.
         # 모델이 ★ 지시를 무시하고 유명 상권(홍대 등)으로 쏠리는 경우를 코드로 방지한다.
         # 제외 지역(P4-8 "홍대 말고")은 언급 집합에서 빼고, 아래에서 후보에서도 걸러낸다.
-        excluded_codes = self._excluded_area_codes(summary, prompt)
+        excluded_codes = self._excluded_area_codes(summary, prompt, history)
         mentioned_codes = self._mentioned_codes(summary, prompt) - excluded_codes
+        inherited_order: list[int] = []  # 후속 질문이 이어받은 직전 추천 순서(원인 G — 1순위 흔들림 차단)
+        region_compare_line = ""
         if mentioned_codes:
             local = [c for c in valid_codes if c in mentioned_codes]
-            if local:
+            groups = self._compare_place_groups(summary, prompt) if _COMPARE_RE.search(prompt) else []
+            if len(groups) >= 2:
+                # 지역↔지역 비교(5차 S9 t5 "송파랑 강동 중에", 잔여 소진: "성수동이랑 연남동 중",
+                # "잠실역 vs 석촌고분역") — 언급된 지역 구절마다 대표 상권 하나씩. phase1이 한쪽만
+                # 고르면 비교가 성립하지 않으므로 코드가 채운다. 순서는 질문에 나온 순.
+                picked: list[int] = []
+                for _label, codes in groups:
+                    own = [c for c in local if c in codes] or sorted(
+                        (c for c in codes if c not in excluded_codes),
+                        key=lambda c: summary.sales_by_code.get(c) or 0, reverse=True,
+                    )
+                    if own and own[0] not in picked:
+                        picked.append(own[0])
+                if len(picked) >= 2:
+                    valid_codes = picked
+                    labels = " vs ".join(label for label, _ in groups)
+                    region_compare_line = (
+                        f"[지역 비교] {labels} — 지역별 대표 상권 하나씩이다. text 첫 문장에서"
+                        " 어느 지역이 어떤 기준(매출·폐업률·유동인구)으로 나은지 수치와 함께 말할 것."
+                    )
+            if region_compare_line:
+                pass
+            elif local:
                 valid_codes = local
             else:
                 valid_codes = sorted(
@@ -1396,7 +1735,13 @@ class ChatInteractor(ChatUseCase):
                 )[:3]
         else:
             previous = self._previous_area_codes(history, area_map)
-            if previous and (
+            ordinal = _ordinal_index(prompt)
+            multi = self._previous_multi_codes(history, area_map) if ordinal is not None else []
+            if multi and (ordinal == -1 or ordinal < len(multi)):
+                # 서수 지시(5차 S4 t8·S5 t2) — 직전 복수 추천의 그 자리 상권 하나로 고정한다.
+                # 지시어 가드가 후보를 1개로 좁힌 뒤에는 "두 번째"를 답할 수 없었다.
+                valid_codes = [multi[ordinal]]
+            elif previous and (
                 _has_deixis(prompt)
                 or not _has_exclusion(prompt)
                 or _exclusion_targets_service(prompt, service_codes)
@@ -1407,7 +1752,9 @@ class ChatInteractor(ChatUseCase):
                 # 제외 어휘("말고/빼고")가 있으면 제한하지 않는다 — 정반대 답이 된다.
                 # 단 업종을 겨눈 제외("국밥 말고 돈까스집")는 지역 맥락을 유지한다(P4-4).
                 kept = [c for c in valid_codes if c in previous]
-                valid_codes = kept or previous
+                # 직전 순서로 정렬해 이어받는다 — 1순위 힌트·결론 줄이 그 순서를 본다(원인 G)
+                valid_codes = sorted(kept or previous, key=previous.index)
+                inherited_order = previous
             elif not valid_codes:
                 # 지역 미언급 후속 질문 — 직전 추천 상권을 이어받아 맥락을 유지한다.
                 # (phase1 LLM이 이전 대화에서 상권을 못 이어받아 후보가 빈 경우만 보정)
@@ -1472,7 +1819,12 @@ class ChatInteractor(ChatUseCase):
         if len({_tier(c) for c in valid_codes}) > 1:
             valid_codes = sorted(valid_codes, key=_tier)
         # 상대 비교 축(P10) — "제일 안전한 데"는 코드가 폐업률로 고른다. LLM은 그 결론을 받아 쓴다.
-        superlative = self._superlative_pick(prompt, valid_codes, raw_stats, area_map)
+        # 지역 비교(실기동 L2: 결론 줄은 성수동, 본문은 연남동 — 서로 모순)는 축 어휘가 없어도
+        # 점포당 월매출로 코드가 우열을 정한다. 표본 미달·데이터 없음이면 None → 질문 순서 유지.
+        superlative = self._superlative_pick(
+            prompt, valid_codes, raw_stats, area_map,
+            default_axis="sales" if region_compare_line else None,
+        )
         if superlative is not None:
             best_code, superlative_line = superlative
             valid_codes = [best_code] + [c for c in valid_codes if c != best_code]
@@ -1524,12 +1876,24 @@ class ChatInteractor(ChatUseCase):
                 f"[비교 결론 — 코드가 정함] {superlative_line} text의 첫 문장은 이 결론과 같아야 하고,"
                 " 다른 상권을 더 권하려면 그 기준(매출·유동인구 등)을 수치와 함께 밝힐 것."
             )
+        elif inherited_order and valid_codes and valid_codes[0] in inherited_order:
+            stats_context_lines.append(
+                f"[직전 답변의 1순위: {area_map[valid_codes[0]].trdar_name}] 후속 질문이다 — 새 근거 없이"
+                " 1순위를 바꾸지 말고, 물은 항목부터 답할 것."
+            )
+        if region_compare_line:
+            stats_context_lines.append(region_compare_line)
+        narration_history = self._narration_history(history)
+        if narration_history:
+            stats_context_lines.append(HISTORY_NOTE)
 
         # phase2(최종 서술 = 최종 사용자 답변) → 오케스트레이터 기본 모델(7.8B)
         self._notify(on_stage, "narrate", "추천 이유를 정리하고 있어요")
         phase2_context = "\n".join(stats_context_lines)
         try:
-            p2 = await self._orchestrate_json(f"{PHASE2_PROMPT}\n\n{phase2_context}", "Phase2")
+            p2 = await self._orchestrate_json(
+                f"{PHASE2_PROMPT}\n\n{phase2_context}", "Phase2", history=narration_history,
+            )
         except Exception:
             logger.error("[chat] Phase2 파싱 실패(재시도 포함)")
             raise InvalidLLMResponseError("AI 서술 생성 실패")
@@ -1578,7 +1942,13 @@ class ChatInteractor(ChatUseCase):
         )
         # 본문이 먼저 지목한 상권 = 카드 1번(2026-09-08 QA P01) — 본문은 카페거리, 카드 1번은 성수역이라
         # 어디를 믿을지 몰랐다. 비교 축이 있으면 그 결론이 우선이라 재정렬하지 않는다.
-        if superlative is None and text:
+        if superlative is None and inherited_order:
+            # 후속 질문은 직전 순위를 유지한다(5차 S3·S5: 같은 후보인데 1순위가 턴마다 바뀌었다)
+            valid_codes = sorted(
+                valid_codes,
+                key=lambda c: inherited_order.index(c) if c in inherited_order else len(inherited_order),
+            )
+        elif superlative is None and text:
             mention = {c: text.find(area_map[c].trdar_name) for c in valid_codes}
             first = min((c for c in valid_codes if mention[c] >= 0), key=lambda c: mention[c], default=None)
             if first is not None and valid_codes[0] != first:
@@ -1654,7 +2024,7 @@ class ChatInteractor(ChatUseCase):
                 notices = answer_guard.GRADE_NOTICE_REPEAT
             text = f"{notices}\n\n{text}" if text else notices
         # 미지원 축 고지(I-12)가 맨 앞 — "없다"부터 말하고 보유 데이터 서술이 따른다
-        text = (await self._budget_notice(prompt, profile)) + _unsupported_notice(prompt, _MARKET_UNSUPPORTED_NOTICES) + radius_note + text
+        text = (await self._budget_notice(prompt, profile, history)) + _unsupported_notice(prompt, _MARKET_UNSUPPORTED_NOTICES) + radius_note + text
         # 구조화 카드를 payload로 동반 저장 — 히스토리 재진입 시 카드 복원용
         await self._conversations.add_message(
             conversation_id, "assistant", text,
@@ -1774,19 +2144,22 @@ class ChatInteractor(ChatUseCase):
             " (2026-09-08 QA: 프로파일이 읽혔는지 사용자가 알 수 없었다)"
         )
 
-    async def _orchestrate_json(self, prompt: str, phase_label: str) -> dict:
+    async def _orchestrate_json(
+        self, prompt: str, phase_label: str, history: list[dict[str, str]] | None = None,
+    ) -> dict:
         """JSON 강제 호출 + 파싱 1회 재시도.
 
         소형 모델의 JSON 실패는 확률적이다(첫 재측정 실측 1/120 — MT04 phase2).
         같은 프롬프트 재호출 한 번으로 흡수하고, 두 번째 실패는 호출부의 기존
         오류 경로(폴백·InvalidLLMResponseError)로 그대로 던진다.
         """
-        raw = await llm_orchestrator.orchestrate(prompt, format="json")
+        kwargs = {"history": history} if history else {}
+        raw = await llm_orchestrator.orchestrate(prompt, format="json", **kwargs)
         try:
             return _parse_llm_json(raw)
         except Exception:
             logger.warning("[chat] %s 파싱 실패 — 1회 재시도: %s", phase_label, raw[:120])
-        raw = await llm_orchestrator.orchestrate(prompt, format="json")
+        raw = await llm_orchestrator.orchestrate(prompt, format="json", **kwargs)
         return _parse_llm_json(raw)
 
     async def _classify_intent(self, prompt: str, history: list[Message]) -> tuple[str, list[str]]:
@@ -1800,12 +2173,23 @@ class ChatInteractor(ChatUseCase):
             return "market", []
         stock_queries = self._normalize_stock_queries(parsed.get("stock_query"))
         intent = parsed.get("intent")
+        if intent == "stock" and len(stock_queries) == 1 and _COMPARE_ASK_RE.search(prompt):
+            stock_queries = _split_compare_queries(prompt, stock_queries[0])
         if intent == "stock" and stock_queries:
             return "stock", stock_queries
         if intent == "stock":
-            # 종목 추출 실패 — 상권으로 보내던 기존 오답 대신 뉴스 RAG가 차선
+            # 종목 추출 실패 — 직전 종목 카드가 있으면 그 종목(5차 실측 S7 t5 "이 종목은 모멘텀이…"),
+            # 없으면 상권으로 보내던 기존 오답 대신 뉴스 RAG가 차선
+            inherited = self._inherit_intent(prompt, history)
+            if inherited is not None and inherited[0] == "stock":
+                return inherited
             return "market_news", []
         if intent == "market_news":
+            # 지시어 후속("아까 그 종목 감성은?")이 종목 카드 뒤에 오면 그 종목으로(5차 S6 t5)
+            if _has_deixis(prompt):
+                inherited = self._inherit_intent(prompt, history)
+                if inherited is not None and inherited[0] == "stock":
+                    return inherited
             return "market_news", []
         if intent == "general":
             # 도메인 후속 승계(4차 실측 M1 t5·M3 t4) — "거기 경쟁 가게 몇 개?"·"주의
@@ -1990,7 +2374,9 @@ class ChatInteractor(ChatUseCase):
                 return board.current
         return None
 
-    async def _answer_general(self, conversation_id: int, prompt: str) -> AskResponse:
+    async def _answer_general(
+        self, conversation_id: int, prompt: str, history: list[Message] = (),
+    ) -> AskResponse:
         """상권/주식과 무관한 일반 질문 — 허브 GeminiAnswerPort(외부 Gemini API)로 답변.
 
         정체성 프리앰블(3차 실측 P1): 외부 모델이 "저는 OpenAI에서 개발한…"이라고 자기
@@ -2007,8 +2393,10 @@ class ChatInteractor(ChatUseCase):
             " 이 목록에 없는 기능(상권 임대료·권리금 알림 등)이나"
             " 화면 사용법(버튼 위치 등)을 지어내서 안내하지 말 것.\n\n질문: "
         )
+        recent = self._narration_history(history)
+        prior = ("이전 대화:\n" + "\n".join(f"{m['role']}: {m['content']}" for m in recent) + "\n\n") if recent else ""
         try:
-            text = (await self._gemini.generate(f"{framed}{prompt}")).answer
+            text = (await self._gemini.generate(f"{framed}{prior}{prompt}")).answer
         except GeminiAnswerError as exc:
             # 외부 API 실패는 500 대신 안내로 열화 — 대화 흐름을 끊지 않는다.
             logger.warning("[chat] general 분기 Gemini 실패: %s", exc)
@@ -2017,15 +2405,20 @@ class ChatInteractor(ChatUseCase):
         return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
 
     async def _answer_market_news(
-        self, conversation_id: int, prompt: str, on_stage=None,
+        self, conversation_id: int, prompt: str, on_stage=None, history: list[Message] = (),
     ) -> AskResponse:
         """종목 무관 시장/업황 질문 — 수집 뉴스 의미 검색(RAG)을 근거로 서술."""
         self._notify(on_stage, "search", "관련 뉴스를 찾고 있어요")
-        hits = await self._news.search(prompt, ticker=None, limit=8)
+        query, ticker = self._news_query(prompt, history)
+        hits = await self._news.search(query, ticker=ticker, limit=8)
         context = self._format_news_context(prompt, hits)
         self._notify(on_stage, "narrate", "동향을 정리하고 있어요")
-        # 최종 서술(최종 사용자 답변) → 오케스트레이터 기본 모델(7.8B)
-        text = await llm_orchestrator.orchestrate(f"{MARKET_NEWS_ANSWER_PROMPT}\n\n{context}")
+        # 최종 서술(최종 사용자 답변) → 오케스트레이터 기본 모델. 직전 대화를 함께 넘긴다(원인 A)
+        narration_history = self._narration_history(history)
+        text = await llm_orchestrator.orchestrate(
+            f"{MARKET_NEWS_ANSWER_PROMPT}\n\n{context}" + (f"\n\n{HISTORY_NOTE}" if narration_history else ""),
+            history=narration_history,
+        )
         # 절대 규칙은 프롬프트가 아니라 코드가 지킨다(2026-08-28 골든셋 위반 13건)
         text = answer_guard.strip_dangling_citations(
             answer_guard.normalize_citation_markers(text, answer_guard.allowed_citations(context)),
@@ -2135,7 +2528,7 @@ class ChatInteractor(ChatUseCase):
 
     async def _answer_stock(
         self, conversation_id: int, prompt: str, stock_queries: list[str], on_stage=None,
-        profile: UserProfileSummary | None = None,
+        profile: UserProfileSummary | None = None, history: list[Message] = (),
     ) -> AskResponse:
         stock_query, extra_queries = stock_queries[0], stock_queries[1:]
         if extra_queries and _COMPARE_RE.search(prompt):
@@ -2192,8 +2585,13 @@ class ChatInteractor(ChatUseCase):
         context = self._format_stock_context(
             prompt, analysis, hits, forecast, value_notes, profile, keywords,
         )
-        # 최종 서술(최종 사용자 답변) → 오케스트레이터 기본 모델(7.8B)
-        text = await llm_orchestrator.orchestrate(f"{STOCK_ANSWER_PROMPT}\n\n{context}")
+        # 최종 서술(최종 사용자 답변) → 오케스트레이터 기본 모델. 직전 대화를 함께 넘긴다(원인 A —
+        # "그 종목 리스크는?"에 개요를 다시 말하고 "처음 답과 다른데?"에 대조가 없었다)
+        narration_history = self._narration_history(history)
+        text = await llm_orchestrator.orchestrate(
+            f"{STOCK_ANSWER_PROMPT}\n\n{context}" + (f"\n\n{HISTORY_NOTE}" if narration_history else ""),
+            history=narration_history,
+        )
         # 절대 규칙은 프롬프트가 아니라 코드가 지킨다(2026-08-28 골든셋 위반 13건).
         # 프롬프트에 이미 두 규칙이 다 적혀 있었다 — 7.8B가 안 지킨 것이라 문구로는 못 막는다.
         text = answer_guard.strip_dangling_citations(

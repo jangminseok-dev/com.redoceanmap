@@ -2360,3 +2360,329 @@ def test_최상급_선택은_점포_5개_미만_상권을_후보에서_뺀다():
     best, line = ChatInteractor._superlative_pick("제일 안전한 데가 어디야", [1, 2, 3], raw, area_map)
     assert best == 2 and "A" not in line
 
+
+
+# --- 5차 페르소나 실측(2026-09-16) — 멀티턴 맥락 승계 ---
+# 정본: _docs/qa/CHAT_CONTEXT_PERSONA_2026-09-16.md (원인 A~G)
+
+def _stock_history() -> list[Message]:
+    return [
+        Message(id=1, conversation_id=100, role="user", content="삼성전자 어때?",
+                created_at=_NOW, payload=None),
+        Message(id=2, conversation_id=100, role="assistant", content="삼성전자 서술",
+                created_at=_NOW,
+                payload={"stock": {"symbol": "005930", "headlines": ["삼성전자 실적 발표"]}}),
+    ]
+
+
+def _market_history(recs: list[dict], first_prompt: str = "마포구 분식집 어때?") -> list[Message]:
+    return [
+        Message(id=1, conversation_id=100, role="user", content=first_prompt,
+                created_at=_NOW, payload=None),
+        Message(id=2, conversation_id=100, role="assistant", content="상권 요약",
+                created_at=_NOW, payload={"recommendations": recs}),
+    ]
+
+
+async def test_서술_경로에_직전_대화가_history로_넘어간다(monkeypatch):
+    # 원인 A: 서술 모델이 이전 턴을 못 봐 "리스크는?"에 개요를 다시 말했다(S1 t2)
+    conversations = _StubConversations(history=_stock_history())
+    interactor, llm, _ = _build(monkeypatch, [INTENT_STOCK, "주식 서술"], conversations=conversations)
+    await interactor.ask("그 종목 리스크는 뭐야?", conversation_id=100)
+    prompt, kwargs = llm.calls[-1]
+    assert prompt.startswith("당신은 주식 분석 상담사입니다")
+    assert [m["role"] for m in kwargs["history"]] == ["user", "assistant"]
+    assert kwargs["history"][1]["content"] == "삼성전자 서술"
+
+
+async def test_phase2_서술에도_직전_대화가_history로_넘어간다(monkeypatch):
+    conversations = _StubConversations(history=_market_history(
+        [{"id": "1000001", "name": "테스트상권", "serviceCode": "CS100010", "category": "커피-음료"}]))
+    interactor, llm, _ = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON], conversations=conversations,
+    )
+    await interactor.ask("거기 객단가는 어때?", conversation_id=100)
+    phase1_kwargs, phase2_kwargs = llm.calls[-2][1], llm.calls[-1][1]
+    assert "history" not in phase1_kwargs  # phase1(≈5,000토큰)에는 넣지 않는다 — 창에 닿는다
+    assert [m["role"] for m in phase2_kwargs["history"]] == ["user", "assistant"]
+
+
+async def test_종목_미추출이어도_직전_종목_카드가_있으면_그_종목으로_간다(monkeypatch):
+    # 원인 B: S7 t5 "이 종목은 모멘텀이 좋은 거야?"가 종목을 잃고 일반 뉴스로 갔다
+    conversations = _StubConversations(history=_stock_history())
+    interactor, _, stubs = _build(
+        monkeypatch, [INTENT_STOCK_NO_QUERY, "주식 서술"], conversations=conversations,
+    )
+    result = await interactor.ask("그럼 이 종목은 모멘텀이 좋은 거야 나쁜 거야?", conversation_id=100)
+    assert stubs["stocks"].queries == ["005930"] and result.stock is not None
+
+
+async def test_뉴스_후속_검색은_직전_질문을_앞에_붙인다(monkeypatch):
+    # 원인 B: S2 t4 후속 문장 그대로 검색해 반도체 대화에 오라클·오픈AI 기사가 근거가 됐다
+    history = [
+        Message(id=1, conversation_id=100, role="user", content="반도체 업황 어때?",
+                created_at=_NOW, payload=None),
+        Message(id=2, conversation_id=100, role="assistant", content="업황 서술",
+                created_at=_NOW, payload={"news": [{"title": "반도체 뉴스"}]}),
+    ]
+    news = _StubNewsSearch(hits=[_hit()])
+    interactor, _, _ = _build(
+        monkeypatch, [INTENT_MARKET_NEWS, "후속 서술"], news=news,
+        conversations=_StubConversations(history=history),
+    )
+    await interactor.ask("그럼 리스크 요인은?", conversation_id=100)
+    assert news.calls == [("반도체 업황 어때? 그럼 리스크 요인은?", None, 8)]
+
+
+async def test_아까_그_종목_뉴스도_직전_헤드라인을_나열한다(monkeypatch):
+    # 원인 B-③: "그 종목 뉴스"처럼 사이에 단어가 끼면 뉴스 상세 정규식이 안 잡혔다(S6 t5)
+    conversations = _StubConversations(history=_stock_history())
+    interactor, llm, _ = _build(monkeypatch, [], conversations=conversations)
+    result = await interactor.ask("아까 그 종목 뉴스 중 최근 거 하나만 알려줘", conversation_id=100)
+    assert "삼성전자 실적 발표" in result.text and llm.calls == []
+
+
+async def test_결론_다시_말해줘는_LLM_없이_직전_답변을_다시_보여준다(monkeypatch):
+    # 원인 A-②·D: S1 t5 "결론이 뭐였지?"에 새 분석, S10 t5 "결론만 다시"가 general로 이탈
+    conversations = _StubConversations(history=_stock_history())
+    interactor, llm, _ = _build(monkeypatch, [], conversations=conversations)
+    result = await interactor.ask("결론만 다시 말해줘", conversation_id=100)
+    assert "삼성전자 서술" in result.text and llm.calls == []
+
+
+async def test_복수_추천_회상은_추천_순서를_함께_보여준다(monkeypatch):
+    # 원인 E: S5 t2 "마지막 곳은 어디였어?"에 추천을 재실행해 순서가 뒤집혔다
+    conversations = _StubConversations(history=_market_history(
+        [{"id": "1000001", "name": "신논현역"}, {"id": "1000002", "name": "도산공원북측"}]))
+    interactor, llm, _ = _build(monkeypatch, [], conversations=conversations)
+    result = await interactor.ask("네가 추천한 곳 중 마지막 곳은 어디였어?", conversation_id=100)
+    assert "추천 순서: 1. 신논현역 · 2. 도산공원북측" in result.text and llm.calls == []
+
+
+async def test_내_예산_기억해는_히스토리의_예산을_답한다(monkeypatch):
+    # 원인 F: S8 t4 "내 예산이 얼마라고 했는지 기억해?"에 "예산을 말씀해 주시면"
+    conversations = _StubConversations(history=_market_history(
+        [{"id": "1000001", "name": "신촌역"}], first_prompt="나는 예산이 5천만원인데 신촌에서 카페 어때?"))
+    interactor, llm, _ = _build(monkeypatch, [], conversations=conversations)
+    result = await interactor.ask("내 예산이 얼마라고 했는지 기억해?", conversation_id=100)
+    assert "5,000만원" in result.text and llm.calls == []
+
+
+async def test_그_예산_안에서_후속은_앞_턴_예산을_이어받는다(monkeypatch):
+    # 원인 F: S8 t2·t5 — 예산 파싱이 현재 프롬프트만 봤다
+    from hub.app.dtos.franchise_cost_dto import StartupCostRow
+
+    class _MarketWithCosts(_StubMarket):
+        async def get_startup_costs(self, year=None):
+            return [StartupCostRow(year=2025, sector="외식", industry_name="커피",
+                                   total_amount=80_360_000, franchise_fee=0, education_fee=0,
+                                   deposit=0, other_fee=0)]
+
+    conversations = _StubConversations(history=_market_history(
+        [{"id": "1000001", "name": "테스트상권", "serviceCode": "CS100010", "category": "커피-음료"}],
+        first_prompt="나는 예산이 5천만원인데 역삼동에서 카페 어때?"))
+    interactor, _, _ = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON],
+        conversations=conversations, market=_MarketWithCosts(),
+    )
+    result = await interactor.ask("그 예산 안에서 가능한 데야?", conversation_id=100)
+    assert "예산 5,000만원" in result.text
+
+
+async def test_정정_신호라도_업종_어휘가_없으면_직전_업종을_승계한다(monkeypatch):
+    # 원인 C: S9 t2 "잘못 말했어, 강동구야"의 '잘못'이 정정으로 잡혀 헬스장→운동용품으로 표류
+    services = [ServiceCode(code="CS100010", name="커피-음료"),
+                ServiceCode(code="CS100008", name="분식전문점")]
+    conversations = _StubConversations(history=_market_history(
+        [{"id": "1000001", "name": "테스트상권", "serviceCode": "CS100010", "category": "커피-음료"}]))
+    phase1_bunsik = '{"service_code": "CS100008", "service_name": "분식전문점", "trdar_codes": [1000001]}'
+    interactor, _, _ = _build(
+        monkeypatch, [INTENT_MARKET, phase1_bunsik, PHASE2_JSON],
+        conversations=conversations, market=_StubMarket(services=services),
+    )
+    result = await interactor.ask("아 잘못 말했어, 강동구야", conversation_id=100)
+    assert result.recommendations[0].category == "커피-음료"  # 지역 정정은 업종을 건드리지 않는다
+
+
+async def test_서수_후속은_직전_복수_추천의_그_자리_상권으로_고정한다(monkeypatch):
+    # 원인 E: S4 t8 "두 번째로 추천한 데"에 후보가 1개로 좁혀진 뒤라 답할 수 없었다
+    areas = [
+        AreaInfo(trdar_code=1000001, trdar_name="홍대입구역", district_name="마포구",
+                 adm_dong_name="서교동", lat=37.5, lng=126.9),
+        AreaInfo(trdar_code=1000002, trdar_name="연남동", district_name="마포구",
+                 adm_dong_name="연남동", lat=37.5, lng=126.9),
+        AreaInfo(trdar_code=1000003, trdar_name="합정역", district_name="마포구",
+                 adm_dong_name="합정동", lat=37.5, lng=126.9),
+    ]
+    conversations = _StubConversations(history=_market_history(
+        [{"id": "1000001", "name": "홍대입구역"}, {"id": "1000002", "name": "연남동"},
+         {"id": "1000003", "name": "합정역"}]))
+    phase2 = '{"text": "요약", "areas": [{"trdar_code": 1000002, "reason": "이유. 유의할 점: x"}]}'
+    interactor, _, _ = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, phase2],
+        conversations=conversations, market=_StubMarket(areas=areas),
+    )
+    result = await interactor.ask("그 중에서 두 번째로 추천한 데는 어디야?", conversation_id=100)
+    assert [r.id for r in result.recommendations] == ["1000002"]
+
+
+async def test_다른_구_후속은_직전_추천_자치구를_제외한다(monkeypatch):
+    # 원인 E: S8 t3 "다른 구도 추천해줘"가 직전 추천으로 제한돼 신촌만 다시 냈다
+    areas = [
+        AreaInfo(trdar_code=1000001, trdar_name="신촌역", district_name="마포구",
+                 adm_dong_name="노고산동", lat=37.5, lng=126.9),
+        AreaInfo(trdar_code=1000002, trdar_name="강남역", district_name="강남구",
+                 adm_dong_name="역삼동", lat=37.5, lng=127.0),
+    ]
+    conversations = _StubConversations(history=_market_history([{"id": "1000001", "name": "신촌역"}]))
+    phase2 = '{"text": "요약", "areas": [{"trdar_code": 1000002, "reason": "이유. 유의할 점: x"}]}'
+    interactor, _, _ = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, phase2],
+        conversations=conversations, market=_StubMarket(areas=areas),
+    )
+    result = await interactor.ask("다른 구도 추천해줘", conversation_id=100)
+    assert [r.id for r in result.recommendations] == ["1000002"]
+
+
+async def test_후속_질문은_직전_추천_순서를_유지한다(monkeypatch):
+    # 원인 G: S3 t4 같은 후보인데 1순위가 성수동카페거리→서울숲역으로 바뀌었다
+    areas = [
+        AreaInfo(trdar_code=1000001, trdar_name="성수동카페거리", district_name="성동구",
+                 adm_dong_name="성수동", lat=37.5, lng=127.0),
+        AreaInfo(trdar_code=1000002, trdar_name="서울숲역", district_name="성동구",
+                 adm_dong_name="성수동", lat=37.5, lng=127.0),
+    ]
+    conversations = _StubConversations(history=_market_history(
+        [{"id": "1000001", "name": "성수동카페거리"}, {"id": "1000002", "name": "서울숲역"}]))
+    phase1_both = '{"service_code": "CS100010", "service_name": "커피-음료", "trdar_codes": [1000002, 1000001]}'
+    phase2 = ('{"text": "서울숲역을 추천합니다", "areas": ['
+              '{"trdar_code": 1000002, "reason": "이유. 유의할 점: x"},'
+              '{"trdar_code": 1000001, "reason": "이유. 유의할 점: y"}]}')
+    interactor, llm, _ = _build(
+        monkeypatch, [INTENT_MARKET, phase1_both, phase2],
+        conversations=conversations, market=_StubMarket(areas=areas),
+    )
+    result = await interactor.ask("거기 객단가는 어때?", conversation_id=100)
+    assert [r.id for r in result.recommendations] == ["1000001", "1000002"]
+    assert "[직전 답변의 1순위: 성수동카페거리]" in llm.calls[-1][0]
+
+
+async def test_상권과_종목_교차_비교는_미지원_고지로_답한다(monkeypatch):
+    # 원인 D: S3 t4 "상권이랑 주식 중 뭐가 유망해?"가 상권 경로로만 가서 주식을 무시했다
+    conversations = _StubConversations(history=_stock_history())
+    interactor, llm, _ = _build(monkeypatch, [], conversations=conversations)
+    result = await interactor.ask("그 상권이랑 아까 주식 중에 뭐가 더 유망해?", conversation_id=100)
+    assert "비교해 드리지 않아요" in result.text and llm.calls == []
+
+
+async def test_처음_추천_회상은_고지가_아니라_첫_추천_카드를_보여준다(monkeypatch):
+    # 수정본 실측 S3 t5: 직전이 교차 비교 고지라 그 고지를 되풀이했다
+    history = _market_history([{"id": "1000001", "name": "성수동카페거리"}, {"id": "1000002", "name": "서울숲역"}]) + [
+        Message(id=3, conversation_id=100, role="user", content="그 상권이랑 주식 중 뭐가 나아?",
+                created_at=_NOW, payload=None),
+        Message(id=4, conversation_id=100, role="assistant", content="비교해 드리지 않아요",
+                created_at=_NOW, payload=None),
+    ]
+    interactor, llm, _ = _build(monkeypatch, [], conversations=_StubConversations(history=history))
+    result = await interactor.ask("네가 처음에 추천한 데가 어디였지?", conversation_id=100)
+    assert result.text.startswith("처음 답변을 다시 보여드려요") and "1. 성수동카페거리" in result.text
+    assert llm.calls == []
+
+
+
+async def test_비교_질문에서_종목_하나만_추출돼도_연결어로_나머지를_보탠다(monkeypatch):
+    # 5차 S10 t1: Gemma가 "삼성전자랑 SK하이닉스 중"에서 stock_query "삼성전자"만 반환해 비교 경로가 안 탔다
+    interactor, _, stubs = _build(monkeypatch, [INTENT_STOCK])
+    await interactor.ask("삼성전자랑 SK하이닉스 중 뭐가 나아?")
+    assert stubs["stocks"].queries == ["삼성전자", "SK하이닉스"]
+
+
+async def test_자치구_두_곳_비교는_지역마다_대표_상권을_하나씩_둔다(monkeypatch):
+    # 5차 S9 t5: "송파랑 강동 중에 어디가 나아?"에 강동만 답했다
+    areas = [
+        AreaInfo(trdar_code=1000001, trdar_name="잠실역", district_name="송파구",
+                 adm_dong_name="잠실동", lat=37.5, lng=127.1),
+        AreaInfo(trdar_code=1000002, trdar_name="고덕역", district_name="강동구",
+                 adm_dong_name="고덕동", lat=37.5, lng=127.1),
+    ]
+    phase1_one = '{"service_code": "CS100010", "service_name": "커피-음료", "trdar_codes": [1000002]}'
+    phase2 = ('{"text": "요약", "areas": [{"trdar_code": 1000001, "reason": "이유. 유의할 점: x"},'
+              '{"trdar_code": 1000002, "reason": "이유. 유의할 점: y"}]}')
+    interactor, llm, _ = _build(monkeypatch, [INTENT_MARKET, phase1_one, phase2], market=_StubMarket(areas=areas))
+    result = await interactor.ask("송파랑 강동 중에 어디가 나아?")
+    assert sorted(r.id for r in result.recommendations) == ["1000001", "1000002"]
+    assert "[지역 비교] 송파 vs 강동" in llm.calls[-1][0]
+
+
+async def test_사용자_발화_회상에_재요청이_붙으면_원_질문으로_다시_돈다(monkeypatch):
+    # 수정본 실측 S4 t7: 인용만 하고 재추천은 하지 않았다
+    conversations = _StubConversations(history=_market_history(
+        [{"id": "1000001", "name": "테스트상권", "serviceCode": "CS100010", "category": "커피-음료"}],
+        first_prompt="역삼동에서 카페 어때?"))
+    interactor, llm, _ = _build(
+        monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON], conversations=conversations,
+    )
+    result = await interactor.ask("처음에 내가 물어본 업종이 뭐였지? 그 업종으로 제일 나은 데 다시 골라줘",
+                                  conversation_id=100)
+    assert result.text.startswith('처음에 "역삼동에서 카페 어때?"라고 물으셨어요')
+    assert result.recommendations and "역삼동에서 카페 어때?" in llm.calls[0][0]  # 원 질문으로 phase0 진입
+
+
+async def test_주제_회상은_그_말을_한_답변이_없으면_정상_흐름으로_보낸다(monkeypatch):
+    # 5차 S2 t4: "아까 말한 리스크 요인"에 해당 어휘를 쓴 답변이 없으면 재제시 대신 히스토리 동반 재서술
+    conversations = _StubConversations(history=_stock_history())  # "삼성전자 서술"에는 리스크 어휘가 없다
+    interactor, llm, stubs = _build(monkeypatch, [INTENT_STOCK, "리스크 서술"], conversations=conversations)
+    result = await interactor.ask("아까 네가 말한 리스크 요인 다시 말해줘", conversation_id=100)
+    assert stubs["stocks"].queries == ["삼성전자"] and result.text.startswith("리스크 서술")
+    assert llm.calls[-1][1]["history"][1]["content"] == "삼성전자 서술"
+
+
+def _two_turn_history() -> list[Message]:
+    return [
+        Message(id=1, conversation_id=100, role="user", content="삼성전자 어때?", created_at=_NOW, payload=None),
+        Message(id=2, conversation_id=100, role="assistant", content="첫 답변 본문", created_at=_NOW,
+                payload={"stock": {"symbol": "005930"}}),
+        Message(id=3, conversation_id=100, role="user", content="그 종목 리스크는?", created_at=_NOW, payload=None),
+        Message(id=4, conversation_id=100, role="assistant", content="둘째 답변 본문", created_at=_NOW,
+                payload={"stock": {"symbol": "005930"}}),
+    ]
+
+
+async def test_턴을_지목한_회상은_그_답변을_다시_보여준다(monkeypatch):
+    interactor, llm, _ = _build(monkeypatch, [], conversations=_StubConversations(history=_two_turn_history()))
+    result = await interactor.ask("두 번째 답변에서 말한 거 다시 말해줘", conversation_id=100)
+    assert result.text.startswith("두 번째 답변을 다시 보여드려요") and "둘째 답변 본문" in result.text
+    result = await interactor.ask("첫 질문에 대한 답 다시 보여줘", conversation_id=100)
+    assert result.text.startswith("첫 번째 답변을 다시 보여드려요") and "첫 답변 본문" in result.text
+    assert llm.calls == []
+
+
+async def test_내가_N번째_질문에서_뭐라고_했는지는_그_질문을_인용한다(monkeypatch):
+    interactor, llm, _ = _build(monkeypatch, [], conversations=_StubConversations(history=_two_turn_history()))
+    result = await interactor.ask("내가 두 번째 질문에서 뭐라고 했지?", conversation_id=100)
+    assert result.text == '두 번째 "그 종목 리스크는?"라고 물으셨어요.' and llm.calls == []
+
+
+async def test_같은_자치구_상권_두_곳_비교도_각각_후보에_둔다(monkeypatch):
+    areas = [
+        AreaInfo(trdar_code=1000001, trdar_name="잠실역", district_name="송파구",
+                 adm_dong_name="잠실동", lat=37.5, lng=127.1),
+        AreaInfo(trdar_code=1000002, trdar_name="석촌고분역", district_name="송파구",
+                 adm_dong_name="석촌동", lat=37.5, lng=127.1),
+        AreaInfo(trdar_code=1000003, trdar_name="가락시장", district_name="송파구",
+                 adm_dong_name="가락동", lat=37.5, lng=127.1),
+    ]
+    phase1_one = '{"service_code": "CS100010", "service_name": "커피-음료", "trdar_codes": [1000001]}'
+    phase2 = ('{"text": "요약", "areas": [{"trdar_code": 1000001, "reason": "이유. 유의할 점: x"},'
+              '{"trdar_code": 1000002, "reason": "이유. 유의할 점: y"}]}')
+    raw = _raw_stat(has_sales=True, monthly_sales_amount=600_000_000, weekday_sales_amount=400_000_000,
+                    has_store=True, store_count=10, closure_rate=2.0, franchise_store_count=2)
+    interactor, llm, _ = _build(
+        monkeypatch, [INTENT_MARKET, phase1_one, phase2], market=_StubMarket(areas=areas, raw=raw),
+    )
+    result = await interactor.ask("잠실역이랑 석촌고분역 중 어디가 나아?")
+    assert sorted(r.id for r in result.recommendations) == ["1000001", "1000002"]
+    assert "[지역 비교] 잠실역 vs 석촌고분역" in llm.calls[-1][0]
+    # 축 어휘("안전한"·"매출 높은")가 없어도 지역 비교는 점포당 월매출로 코드가 결론을 정한다
+    assert "점포당 월매출 기준(" in llm.calls[-1][0] and result.text.startswith("점포당 월매출 기준(")
+
