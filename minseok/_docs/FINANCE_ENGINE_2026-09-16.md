@@ -1,7 +1,7 @@
 # 창업 재무 엔진 — 비용·손익 축 (2026-09-16)
 
 백엔드 → [[minseok/_docs/CLAUDE|minseok CLAUDE]] · 상권 → [[minseok/apps/market/_docs/CLAUDE|market CLAUDE]] · 대화 → [[minseok/apps/chat/_docs/CLAUDE|chat CLAUDE]]
-로드맵 → [[minseok/_docs/ROADMAP|ROADMAP]] B4(창업비용·손익분기 서술) 완성. 상태: **구현 완료(2026-09-16) — 러너 재박제·매칭률 실측·실 DB 검증 잔여**.
+로드맵 → [[minseok/_docs/ROADMAP|ROADMAP]] B4(창업비용·손익분기 서술) 완성. 상태: **구현·배포·검증 완료(2026-09-16)**.
 
 "성수동에 카페, 내 돈 1억이면 몇 개월 버티고 얼마가 모자라나"를 대화에서 답한다.
 계산은 결정론 코드, LLM은 해석만. 원천은 전부 서울.
@@ -99,7 +99,7 @@ scenarios       = expected_sales × 0.8 / 1.0 / 1.2
 | G2 | 파서 | 표기 20종 |
 | G3 | 인터랙터 스텁 | 임대료 상권/권역/서울 3경로 + 매출 소표본 + 창업비용 없음 |
 | G4 | chat 골든셋 +10 | 입력 ≤3으로 첫 답 · 출처 전부 병기 · 프로파일로 자기자본 대체 · 없으면 자기자본만 되묻기 · 재계산 · 대출 권유 0 · 환각 0 |
-| G5 | R-ONE 실적재 | 64 CLS × 8분기, 상권 직접 매칭률 기록, 나머지 권역 폴백 — (2026-09-16 실적재: small level0 8·level1 32·level2 472행, medium_large level2 544행, aggregate level2 320행. **상권 직접 매칭률은 Task 11에서도 미측정 — 맥 로컬 DB에 `trade_area`가 없어 백엔드 PC DB 접속 필요, 잔여**) |
+| G5 | R-ONE 실적재 | 64 CLS × 8분기, 상권 직접 매칭률 기록, 나머지 권역 폴백 — (2026-09-16 실적재: small level0 8·level1 32·level2 472행, medium_large level2 544행, aggregate level2 320행. **상권 직접 매칭률 실측(2026-09-16, 백엔드 PC 실 DB): 1,650곳 중 333곳 20.2%가 R-ONE 상권 직접 매칭, 나머지 79.8%는 권역 폴백.** 어간만으로는 삼육보건대→건대입구 등 8건이 오매칭돼 자치구 게이트(`RONE_AREA_DISTRICTS`)를 넣어 제거(커밋 96fceaf)) |
 | G6 | ECOS 실적재 | 최신월 기준금리·대출평균 — (2026-09-16 실적재: 722Y001 최신 202608, 121Y006 최신 202607 — 한은 공표 지연으로 실행월 전전월) |
 | G7 | 구조 | lint-imports 5 KEPT · pytest 전체 · 라우트 표 diff(+1: `/market/trdar/{code}/finance`, 인증 필수) — (2026-09-16 Task 11 실행: pytest `minseok/apps minseok/tests -m "not ollama and not network"` **1193 passed, 7 deselected**, 실패 0 · lint-imports **5 kept, 0 broken** · 라우트 표 diff는 `test_public_routes.py`에 포함돼 통과에 반영됨) |
 
@@ -107,11 +107,10 @@ scenarios       = expected_sales × 0.8 / 1.0 / 1.2
 ② `alembic -c apps/market/alembic.ini upgrade head` 수동 실행 ③ `/market/trdar/{code}/finance` curl 1회
 ④ `collect_rone_rent.py --dry-run`·`collect_ecos_rates.py --dry-run`.
 
-**잔여(2026-09-16, Task 11에서 미실행)**:
-- 골든셋 러너(`-m ollama`)는 백엔드 PC에서만 돌아가 `trace.jsonl`·`baseline.json` 재박제와 `finance_answer_rate` 실측이 남아 있다.
-- R-ONE 상권 직접 매칭률 실측 — 맥 로컬 DB에 `trade_area`가 없어 백엔드 PC DB가 필요하다.
-- dev 파드 실 DB curl 검증 — 파드 미기동.
-- 골든셋 러너 재박제는 C1 파서 수정 반영 후에 실행한다.
+**백엔드 PC 실행 기록(2026-09-16)**:
+- ✅ 배포 체크리스트 ①~④ 완료 — `deploy.sh`(커밋 6155110) → market 체인 수동 마이그레이션(`f5a6b7c8d9e0`) → cron 수동 실행으로 R-ONE 1,456행·ECOS 186행(2020-01~) 적재 → 실 DB 인터랙터 호출(성수동카페거리=뚝섬 상권 직접, 인사동=도심 권역 폴백, 금리 2026-07 4.27%).
+- ✅ R-ONE 상권 직접 매칭률 20.2%(G5) — 오매칭 8건은 자치구 게이트로 제거(96fceaf).
+- ✅ 골든셋 러너 재박제(2026-09-16 22:40, 백엔드 PC, 27분) — 144문항 오류 0 · intent_accuracy 1.000 · region_hit 1.0 · inherit 1.0 · citation_coverage 0.987 · **finance_answer_rate 1.0(MF01~10 전부 정답, MF09 되묻기 포함)** · 환각 숫자 0 · 잘림 0 · 절대 규칙 위반 0(loan_solicitation 0). `baseline.json`에 `finance_answer_rate: 1.0` 추가(관측 최소값 정책).
 
 ## 선행·구현 순서
 

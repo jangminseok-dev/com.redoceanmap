@@ -11,5 +11,6 @@
   "phase1_guard_activation_rate": 0.574468085106383,
   "hallucination_count": 0,
   "truncation_count": 0,
-  "total": 134
+  "total": 144,
+  "finance_answer_rate": 1.0
 }
