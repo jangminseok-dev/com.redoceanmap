@@ -27,3 +27,24 @@ def test_자치구는_권역으로_떨어지고_모르면_기타():
 
 def test_별칭_사전은_R_ONE_상권_59개를_전부_덮는다():
     assert len(rm.RONE_AREA_ALIASES) == 59
+
+
+def test_자치구가_다르면_어간이_걸려도_매칭하지_않는다():
+    assert rm.match_area("삼육보건대학교", "동대문구") is None
+    assert rm.match_area("영동교골목시장", "광진구") is None
+    assert rm.match_area("국회의사당역", "영등포구") is None
+    assert rm.match_area("면목동우체국", "중랑구") is None
+    assert rm.match_area("상도약수골목형상점가", "동작구") is None
+    assert rm.match_area("성수대교남단", "강남구") is None
+    assert rm.match_area("동대문구청", "동대문구") is None
+
+
+def test_자치구가_맞으면_매칭한다():
+    assert rm.match_area("건대입구역 6번", "광진구") == "건대입구"
+    assert rm.match_area("동대문역사문화공원역", "중구") == "동대문"
+    assert rm.match_area("사당역 4번", "관악구") == "사당"
+    assert rm.match_area("성수동카페거리", "성동구") == "뚝섬"
+
+
+def test_자치구_사전은_R_ONE_상권_59개를_전부_덮는다():
+    assert set(rm.RONE_AREA_DISTRICTS) == {area for area, _ in rm.RONE_AREA_ALIASES}

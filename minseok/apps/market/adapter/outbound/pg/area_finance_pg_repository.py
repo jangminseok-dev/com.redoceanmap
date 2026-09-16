@@ -40,7 +40,7 @@ class AreaFinancePgRepository(AreaFinanceRepositoryPort):
             return None
         name, district = row[0], row[1] or ""
         candidates = []
-        area = match_area(name)
+        area = match_area(name, district)
         if area:
             candidates.append((2, area, "area"))
         candidates.append((1, zone_for(district), "zone"))
