@@ -70,6 +70,18 @@ apps/hub/dependencies/member_directory_provider.py  # get_member_directory_port 
 - **소비**: `admin`의 member·steward·dashboard 인터랙터(회원 관리·/admin/me 권한 판정·KPI).
 - **배선**: `main.py`에서 `app.dependency_overrides[get_member_directory_port] = get_member_directory_gateway`.
 
+## 소유 계약 — AreaFinancePort
+
+창업 재무 계산 협력. chat(소비)과 market(구현: area_finance 슬라이스)을 잇는다.
+
+```
+apps/hub/app/
+├── ports/output/area_finance_port.py   # AreaFinancePort (ABC) — plan(request) → AreaFinancePlanInfo | None
+└── dtos/area_finance_dto.py            # AreaFinanceRequest · AreaFinancePlanInfo · FinanceInputItem
+apps/hub/dependencies/area_finance_provider.py  # get_area_finance_port (NotImplementedError 스텁)
+배선: main.py `app.dependency_overrides[get_area_finance_port] = get_area_finance_gateway`.
+```
+
 ## 소유 계약 — GradePolicyPort
 
 등급(=roles 재해석) 구성 협력. admin(소비)과 auth(구현·영속: roles + role_tabs)를 잇는다.

@@ -1,0 +1,36 @@
+# ECOS 기준금리·대출금리 — 매월 15일(한은 공표 뒤). 창업 재무 엔진 이자 원천.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: collect-ecos-rates
+spec:
+  schedule: "0 4 15 * *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          hostAliases:
+            - ip: 172.17.0.1
+              hostnames: ["host.docker.internal"]
+          containers:
+            - name: job
+              image: minseok97/redoceanmap-backend:latest
+              imagePullPolicy: Never
+              workingDir: /app
+              command: ["python", "scripts/collect_ecos_rates.py"]
+              envFrom:
+                - secretRef:
+                    name: redocean-env
+                - configMapRef:
+                    name: redocean-runtime
+              env:
+                - name: DATABASE_URL
+                  value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@pgvector:5432/$(POSTGRES_DB)
+                - name: MARKET_DATABASE_URL
+                  value: $(MARKET_DATABASE_URL_DOCKER)

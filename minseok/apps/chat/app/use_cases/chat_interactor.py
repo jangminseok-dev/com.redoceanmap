@@ -7,6 +7,8 @@ from chat.app.dtos.chat_dto import (
     AreaRecommendation,
     AreaStats,
     AskResponse,
+    FinanceCard,
+    FinanceInputCard,
     NewsCardItem,
     StockCard,
 )
@@ -20,9 +22,16 @@ from chat.app.ports.input.chat_use_case import ChatUseCase
 from chat.app.ports.output.conversation_repository import ConversationRepository
 from chat.domain.entities.conversation_entity import ConversationSummary, Message
 from chat.domain.services import answer_guard
+from chat.domain.services.amount_parser import (
+    fmt_won,
+    parse_budget_krw,
+    parse_labeled_amounts,
+    solo_amount,
+)
 from chat.domain.services.verdict import strength as verdict_strength
 from chat.domain.services.verdict import verdict as verdict_headline
 from core.llm.llm_orchestrator import llm_orchestrator
+from hub.app.dtos.area_finance_dto import AreaFinancePlanInfo, AreaFinanceRequest
 from hub.app.dtos.commercial_data_dto import (
     AreaInfo,
     AreaInsight,
@@ -38,6 +47,7 @@ from hub.app.dtos.recommendation_record_dto import RecommendedArea
 from hub.app.dtos.stock_forecast_dto import StockForecastSummary
 from hub.app.dtos.stock_analysis_dto import StockAnalysisResult
 from hub.app.dtos.user_profile_dto import UserProfileSummary
+from hub.app.ports.output.area_finance_port import AreaFinancePort
 from hub.app.ports.output.commercial_data_port import CommercialDataPort
 from hub.app.ports.output.gemini_answer_port import GeminiAnswerError, GeminiAnswerPort
 from hub.app.ports.output.market_news_search_port import MarketNewsSearchPort
@@ -553,8 +563,6 @@ _SUPERLATIVE_AXES = (
 )
 # 업종 초점 후속(2026-09-08 QA P08) — "내 예산으로 할 수 있는 업종은?"에 직전 상권·업종을 재탕했다.
 # 직전 추천 상권이 있고 질문이 업종을 묻는데 업종명을 안 대면, 그 상권의 업종별 수치를 코드가 낸다.
-# 예산 금액 파싱 — "1억 2천", "8천만원", "5000만원", "1.5억" → 원. 못 읽으면 None.
-_BUDGET_RE = re.compile(r"(\d+(?:\.\d+)?)\s*억(?:\s*(\d+)\s*천?\s*만?)?|(\d+(?:,\d{3})*)\s*(천만|만)\s*원?")
 SMALL_SAMPLE_STORES = 5   # 점포 수가 이 미만이면 점포당 매출·폐업률을 결론 근거로 쓰지 않는다(2026-09-08 감사)
 GENERIC_SERVICE_CODE = "CS000000"   # 업종 미지정 질문의 범용 코드 — market 게이트웨이가 전 업종 합계로 답한다
 BUDGET_RESERVE_RATIO = 0.7  # 창업비용은 예산의 70%까지 — 보증금·운영자금 몫을 남긴다(가정치)
@@ -566,28 +574,6 @@ _INDUSTRY_ALIASES = (
     ("햄버거", "패스트푸드"), ("아이스크림", "아이스크림/빙수"), ("빙수", "아이스크림/빙수"), ("음료", "음료 (커피 외)"),
     ("미용", "이미용"), ("네일", "이미용"), ("세탁", "세탁"), ("학원", "교육 (교과)"), ("헬스", "스포츠 관련"),
 )
-
-
-def fmt_won(amount: float) -> str:
-    """1억 2,000만원 · 8,036만원 — 만원 단위, 억은 앞에 뗀다."""
-    man = int(round(amount / 10_000))
-    if man >= 10_000:
-        eok, rest = divmod(man, 10_000)
-        return f"{eok}억원" if rest == 0 else f"{eok}억 {rest:,}만원"
-    return f"{man:,}만원"
-
-
-def parse_budget_krw(text: str) -> int | None:
-    m = _BUDGET_RE.search(text)
-    if not m:
-        return None
-    if m.group(1):
-        won = float(m.group(1)) * 100_000_000
-        if m.group(2):
-            won += int(m.group(2)) * 10_000_000  # "1억 2천" — 천 단위는 천만원으로 읽는다
-        return int(won)
-    n = int(m.group(3).replace(",", ""))
-    return n * (10_000_000 if m.group(4) == "천만" else 10_000)
 
 
 _SERVICE_FOCUS_RE = re.compile(r"업종|뭘\s*팔|무슨\s*(?:장사|가게|업)|어떤\s*(?:가게|장사|업)|아이템")
@@ -698,6 +684,18 @@ _MARKET_UNSUPPORTED_NOTICES = (
     (re.compile(r"정확한?\s*매출|실제\s*매출"),
      "매출 수치는 카드사 기반 추정 집계예요 — 개별 점포의 실제 매출 데이터는 제공하지 않아요."),
 )
+# 재무 질문 트리거(FINANCE_ENGINE §5-1) — 상권·업종이 정해진 뒤에만 탄다. 예산만 있는 질문은 _budget_notice(무손상).
+_FINANCE_RE = re.compile(r"자기\s*자본|자본금|내\s*돈|가진\s*돈|보증금|권리금|월세|임대료|대출|버틸|버티|손익|적자|흑자|BEP|얼마나\s*남")
+# 프로파일 예산 밴드 → 자기자본 대체값(밴드 중앙값, 상단 개방 밴드는 하한). 라벨 정의는 recommendation 도메인.
+EQUITY_BY_BUDGET_LABEL = {
+    "3천만원 미만": 20_000_000, "3천만~5천만원": 40_000_000, "5천만~1억원": 75_000_000,
+    "1억~3억원": 200_000_000, "3억원 이상": 300_000_000,
+}
+_FINANCE_FIELDS = ("equity", "deposit", "monthly_rent", "key_money", "startup_cost", "area_sqm", "headcount", "desired_loan")
+_FINANCE_RULES = (
+    "[재무 계산 규칙] 위 재무 수치를 재계산하거나 다른 금액을 만들지 말 것. 병기된 값과 가정을 그대로 두고"
+    " 리스크(달성률·부족 자금·금리)와 대안(면적 축소·인건비·업종 대안)만 서술할 것. 대출 상품이나 은행을 권하지 말 것."
+)
 _STOCK_UNSUPPORTED_NOTICES = (
     (re.compile(r"배당"),
      "배당수익률·배당 이력 데이터는 아직 제공하지 않아요. 아래는 가격·수급·가치 지표 기준이에요."),
@@ -762,8 +760,10 @@ class ChatInteractor(ChatUseCase):
         refit: ForecastRefitPort | None = None,
         signals: StockSignalBoardPort | None = None,
         paper: PaperDecisionPort | None = None,
+        finance: AreaFinancePort | None = None,
     ) -> None:
         self._paper = paper
+        self._finance = finance
         self._market = market
         self._recorder = recorder
         self._conversations = conversations
@@ -1302,6 +1302,83 @@ class ChatInteractor(ChatUseCase):
         await self._conversations.add_message(conversation_id, "assistant", text)
         return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
 
+    def _market_unsupported_table(self, service_code: str) -> tuple[tuple[re.Pattern[str], str], ...]:
+        """재무 포트가 배선되고 업종이 확정된 질문만 임대료를 미지원 축에서 뺀다(권역 평균 폴백 포함).
+
+        업종 미확정(GENERIC)이면 재무 경로를 타지 않으므로 계산도 고지도 없이 임대료 축이
+        사라지면 안 된다 — 그때는 원래 표를 그대로 쓴다.
+        """
+        if self._finance is None or service_code == GENERIC_SERVICE_CODE:
+            return _MARKET_UNSUPPORTED_NOTICES
+        return tuple(row for row in _MARKET_UNSUPPORTED_NOTICES if "임대료" not in row[0].pattern)
+
+    @staticmethod
+    def _previous_finance_inputs(history: list[Message]) -> dict[str, float]:
+        """직전 재무 카드의 입력값 중 사용자 기원만 — 승계용.
+
+        엔진이 채운 값(area_avg·franchise·ecos·assumed)은 상권·업종이 바뀌면 틀리므로
+        승계하지 않는다 — 다음 턴에 다시 채운다.
+        """
+        for m in reversed(history):
+            card = (m.payload or {}).get("finance")
+            if card:
+                return {
+                    i["key"]: i["value"] for i in card.get("inputs", [])
+                    if i.get("source") in ("input", "history", "profile")
+                }
+        return {}
+
+    def _finance_request(
+        self, prompt: str, history: list[Message], profile: UserProfileSummary | None,
+        trdar_code: int, service_code: str,
+    ) -> AreaFinanceRequest | None:
+        """입력 → 이력 → 프로파일(자기자본만) 순으로 채운다. 자기자본이 끝내 없으면 None(되묻기)."""
+        given = parse_labeled_amounts(prompt)
+        if "equity" not in given:
+            # "1억으로 월세 300" — 라벨 구간을 지운 뒤 남은 금액이 자기자본 후보다
+            solo = solo_amount(prompt)
+            if solo is not None:
+                given["equity"] = solo
+        inherited = self._previous_finance_inputs(history)
+        sources: dict[str, str] = {}
+        values: dict[str, float] = {}
+        for key in _FINANCE_FIELDS:
+            if key in given:
+                values[key] = given[key]
+            elif key in inherited:
+                values[key] = inherited[key]
+                sources[key] = "history"
+        equity_note = ""
+        if "equity" not in values and profile is not None:
+            equity = EQUITY_BY_BUDGET_LABEL.get(profile.budget_label)
+            if equity:
+                values["equity"], sources["equity"] = equity, "profile"
+                equity_note = f"프로파일 예산 {profile.budget_label}의 중앙값"
+        if "equity" not in values:
+            return None
+        return AreaFinanceRequest(
+            trdar_code=trdar_code, service_code=service_code, equity=int(values["equity"]),
+            deposit=int(values["deposit"]) if "deposit" in values else None,
+            monthly_rent=int(values["monthly_rent"]) if "monthly_rent" in values else None,
+            key_money=int(values["key_money"]) if "key_money" in values else None,
+            startup_cost=int(values["startup_cost"]) if "startup_cost" in values else None,
+            area_sqm=float(values["area_sqm"]) if "area_sqm" in values else None,
+            headcount=int(values["headcount"]) if "headcount" in values else None,
+            desired_loan=int(values["desired_loan"]) if "desired_loan" in values else None,
+            sources=sources, equity_note=equity_note,
+        )
+
+    @staticmethod
+    def _finance_card(info: AreaFinancePlanInfo) -> FinanceCard:
+        return FinanceCard(
+            trdarCode=info.trdar_code, trdarName=info.trdar_name, serviceCode=info.service_code,
+            serviceName=info.service_name, headline=info.headline, assumptionNote=info.assumption_note,
+            inputs=[FinanceInputCard(key=i.key, value=i.value, source=i.source, note=i.note) for i in info.inputs],
+            capex=info.capex, fundingGap=info.funding_gap, bepMonthlySales=info.bep_monthly_sales,
+            attainment=info.attainment, monthlyProfit=info.monthly_profit, runwayMonths=info.runway_months,
+            rentLevel=info.rent_level,
+        )
+
     @staticmethod
     def _previous_service(history: list[Message]) -> tuple[str, str] | None:
         """직전 추천 카드에서 (업종 코드, 업종명)을 복원한다 — 업종 승계(P2)용."""
@@ -1839,6 +1916,26 @@ class ChatInteractor(ChatUseCase):
         # 상권 뉴스 RAG 근거 — 지역 기사 의미 검색(히트 없으면 블록 생략)
         area_articles = await self._market_news.search(prompt, limit=4)
 
+        # 재무 경로(FINANCE_ENGINE) — 1순위 상권·확정 업종으로 결정론 계산. 첫 줄은 코드가 쓴다.
+        finance_info: AreaFinancePlanInfo | None = None
+        finance_note = ""
+        wants_finance = (
+            self._finance is not None
+            and service_code != GENERIC_SERVICE_CODE  # 원가율·점포당 매출·창업비용은 업종 단위다
+            and (_FINANCE_RE.search(prompt) or len(parse_labeled_amounts(prompt)) >= 2)
+        )
+        if wants_finance:
+            request = self._finance_request(prompt, history, profile, valid_codes[0], service_code)
+            if request is None:
+                finance_note = "※ 자기자본(내 돈)을 알려주시면 손익분기·부족 자금·버틸 기간을 계산해 드려요.\n\n"
+            else:
+                try:
+                    finance_info = await self._finance.plan(request)
+                except Exception:
+                    logger.warning("[chat] 재무 계산 실패", exc_info=True)
+                if finance_info is None:
+                    finance_note = "※ 이 상권·업종으로는 재무 계산 자료가 부족해요 — 월세를 알려주시면 계산해 드려요.\n\n"
+
         quarter_label = f"{str(quarter)[:4]}년 {str(quarter)[4]}분기"
         wants_detail = bool(_EXPERT_DETAIL_RE.search(prompt))
         stats_context_lines = [f"사용자 질문: {prompt}\n업종: {service_name}\n기준: {quarter_label}\n"]
@@ -1869,6 +1966,10 @@ class ChatInteractor(ChatUseCase):
             )
         if area_articles:
             stats_context_lines.append(self._format_area_articles(area_articles))
+        if finance_info is not None:
+            stats_context_lines.append(
+                f"[재무 계산 — 코드가 정함] {finance_info.headline} {finance_info.assumption_note}\n{_FINANCE_RULES}"
+            )
         if profile is not None:
             stats_context_lines.append(self._profile_market_block(profile))
         if superlative is not None:
@@ -2023,13 +2124,18 @@ class ChatInteractor(ChatUseCase):
             if already and not fresh:
                 notices = answer_guard.GRADE_NOTICE_REPEAT
             text = f"{notices}\n\n{text}" if text else notices
-        # 미지원 축 고지(I-12)가 맨 앞 — "없다"부터 말하고 보유 데이터 서술이 따른다
-        text = (await self._budget_notice(prompt, profile, history)) + _unsupported_notice(prompt, _MARKET_UNSUPPORTED_NOTICES) + radius_note + text
+        # 재무 경로가 동작하면 예산 고지를 앞에 붙이지 않는다 — 첫 줄은 코드가 쓴 재무 헤드라인이어야 한다
+        budget_notice = "" if finance_info is not None else await self._budget_notice(prompt, profile, history)
+        text = budget_notice + _unsupported_notice(prompt, self._market_unsupported_table(service_code)) + radius_note + finance_note + text
+        # 재무 헤드라인은 등급 고지보다도 앞이어야 한다(코드가 쓴 계산 결과가 최우선)
+        if finance_info is not None:
+            text = f"{finance_info.headline}\n{finance_info.assumption_note}\n\n{text}" if text else finance_info.headline
         # 구조화 카드를 payload로 동반 저장 — 히스토리 재진입 시 카드 복원용
-        await self._conversations.add_message(
-            conversation_id, "assistant", text,
-            payload={"recommendations": [r.model_dump() for r in recommendations]},
-        )
+        payload: dict = {"recommendations": [r.model_dump() for r in recommendations]}
+        finance_card = self._finance_card(finance_info) if finance_info is not None else None
+        if finance_card is not None:
+            payload["finance"] = finance_card.model_dump()
+        await self._conversations.add_message(conversation_id, "assistant", text, payload=payload)
 
         # 기록 경로: chat → 허브 포트 → recommendation (스포크끼리 직접 잇지 않음)
         await self._recorder.record(
@@ -2050,6 +2156,7 @@ class ChatInteractor(ChatUseCase):
 
         return AskResponse(
             text=text, recommendations=recommendations, conversationId=conversation_id,
+            finance=finance_card,
         )
 
     async def _answer_condition_ranking(

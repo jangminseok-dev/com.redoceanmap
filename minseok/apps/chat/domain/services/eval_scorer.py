@@ -14,6 +14,8 @@ LLM-as-judge를 쓰지 않는다(단일 모델 정책상 7.8B가 자기 답을 �
 - volume_verdict_rate                : 주식 답변의 거래량 신뢰/의심 판정 포함률(C1 골격 준수)
 - risk_mention_rate                  : 상권 추천 이유의 "유의할 점" 포함률(C2 리스크 의무 준수)
 - citation_coverage                  : 수치 주장 문장 중 인용 마커([n]) 포함 비율(R4 출처 인용)
+- finance_answer_rate                : 재무 케이스 중 손익분기+부족 자금이 답에 있는 비율
+                                       (질문에 금액이 하나도 없을 때는 자기자본 되묻기도 정답)
 - violations                         : 절대 규칙 위반(환각 숫자·금지 표현·고지 누락·입지 창작·
                                        유령 인용 dangling_citation — 컨텍스트에 없는 근거 번호·
                                        grade_caution — 주의/위험 등급 상권 추천 어휘)
@@ -27,6 +29,7 @@ import re
 from dataclasses import dataclass
 
 from chat.domain.services import answer_guard
+from chat.domain.services.amount_parser import parse_won
 from chat.domain.value_objects.eval_trace import CaseTrace, EvalCase, LlmCall
 
 # 답변을 만든 마지막 생성 호출 — 환각 숫자 판정의 대조 원본
@@ -102,6 +105,9 @@ _NUM = re.compile(r"\d[\d,]*(?:\.\d+)?")
 # 프론트 카드로 노출되지 않아 앵커가 성립하지 않는다 — ROADMAP R4 판정).
 _CITED_PHASES = ("stock_answer", "market_news_answer")
 _SOURCE_NUM = re.compile(r"근거 \[(\d+)\]")
+_FINANCE_CALC = re.compile(r"손익분기.*(?:부족 자금|충당돼요)", re.S)  # 계산이 나간 답(자기자본 충분 시 "충당돼요")
+_FINANCE_ASK_EQUITY = re.compile(r"자기자본\(내 돈\)을 알려주시면")  # 되묻기 — 질문에 금액이 없을 때만 정답
+_LOAN_SOLICIT = re.compile(r"(?:대출|상품)\s*(?:을|를)?\s*(?:추천|권해|받으세요|받아\s*보세요)|은행\s*(?:을|를)?\s*추천")
 _MARKER_NUM = re.compile(r"\[(\d+)\]")
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?…])\s+|\n+")
 _LEADING_MARKERS = re.compile(r"^\s*((?:\[\d+\]\s*)+)")
@@ -130,7 +136,7 @@ def _sentences_with_markers(text: str) -> list[str]:
 class RuleViolation:
     case_id: str
     # hallucinated_number | forbidden_phrase | missing_disclaimer | location_claim
-    # | truncated_answer | dangling_citation | grade_caution
+    # | truncated_answer | dangling_citation | grade_caution | loan_solicitation
     rule: str
     detail: str
 
@@ -151,6 +157,7 @@ class EvalReport:
     volume_verdict_rate: float | None  # 주식 답변의 거래량 '신뢰/의심' 판정 포함률
     risk_mention_rate: float | None    # 상권 추천 전체 이유에 "유의" 문장 포함률
     citation_coverage: float | None    # 수치 주장 문장 중 인용 마커 포함 비율(마커 도입 경로만)
+    finance_answer_rate: float | None  # 재무 케이스 중 손익분기+부족 자금(또는 되묻기) 포함 비율
     violations: tuple[RuleViolation, ...]
     latency_p50_ms: dict[str, float]
     latency_p95_ms: dict[str, float]
@@ -326,6 +333,19 @@ def score(cases: list[EvalCase], traces: list[CaseTrace]) -> EvalReport:
     )
     risk_mention_rate = _rate(risk_mentions, len(market_recs))
 
+    # --- 재무 답변(FINANCE_ENGINE) ---
+    # 되묻기는 질문에 금액이 하나도 없을 때만 정답(MF09) — 자기자본을 준 질문의 되묻기는 계산 실패다.
+    # 되묻기 문구 자체가 "손익분기·부족 자금"이라는 낱말을 그대로 담고 있어(예정 항목 나열),
+    # _FINANCE_CALC를 DOTALL로 먼저 대면 되묻기 트레이스까지 계산 성공으로 오판한다 —
+    # 되묻기 패턴을 먼저 가려낸 뒤에만 계산 패턴을 본다(상호 배타적으로 판정).
+    finance_cases = [(c, t) for c, t in scored if c.category == "market_finance"]
+    finance_ok = sum(
+        1 for c, t in finance_cases
+        if (_FINANCE_ASK_EQUITY.search(t.answer_text) and parse_won(c.prompt) is None)
+        or (not _FINANCE_ASK_EQUITY.search(t.answer_text) and _FINANCE_CALC.search(t.answer_text))
+    )
+    finance_answer_rate = _rate(finance_ok, len(finance_cases))
+
     # --- 출처 인용(R4) — 커버리지 + 유령 인용 ---
     citation_pool = 0
     citation_covered = 0
@@ -393,6 +413,10 @@ def score(cases: list[EvalCase], traces: list[CaseTrace]) -> EvalReport:
             if (t.recommendation_codes == () and t.answer_text
                     and not truncated and not _has_disclaimer(t.answer_text)):
                 violations.append(RuleViolation(c.case_id, "missing_disclaimer", "책임 고지 없음"))
+        if c.category == "market_finance" and t.answer_text:
+            m = _LOAN_SOLICIT.search(t.answer_text)
+            if m:
+                violations.append(RuleViolation(c.case_id, "loan_solicitation", m.group()))
         if t.final_intent == "market" and t.recommendation_codes:
             market_text = t.answer_text + " " + " ".join(t.recommendation_reasons)
             for token in _LOCATION_CLAIM_TOKENS:
@@ -459,6 +483,7 @@ def score(cases: list[EvalCase], traces: list[CaseTrace]) -> EvalReport:
         volume_verdict_rate=volume_verdict_rate,
         risk_mention_rate=risk_mention_rate,
         citation_coverage=citation_coverage,
+        finance_answer_rate=finance_answer_rate,
         violations=tuple(violations),
         latency_p50_ms=latency_p50,
         latency_p95_ms=latency_p95,

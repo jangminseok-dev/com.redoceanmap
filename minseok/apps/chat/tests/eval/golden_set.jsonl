@@ -132,3 +132,13 @@
 {"case_id": "MT11", "category": "multiturn", "prompt": "국밥 말고 돈까스집이면 어때?", "expected_intent": "market", "history_regions": ["노원"]}
 {"case_id": "MT12", "category": "multiturn", "prompt": "엥 나는 떡볶이집을 추천해달라고 했는데?", "expected_intent": "market", "history_regions": ["길음"]}
 {"case_id": "MN12", "category": "market_noregion", "prompt": "너네 상권 점수는 어떻게 계산하는 거야?", "expected_intent": "market"}
+{"case_id": "MF01", "category": "market_finance", "prompt": "성수동에 카페, 자기자본 1억이고 월세 300이면 몇 달 버텨?", "expected_intent": "market", "region": "성수동"}
+{"case_id": "MF02", "category": "market_finance", "prompt": "홍대 술집 차리려는데 내 돈 5천, 보증금 3천 월세 250이면 손익분기 얼마야?", "expected_intent": "market", "region": "홍대"}
+{"case_id": "MF03", "category": "market_finance", "prompt": "강남역 근처 미용실, 자본금 2억에 직원 2명 쓰면 적자 안 나?", "expected_intent": "market", "region": "강남역"}
+{"case_id": "MF04", "category": "market_finance", "prompt": "연남동 분식집 자기자본 7천만원 월세 180 부족한 돈 얼마나 돼?", "expected_intent": "market", "region": "연남동"}
+{"case_id": "MF05", "category": "market_finance", "prompt": "잠실 치킨집 가진 돈 1.5억, 대출 5천 받으면 이자 부담 어때?", "expected_intent": "market", "region": "잠실"}
+{"case_id": "MF06", "category": "market_finance", "prompt": "신촌 편의점 자기자본 1억 20평 월세 400이면 손익분기 넘어?", "expected_intent": "market", "region": "신촌"}
+{"case_id": "MF07", "category": "market_finance", "prompt": "건대입구 한식집 내 돈 8천 월세 300 권리금 2천 계산해줘", "expected_intent": "market", "region": "건대입구"}
+{"case_id": "MF08", "category": "market_finance", "prompt": "망원동 카페 자기자본 6천만원이면 얼마나 버틸 수 있어?", "expected_intent": "market", "region": "망원동"}
+{"case_id": "MF09", "category": "market_finance", "prompt": "혜화동 카페 월세 200이면 손익분기 얼마야?", "expected_intent": "market", "region": "혜화동"}
+{"case_id": "MF10", "category": "market_finance", "prompt": "노원역 헬스장 자본금 3억 인테리어 1억 월세 500 흑자 가능해?", "expected_intent": "market", "region": "노원역"}

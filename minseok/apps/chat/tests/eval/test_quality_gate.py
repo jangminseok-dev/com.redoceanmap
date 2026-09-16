@@ -22,6 +22,8 @@ _REGRESSION_KEYS = (
     "volume_verdict_rate", "risk_mention_rate",
     # R4 출처 인용 커버리지 — 없던 시절 baseline은 자동 스킵(위와 동일 처리)
     "citation_coverage",
+    # 재무 답변 준수율 — 없던 시절 baseline은 자동 스킵(위와 동일 처리)
+    "finance_answer_rate",
 )
 _REGRESSION_TOLERANCE = 0.03  # -3%p
 
@@ -49,7 +51,8 @@ def test_quality_gate():
           f" nonseoul_guard={report.nonseoul_guard_rate}")
     print(f"[gate] volume_verdict={report.volume_verdict_rate}"
           f" risk_mention={report.risk_mention_rate}"
-          f" citation_coverage={report.citation_coverage}")
+          f" citation_coverage={report.citation_coverage}"
+          f" finance={report.finance_answer_rate}")
     print(f"[gate] latency p50={report.latency_p50_ms} p95={report.latency_p95_ms}")
     print(f"[gate] 환각 의심 숫자 {len(hallucinations)}건, 답변 잘림 {len(truncations)}건"
           f"{[v.case_id for v in truncations] or ''}, 절대 규칙 위반 {len(absolute)}건")
@@ -71,6 +74,7 @@ def test_quality_gate():
         "volume_verdict_rate": report.volume_verdict_rate,
         "risk_mention_rate": report.risk_mention_rate,
         "citation_coverage": report.citation_coverage,
+        "finance_answer_rate": report.finance_answer_rate,
         "phase0_parse_failure_rate": report.phase0_parse_failure_rate,
         "phase1_guard_activation_rate": report.phase1_guard_activation_rate,
         "hallucination_count": len(hallucinations),

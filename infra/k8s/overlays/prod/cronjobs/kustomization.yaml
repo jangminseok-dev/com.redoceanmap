@@ -9,3 +9,5 @@ resources:
   - collect-commercial-trades.yaml
   - collect-seoul-quarter.yaml
   - collect-franchise-costs.yaml
+  - collect-rone-rent.yaml
+  - collect-ecos-rates.yaml

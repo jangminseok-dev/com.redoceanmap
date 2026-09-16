@@ -110,6 +110,10 @@ CONVNEXT_TOP_K = int(_secrets.get("CONVNEXT_TOP_K", "5"))
 GEMINI_API_KEY = _secrets.get_gemini_api_key()
 GEMINI_MODEL = _secrets.get_gemini_model_name()
 
+# 창업 재무 엔진 외부 데이터(적재 스크립트가 secret_manager로 직접 읽는다 — 런타임 참조용 상수).
+RONE_API_KEY = _secrets.get("RONE_API_KEY")
+ECOS_API_KEY = _secrets.get("ECOS_API_KEY")
+
 # 소셜 로그인 OAuth (auth social 슬라이스). 비어 있으면 해당 프로바이더 로그인 시 401.
 GOOGLE_CLIENT_ID = _secrets.get("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = _secrets.get("GOOGLE_CLIENT_SECRET")

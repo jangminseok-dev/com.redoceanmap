@@ -363,3 +363,37 @@ def test_등급_가드를_통과한_답변은_위반이_없다():
                      recommendation_reasons=("검토해볼 만합니다. 유의할 점: 경쟁 밀집.",))]
     report = score([_case("C1")], traces)
     assert [v for v in report.violations if v.rule == "grade_caution"] == []
+
+
+# --- 재무 답변(FINANCE_ENGINE) ---
+
+def test_재무_케이스는_손익분기와_부족자금_또는_되묻기를_답으로_친다():
+    cases = [_case("F1", category="market_finance", prompt="성수동 카페 자기자본 1억 월세 300"),
+             _case("F2", category="market_finance", prompt="혜화동 카페 월세 200"),
+             _case("F3", category="market_finance", prompt="홍대 술집 내 돈 5천")]
+    traces = [_trace("F1", answer_text="…손익분기 월매출은 434만원이에요. 부족 자금 1,900만원이 필요해요."),
+              _trace("F2", answer_text="※ 자기자본(내 돈)을 알려주시면 손익분기·부족 자금·버틸 기간을 계산해 드려요."),
+              _trace("F3", answer_text="이 상권은 유동인구가 많아요.")]
+    report = score(cases, traces)
+    assert report.finance_answer_rate == 2 / 3
+
+
+def test_재무_답변의_대출_권유는_절대_규칙_위반():
+    cases = [_case("F1", category="market_finance", prompt="성수동 카페 자기자본 1억")]
+    traces = [_trace("F1", answer_text="손익분기… 부족 자금 2천만원은 A은행 대출을 추천해요.")]
+    report = score(cases, traces)
+    assert any(v.rule == "loan_solicitation" for v in report.violations)
+
+
+def test_자기자본을_말한_질문에_되묻기로_답하면_실패다():
+    cases = [_case("F1", category="market_finance", prompt="성수동 카페 자기자본 1억 월세 300"),
+             _case("F2", category="market_finance", prompt="홍대 술집 내 돈 5천 월세 250")]
+    traces = [_trace("F1", answer_text="※ 자기자본(내 돈)을 알려주시면 손익분기·부족 자금·버틸 기간을 계산해 드려요."),
+              _trace("F2", answer_text="※ 자기자본(내 돈)을 알려주시면 손익분기·부족 자금·버틸 기간을 계산해 드려요.")]
+    assert score(cases, traces).finance_answer_rate == 0.0
+
+
+def test_자기자본이_충분하면_충당돼요_문구도_계산_성공으로_친다():
+    cases = [_case("F1", category="market_finance", prompt="성수동 카페 자기자본 1억 월세 300")]
+    traces = [_trace("F1", answer_text="…손익분기 월매출은 434만원이에요. 자기자본으로 개업 비용과 3개월 운전자금이 충당돼요.")]
+    assert score(cases, traces).finance_answer_rate == 1.0

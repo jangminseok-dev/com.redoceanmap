@@ -13,6 +13,11 @@ import pytest
 from chat.app.exceptions import ConversationNotFoundError
 from chat.app.use_cases.chat_interactor import ChatInteractor
 from chat.domain.entities.conversation_entity import Conversation, Message
+from hub.app.dtos.area_finance_dto import (
+    AreaFinancePlanInfo,
+    AreaFinanceRequest,
+    FinanceInputItem,
+)
 from hub.app.dtos.commercial_data_dto import (
     AreaInfo,
     AreaInsight,
@@ -320,7 +325,7 @@ def _area_score() -> AreaScoreInfo:
 
 def _build(monkeypatch, llm_responses, *, stocks=None, news=None, conversations=None,
            market=None, market_news=None, gemini=None, forecaster=None, fundamentals=None,
-           profiles=None, signals=None, paper=None):
+           profiles=None, signals=None, paper=None, finance=None):
     llm = _StubLLM(llm_responses)
     monkeypatch.setattr("chat.app.use_cases.chat_interactor.llm_orchestrator", llm)
     market, recorder = market or _StubMarket(), _StubRecorder()
@@ -335,12 +340,12 @@ def _build(monkeypatch, llm_responses, *, stocks=None, news=None, conversations=
         market=market, recorder=recorder, conversations=conversations,
         stocks=stocks, news=news, market_news=market_news, gemini=gemini,
         forecaster=forecaster, fundamentals=fundamentals, profiles=profiles,
-        signals=signals, paper=paper,
+        signals=signals, paper=paper, finance=finance,
     )
     return interactor, llm, dict(market=market, recorder=recorder,
                                  conversations=conversations, stocks=stocks, news=news,
                                  market_news=market_news, gemini=gemini, forecaster=forecaster,
-                                 fundamentals=fundamentals, profiles=profiles)
+                                 fundamentals=fundamentals, profiles=profiles, finance=finance)
 
 
 # --- phase0 3분류 라우팅 ---
@@ -2686,3 +2691,158 @@ async def test_같은_자치구_상권_두_곳_비교도_각각_후보에_둔다
     # 축 어휘("안전한"·"매출 높은")가 없어도 지역 비교는 점포당 월매출로 코드가 결론을 정한다
     assert "점포당 월매출 기준(" in llm.calls[-1][0] and result.text.startswith("점포당 월매출 기준(")
 
+
+
+# --- 재무 경로(FINANCE_ENGINE_2026-09-16) ---
+
+class _StubFinance:
+    def __init__(self, info=None, none_for=()):
+        self.info, self.none_for, self.requests = info, none_for, []
+
+    async def plan(self, request: AreaFinanceRequest):
+        self.requests.append(request)
+        return None if request.trdar_code in self.none_for else self.info
+
+
+def _finance_info(**over) -> AreaFinancePlanInfo:
+    base = dict(
+        trdar_code=1000001, trdar_name="테스트상권", service_code="CS100010", service_name="커피-음료",
+        headline="자기자본 1억원(입력)·월세 300만원(기타 소규모 상가 평균, 33㎡ 가정)으로 계산하면 손익분기 월매출은 434만원이에요. 부족 자금 1,900만원이 필요해요.",
+        assumption_note="가정: 보증금은 월세 10개월분 가정 · 1인 운영 가정",
+        inputs=(FinanceInputItem("equity", 100_000_000, "input", ""), FinanceInputItem("monthly_rent", 3_000_000, "area_avg", "기타 평균")),
+        capex=110_000_000, funding_gap=19_000_000, loan=19_000_000, bep_monthly_sales=4_340_000,
+        attainment=3.46, monthly_profit=10_400_000, runway_months=None, stress_runway=((1.0, None), (2.0, None)),
+        expected_monthly_sales=15_000_000, rent_level="zone",
+    )
+    base.update(over)
+    return AreaFinancePlanInfo(**base)
+
+
+async def test_재무_어휘가_있으면_첫_줄을_코드가_쓰고_카드를_동반한다(monkeypatch):
+    finance = _StubFinance(_finance_info())
+    interactor, llm, stubs = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON], finance=finance)
+    result = await interactor.ask("성수동 카페, 자기자본 1억이면 월세 300에 몇 달 버텨?")
+    assert result.text.startswith("자기자본 1억원(입력)")
+    assert result.finance is not None and result.finance.fundingGap == 19_000_000
+    req = finance.requests[0]
+    assert req.equity == 100_000_000 and req.monthly_rent == 3_000_000 and req.sources == {}
+    assert "[재무 계산 — 코드가 정함]" in llm.calls[-1][0]  # phase2 컨텍스트에 블록 주입
+    assert stubs["conversations"].payloads[-1]["finance"]["fundingGap"] == 19_000_000
+
+
+async def test_재무_어휘가_없으면_기존_경로_그대로다(monkeypatch):  # 무손상
+    finance = _StubFinance(_finance_info())
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON], finance=finance)
+    result = await interactor.ask("성수동 카페 어때?")
+    assert result.finance is None and finance.requests == []
+
+
+async def test_자기자본이_없으면_프로파일_예산_밴드_중앙값을_쓴다(monkeypatch):
+    finance = _StubFinance(_finance_info())
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON],
+                              finance=finance, profiles=_StubProfiles(_profile()))
+    await interactor.ask("성수동 카페 월세 300이면 손익분기 얼마야?", user_id=7)
+    req = finance.requests[0]
+    assert req.equity == 75_000_000 and req.sources["equity"] == "profile"
+    assert "5천만~1억원" in req.equity_note
+
+
+async def test_자기자본이_어디에도_없으면_되묻고_엔진을_부르지_않는다(monkeypatch):
+    finance = _StubFinance(_finance_info())
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON], finance=finance)
+    result = await interactor.ask("성수동 카페 월세 300이면 손익분기 얼마야?")
+    assert finance.requests == [] and result.finance is None
+    assert "자기자본" in result.text and "알려주시면" in result.text
+
+
+async def test_후속_턴은_직전_카드_입력을_이어받고_바뀐_값만_교체한다(monkeypatch):
+    prev = {"finance": {"trdarCode": 1000001, "trdarName": "테스트상권", "serviceCode": "CS100010",
+                        "serviceName": "커피-음료", "headline": "h", "assumptionNote": "", "capex": 0,
+                        "fundingGap": 0, "bepMonthlySales": 0, "attainment": None, "monthlyProfit": None,
+                        "runwayMonths": None, "rentLevel": "zone",
+                        "inputs": [{"key": "equity", "value": 100_000_000, "source": "input", "note": ""},
+                                   {"key": "monthly_rent", "value": 3_000_000, "source": "input", "note": ""},
+                                   {"key": "deposit", "value": 30_000_000, "source": "assumed", "note": "가정"}]},
+            "recommendations": [{"id": "1000001", "name": "테스트상권", "serviceCode": "CS100010", "category": "커피-음료"}]}
+    conversations = _StubConversations(history=[
+        Message(id=1, conversation_id=100, role="user", content="성수동 카페 자기자본 1억 월세 300", created_at=_NOW),
+        Message(id=2, conversation_id=100, role="assistant", content="h", created_at=_NOW, payload=prev),
+    ])
+    finance = _StubFinance(_finance_info())
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_EMPTY, PHASE2_JSON],
+                              finance=finance, conversations=conversations)
+    await interactor.ask("월세 250이면?", conversation_id=100)
+    req = finance.requests[0]
+    assert req.monthly_rent == 2_500_000 and req.sources.get("monthly_rent") is None
+    assert req.equity == 100_000_000 and req.sources["equity"] == "history"
+    assert req.deposit is None  # 가정치는 승계하지 않는다(다시 가정)
+
+
+async def test_엔진이_None이면_월세를_되묻는다(monkeypatch):
+    finance = _StubFinance(_finance_info(), none_for=(1000001,))
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON], finance=finance)
+    result = await interactor.ask("성수동 카페 자기자본 1억이면 몇 달 버텨?")
+    assert result.finance is None and "월세" in result.text and "알려주시면" in result.text
+
+
+async def test_재무_포트가_있으면_임대료_미지원_고지는_붙지_않는다(monkeypatch):
+    finance = _StubFinance(_finance_info())
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON], finance=finance)
+    result = await interactor.ask("역삼동 카페 자기자본 1억 월세 400 어때?")
+    assert "임대료·보증금·권리금 데이터는 제공하지 않아요" not in result.text
+
+
+async def test_재무_블록에는_대출_권유_금지_규칙이_실린다(monkeypatch):
+    finance = _StubFinance(_finance_info())
+    interactor, llm, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON], finance=finance)
+    await interactor.ask("성수동 카페 자기자본 1억 월세 300")
+    ctx = llm.calls[-1][0]
+    assert "대출 상품이나 은행을 권하지 말 것" in ctx and "재계산하거나 다른 금액을 만들지 말 것" in ctx
+
+
+async def test_상권이_바뀐_후속_턴은_상권_평균_월세와_공정위_창업비용을_승계하지_않는다(monkeypatch):
+    prev = {"finance": {"trdarCode": 1000001, "trdarName": "테스트상권", "serviceCode": "CS100010",
+                        "serviceName": "커피-음료", "headline": "h", "assumptionNote": "", "capex": 0,
+                        "fundingGap": 0, "bepMonthlySales": 0, "attainment": None, "monthlyProfit": None,
+                        "runwayMonths": None, "rentLevel": "zone",
+                        "inputs": [{"key": "equity", "value": 100_000_000, "source": "input", "note": ""},
+                                   {"key": "monthly_rent", "value": 1_485_000, "source": "area_avg", "note": "기타 평균"},
+                                   {"key": "startup_cost", "value": 80_000_000, "source": "franchise", "note": "공정위"}]},
+            "recommendations": [{"id": "1000001", "name": "테스트상권", "serviceCode": "CS100010", "category": "커피-음료"}]}
+    conversations = _StubConversations(history=[
+        Message(id=1, conversation_id=100, role="user", content="성수동 카페 자기자본 1억", created_at=_NOW),
+        Message(id=2, conversation_id=100, role="assistant", content="h", created_at=_NOW, payload=prev),
+    ])
+    finance = _StubFinance(_finance_info())
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON],
+                              finance=finance, conversations=conversations)
+    await interactor.ask("월세 250이면 얼마나 버텨?", conversation_id=100)
+    req = finance.requests[0]
+    assert req.equity == 100_000_000 and req.sources["equity"] == "history"
+    assert req.startup_cost is None and "startup_cost" not in req.sources  # 엔진이 다시 채운다
+
+
+async def test_라벨_금액과_단독_금액이_함께_있으면_단독_금액이_자기자본이다(monkeypatch):
+    finance = _StubFinance(_finance_info())
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON], finance=finance)
+    result = await interactor.ask("성수동 카페 1억으로 월세 300이면?")
+    req = finance.requests[0]
+    assert req.equity == 100_000_000 and req.monthly_rent == 3_000_000
+    assert "자기자본(내 돈)을 알려주시면" not in result.text
+
+
+async def test_권리금_어휘도_재무_경로를_탄다(monkeypatch):
+    finance = _StubFinance(_finance_info())
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON], finance=finance)
+    await interactor.ask("역삼동 카페 자기자본 1억 권리금 2천이면 어때?")
+    req = finance.requests[0]
+    assert req.key_money == 20_000_000
+
+
+async def test_업종_미확정_질의는_재무_경로를_타지_않고_임대료_고지를_유지한다(monkeypatch):
+    finance = _StubFinance(_finance_info())
+    phase1_generic = '{"service_code": "CS000000", "service_name": "전체", "trdar_codes": [1000001]}'
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, phase1_generic, PHASE2_JSON], finance=finance)
+    result = await interactor.ask("역삼동 임대료 어때?")
+    assert finance.requests == []
+    assert "임대료·보증금·권리금 데이터는 제공하지 않아요" in result.text

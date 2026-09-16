@@ -181,7 +181,7 @@ hnsw 재검토"로 유예 — 73k라 곧 닿는다) · `pg_trgm` 사용 가능(�
 | B1 | ~~**상권 북마크 알림**~~ — **완료(2026-08-24)**. `BookmarkDirectoryPort.area_bookmarks()` + `BookmarkAlertInteractor` 상권 분기·등급 상태 스캔(dedupe 상태 인코딩 `"20254양호"` 7자 ≤ direction String(8) — 마이그레이션 불요) + `compose_area_alert`(결정론·고지). 원천은 chat·지도와 동일(CommercialDataPort) | 서울시 "위기 상권 경보"(2027) | `bookmark_alert_interactor`가 `stock_bookmarks()`만 읽음. `Bookmark.target_type`에 `area`는 이미 있음. 허브 확장(§새 도메인 판정 "알림=hub 확장"과 일치) | M |
 | B2 | ~~**주가 영향 키워드 Top-N**~~ — **완료(2026-08-24)**. `stock/domain/services/keyword_extractor.py`(결정론: 문서빈도 + 과빈도 컷 70% + 감성 가중 — 전 코퍼스 TF-IDF는 이득 대비 비용으로 후속) → `NewsSearchPort.top_keywords` → chat 근거 [4] 라인 + `StockCard.keywords` 칩 | 씽크풀 | `keyword` grep 0건. 뉴스 라벨 `event_type` 빈도 + TF-IDF로 결정론 구현, R4 `근거 [n]` 배지에 붙임. LLM 추가 호출 없음 | S~M |
 | B3 | **내 가게 진단** — 사용자 월매출 입력 → 상권 점포당 매출 분위 비교 | 365·오픈업·나이스 | `user_profiles`(③-M6.5)에 자영업 여부·월매출 밴드 추가 → detail 백분위 칩. 상권 분포는 보유 | M |
-| B4 | **창업비용·손익분기 서술** | 오픈업 계산기·서울시 챗봇 예시 | 코드 0건. 매출은 있고 **비용(임대료) 없음** — R-ONE 키 선행. 임대료 없이도 공정위 가맹 정보공개서(무료)로 업종별 창업비용 가능. game `fitness` 4축과 겹치므로 **market 서술 팩트**로 두고 game은 소비만 | M (R-ONE 후) |
+| B4 | ~~**창업비용·손익분기 서술**~~ — **완료(2026-09, FINANCE_ENGINE_2026-09-16)**. R-ONE 임대료·ECOS 금리 적재 + market `finance_engine`(BEP·부족 자금·runway·금리 스트레스) + chat 재무 경로(결정론 파서·이력/프로파일 폴백·코드 첫 줄). 은행 상품 추천은 범위 밖 | 오픈업 계산기·서울시 챗봇 예시 | 정본 [[minseok/_docs/FINANCE_ENGINE_2026-09-16\|FINANCE_ENGINE]] | M |
 | B5 | 지도 반경·다각형 분석 | 서울시 나는사장·오픈업 | `region.x_coord/y_coord`만 있고 폴리곤 없음(서울시 상권영역 셰이프 적재 필요). 상권 코드 UX가 이미 있어 **수요 게이트 뒤** | L |
 | B6 | 지도로 보는 정책 공고 | 서울시 2026 하반기 | 코드 0건. 공고는 공공이라 스크래핑 금지에 안 걸림. 수요 불명 — 보류 | M |
 | — | 배달 깃발 최적화 / 매장별 추정 매출 | 오픈업 | **기각** — 배달 주문지·카드사 제휴 데이터 입수 불가. 대신 "추정치 한계 명시"로 대응 | — |

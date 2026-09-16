@@ -22,6 +22,7 @@ chat은 다른 스포크를 **직접 import하지 않는다**. 허브 `hub`가 �
 | `MarketNewsSearchPort` | market (`MarketNewsSearchGateway`) | 상권 뉴스 의미 검색(지역 기사 근거) |
 | `GeminiAnswerPort` | hub 자체 구현 (`GeminiApiAdapter`) | 일반 질문(general) 외부 Gemini 답변 |
 | `UserProfilePort` | recommendation (`UserProfileGateway`) | 투자·창업 프로파일(개인화 ⓪ — 서술 관점 조정) |
+| `AreaFinancePort` | market (`AreaFinanceGateway`) | 창업 재무 계산(BEP·부족 자금·runway) — 첫 줄은 코드 |
 
 ## 의도 라우팅 — phase0 (4분류)
 
@@ -56,6 +57,11 @@ chat은 다른 스포크를 **직접 import하지 않는다**. 허브 `hub`가 �
   **상권 성격**(허브 `get_area_insights` — 고객층·배후 수요·소비력·객단가)도 주입한다.
   서술자가 최대 9문장을 만들지만 프롬프트 예산상 `_INSIGHT_PRIORITY` 순 **상위 4개만**
   쓴다(오피스형/주거형 → 객단가 → 연령 → 피크). 문장 없는 상권은 라인 생략.
+  **재무 질문**(자기자본·보증금·월세·대출·버틸·손익 어휘 또는 라벨 금액 2개 이상)이면 1순위 상권·확정 업종으로
+  허브 `AreaFinancePort`를 불러 **첫 줄을 코드가 쓴다**(값·출처 병기). 입력은 결정론 파서
+  (`domain/services/amount_parser.py`) → 직전 finance 카드 승계 → 프로파일 예산 밴드(자기자본만) 순으로 채우고,
+  자기자본이 끝내 없을 때만 되묻는다. phase2 컨텍스트에 `[재무 계산 — 코드가 정함]` 블록 + 재계산·대출 권유 금지 규칙.
+  카드 payload `finance`가 다음 턴 승계 키다. 포트가 배선되면 임대료 미지원 고지(I-12)는 붙지 않는다.
 - **`general`** — 상권/주식과 무관한 질문(인사·상식·인물 등). 허브 `GeminiAnswerPort`
   (외부 Gemini API)로 답변. Gemini 실패 시 안내 문구로 열화(500 방지).
 분류 파싱 실패·미지 라벨 → market 폴백(기존 동일), stock인데 종목 추출 실패 → market_news.

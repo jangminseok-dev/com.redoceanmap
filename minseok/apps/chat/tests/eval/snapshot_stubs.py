@@ -378,6 +378,49 @@ class SnapshotConversations:
         return []
 
 
+class SnapshotFinance:
+    """AreaFinancePort 고정 스텁 — 시드 결정론 산술(엔진 정본은 market, 여기서는 계약 DTO만 만든다)."""
+
+    RENT_PER_SQM = 45_000
+    COST_RATIO = 0.35
+    LOAN_RATE = 4.5
+
+    def __init__(self) -> None:
+        self.requests: list = []
+
+    async def plan(self, request):
+        from hub.app.dtos.area_finance_dto import AreaFinancePlanInfo, FinanceInputItem
+
+        self.requests.append(request)
+        rent = request.monthly_rent or int(self.RENT_PER_SQM * (request.area_sqm or 33))
+        deposit = request.deposit if request.deposit is not None else rent * 10
+        startup = request.startup_cost if request.startup_cost is not None else 80_000_000
+        payroll = 10_320 * 209 * (request.headcount or 0)
+        capex = startup + deposit + (request.key_money or 0)
+        opex = rent + payroll
+        gap = max(0, capex + opex * 3 - request.equity)
+        loan = max(request.desired_loan or 0, gap)
+        fixed = opex + round(loan * self.LOAN_RATE / 100 / 12)
+        bep = round(fixed / (1 - self.COST_RATIO))
+        sales = 12_000_000 + (_seed(request.trdar_code) % 9) * 1_000_000
+        profit = round(sales * (1 - self.COST_RATIO) - fixed)
+        cash = max(0, request.equity + loan - capex)
+        runway = None if profit >= 0 else round(cash / abs(profit), 1)
+        headline = (f"자기자본 {request.equity // 10_000:,}만원(입력)·월세 {rent // 10_000:,}만원"
+                    f"({'입력' if request.monthly_rent else '권역 평균, 33㎡ 가정'})·창업비용 {startup // 10_000:,}만원(공정위 중앙값)"
+                    f"으로 계산하면 손익분기 월매출은 {bep // 10_000:,}만원이에요. 점포당 월매출 {sales // 10_000:,}만원이면"
+                    f" 달성률 {sales / bep:.0%}. 부족 자금 {gap // 10_000:,}만원이 필요해요."
+                    + (f" 적자가 이어지면 약 {runway:.0f}개월 버틸 수 있어요." if runway else ""))
+        return AreaFinancePlanInfo(
+            trdar_code=request.trdar_code, trdar_name="", service_code=request.service_code, service_name="",
+            headline=headline, assumption_note="가정: 보증금은 월세 10개월분 가정 · 1인 운영 가정 · 이자만 반영",
+            inputs=(FinanceInputItem("equity", request.equity, "input", ""), FinanceInputItem("monthly_rent", rent, "input" if request.monthly_rent else "area_avg", "")),
+            capex=capex, funding_gap=gap, loan=loan, bep_monthly_sales=bep, attainment=round(sales / bep, 2),
+            monthly_profit=profit, runway_months=runway, stress_runway=((1.0, runway), (2.0, runway)),
+            expected_monthly_sales=sales, rent_level="zone",
+        )
+
+
 def seeded_conversations(market: SnapshotMarket, regions: tuple[str, ...],
                          per_region: int = 2) -> tuple[SnapshotConversations, tuple[int, ...]]:
     """multiturn 시딩 — 지역 어간이 걸리는 상권 상위 N개를 직전 추천 payload로 넣는다."""

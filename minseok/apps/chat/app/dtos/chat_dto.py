@@ -68,9 +68,36 @@ class NewsCardItem(BaseModel):
     eventType: str | None
 
 
+class FinanceInputCard(BaseModel):
+    key: str
+    value: float
+    source: str
+    note: str
+
+
+class FinanceCard(BaseModel):
+    """재무 계산 카드 — 첫 줄(코드 작성)·입력값과 출처·핵심 수치. 다음 턴 승계 키이기도 하다."""
+
+    trdarCode: int
+    trdarName: str
+    serviceCode: str
+    serviceName: str
+    headline: str
+    assumptionNote: str
+    inputs: list[FinanceInputCard]
+    capex: int
+    fundingGap: int
+    bepMonthlySales: int
+    attainment: float | None
+    monthlyProfit: int | None
+    runwayMonths: float | None
+    rentLevel: str | None
+
+
 class AskResponse(BaseModel):
     text: str
     recommendations: list[AreaRecommendation]
     conversationId: int
     stock: StockCard | None = None
     news: list[NewsCardItem] = []
+    finance: FinanceCard | None = None

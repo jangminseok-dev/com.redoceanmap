@@ -67,6 +67,7 @@ from hub.adapter.inbound.api.v1.news_alert_scan_router import news_alert_scan_ro
 from hub.adapter.inbound.api.v1.signal_scan_router import signal_scan_router
 from hub.adapter.inbound.api.v1.stock_demand_router import stock_demand_router
 from hub.dependencies.area_backtest_report_provider import get_area_backtest_report_port
+from hub.dependencies.area_finance_provider import get_area_finance_port
 from hub.dependencies.forecast_refit_provider import get_forecast_refit_port
 from hub.dependencies.forecast_snapshot_provider import get_forecast_snapshot_port
 from hub.dependencies.paper_trading_provider import get_paper_decision_port, get_paper_trading_port
@@ -109,6 +110,7 @@ from hub.dependencies.stock_demand_provider import get_stock_demand_port
 from hub.dependencies.stock_dataset_stats_provider import get_stock_dataset_stats_port
 from hub.dependencies.news_event_study_provider import get_news_event_study_port
 from market.dependencies.area_backtest_report_provider import get_area_backtest_report_gateway
+from market.dependencies.area_finance_provider import get_area_finance_gateway
 from market.dependencies.commercial_data_provider import get_commercial_data_gateway
 from market.dependencies.market_news_provider import (
     get_franchise_cost_storage_gateway,
@@ -122,6 +124,7 @@ from market.adapter.inbound.api.v1.area_score_router import area_score_router
 from market.adapter.inbound.api.v1.area_fitness_router import (
     area_fitness_router as market_area_fitness_router,
 )
+from market.adapter.inbound.api.v1.area_finance_router import area_finance_router
 from market.adapter.inbound.api.v1.area_public_router import area_public_router
 from market.adapter.inbound.api.v1.area_showcase_router import area_showcase_router
 from market.adapter.inbound.api.v1.area_stats_router import area_stats_router
@@ -264,6 +267,7 @@ app.include_router(area_detail_router, dependencies=_authenticated)
 app.include_router(area_router, dependencies=_authenticated)
 app.include_router(area_score_router, dependencies=_authenticated)
 app.include_router(market_area_fitness_router, dependencies=_authenticated)
+app.include_router(area_finance_router, dependencies=_authenticated)
 app.include_router(area_ranking_router, dependencies=_authenticated)
 app.include_router(area_stats_router, dependencies=_authenticated)
 app.include_router(cartographer_router, dependencies=_authenticated)
@@ -344,6 +348,7 @@ app.dependency_overrides[get_paper_trading_port] = get_paper_trading_gateway
 app.dependency_overrides[get_paper_decision_port] = get_paper_decision_gateway
 app.dependency_overrides[get_forecast_refit_port] = get_forecast_refit_gateway
 app.dependency_overrides[get_area_backtest_report_port] = get_area_backtest_report_gateway
+app.dependency_overrides[get_area_finance_port] = get_area_finance_gateway
 app.dependency_overrides[get_news_event_study_port] = get_news_event_study_gateway
 
 

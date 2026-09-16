@@ -19,7 +19,7 @@
 market의 모든 테이블(3NF 15 + market_news_articles + area_score_backtest_reports)은
 **전용 DB(market-pgvector, pg17+pgvector, 호스트 :5434)**에 산다. 접근은 market 프로바이더가
 `core.database.get_market_db`(엔진은 `MARKET_DATABASE_URL`, 미설정 시 메인 폴백)로만 한다 —
-앱별 DB 불가침. 스키마 진실은 `apps/market/alembic` 독립 체인(7c5cfbd1c35f → 8d6efce2a41b → 9a1b2c3d4e5f → f3e4d5c6b7a8 → f4e5d6c7b8a9 → b5c6d7e8f9a0 → c7d8e9f0a1b2 → d8e9f0a1b2c3 → d8f0a1b2c3d4),
+앱별 DB 불가침. 스키마 진실은 `apps/market/alembic` 독립 체인(7c5cfbd1c35f → 8d6efce2a41b → 9a1b2c3d4e5f → f3e4d5c6b7a8 → f4e5d6c7b8a9 → b5c6d7e8f9a0 → c7d8e9f0a1b2 → d8e9f0a1b2c3 → d8f0a1b2c3d4 → e9a1b2c3d4e5 → f5a6b7c8d9e0),
 루트 체인의 market 리비전들은 이력 동결(루트 env.py에서 ORM 제거 + include_name 필터).
 컨테이너 접속: 실운영 backend는 `host.docker.internal:5434`(네트워크 분리, extra_hosts).
 백업: `scripts/backup_db.sh`의 market 블록(market-*.dump 7세대). 배치(ingest·backtest)도
@@ -73,6 +73,7 @@ market의 모든 테이블(3NF 15 + market_news_articles + area_score_backtest_r
 | 프론트 `/market/trdar/{code}/fitness?service_code=` | `area_fitness` 조회 슬라이스(2026-09 game에서 이관) — 상권×업종 **입지 적합도 4축**(수요 정합·시간대 정합·경쟁 여유·생존 신호, 가중 합 0~1) + 실데이터 숫자로 말하는 진단 문장. 판정은 순수 도메인 `domain/services/area_fitness.py`, 문장은 `area_fitness_narrator.py`(템플릿, LLM 미사용). 입력 분포·서울 백분위는 `pg/area_demand_profile_pg_repository.py`(조회 6번, **최신 적재 분기**). 창업비용·임대료 같은 가정치는 없다(ROADMAP B4). 상권·업종 부재는 404 |
 | **공개** `/market/areas/{code}/public` · `/market/areas/public-index` | `area_public` 슬라이스(A-4, 2026-09-14) — showcase에 이어 인증 없이 열리는 두 번째 경로. 상세·점수 유스케이스를 **조합만** 하고 `AreaPublicView`가 공개 필드를 명시(핵심 요약·점수·해석 문장 — 좌표·인허가 상호·인구 피라미드·업종 랭킹 표 없음). 인증 대신 `core/rate_limit`(60/분·10/분) + 하루 캐시. 인덱스는 차원 목록(코드·이름·자치구·유형)뿐. 공개 집합·rate limit 부착은 `minseok/tests/test_public_routes.py`가 고정 |
 | (허브 적재) `POST /automation/franchise-costs` | 공정위 가맹정보 **업종별 창업비용** — 브랜드별 정보공개서(천원, 1만 1천여 건)를 업종 중분류별 **중앙값**·평균·브랜드 수로 우리가 집계(업종별 API는 단위·정의 불명확해 미사용) — `franchise_industry_costs`(year·sector·industry_name 교체 멱등, 리비전 d8f0a1b2c3d4). 수집 `scripts/collect_franchise_costs.py`(k3s CronJob 매월 1일 03:30, data.go.kr `DATA_GO_KR_API_KEY` + 해당 서비스 **활용신청 필요**). 읽기는 허브 `CommercialDataPort.get_startup_costs()`(chat 예산 답 — 예산의 70%까지를 창업비용으로 잡는 가정치, 임대료·인테리어 제외 고지) |
+| 프론트 `/market/trdar/{code}/finance?service_code=&equity=…` | `area_finance` 조회 슬라이스(2026-09, FINANCE_ENGINE) — 사용자 입력(자기자본·보증금·월세·면적·인원·희망대출) + 상권 점포당 월매출·R-ONE 임대료·공정위 창업비용·ECOS 금리 → 순수 `domain/services/finance_engine.py`(BEP·부족 자금·runway·금리 +1/+2%p·3시나리오). 값마다 출처 태그, 첫 줄은 `finance_narrator`. 허브 `AreaFinancePort`로 chat에도 공급. 임대료 미적재 + 월세 미입력은 404 |
 
 **객단가 분해·통행 대조(2026-07-27)** — `estimated_sales`의 건수 축과 `floating_population`의
 요일 축을 처음 쓴다. 금액만으론 "많이 오는 층"과 "비싸게 쓰는 층"이 구분되지 않는다.
@@ -170,6 +171,20 @@ market의 모든 테이블(3NF 15 + market_news_articles + area_score_backtest_r
 - ⚠ `find_service_ranking`의 `monthly_sales`·`sales_per_store`는 9/8 분기→월 환산(÷3)에서 **빠져 있었다**
   (다른 repo 4곳은 적용됨) — 이 팩트의 분모라 같이 고쳤다. 상세 응답의 업종 랭킹 금액도 이때부터 월 단위다.
 - chat 노출은 `_INSIGHT_PRIORITY`(상위 4개)에 `payback`이 없어 아직 도달하지 않는다 — window 후속.
+
+## 임대료·금리 (창업 재무 엔진, 2026-09)
+
+- `rent_benchmarks` — R-ONE 상가 임대동향(소규모·중대형·집합) 서울 64 CLS × 분기(2024Q3~), 임대료 원/㎡·공실률.
+  수집 `scripts/collect_rone_rent.py`(분기 첫 달 10일 cron). 상권 매칭은 `domain/services/rent_matcher.py`
+  (R-ONE 상권 59개 별칭 → 자치구 권역 → 서울). **대부분 권역 평균**이라 서술이 "동북권 평균"임을 병기한다.
+- `interest_rates` — ECOS 기준금리·대출평균·기업대출 월별. 수집 `scripts/collect_ecos_rates.py`(매월 15일).
+- 원가율·최저임금·기본 면적·보증금 개월·운전자금 개월은 `domain/services/cost_benchmarks.py` 상수(잠정, 출처 병기).
+- **잔여(2026-09-16)**: ① 골든셋 러너(`-m ollama`) 재박제·`finance_answer_rate` 실측은 백엔드 PC 전용이라 미실행
+  ② R-ONE 상권 직접 매칭률 실측 미완 — 맥 로컬 DB에 `trade_area`가 없어 백엔드 PC DB 접속이 필요하다
+  ③ dev 파드 실 DB curl 검증 미실행(파드 미기동).
+- **배포 체크리스트**: ① `infra/k8s/load-image.sh`로 이미지 재빌드(cron 스크립트는 이미지 `/app`에 들어간다)
+  ② `alembic -c apps/market/alembic.ini upgrade head` 수동 실행 ③ `/market/trdar/{code}/finance` curl 1회
+  ④ `collect_rone_rent.py --dry-run`·`collect_ecos_rates.py --dry-run`.
 
 ## 상권 뉴스 (RAG 코퍼스)
 

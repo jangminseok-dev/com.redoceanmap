@@ -14,7 +14,7 @@ class EvalCase:
     """골든셋 한 문항 — tests/eval/golden_set.jsonl 한 줄."""
 
     case_id: str
-    # market_region | market_noregion | market_nonseoul
+    # market_region | market_noregion | market_nonseoul | market_finance
     # | stock_kr | stock_us | stock_fuzzy | market_news | general | multiturn
     category: str
     prompt: str

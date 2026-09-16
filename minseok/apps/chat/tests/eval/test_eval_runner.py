@@ -29,6 +29,7 @@ from chat.domain.value_objects.eval_trace import CaseTrace, LlmCall
 from chat.tests.eval.golden import TRACE_PATH, load_cases
 from chat.tests.eval.snapshot_stubs import (
     SnapshotConversations,
+    SnapshotFinance,
     SnapshotForecast,
     SnapshotFundamentals,
     SnapshotGemini,
@@ -127,6 +128,7 @@ async def test_run_eval_and_write_trace(monkeypatch):
             market=market, recorder=SnapshotRecorder(), conversations=conversations,
             stocks=stocks, news=news, market_news=SnapshotMarketNews(), gemini=gemini,
             forecaster=SnapshotForecast(), fundamentals=SnapshotFundamentals(),
+            finance=SnapshotFinance(),
         )
 
         error: str | None = None
