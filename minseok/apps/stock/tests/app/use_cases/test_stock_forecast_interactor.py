@@ -162,8 +162,8 @@ async def test_DOWN_신호는_하락_적중률이_하락_기준선을_이겨야_
         interactor._predictor, "predict",
         lambda *a, **k: Outlook(direction=Direction.DOWN, confidence=0.5),
     )
-    # 하락 적중 45%(90/200) vs 하락 기준선 30% — 우위 +15%p
-    down = DirectionStats(200, 40, -0.02, -0.01, 0.0, down_hits=90)
+    # 하락 적중 45%(450/1000) vs 하락 기준선 30% — 우위 +15%p. 겹침 보정(÷5일) 뒤 유효 표본 200 ≥ 100
+    down = DirectionStats(1000, 200, -0.02, -0.01, 0.0, down_hits=450)
     dist = ForecastDistribution(
         horizon_days=5, evaluated=400, baseline_up_rate=0.55, baseline_down_rate=0.30,
         by_direction={
@@ -177,10 +177,31 @@ async def test_DOWN_신호는_하락_적중률이_하락_기준선을_이겨야_
     view = await interactor.forecast(ForecastQuery(symbol="TEST"))
     assert view.signal_direction == "DOWN"
     p = view.probability
-    assert p.hits == 90 and p.up_rate == 0.45      # 방향 적중률
+    assert p.hits == 450 and p.up_rate == 0.45     # 방향 적중률
     assert p.baseline_up_rate == 0.30              # 그 방향의 기준선
     assert p.ready is True
     assert not any(i.key == "sample" for i in view.insights)  # 참고용 경고 없음
+
+
+async def test_원표본_200은_겹침_보정하면_유효_40이라_유의하지_않다(monkeypatch):
+    """2026-09-17 — 매일 평가한 5일 창은 겹친다. 같은 45% vs 30%라도 원표본 200은 독립 표본 40개 수준이다."""
+    interactor = StockForecastInteractor(history=_StubPort(_bars(120)))
+    monkeypatch.setattr(
+        interactor._predictor, "predict",
+        lambda *a, **k: Outlook(direction=Direction.DOWN, confidence=0.5),
+    )
+    down = DirectionStats(200, 40, -0.02, -0.01, 0.0, down_hits=90)
+    dist = ForecastDistribution(
+        horizon_days=5, evaluated=400, baseline_up_rate=0.55, baseline_down_rate=0.30,
+        by_direction={
+            "UP": DirectionStats(0, 0, None, None, None),
+            "DOWN": down,
+            "NEUTRAL": DirectionStats(200, 110, 0.0, 0.0, 0.0),
+        },
+    )
+    monkeypatch.setattr(interactor._backtester, "distribution", lambda *a, **k: dist)
+    view = await interactor.forecast(ForecastQuery(symbol="TEST"))
+    assert view.probability.ready is False and view.probability.sample_size == 200
 
 
 async def test_DOWN은_상승률이_낮다는_이유만으로는_유의하지_않다(monkeypatch):

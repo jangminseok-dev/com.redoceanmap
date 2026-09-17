@@ -26,7 +26,7 @@ from stock.domain.services.indicator_calculator import IndicatorCalculator
 from stock.domain.services.outlook_predictor import OutlookPredictor
 from stock.domain.services.regime_calendar import RegimeCalendar
 from stock.app.ports.output.market_data_port import MarketDataPort
-from stock.domain.value_objects.backtest_report import MIN_SIGNAL_SAMPLES, wilson_bounds
+from stock.domain.value_objects.backtest_report import MIN_SIGNAL_SAMPLES, overlap_effective, wilson_bounds
 from stock.domain.value_objects.forecast_distribution import ForecastDistribution
 from stock.domain.value_objects.market_values import Symbol
 from stock.domain.value_objects.position_profile import PositionProfile
@@ -158,9 +158,11 @@ class StockForecastInteractor(StockForecastUseCase):
             # 방향마다 분자와 기준선이 함께 바뀌므로 유의성 판정은 양쪽 다 "하한 > 기준선"으로
             # 같은 모양이 된다(2026-08-28 하락 검증 이전에는 DOWN을 상승률의 역으로 쟀다).
             hits = stats.down_hits if direction == "DOWN" else stats.hits
-            ci_low, ci_high = wilson_bounds(hits, stats.sample_size)
+            # 신뢰구간·표본 문턱은 겹침 보정한 유효 표본(원표본 ÷ 지평)으로 — 매일 평가한 5일 창은 독립이 아니다
+            eff_hits, eff_n = overlap_effective(hits, stats.sample_size, query.horizon)
+            ci_low, ci_high = wilson_bounds(eff_hits, eff_n)
             significant = ci_low > baseline_rate if direction in ("UP", "DOWN") else False
-            ready = stats.sample_size >= MIN_SIGNAL_SAMPLES and significant
+            ready = eff_n >= MIN_SIGNAL_SAMPLES and significant
             probability = ProbabilityInfo(
                 up_rate=hits / stats.sample_size,
                 sample_size=stats.sample_size,

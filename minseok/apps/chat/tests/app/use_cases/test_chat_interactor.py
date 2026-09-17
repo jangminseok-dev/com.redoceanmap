@@ -3062,6 +3062,9 @@ def test_상권_1순위는_점수_등급_차이로만_정하고_같은_등급이
     c = AreaCompareItem(3, "망원", "마포구", {}, 2000, 1.0, 9500, 80, False, 58.0, "보통")
     v2 = area_verdict([b, c])
     assert v2.first is None and v2.line.startswith("**결론** 1순위 없음 — 성수·망원은 같은 '보통' 등급이라 우열을 가르지 않아요")
+    # 동률 위에 있고 아래 등급이 섞이면 그 사실도 결론에 남긴다
+    v4 = area_verdict([b, c, a])
+    assert v4.first is None and v4.line.endswith("역삼은 등급이 한 단계 이상 낮아(주의) 먼저 고를 곳은 아니에요.")
     # 점수 없는 곳이 끼면 판정 대상에서 빠지고 명시
     d = AreaCompareItem(4, "이태원", "용산구", {}, 900, None, None, None, False, None, None)
     v3 = area_verdict([b, d])

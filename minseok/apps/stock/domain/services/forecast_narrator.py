@@ -79,8 +79,8 @@ def narrate(
             text = "중립 신호의 통계는 방향 예측이 아니라 참고용입니다."
         else:
             text = (
-                f"표본 {stats.sample_size}회 — 통계적 확신 기준(표본 {MIN_SIGNAL_SAMPLES}회 이상 + "
-                "신뢰구간이 평소 상승률과 뚜렷이 구분)을 충족하지 못해 참고용입니다."
+                f"표본 {stats.sample_size}회 — 통계적 확신 기준(겹치는 기간을 보정한 독립 표본 {MIN_SIGNAL_SAMPLES}회 이상 + "
+                "신뢰구간이 평소 비율과 뚜렷이 구분)을 충족하지 못해 참고용입니다."
             )
         insights.append(Insight(key="sample", tone="warning", text=text))
 

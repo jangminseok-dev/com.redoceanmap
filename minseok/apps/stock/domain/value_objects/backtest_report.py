@@ -45,7 +45,17 @@ def wilson_lower_bound(hits: int, n: int, z: float = WILSON_Z) -> float:
     return center - margin
 
 
-def wilson_bounds(hits: int, n: int, z: float = WILSON_Z) -> tuple[float, float]:
+def overlap_effective(hits: int, n: int, horizon_days: int) -> tuple[float, float]:
+    """매일 평가한 horizon일 수익률은 창이 겹친다 — 독립 표본 수는 대략 n ÷ horizon(2026-09-17 점검).
+
+    원표본으로 Wilson을 쓰면 구간이 √horizon배 좁아져 "통계적으로 유의"가 과하게 켜졌다(5일 지평이면 약 2.2배).
+    펀더멘털 백테스트가 이미 쓰던 겹침 보정(n ÷ 지평)과 같은 규칙이다. (유효 적중, 유효 n)을 실수로 돌려준다.
+    """
+    k = max(horizon_days, 1)
+    return hits / k, n / k
+
+
+def wilson_bounds(hits: float, n: float, z: float = WILSON_Z) -> tuple[float, float]:
     """Wilson score 신뢰구간 (하한, 상한) — 확률 표시에 구간을 병기하기 위한 대칭 계산."""
     if n == 0:
         return 0.0, 1.0

@@ -182,6 +182,10 @@ def area_verdict(items: list[AreaCompareItem]) -> AreaVerdict:
         same = [i.name for i in items if i in graded and i.grade == graded[0].grade]  # 입력 순서 — 순위처럼 보이지 않게
         line = (f"**결론** 1순위 없음 — {josa('·'.join(same), '은', '는')} 같은 '{graded[0].grade}' 등급이라"
                 f" 우열을 가르지 않아요({scores}). 등급 안의 점수 차이는 향후 폐업률 차이로 검증되지 않았어요.{tail}")
+        lower = [i for i in graded if i.grade != graded[0].grade]
+        if lower:
+            line += (f" {josa('·'.join(i.name for i in lower), '은', '는')} 등급이 한 단계 이상 낮아"
+                     f"({'·'.join(repr(i.grade) for i in lower).replace(chr(39), '')}) 먼저 고를 곳은 아니에요.")
     else:
         top, runner = graded[0], graded[1]
         first = top.name
