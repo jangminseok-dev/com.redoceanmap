@@ -75,6 +75,8 @@ class GradeOutcomeRowSchema(BaseModel):
     positive_share: float | None
     avg_sales_qoq: float | None
     sales_n: int
+    avg_closure_next4: float | None = None
+    closure_n: int = 0
 
 
 class ComponentRowSchema(BaseModel):

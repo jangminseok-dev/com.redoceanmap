@@ -18,12 +18,12 @@ class BoardStockStatus(BaseModel):
 
 
 class BoardAreaStatus(BaseModel):
-    """상권의 '지금' — 시도 벤치마크 대비 종합점수 + 전분기 대비 매출 성장."""
+    """상권의 '지금' — 서울 중앙 상권 대비 종합점수 + 전분기 대비 매출 변화(점수 추이의 최신 QoQ)."""
 
     total: float                 # 종합점수(50점 = 서울 평균 수준)
     grade: str                   # 우수 / 양호 / 보통 / 주의 / 위험
     sales_qoq_pct: float | None  # 상권 매출 전분기 대비(%)
-    seoul_qoq_pct: float | None  # 같은 기간 서울 평균(%)
+    seoul_qoq_pct: float | None  # 점수 v2 이후 항상 None(호환 유지 — 프론트가 null이면 숨긴다)
 
 
 class BookmarkBoardItemResponse(BaseModel):

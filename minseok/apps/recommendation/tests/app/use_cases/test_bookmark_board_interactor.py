@@ -65,8 +65,8 @@ def _score() -> AreaScoreInfo:
     return AreaScoreInfo(
         total=62.0, grade="양호",
         components=(
-            AreaScoreComponent(key="sales_growth", name="매출 성장",
-                               score=70.0, value=3.2, benchmark=1.1),
+            AreaScoreComponent(key="closure_stability", name="폐업 안정성",
+                               score=70.0, value=1.5, benchmark=2.7),
         ),
     )
 

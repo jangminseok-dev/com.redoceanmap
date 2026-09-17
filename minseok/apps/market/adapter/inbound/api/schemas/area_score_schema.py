@@ -4,7 +4,7 @@ from pydantic import BaseModel
 
 
 class ScoreComponentSchema(BaseModel):
-    key: str  # sales_growth / floating_growth / store_health / persistence
+    key: str  # 점수 v2: closure_stability / persistence / sales_level
     name: str
     score: float  # 0~100 — 50이 시도 벤치마크 동률
     value: float

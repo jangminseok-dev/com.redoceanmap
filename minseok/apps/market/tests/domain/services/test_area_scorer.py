@@ -1,7 +1,6 @@
 from market.domain.services.area_scorer import AreaScorer, prev_quarter
 from market.domain.value_objects.area_score_vo import (
     MetricComparison,
-    QoqPoint,
     QuarterValue,
 )
 
@@ -47,77 +46,51 @@ def test_입력_순서와_무관하게_오름차순으로_정렬한다():
     assert points[1].qoq_rate == 10.0
 
 
-# --- growth_comparison ---
+# --- score v2 ---
 
 
-def _pt(yq, rate):
-    return QoqPoint(year_quarter=yq, value=0, qoq_rate=rate)
+def _score(closure=None, persistence=None, sales=None):
+    return scorer.score(closure_stability=closure, persistence=persistence, sales_level=sales)
 
 
-def test_최신_유효_QoQ와_같은_분기_벤치마크를_짝짓는다():
-    comparison = scorer.growth_comparison(
-        area=[_pt(20251, None), _pt(20252, 5.0)],
-        benchmark=[_pt(20251, None), _pt(20252, 2.0)],
-    )
-    assert comparison == MetricComparison(value=5.0, benchmark=2.0)
-
-
-def test_상권의_최신_QoQ가_None이면_직전_유효_분기로_내려간다():
-    comparison = scorer.growth_comparison(
-        area=[_pt(20252, 5.0), _pt(20253, None)],
-        benchmark=[_pt(20252, 2.0), _pt(20253, 3.0)],
-    )
-    assert comparison.value == 5.0
-    assert comparison.benchmark == 2.0
-
-
-def test_같은_분기_벤치마크가_없으면_None이다():
-    assert scorer.growth_comparison(area=[_pt(20252, 5.0)], benchmark=[_pt(20251, 2.0)]) is None
-    assert scorer.growth_comparison(area=[_pt(20252, None)], benchmark=[_pt(20252, 2.0)]) is None
-    assert scorer.growth_comparison(area=[], benchmark=[]) is None
-
-
-# --- score ---
-
-
-def _score(sales=None, floating=None, health=None, persistence=None):
-    return scorer.score(
-        sales_growth=sales, floating_growth=floating,
-        store_health=health, persistence=persistence,
-    )
-
-
-def test_벤치마크와_같으면_컴포넌트_점수는_50이다():
-    result = _score(sales=MetricComparison(value=3.0, benchmark=3.0))
+def test_중앙값과_같으면_컴포넌트_점수는_50이다():
+    result = _score(closure=MetricComparison(value=3.0, benchmark=3.0))
     assert result.components[0].score == 50.0
     assert result.total == 50.0
     assert result.grade == "보통"
 
 
-def test_성장률_차이가_캡을_넘으면_0과_100으로_클램프한다():
-    high = _score(sales=MetricComparison(value=25.0, benchmark=0.0))  # +25%p > 캡 20
-    low = _score(sales=MetricComparison(value=-25.0, benchmark=0.0))
-    assert high.components[0].score == 100.0
-    assert low.components[0].score == 0.0
+def test_폐업률은_낮을수록_점수가_높다():
+    # 중앙값 3% 대비 1.5% → -1.5%p, 낮은 쪽이 좋으므로 50 + 50*(1.5/3) = 75
+    assert _score(closure=MetricComparison(value=1.5, benchmark=3.0)).components[0].score == 75.0
+    assert _score(closure=MetricComparison(value=4.5, benchmark=3.0)).components[0].score == 25.0
+    assert _score(closure=MetricComparison(value=9.0, benchmark=3.0)).components[0].score == 0.0  # 캡 클램프
 
 
-def test_영업_지속성은_벤치마크_대비_상대비로_채점한다():
-    # 벤치마크 100 대비 125 → 상대비 +25% → 50 + 50*(0.25/0.5) = 75
-    result = _score(persistence=MetricComparison(value=125.0, benchmark=100.0))
-    assert result.components[0].score == 75.0
+def test_영업_지속성은_중앙값_대비_상대비로_채점한다():
+    # 100 대비 125 → 상대비 +25% → 50 + 50*(0.25/0.5) = 75
+    assert _score(persistence=MetricComparison(value=125.0, benchmark=100.0)).components[0].score == 75.0
 
 
 def test_지속성_벤치마크가_0이하면_컴포넌트를_제외한다():
     assert _score(persistence=MetricComparison(value=100.0, benchmark=0.0)) is None
 
 
-def test_총점은_가용_컴포넌트의_단순_평균이다():
+def test_점포당_매출은_로그_비로_채점한다():
+    # 중앙값의 2배 = 100, 절반 = 0, 같으면 50
+    assert _score(sales=MetricComparison(value=2000.0, benchmark=1000.0)).components[0].score == 100.0
+    assert _score(sales=MetricComparison(value=500.0, benchmark=1000.0)).components[0].score == 0.0
+    assert _score(sales=MetricComparison(value=0.0, benchmark=1000.0)) is None  # log 불가 → 제외
+
+
+def test_총점은_가용_컴포넌트의_가중_평균이다():
+    # 폐업 안정성 100(가중 0.45) + 점포당 매출 50(가중 0.22) → (45 + 11) / 0.67 = 83.6
     result = _score(
-        sales=MetricComparison(value=20.0, benchmark=0.0),  # 100
-        floating=MetricComparison(value=0.0, benchmark=0.0),  # 50
+        closure=MetricComparison(value=0.0, benchmark=3.0),
+        sales=MetricComparison(value=1000.0, benchmark=1000.0),
     )
-    assert result.total == 75.0
-    assert len(result.components) == 2
+    assert result.total == 83.6
+    assert [c.key for c in result.components] == ["closure_stability", "sales_level"]
 
 
 def test_컴포넌트가_전부_결측이면_None을_반환한다():
@@ -125,15 +98,15 @@ def test_컴포넌트가_전부_결측이면_None을_반환한다():
 
 
 def test_등급_경계():
-    def grade_of(value):
-        return _score(sales=MetricComparison(value=value, benchmark=0.0)).grade
+    def grade_of(closure_value):  # 폐업률 중앙값 3% 기준 — 단일 컴포넌트라 총점 = 컴포넌트 점수
+        return _score(closure=MetricComparison(value=closure_value, benchmark=3.0)).grade
 
-    assert grade_of(20.0) == "우수"  # 100
-    assert grade_of(12.0) == "우수"  # 80
-    assert grade_of(6.0) == "양호"  # 65
-    assert grade_of(0.0) == "보통"  # 50
-    assert grade_of(-6.0) == "주의"  # 35
-    assert grade_of(-10.0) == "위험"  # 25
+    assert grade_of(0.0) == "우수"  # 100
+    assert grade_of(1.2) == "우수"  # 80
+    assert grade_of(2.1) == "양호"  # 65
+    assert grade_of(3.0) == "보통"  # 50
+    assert grade_of(3.9) == "주의"  # 35
+    assert grade_of(4.5) == "위험"  # 25
 
 
 # --- YoY (전년 동분기 대비) ---

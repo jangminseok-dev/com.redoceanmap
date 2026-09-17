@@ -296,9 +296,10 @@ export type AreaStatsDetail = {
 // ── GET /market/trdar/{code}/score ──
 
 export type ScoreComponent = {
-  key: "sales_growth" | "floating_growth" | "store_health" | "persistence";
+  // 점수 v2(2026-09-17) — 향후 1년 폐업률을 가르는 3축. value·benchmark 단위: 폐업률 %, 영업 개월, 점포당 월매출 만원
+  key: "closure_stability" | "persistence" | "sales_level";
   name: string;
-  score: number; // 0~100 — 50이 시도 벤치마크 동률
+  score: number; // 0~100 — 50이 서울 중앙 상권
   value: number;
   benchmark: number;
 };
@@ -801,7 +802,7 @@ export type BookmarkAreaStatus = {
   total: number; // 종합점수(50점 = 서울 평균 수준)
   grade: string; // 우수 / 양호 / 보통 / 주의 / 위험
   sales_qoq_pct: number | null; // 매출 전분기 대비 — 이미 % 단위(3.2 = +3.2%)
-  seoul_qoq_pct: number | null; // 같은 기간 서울 평균(%)
+  seoul_qoq_pct: number | null; // 점수 v2 이후 항상 null(서울 비교값 없음) — 호환 유지
 };
 
 export type BookmarkBoardItem = {

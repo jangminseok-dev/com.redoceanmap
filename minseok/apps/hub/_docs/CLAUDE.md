@@ -32,8 +32,8 @@ apps/hub/app/
 apps/hub/dependencies/commercial_data_provider.py  # get_commercial_data_port (NotImplementedError 스텁)
 ```
 
-`get_area_scores`는 시도 벤치마크 대비 상권 종합점수(market의 `area_scorer` 도메인 서비스,
-50점=벤치마크 동률)를 반환한다 — chat이 상권 추천 서술의 근거로 주입(①-M5 잔여, 2026-07-15).
+`get_area_scores`는 서울 중앙 상권 대비 상권 종합점수 v2(market의 `area_scorer` 도메인 서비스 —
+4분기 폐업률·평균 영업 개월·점포당 매출 수준 3축, 50점=서울 중앙 상권, 향후 1년 폐업률로 검증)를 반환한다 — chat이 상권 추천 서술의 근거로 주입(①-M5 잔여, 2026-07-15).
 `get_area_insights`는 `area_narrator`가 만든 해석 문장(`AreaInsight`)을 나른다 — 고객층·
 배후 수요·소비력·객단가. 지도 오버레이만 보던 인사이트를 chat phase2에도 공급한다(2026-07-27).
 

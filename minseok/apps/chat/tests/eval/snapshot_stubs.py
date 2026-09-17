@@ -149,12 +149,12 @@ def synthetic_score(code: int) -> AreaScoreInfo | None:
     return AreaScoreInfo(
         total=total, grade=grade,
         components=(
-            AreaScoreComponent(key="sales_growth", name="매출 성장",
+            AreaScoreComponent(key="closure_stability", name="폐업 안정성",
                                score=round(30 + s % 60 + 0.3, 1),
-                               value=round((s % 200) / 10 - 5, 1), benchmark=3.2),
-            AreaScoreComponent(key="floating_growth", name="유동 성장",
+                               value=round((s % 50) / 10, 1), benchmark=2.7),
+            AreaScoreComponent(key="sales_level", name="점포당 매출 수준",
                                score=round(35 + s % 50 + 0.7, 1),
-                               value=round((s % 120) / 10 - 3, 1), benchmark=1.1),
+                               value=float(800 + s % 2400), benchmark=1656.0),
             AreaScoreComponent(key="persistence", name="영업 지속성",
                                score=round(25 + s % 55 + 0.1, 1),
                                value=float(70 + s % 60), benchmark=100.0),

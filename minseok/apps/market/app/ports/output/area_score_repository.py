@@ -2,12 +2,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from market.app.dtos.area_score_dto import (
-    AreaScoreHeader,
-    PersistenceStat,
-    StoreHealthStat,
-)
-from market.domain.value_objects.area_score_vo import QuarterValue
+from market.app.dtos.area_score_dto import AreaScoreHeader
+from market.domain.value_objects.area_score_vo import AreaScoreInputs, QuarterValue
 
 
 class AreaScoreRepositoryPort(ABC):
@@ -29,32 +25,11 @@ class AreaScoreRepositoryPort(ABC):
         ...
 
     @abstractmethod
-    async def find_city_sales_series(self, sido_code: str, quarters: int) -> list[QuarterValue]:
-        """시도 전체의 분기별 합계 매출 — year_quarter 오름차순."""
+    async def find_score_inputs(self, trdar_code: int) -> AreaScoreInputs | None:
+        """점수 v2 입력 — 최신 점포 분기 기준 상권 값. 점포 팩트가 없으면 None."""
         ...
 
     @abstractmethod
-    async def find_city_floating_series(
-        self, sido_code: str, quarters: int
-    ) -> list[QuarterValue]:
-        """시도 전체의 분기별 합계 유동인구 — year_quarter 오름차순."""
-        ...
-
-    @abstractmethod
-    async def find_store_health(self, trdar_code: int) -> StoreHealthStat | None:
-        """최신 분기의 업종 평균 개·폐업률. 점포 팩트가 없으면 None."""
-        ...
-
-    @abstractmethod
-    async def find_city_store_health(
-        self, sido_code: str, year_quarter: int
-    ) -> StoreHealthStat | None:
-        """지정 분기의 시도 전체 업종 평균 개·폐업률."""
-        ...
-
-    @abstractmethod
-    async def find_persistence(
-        self, trdar_code: int, sido_code: str | None
-    ) -> PersistenceStat | None:
-        """최신 분기 평균 영업 개월 + 같은 분기 시도 벤치마크."""
+    async def find_city_score_medians(self, sido_code: str) -> AreaScoreInputs | None:
+        """같은 기준으로 계산한 시도 안 상권들의 중앙값 — 벤치마크(분기 적재 때만 재계산)."""
         ...

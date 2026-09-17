@@ -45,7 +45,7 @@ export default function AreaScoreCard({
             <span className="text-sm font-medium text-foreground-muted ml-0.5">점</span>
           </div>
           <p className="text-xs text-foreground-muted mt-0.5">
-            서울 평균 대비 종합점수 · 50점 = 평균 수준
+            향후 1년 폐업률을 가르는 종합점수 · 50점 = 서울 중앙 상권
           </p>
         </div>
         <span className={`inline-flex px-2.5 py-1 rounded-full border text-xs font-semibold ${gradeStyle}`}>
@@ -121,20 +121,15 @@ function TrendStrip({ trend }: { trend: AreaScoreDetail["trend"] }) {
   );
 }
 
-// 성장 축은 %(증감률), 건강도·지속성은 각각 %p·개월 — 단위가 달라 컴포넌트별로 붙인다.
-const UNIT: Record<ScoreComponent["key"], string> = {
-  sales_growth: "%",
-  floating_growth: "%",
-  store_health: "%p",
-  persistence: "개월",
+// 단위가 축마다 다르다 — 폐업률은 최근 4분기 %, 지속성은 평균 영업 개월, 매출은 점포당 월 만원.
+const FORMAT: Record<ScoreComponent["key"], (v: number) => string> = {
+  closure_stability: (v) => `${v.toFixed(1)}%`,
+  persistence: (v) => `${v.toFixed(0)}개월`,
+  sales_level: (v) => `${Math.round(v).toLocaleString()}만원`,
 };
 
 function ComponentBar({ component: c }: { component: ScoreComponent }) {
-  const unit = UNIT[c.key] ?? "";
-  const signed = (v: number) =>
-    c.key.endsWith("_growth") || c.key === "store_health"
-      ? `${v > 0 ? "+" : ""}${v.toFixed(1)}${unit}`
-      : `${v.toFixed(1)}${unit}`;
+  const signed = FORMAT[c.key] ?? ((v: number) => v.toFixed(1));
   return (
     <div>
       <div className="flex items-center justify-between text-xs">
@@ -142,12 +137,12 @@ function ComponentBar({ component: c }: { component: ScoreComponent }) {
         {/* 점수만 보여주면 근거가 사라진다 — 응답에 실려 오던 실수치를 되돌려 준다 */}
         <span className="flex items-baseline gap-1.5">
           <span className="text-foreground-muted tabular-nums">
-            {signed(c.value)} <span className="opacity-60">vs 서울 {signed(c.benchmark)}</span>
+            {signed(c.value)} <span className="opacity-60">vs 서울 중앙 {signed(c.benchmark)}</span>
           </span>
           {/* 방향을 색으로 명시 — "47.9점"만 보면 평균 이상처럼 읽힌다(2026-08-31 테스트).
               ±5점 안쪽은 평균권이라 중립색 유지 */}
           <span
-            title="50점 = 서울 평균"
+            title="50점 = 서울 중앙 상권"
             className={`font-semibold tabular-nums ${
               c.score >= 55 ? "text-up" : c.score <= 45 ? "text-down" : ""
             }`}
@@ -161,7 +156,7 @@ function ComponentBar({ component: c }: { component: ScoreComponent }) {
           className="absolute inset-y-0 left-0 rounded-full bg-brand/70"
           style={{ width: `${c.score}%` }}
         />
-        {/* 50점 = 벤치마크 동률 기준선 */}
+        {/* 50점 = 서울 중앙 상권 기준선 */}
         <div className="absolute inset-y-0 left-1/2 w-px bg-foreground-muted/50" />
       </div>
     </div>

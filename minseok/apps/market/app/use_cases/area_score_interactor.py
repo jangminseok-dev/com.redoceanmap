@@ -23,58 +23,36 @@ class AreaScoreInteractor(AreaScoreUseCase):
         if header is None:
             return None
 
-        # 원시 시리즈를 잡아둔다 — QoQ와 YoY 두 축을 같은 원본에서 낸다(재조회 없음)
+        # 추이(QoQ·YoY)는 화면 표시용 — 점수 v2는 추이가 아니라 생존 축을 쓴다(area_scorer 모듈 주석)
         sales_series = await self._repo.find_sales_series(query.trdar_code, query.quarters)
         floating_series = await self._repo.find_floating_series(query.trdar_code, query.quarters)
-        sales_trend = self._scorer.qoq_series(sales_series)
-        floating_trend = self._scorer.qoq_series(floating_series)
 
-        sales_growth = floating_growth = None
-        if header.sido_code:
-            city_sales_trend = self._scorer.qoq_series(
-                await self._repo.find_city_sales_series(header.sido_code, query.quarters)
-            )
-            city_floating_trend = self._scorer.qoq_series(
-                await self._repo.find_city_floating_series(header.sido_code, query.quarters)
-            )
-            sales_growth = self._scorer.growth_comparison(sales_trend, city_sales_trend)
-            floating_growth = self._scorer.growth_comparison(floating_trend, city_floating_trend)
-
-        store_health = None
-        store = await self._repo.find_store_health(query.trdar_code)
-        if store and header.sido_code:
-            city_store = await self._repo.find_city_store_health(
-                header.sido_code, store.year_quarter
-            )
-            if city_store:
-                store_health = MetricComparison(
-                    value=store.opening_rate - store.closure_rate,
-                    benchmark=city_store.opening_rate - city_store.closure_rate,
-                )
-
-        persistence = None
-        persistence_stat = await self._repo.find_persistence(query.trdar_code, header.sido_code)
-        if persistence_stat and persistence_stat.region_operating_months_avg is not None:
-            persistence = MetricComparison(
-                value=persistence_stat.operating_months_avg,
-                benchmark=persistence_stat.region_operating_months_avg,
+        score = None
+        inputs = await self._repo.find_score_inputs(query.trdar_code)
+        medians = await self._repo.find_city_score_medians(header.sido_code) if inputs and header.sido_code else None
+        if inputs is not None and medians is not None:
+            score = self._scorer.score(
+                closure_stability=self._pair(inputs.closure_rate_4q, medians.closure_rate_4q),
+                persistence=self._pair(inputs.operating_months, medians.operating_months),
+                sales_level=self._pair(inputs.sales_per_store_wan, medians.sales_per_store_wan),
             )
 
         return AreaScoreView(
             trdar_code=header.trdar_code,
             trdar_name=header.trdar_name,
             district_name=header.district_name,
-            score=self._scorer.score(
-                sales_growth=sales_growth,
-                floating_growth=floating_growth,
-                store_health=store_health,
-                persistence=persistence,
-            ),
+            score=score,
             trend=self._merge_trend(
-                sales_trend, floating_trend,
+                self._scorer.qoq_series(sales_series), self._scorer.qoq_series(floating_series),
                 self._scorer.yoy_series(sales_series), self._scorer.yoy_series(floating_series),
             ),
         )
+
+    @staticmethod
+    def _pair(value: float | None, benchmark: float | None) -> MetricComparison | None:
+        if value is None or benchmark is None:
+            return None
+        return MetricComparison(value=round(value, 2), benchmark=round(benchmark, 2))
 
     @staticmethod
     def _merge_trend(

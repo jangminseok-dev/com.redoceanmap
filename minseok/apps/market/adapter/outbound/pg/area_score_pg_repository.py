@@ -1,38 +1,54 @@
 from __future__ import annotations
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from market.adapter.outbound.orm.commercial_change_benchmark_orm import (
-    CommercialChangeBenchmarkOrm,
-)
-from market.adapter.outbound.orm.commercial_change_orm import CommercialChangeOrm
 from market.adapter.outbound.orm.estimated_sales_orm import EstimatedSalesOrm
 from market.adapter.outbound.orm.floating_population_orm import FloatingPopulationOrm
 from market.adapter.outbound.orm.region_orm import RegionOrm
 from market.adapter.outbound.orm.store_orm import StoreOrm
 from market.adapter.outbound.orm.trade_area_orm import TradeAreaOrm
-from market.app.dtos.area_score_dto import (
-    AreaScoreHeader,
-    PersistenceStat,
-    StoreHealthStat,
-)
+from market.app.dtos.area_score_dto import AreaScoreHeader
 from market.app.ports.output.area_score_repository import AreaScoreRepositoryPort
-from market.domain.services.area_scorer import MAX_QUARTERS
-from market.domain.value_objects.area_score_vo import QuarterValue
+from market.domain.services.area_scorer import (
+    inputs_from_aggregates,
+    median_inputs,
+    prev_quarter,
+)
+from market.domain.value_objects.area_score_vo import AreaScoreInputs, QuarterValue
 from market.domain.value_objects.sales_unit import monthly_from_quarter
 
-
-def _sido_join(stmt, fact_orm):
-    """팩트 → trade_area → 행정동 → 자치구 조인 (시도 필터는 gu.parent_code)."""
-    dong = aliased(RegionOrm)
-    gu = aliased(RegionOrm)
-    return (
-        stmt.join(TradeAreaOrm, fact_orm.trdar_code == TradeAreaOrm.code)
-        .join(dong, TradeAreaOrm.region_code == dong.code)
-        .join(gu, dong.parent_code == gu.code)
-    ), gu
+# 점수 v2 입력 — 최신 점포 분기 q0 기준. 폐업률은 q0~q3 점포 가중,
+# 점포당 매출은 q0에서 매출·점포가 같은 업종으로 짝지어진 것만(업종 축 불일치 방지). scope는 상권 1곳 또는 시도 전체.
+_SCORE_INPUTS_SQL = """
+WITH st AS (
+    SELECT s.trdar_code, s.year_quarter, SUM(s.store_count) AS sc, SUM(s.closure_store_count) AS cc
+    FROM store s
+    WHERE s.year_quarter IN (:q0, :q1, :q2, :q3) {scope}
+    GROUP BY s.trdar_code, s.year_quarter
+), agg AS (
+    SELECT trdar_code,
+           SUM(cc) * 100.0 / NULLIF(SUM(sc), 0) AS closure4,
+           COUNT(*) AS n4,
+           MAX(sc) FILTER (WHERE year_quarter = :q0) AS sc0
+    FROM st GROUP BY trdar_code
+), sal AS (
+    SELECT es.trdar_code, SUM(es.monthly_sales_amount) AS amt, SUM(s.store_count) AS sal_sc
+    FROM estimated_sales es
+    JOIN store s ON s.trdar_code = es.trdar_code AND s.year_quarter = es.year_quarter
+                AND s.service_code = es.service_code
+    WHERE es.year_quarter = :q0 AND s.store_count > 0 {scope}
+    GROUP BY es.trdar_code
+), om AS (
+    SELECT DISTINCT ON (trdar_code) trdar_code, operating_months_avg AS om
+    FROM commercial_change {om_where}
+    ORDER BY trdar_code, year_quarter DESC
+)
+SELECT agg.trdar_code, agg.closure4, agg.n4, agg.sc0, sal.amt, sal.sal_sc, om.om
+FROM agg LEFT JOIN sal USING (trdar_code) LEFT JOIN om USING (trdar_code)
+WHERE agg.sc0 IS NOT NULL
+"""
 
 
 # 시도 벤치마크는 **상권과 무관하게 같은 값**인데 `/score` 요청마다 재집계됐다.
@@ -111,102 +127,41 @@ class AreaScorePgRepository(AreaScoreRepositoryPort):
         )).all()
         return [QuarterValue(year_quarter=yq, value=float(total)) for yq, total in reversed(rows)]
 
-    async def _city_series(
-        self, key: str, sido_code: str, fact_orm, value_col
-    ) -> list[QuarterValue]:
-        """시도 합계 시리즈 — **항상 최대 창을 캐시하고 요청분만 잘라 쓴다**.
+    async def _score_input_rows(self, *, trdar_code: int | None, sido_code: str | None) -> tuple[int, list]:
+        """점수 v2 입력의 상권별 원행 — trdar_code를 주면 그 상권만, sido_code를 주면 시도 안 전체."""
+        q0 = await self._latest_quarter(StoreOrm)
+        if q0 is None:
+            return 0, []
+        q1 = prev_quarter(q0)
+        q2 = prev_quarter(q1)
+        q3 = prev_quarter(q2)
+        if trdar_code is not None:
+            scope = "AND s.trdar_code = :code"
+            om_where = "WHERE trdar_code = :code"
+        else:
+            scope = ("AND s.trdar_code IN (SELECT ta.code FROM trade_area ta JOIN region dong ON ta.region_code = dong.code"
+                     " JOIN region gu ON dong.parent_code = gu.code WHERE gu.parent_code = :sido)")
+            om_where = ""
+        rows = (await self._session.execute(text(_SCORE_INPUTS_SQL.format(scope=scope, om_where=om_where)), {
+            "q0": q0, "q1": q1, "q2": q2, "q3": q3, "code": trdar_code, "sido": sido_code,
+        })).all()
+        return q0, rows
 
-        `quarters`를 캐시 키에 넣으면 화면이 4/8/20분기를 오갈 때 캐시가 조각나
-        히트율이 떨어진다. 시도당 엔트리 1개로 유지한다.
-        """
-        async def compute() -> list[QuarterValue]:
-            stmt, gu = _sido_join(select(fact_orm.year_quarter, func.sum(value_col)), fact_orm)
-            rows = (await self._session.execute(
-                stmt.where(gu.parent_code == sido_code)
-                .group_by(fact_orm.year_quarter)
-                .order_by(fact_orm.year_quarter.desc())
-                .limit(MAX_QUARTERS)
-            )).all()
-            return [
-                QuarterValue(year_quarter=yq, value=float(total)) for yq, total in reversed(rows)
-            ]
-
-        return await self._cached_city((key, sido_code), fact_orm, compute)
-
-    async def find_city_sales_series(self, sido_code: str, quarters: int) -> list[QuarterValue]:
-        full = await self._city_series(
-            "sales", sido_code, EstimatedSalesOrm, EstimatedSalesOrm.monthly_sales_amount
-        )
-        return full[-quarters:]
-
-    async def find_city_floating_series(
-        self, sido_code: str, quarters: int
-    ) -> list[QuarterValue]:
-        full = await self._city_series(
-            "floating", sido_code, FloatingPopulationOrm,
-            FloatingPopulationOrm.total_floating_pop,
-        )
-        return full[-quarters:]
-
-    async def find_store_health(self, trdar_code: int) -> StoreHealthStat | None:
-        latest_quarter = (await self._session.execute(
-            select(func.max(StoreOrm.year_quarter)).where(StoreOrm.trdar_code == trdar_code)
-        )).scalar()
-        if latest_quarter is None:
-            return None
-        opening, closure = (await self._session.execute(
-            select(func.avg(StoreOrm.opening_rate), func.avg(StoreOrm.closure_rate))
-            .where(StoreOrm.trdar_code == trdar_code, StoreOrm.year_quarter == latest_quarter)
-        )).one()
-        return StoreHealthStat(
-            year_quarter=latest_quarter,
-            opening_rate=float(opening), closure_rate=float(closure),
+    @staticmethod
+    def _to_inputs(q0: int, row) -> AreaScoreInputs:
+        return inputs_from_aggregates(
+            year_quarter=q0, closure_rate_4q=row.closure4, quarters_with_stores=row.n4,
+            store_count=row.sc0,
+            quarterly_sales=row.amt, sales_store_count=row.sal_sc, operating_months=row.om,
         )
 
-    async def find_city_store_health(
-        self, sido_code: str, year_quarter: int
-    ) -> StoreHealthStat | None:
-        async def compute() -> StoreHealthStat | None:
-            stmt, gu = _sido_join(
-                select(func.avg(StoreOrm.opening_rate), func.avg(StoreOrm.closure_rate)),
-                StoreOrm,
-            )
-            opening, closure = (await self._session.execute(
-                stmt.where(gu.parent_code == sido_code, StoreOrm.year_quarter == year_quarter)
-            )).one()
-            if opening is None or closure is None:
-                return None
-            return StoreHealthStat(
-                year_quarter=year_quarter,
-                opening_rate=float(opening), closure_rate=float(closure),
-            )
+    async def find_score_inputs(self, trdar_code: int) -> AreaScoreInputs | None:
+        q0, rows = await self._score_input_rows(trdar_code=trdar_code, sido_code=None)
+        return self._to_inputs(q0, rows[0]) if rows else None
 
-        return await self._cached_city(
-            ("store_health", sido_code, year_quarter), StoreOrm, compute
-        )
+    async def find_city_score_medians(self, sido_code: str) -> AreaScoreInputs | None:
+        async def compute() -> AreaScoreInputs | None:
+            q0, rows = await self._score_input_rows(trdar_code=None, sido_code=sido_code)
+            return median_inputs(q0, [self._to_inputs(q0, r) for r in rows])
 
-    async def find_persistence(
-        self, trdar_code: int, sido_code: str | None
-    ) -> PersistenceStat | None:
-        row = (await self._session.execute(
-            select(CommercialChangeOrm.year_quarter, CommercialChangeOrm.operating_months_avg)
-            .where(CommercialChangeOrm.trdar_code == trdar_code)
-            .order_by(CommercialChangeOrm.year_quarter.desc())
-            .limit(1)
-        )).first()
-        if row is None:
-            return None
-        year_quarter, operating = row
-        region_avg = None
-        if sido_code:
-            region_avg = (await self._session.execute(
-                select(CommercialChangeBenchmarkOrm.operating_months_avg).where(
-                    CommercialChangeBenchmarkOrm.region_code == sido_code,
-                    CommercialChangeBenchmarkOrm.year_quarter == year_quarter,
-                )
-            )).scalar()
-        return PersistenceStat(
-            year_quarter=year_quarter,
-            operating_months_avg=float(operating),
-            region_operating_months_avg=float(region_avg) if region_avg is not None else None,
-        )
+        return await self._cached_city(("score_medians", sido_code), StoreOrm, compute)

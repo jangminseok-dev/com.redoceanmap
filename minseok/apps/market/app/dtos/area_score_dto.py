@@ -22,24 +22,6 @@ class AreaScoreHeader:
 
 
 @dataclass(frozen=True)
-class StoreHealthStat:
-    """분기 1개의 업종 평균 개·폐업률(%) — 개업률-폐업률이 건강도 순증."""
-
-    year_quarter: int
-    opening_rate: float
-    closure_rate: float
-
-
-@dataclass(frozen=True)
-class PersistenceStat:
-    """최신 분기 평균 영업 개월 + 같은 분기 시도 벤치마크."""
-
-    year_quarter: int
-    operating_months_avg: float
-    region_operating_months_avg: float | None
-
-
-@dataclass(frozen=True)
 class TrendPoint:
     """분기 1개의 추이 — 값과 직전 분기 대비 변화율(%). 팩트별 결측은 None."""
 

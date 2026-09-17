@@ -8,10 +8,9 @@ import Empty from "@/components/admin/Empty";
 import Kpi from "@/components/admin/Kpi";
 
 const COMPONENT_LABEL: Record<string, string> = {
-  sales_growth: "매출 성장",
-  floating_growth: "유동인구 성장",
-  store_health: "개폐업 건강도",
+  closure_stability: "폐업 안정성",
   persistence: "영업 지속성",
+  sales_level: "점포당 매출 수준",
 };
 
 const signedP = (v: number | null, digits = 2, unit = "%p") =>
@@ -34,7 +33,7 @@ export default function MarketBacktestPage() {
       <div>
         <h1 className="text-xl sm:text-2xl font-bold tracking-tight">상권 검증</h1>
         <p className="mt-1 text-sm text-foreground-muted">
-          상권 점수 워크포워드 백테스트 — 분기 t 등급이 t+1 실제 결과(상대 유동인구 QoQ)를 갈랐는지
+          상권 점수(v2) 워크포워드 백테스트 — 분기 t 등급이 그 뒤 1년의 실제 폐업률을 갈랐는지
         </p>
       </div>
 
@@ -70,9 +69,9 @@ export default function MarketBacktestPage() {
 
           <section className="rounded-2xl bg-surface border border-border overflow-hidden">
             <div className="px-5 py-3 border-b border-border">
-              <h2 className="text-sm font-semibold">등급별 다음 분기 실제 결과</h2>
+              <h2 className="text-sm font-semibold">등급별 실제 결과</h2>
               <p className="mt-0.5 text-xs text-foreground-muted">
-                결과 = t+1 유동인구 QoQ(상권 − 서울, %p) · 매출 QoQ는 2025년 표본만(저표본 참고치)
+                주 결과 = t+1~t+4 점포 가중 폐업률(낮을수록 좋음) · 유동인구·매출 QoQ(t+1)는 참고치
               </p>
             </div>
             <div className="overflow-x-auto">
@@ -81,7 +80,8 @@ export default function MarketBacktestPage() {
                   <tr className="text-left text-xs text-foreground-muted border-b border-border bg-background/60">
                     <th className="font-medium px-5 py-2.5">등급</th>
                     <th className="font-medium px-4 py-2.5 text-right">관측</th>
-                    <th className="font-medium px-4 py-2.5 text-right">평균</th>
+                    <th className="font-medium px-4 py-2.5 text-right">향후 1년 폐업률</th>
+                    <th className="font-medium px-4 py-2.5 text-right">유동 QoQ 평균</th>
                     <th className="font-medium px-4 py-2.5 text-right">중앙값</th>
                     <th className="font-medium px-4 py-2.5 text-right">양(+) 비율</th>
                     <th className="font-medium px-5 py-2.5 text-right">평균 매출 QoQ</th>
@@ -92,6 +92,9 @@ export default function MarketBacktestPage() {
                     <tr key={g.grade} className="border-b border-border last:border-0">
                       <td className="px-5 py-3 font-medium">{g.grade}</td>
                       <td className="px-4 py-3 text-right text-foreground-muted tabular-nums">{g.n.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right tabular-nums font-semibold">
+                        {g.avg_closure_next4 == null ? "—" : `${g.avg_closure_next4.toFixed(2)}%`}
+                      </td>
                       <td className="px-4 py-3 text-right tabular-nums">{signedP(g.avg_rel_floating_qoq)}</td>
                       <td className="px-4 py-3 text-right tabular-nums text-foreground-muted">{signedP(g.median_rel_floating_qoq)}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{pct(g.positive_share)}</td>
@@ -114,7 +117,7 @@ export default function MarketBacktestPage() {
             <div className="px-5 py-3 border-b border-border">
               <h2 className="text-sm font-semibold">컴포넌트별 예측력</h2>
               <p className="mt-0.5 text-xs text-foreground-muted">
-                Spearman ρ = 컴포넌트 점수(t)와 결과(t+1)의 순위 상관 · 스프레드 = 점수 상위 20% − 하위 20% 결과 차이
+                Spearman ρ = 컴포넌트 점수(t)와 향후 1년 폐업률(부호 반전)의 순위 상관 — 양수면 점수가 높을수록 덜 닫음 · 스프레드 = 점수 하위 20% 폐업률 − 상위 20%
               </p>
             </div>
             <table className="w-full text-sm">

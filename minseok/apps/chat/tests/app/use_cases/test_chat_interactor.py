@@ -315,8 +315,8 @@ def _area_score() -> AreaScoreInfo:
     return AreaScoreInfo(
         total=59.6, grade="보통",
         components=(
-            AreaScoreComponent(key="sales_growth", name="매출 성장",
-                               score=91.9, value=21.9, benchmark=5.2),
+            AreaScoreComponent(key="closure_stability", name="폐업 안정성",
+                               score=91.9, value=0.2, benchmark=2.7),
             AreaScoreComponent(key="persistence", name="영업 지속성",
                                score=16.1, value=76.0, benchmark=115.0),
         ),
@@ -733,8 +733,8 @@ async def test_상권_컨텍스트에_서울_평균_대비_종합점수가_주�
     phase2_prompt = llm.calls[2][0]
     assert "서울 평균 대비: 종합 59.6점·보통 (50점=서울 평균, 이 상권은 평균 상회)" in phase2_prompt
     # 컴포넌트마다 평균 대비 방향을 코드가 못박는다(1-1 실측: 방향 없이 주면 모델이 뒤집는다)
-    assert "매출 성장 91.9점(서울 평균 상회 — 상권 +21.9% vs 서울 +5.2%)" in phase2_prompt
-    assert "영업 지속성 16.1점(서울 평균 미달)" in phase2_prompt
+    assert "폐업 안정성 91.9점(서울 평균 상회 — 상권 4분기 폐업률 0.2% vs 서울 중앙 4분기 폐업률 2.7%)" in phase2_prompt
+    assert "영업 지속성 16.1점(서울 평균 미달 — 상권 평균 영업 76개월 vs 서울 중앙 평균 영업 115개월)" in phase2_prompt
     assert market.score_calls == [[1000001]]
 
 
@@ -749,8 +749,8 @@ async def test_주의_등급_상권은_추천_어휘가_차단되고_등급_고�
     caution = AreaScoreInfo(
         total=44.9, grade="주의",
         components=(
-            AreaScoreComponent(key="floating_growth", name="유동인구 성장",
-                               score=47.9, value=-0.11, benchmark=0.72),
+            AreaScoreComponent(key="sales_level", name="점포당 매출 수준",
+                               score=47.9, value=1600.0, benchmark=1656.0),
         ),
     )
     market = _StubMarket(scores={1000001: caution})
@@ -768,7 +768,7 @@ async def test_주의_등급_상권은_추천_어휘가_차단되고_등급_고�
     assert "추천" not in result.recommendations[0].reason
     assert "유의할 점: 경쟁 밀집." in result.recommendations[0].reason  # 문장은 살린다
     # 컨텍스트에도 방향이 박힌다 — 미달 점수를 "상회"로 뒤집을 수 없게
-    assert "유동인구 성장 47.9점(서울 평균 미달 — 상권 -0.1% vs 서울 +0.7%)" in llm.calls[2][0]
+    assert "점포당 매출 수준 47.9점(서울 평균 미달 — 상권 점포당 월매출 1,600만원 vs 서울 중앙 점포당 월매출 1,656만원)" in llm.calls[2][0]
 
 
 def _ranking_row(**overrides) -> AreaRankingInfo:
@@ -817,8 +817,8 @@ async def test_추이_질문은_분기_추이와_산출_방식이_컨텍스트�
     # I-20, 2026-08-31 실측 p04: "분기 매출 추이 데이터" 요청에 151자 일반 추천
     score = AreaScoreInfo(
         total=59.6, grade="보통",
-        components=(AreaScoreComponent(key="sales_growth", name="매출 성장",
-                                       score=91.9, value=21.9, benchmark=5.2),),
+        components=(AreaScoreComponent(key="closure_stability", name="폐업 안정성",
+                                       score=91.9, value=0.2, benchmark=2.7),),
         trend=(
             AreaTrendPoint(year_quarter=20244, monthly_sales=320_000_000, sales_qoq=None,
                            total_floating_pop=1_230_000, floating_qoq=None),
@@ -3077,8 +3077,9 @@ def _backtest_report():
     from hub.app.dtos.area_backtest_report_dto import AreaBacktestReportInfo, ComponentRow, GradeOutcomeRow
     return AreaBacktestReportInfo(
         ran_at=_dt(2026, 7, 27, 12, 44), params={}, n_observations=42879, n_areas=1650, base_quarters=[20244],
-        grade_outcomes=[GradeOutcomeRow("주의", 500, -2.1, -1.0, 0.41, -3.0, 120), GradeOutcomeRow("양호", 800, 3.2, 1.1, 0.58, 1.5, 200)],
-        component_predictiveness=[ComponentRow("sales_growth", 42876, 0.12, 4.1)],
+        grade_outcomes=[GradeOutcomeRow("주의", 500, -2.1, -1.0, 0.41, -3.0, 120, 3.34, 500),
+                        GradeOutcomeRow("양호", 800, 3.2, 1.1, 0.58, 1.5, 200, 2.42, 800)],
+        component_predictiveness=[ComponentRow("closure_stability", 42876, 0.12, 4.1)],
     )
 
 
@@ -3091,8 +3092,8 @@ class _FullMarket(_CompareMarket):
     """창업비용 표까지 있는 market 스텁."""
     def __init__(self):
         super().__init__(scores={
-            3110131: AreaScoreInfo(total=65.0, grade="양호", components=(AreaScoreComponent("sales_growth", "매출 성장", 91.9, 21.9, 5.2),)),
-            3130070: AreaScoreInfo(total=43.4, grade="주의", components=(AreaScoreComponent("sales_growth", "매출 성장", 30.0, -1.0, 5.2),)),
+            3110131: AreaScoreInfo(total=65.0, grade="양호", components=(AreaScoreComponent("closure_stability", "폐업 안정성", 91.9, 0.2, 2.7),)),
+            3130070: AreaScoreInfo(total=43.4, grade="주의", components=(AreaScoreComponent("closure_stability", "폐업 안정성", 30.0, 3.9, 2.7),)),
         })
 
     async def get_startup_costs(self, year=None):
@@ -3121,8 +3122,8 @@ async def test_비교표에_적합도·백테스트·그래프·창업비용·�
     assert "| 객단가(건당 결제액) | 15,000원 | 9,000원 |" in t and "| 유사 업종 점포 수 | 12개 | 4개 |" in t
     assert "적합도 진단: ○ 20대 유동인구와 업종 고객층이 맞아요" in t
     # 백테스트: 등급별 다음 분기 실측 + 컴포넌트 예측력
-    assert "| 이 등급의 다음 분기 실측(백테스트) | '양호' 등급 800건: 유동인구 상대 QoQ 평균 +3.2%p · 양(+) 비율 58% · 매출 QoQ +1.5% (n=200) | '주의' 등급 500건:" in t
-    assert "└ 매출 성장 · 예측력 ρ=+0.12, 상위−하위 5분위 +4.1%p |" in t
+    assert "| 이 등급의 다음 1년 폐업률(백테스트 실측) | '양호' 등급 800건 평균 2.42% | '주의' 등급 500건 평균 3.34% |" in t
+    assert "└ 폐업 안정성 · 예측력 ρ=+0.12, 점수 하위−상위 5분위 폐업률 +4.1%p |" in t
     assert "백테스트 리포트는 2026-07-27 실행분(42,879건)" in t
     # 그래프
     assert "| 행정 계층(그래프) | 성수동2가 → 성동구 → 서울특별시 | 성수동2가 → 성동구 → 서울특별시 |" in t

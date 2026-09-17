@@ -1,16 +1,68 @@
 from __future__ import annotations
 
+import math
+
+from statistics import median
+
 from market.domain.value_objects.area_score_vo import (
     AreaScore,
+    AreaScoreInputs,
     MetricComparison,
     QoqPoint,
     QuarterValue,
     ScoreComponent,
 )
+from market.domain.value_objects.sales_unit import QUARTER_MONTHS
 
-GROWTH_DIFF_CAP = 20.0  # 성장률 차이(%p) — ±20에서 0/100 포화
-HEALTH_DIFF_CAP = 10.0  # 개폐업 순증률 차이(%p) — ±10에서 포화
-PERSISTENCE_RATIO_CAP = 0.5  # 영업 개월 상대비 — 벤치마크 대비 ±50%에서 포화
+# 점수 규칙 v2(2026-09-17) — "향후 1년 폐업률"을 가르는 축으로 재설계. 근거는 워크포워드 실험
+# (관측 23,009 · 상권 1,646 · 분기 2022Q1~2025Q2, 학습 2022~23 / 검증 2024~25 분할):
+#   과거 4분기 폐업률 IC 0.34 · 평균 영업 개월 0.33 · 점포당 매출 수준 0.11 ·
+#   v1의 매출·유동인구 QoQ 0.00~0.02(오히려 다음 해 매출과 음의 상관 — 평균회귀)·개폐업 순증 -0.02.
+# 검증 기간 종합 IC: v1 0.19 → v2 0.37, 등급별 향후 폐업률 1.9%(우수)→3.8%(위험) 단조.
+# 점포 수 전년 대비 증감도 후보였지만 단독 IC -0.05이고 빼는 편이 학습·검증 모두 조금 나아 제외했다.
+# 벤치마크는 서울 **중앙 상권**(중앙값) — 합계 평균은 대형 상권에 끌려 50점이 중앙에서 벗어난다.
+CLOSURE_DIFF_CAP = 3.0  # 4분기 폐업률 차이(%p) — ±3에서 0/100 포화(서울 5~95% 분위 ±2%p)
+PERSISTENCE_RATIO_CAP = 0.5  # 영업 개월 상대비 — 중앙값 대비 ±50%에서 포화
+SALES_LEVEL_LOG_CAP = math.log(2)  # 점포당 매출 — 중앙값의 2배/절반에서 포화
+WEIGHTS = {"closure_stability": 0.45, "persistence": 0.33, "sales_level": 0.22}
+SMALL_SAMPLE_STORES = 5  # 최신 분기 점포가 이보다 적으면 폐업률·점포당 매출·증감률 축을 비운다(표본 튐)
+
+
+def inputs_from_aggregates(
+    *, year_quarter: int, closure_rate_4q: float | None, quarters_with_stores: int,
+    store_count: int | None,
+    quarterly_sales: float | None, sales_store_count: int | None, operating_months: float | None,
+) -> AreaScoreInputs:
+    """상권 1곳의 집계값 → 점수 v2 입력. 런타임(PG 리포지토리)과 백테스트 스크립트가 **같은 규칙**을 쓰게 한 단일 정의처.
+
+    closure_rate_4q는 최근 4분기 점포 가중 폐업률(%) — 4분기가 다 있을 때만 쓴다.
+    quarterly_sales는 서울시 추정매출 원값(분기 합계) — 월 환산(÷3)·만원 단위는 여기서.
+    """
+    small = store_count is None or store_count < SMALL_SAMPLE_STORES
+    sales = None
+    if not small and quarterly_sales and sales_store_count:
+        sales = quarterly_sales / QUARTER_MONTHS / sales_store_count / 10_000
+    return AreaScoreInputs(
+        year_quarter=year_quarter,
+        closure_rate_4q=float(closure_rate_4q) if not small and quarters_with_stores == 4 and closure_rate_4q is not None else None,
+        operating_months=float(operating_months) if operating_months is not None else None,
+        sales_per_store_wan=sales,
+    )
+
+
+def median_inputs(year_quarter: int, inputs: list[AreaScoreInputs]) -> AreaScoreInputs | None:
+    """시도 안 상권들의 축별 중앙값 — 점수 v2의 벤치마크(50점 = 서울 중앙 상권)."""
+    if not inputs:
+        return None
+
+    def med(attr: str) -> float | None:
+        values = [v for i in inputs if (v := getattr(i, attr)) is not None]
+        return median(values) if values else None
+
+    return AreaScoreInputs(
+        year_quarter=year_quarter, closure_rate_4q=med("closure_rate_4q"), operating_months=med("operating_months"),
+        sales_per_store_wan=med("sales_per_store_wan"),
+    )
 
 GRADE_BOUNDS = ((80.0, "우수"), (65.0, "양호"), (45.0, "보통"), (30.0, "주의"))
 
@@ -37,12 +89,9 @@ def prev_year_quarter(year_quarter: int) -> int:
 
 
 class AreaScorer:
-    """상권 QoQ 추이와 시도 벤치마크 대비 종합점수를 계산하는 순수 도메인 서비스.
+    """상권 추이(QoQ·YoY)와 서울 중앙 상권 대비 종합점수를 계산하는 순수 도메인 서비스.
 
-    점수 규칙 v1 — 컴포넌트별 0~100, 50 = 벤치마크 동률:
-    - 성장률(매출·유동인구)·개폐업 건강도: 벤치마크와의 차이(%p)를 캡 기준 선형 매핑
-    - 영업 지속성: 벤치마크 대비 상대비를 캡 기준 선형 매핑
-    총점 = 가용 컴포넌트 단순 평균(결측 컴포넌트 제외). 전부 결측이면 None.
+    점수 규칙 v2 — 모듈 상단 주석(근거 실험)과 `score()` 참고. 추이 계산은 화면 표시용으로 점수와 분리돼 있다.
     """
 
     def qoq_series(self, series: list[QuarterValue]) -> list[QoqPoint]:
@@ -74,58 +123,43 @@ class AreaScorer:
             points.append(QoqPoint(year_quarter=p.year_quarter, value=p.value, qoq_rate=rate))
         return points
 
-    def growth_comparison(
-        self, area: list[QoqPoint], benchmark: list[QoqPoint]
-    ) -> MetricComparison | None:
-        """상권의 최신 유효 QoQ와 같은 분기의 벤치마크 QoQ를 짝짓는다 — 짝이 없으면 None."""
-        latest = next((p for p in reversed(area) if p.qoq_rate is not None), None)
-        if latest is None:
-            return None
-        bench_rate = next(
-            (p.qoq_rate for p in benchmark
-             if p.year_quarter == latest.year_quarter and p.qoq_rate is not None),
-            None,
-        )
-        if bench_rate is None:
-            return None
-        return MetricComparison(value=latest.qoq_rate, benchmark=bench_rate)
-
     def score(
         self,
         *,
-        sales_growth: MetricComparison | None,
-        floating_growth: MetricComparison | None,
-        store_health: MetricComparison | None,
+        closure_stability: MetricComparison | None,
         persistence: MetricComparison | None,
+        sales_level: MetricComparison | None,
     ) -> AreaScore | None:
+        """v2 — 컴포넌트별 0~100(50 = 서울 중앙 상권), 총점은 가용 컴포넌트의 가중 평균(결측은 가중치째 제외).
+
+        closure_stability: 최근 4분기 점포 가중 폐업률(%) vs 서울 중앙값 — **낮을수록** 높은 점수
+        persistence: 평균 영업 개월 vs 서울 중앙값 — 상대비
+        sales_level: 점포당 월매출(만원) vs 서울 중앙값 — 로그 비
+        """
         components = [
             c for c in (
-                self._diff_component("sales_growth", "매출 성장", sales_growth, GROWTH_DIFF_CAP),
-                self._diff_component(
-                    "floating_growth", "유동인구 성장", floating_growth, GROWTH_DIFF_CAP
+                self._lower_is_better_component(
+                    "closure_stability", "폐업 안정성", closure_stability, CLOSURE_DIFF_CAP,
                 ),
-                self._diff_component(
-                    "store_health", "개폐업 건강도", store_health, HEALTH_DIFF_CAP
-                ),
-                self._ratio_component(
-                    "persistence", "영업 지속성", persistence, PERSISTENCE_RATIO_CAP
-                ),
+                self._ratio_component("persistence", "영업 지속성", persistence, PERSISTENCE_RATIO_CAP),
+                self._log_ratio_component("sales_level", "점포당 매출 수준", sales_level, SALES_LEVEL_LOG_CAP),
             )
             if c is not None
         ]
         if not components:
             return None
-        total = round(sum(c.score for c in components) / len(components), 1)
+        weight = sum(WEIGHTS[c.key] for c in components)
+        total = round(sum(c.score * WEIGHTS[c.key] for c in components) / weight, 1)
         return AreaScore(total=total, grade=self._grade(total), components=tuple(components))
 
-    def _diff_component(
-        self, key: str, name: str, comparison: MetricComparison | None, cap: float
+    def _lower_is_better_component(
+        self, key: str, name: str, comparison: MetricComparison | None, cap: float,
     ) -> ScoreComponent | None:
         if comparison is None:
             return None
-        score = self._clamp(50 + 50 * (comparison.value - comparison.benchmark) / cap)
+        diff = comparison.benchmark - comparison.value  # 벤치마크보다 낮으면 +
         return ScoreComponent(
-            key=key, name=name, score=score,
+            key=key, name=name, score=self._clamp(50 + 50 * diff / cap),
             value=comparison.value, benchmark=comparison.benchmark,
         )
 
@@ -135,6 +169,17 @@ class AreaScorer:
         if comparison is None or comparison.benchmark <= 0:
             return None
         score = self._clamp(50 + 50 * (comparison.value / comparison.benchmark - 1) / cap)
+        return ScoreComponent(
+            key=key, name=name, score=score,
+            value=comparison.value, benchmark=comparison.benchmark,
+        )
+
+    def _log_ratio_component(
+        self, key: str, name: str, comparison: MetricComparison | None, cap: float
+    ) -> ScoreComponent | None:
+        if comparison is None or comparison.value <= 0 or comparison.benchmark <= 0:
+            return None
+        score = self._clamp(50 + 50 * math.log(comparison.value / comparison.benchmark) / cap)
         return ScoreComponent(
             key=key, name=name, score=score,
             value=comparison.value, benchmark=comparison.benchmark,

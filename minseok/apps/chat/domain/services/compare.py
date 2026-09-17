@@ -125,7 +125,7 @@ class AreaCompareItem:
     finance: dict | None = None                                   # rent·bep·attainment·profit·gap·rent_level·vacancy·rent_region
     fitness: dict | None = None                                   # total(0~100)·components[(label,score,weight)]·diagnoses[(tone,msg)]·ticket·similar
     graph: dict | None = None                                     # region_path·siblings·industries·has_service·rivals·articles
-    backtest: dict | None = None                                  # 이 등급의 다음 분기 실측: n·floating·positive·sales·sales_n
+    backtest: dict | None = None                                  # 이 등급의 실측(점수 v2 백테스트): n·closure(향후 1년 폐업률)·closure_n·floating
 
     def axis_values(self) -> dict[str, float | None]:
         return {
@@ -256,18 +256,17 @@ def render_area_compare(items: list[AreaCompareItem], v: AreaVerdict, *, service
         pred = (predictiveness or {}).get(key)
         tag = ""
         if pred is not None and pred[0] is not None:
-            tag = f" · 예측력 ρ={pred[0]:+.2f}" + (f", 상위−하위 5분위 {pred[1]:+.1f}%p" if pred[1] is not None else "")
+            tag = f" · 예측력 ρ={pred[0]:+.2f}" + (f", 점수 하위−상위 5분위 폐업률 {pred[1]:+.1f}%p" if pred[1] is not None else "")
         row(f"  └ {cname}{tag}", cells)
     if any(i.backtest for i in items):
         def bt(i: AreaCompareItem) -> str:
             b = i.backtest
             if not b:
                 return "등급 없음"
-            parts = [f"유동인구 상대 QoQ 평균 {b['floating']:+.1f}%p" if b.get("floating") is not None else "",
-                     f"양(+) 비율 {b['positive']:.0%}" if b.get("positive") is not None else "",
-                     f"매출 QoQ {b['sales']:+.1f}% (n={b['sales_n']})" if b.get("sales") is not None else ""]
-            return f"'{i.grade}' 등급 {b['n']:,}건: " + " · ".join(p for p in parts if p)
-        row("이 등급의 다음 분기 실측(백테스트)", [bt(i) for i in items])
+            if b.get("closure") is None:
+                return f"'{i.grade}' 등급 {b['n']:,}건: 폐업률 실측 없음(구버전 리포트)"
+            return f"'{i.grade}' 등급 {b['closure_n']:,}건 평균 {b['closure']:.2f}%"
+        row("이 등급의 다음 1년 폐업률(백테스트 실측)", [bt(i) for i in items])
     if any(i.fitness for i in items):
         f = [i.fitness or {} for i in items]
         row("입지 적합도(업종×상권, 100점)", [f"{x['total']:.0f}점" if x.get("total") is not None else "산출 불가" for x in f], "fitness")

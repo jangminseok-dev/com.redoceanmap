@@ -162,6 +162,8 @@ export type AdminGradeOutcomeRow = {
   positive_share: number | null;
   avg_sales_qoq: number | null;
   sales_n: number;
+  avg_closure_next4: number | null; // 점수 v2 주 결과 — t+1~t+4 점포 가중 폐업률(%) 평균, 구버전 리포트는 null
+  closure_n: number;
 };
 
 export type AdminComponentRow = {

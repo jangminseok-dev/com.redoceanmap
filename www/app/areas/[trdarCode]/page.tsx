@@ -105,7 +105,7 @@ function ScoreBlock({ score }: { score: AreaPublic["score"] }) {
             {score.total}
             <span className="text-sm font-medium text-foreground-muted ml-0.5">점</span>
           </div>
-          <p className="text-xs text-foreground-muted mt-0.5">서울 평균 대비 종합점수 · 50점 = 평균 수준</p>
+          <p className="text-xs text-foreground-muted mt-0.5">향후 1년 폐업률을 가르는 종합점수 · 50점 = 서울 중앙 상권</p>
         </div>
         <span className={`inline-flex px-2.5 py-1 rounded-full border text-xs font-semibold ${gradeStyle}`}>
           {score.grade}
@@ -116,7 +116,7 @@ function ScoreBlock({ score }: { score: AreaPublic["score"] }) {
           <li key={c.key} className="flex items-center justify-between text-xs">
             <span className="text-foreground-muted">{c.name}</span>
             <span
-              title="50점 = 서울 평균"
+              title="50점 = 서울 중앙 상권"
               className={`font-semibold tabular-nums ${c.score >= 55 ? "text-up" : c.score <= 45 ? "text-down" : ""}`}
             >
               {c.score}

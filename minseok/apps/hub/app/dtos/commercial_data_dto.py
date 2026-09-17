@@ -70,7 +70,7 @@ class AreaInsight:
 class AreaScoreComponent:
     """종합점수 컴포넌트 1개 — 50점 = 시도 벤치마크 동률, 0~100."""
 
-    key: str  # sales_growth / floating_growth / store_health / persistence
+    key: str  # 점수 v2: closure_stability / persistence / sales_level
     name: str
     score: float
     value: float

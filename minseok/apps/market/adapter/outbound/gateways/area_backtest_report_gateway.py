@@ -43,6 +43,8 @@ class AreaBacktestReportGateway(AreaBacktestReportPort):
                     positive_share=g.get("positive_share"),
                     avg_sales_qoq=g.get("avg_sales_qoq"),
                     sales_n=g.get("sales_n", 0),
+                    avg_closure_next4=g.get("avg_closure_next4"),
+                    closure_n=g.get("closure_n", 0),
                 )
                 for g in payload.get("grade_outcomes", [])
             ],

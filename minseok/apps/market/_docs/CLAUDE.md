@@ -68,7 +68,7 @@ market의 모든 테이블(3NF 15 + market_news_articles + area_score_backtest_r
 | 프론트 `/market/areas` | `area` 조회 슬라이스 — `trade_area` + region 조인으로 `Area` 엔티티 반환 |
 | 프론트 `/market/areas/ranking` | `area_ranking` 조회 슬라이스 — **상권 디렉터리**(전 상권 최신 분기 매출·점포·점포당매출·QoQ·폐업률). 필터는 자치구·상권구분(`trade_area_division`)·업종. 상권당 쿼리가 아니라 GROUP BY 3개로 1,650행을 0.1초에 낸다(상권 1곳씩 `area_score`를 부르면 1만 쿼리). **정렬·검색은 하지 않는다** — 지표를 다 실어 보내고 프론트가 `useMemo`로 좁힌다(`admin/areas` 선례). 조건에 맞는 상권이 없어도 404가 아니라 빈 목록 |
 | 프론트 `/market/trdar/{code}/stats` | `area_stats` 조회 슬라이스 — 상권 1곳의 분기 시계열(매출·점포·유동인구 병합) + 최신 분해축(연령/시간대) + 변화지표·시도 벤치마크. `service_code` 생략 시 최신 분기 매출 최대 업종 자동 선택 |
-| 프론트 `/market/trdar/{code}/score` | `area_score` 조회 슬라이스 — 분기 추이(전 업종 합계 매출·유동인구 QoQ) + 시도 벤치마크 대비 종합점수. 계산은 순수 도메인 서비스 `domain/services/area_scorer.py`(4개 컴포넌트 0~100, 50=벤치마크 동률, 가용 평균) |
+| 프론트 `/market/trdar/{code}/score` | `area_score` 조회 슬라이스 — 분기 추이(전 업종 합계 매출·유동인구 QoQ·YoY) + 서울 중앙 상권 대비 종합점수 **v2**(2026-09-17). 계산은 순수 도메인 서비스 `domain/services/area_scorer.py`(3축 — 4분기 폐업률 0.45·평균 영업 개월 0.33·점포당 매출 수준 0.22, 50=서울 중앙 상권, 가용 가중 평균). 입력 조립·중앙값은 `inputs_from_aggregates`·`median_inputs`(런타임·백테스트 공유) |
 | 프론트 `/market/trdar/{code}/detail` | `area_detail` 조회 슬라이스 — 팩트별 최신 분기 구조 분해(요일·시간대·성별·연령대 매출, 상주·직장인구 피라미드, 가구·아파트, 소비 카테고리) + 규칙 기반 해석 문장. 문장 생성은 순수 도메인 서비스 `domain/services/area_narrator.py`(임계값 기반, LLM 미사용). 지도 오버레이 패널용 + 허브 `get_area_insights`로 chat에도 공급 |
 | 프론트 `/market/trdar/{code}/fitness?service_code=` | `area_fitness` 조회 슬라이스(2026-09 game에서 이관) — 상권×업종 **입지 적합도 4축**(수요 정합·시간대 정합·경쟁 여유·생존 신호, 가중 합 0~1) + 실데이터 숫자로 말하는 진단 문장. 판정은 순수 도메인 `domain/services/area_fitness.py`, 문장은 `area_fitness_narrator.py`(템플릿, LLM 미사용). 입력 분포·서울 백분위는 `pg/area_demand_profile_pg_repository.py`(조회 6번, **최신 적재 분기**). 창업비용·임대료 같은 가정치는 없다(ROADMAP B4). 상권·업종 부재는 404 |
 | **공개** `/market/areas/{code}/public` · `/market/areas/public-index` | `area_public` 슬라이스(A-4, 2026-09-14) — showcase에 이어 인증 없이 열리는 두 번째 경로. 상세·점수 유스케이스를 **조합만** 하고 `AreaPublicView`가 공개 필드를 명시(핵심 요약·점수·해석 문장 — 좌표·인허가 상호·인구 피라미드·업종 랭킹 표 없음). 인증 대신 `core/rate_limit`(60/분·10/분) + 하루 캐시. 인덱스는 차원 목록(코드·이름·자치구·유형)뿐. 공개 집합·rate limit 부착은 `minseok/tests/test_public_routes.py`가 고정 |
@@ -205,14 +205,14 @@ market이 소유하는 두 번째 데이터 축 — 분기 공공데이터의 �
 
 ## 점수 백테스트 (워크포워드 검증)
 
-area_score의 예측력 실측 — 분기 t 데이터만으로 점수·등급을 재현해 t+1 실제 결과
-(상대 유동인구 QoQ = 상권 − 서울 %p, 계절성 통제)와 대조한다.
+area_score의 예측력 실측 — 분기 t까지의 데이터만으로 점수·등급을 재현해 **그 뒤 1년(t+1~t+4)의
+점포 가중 폐업률**과 대조한다(v2, 2026-09-17 — 이전 주 결과였던 t+1 상대 유동인구 QoQ는 참고치로 유지).
 
-- **배치**: `scripts/backtest_area_score.py`(수동 실행, 분기 데이터 갱신 후) — 동기 엔진으로
-  팩트 벌크 로드 → 순수 `AreaScorer` 재사용(분기 t의 정확한 QoQ만, 폴백 없음 — 룩어헤드 방지)
-  → `area_score_backtest_reports`에 실행당 1행(payload JSONB) INSERT.
-- **집계**: `domain/services/area_score_backtester.py`(순수) — 등급별 t+1 결과·컴포넌트별
-  Spearman·5분위 스프레드. payload 스키마의 단일 정의처.
+- **배치**: `scripts/backtest_area_score.py` — k8s CronJob `backtest-area-score`(매주 목 06:00). 동기 엔진으로
+  팩트 벌크 로드 → 런타임과 같은 `inputs_from_aggregates`·`median_inputs`(그 분기의 서울 중앙값) →
+  순수 `AreaScorer` → `area_score_backtest_reports`에 실행당 1행(payload JSONB, `outcome: closure_next4`) INSERT.
+- **집계**: `domain/services/area_score_backtester.py`(순수) — 등급별 향후 폐업률·컴포넌트별
+  Spearman(폐업률 부호 반전 — 양수면 점수가 높을수록 덜 닫음)·5분위 스프레드(하위−상위 폐업률). payload 스키마의 단일 정의처.
 - **조회**: 허브 `AreaBacktestReportPort`를 `area_backtest_report_gateway`가 구현(최신 1건),
   admin `/admin/market-backtest`가 소비.
 - **2026-07-27 재채점(매출·점포 2021~2024 백필 후)**: 매출·개폐업 축이 처음으로 실표본을
@@ -223,6 +223,13 @@ area_score의 예측력 실측 — 분기 t 데이터만으로 점수·등급을
   `floating_growth` ρ=-0.030, `store_health` ρ=+0.010, `persistence` ρ=-0.012.
   **점수 v1은 여전히 "현황 요약"이지 t+1 예측기가 아니다.** 등급 경계 재설계와 결과 지표
   재정의(상대 유동인구 QoQ 대신 폐업률 등)가 후속 과제.
+- **2026-09-17 점수 v2 재설계**: 결과를 "향후 1년 폐업률"로 재정의하고 후보 지표를 실험(관측 23,009 ·
+  학습 2022~23 / 검증 2024~25 분할, 분기 내 Spearman 평균). 과거 4분기 폐업률 IC 0.34 · 평균 영업 개월 0.33 ·
+  점포당 매출 수준 0.11 · v1의 매출/유동인구 QoQ 0.00~0.02 · 개폐업 순증 -0.02 · 점포 수 YoY -0.05(제외).
+  검증 기간 종합 IC **v1 0.19 → v2 0.37**. 벤치마크를 서울 합계 평균에서 **중앙 상권(중앙값)**으로 바꿔
+  등급 경계(80/65/45/30)를 유지한 채 분포가 가운데로 모였다(실 DB: 우수 2%·양호 12%·보통 50%·주의 29%·위험 7%).
+  v2 백테스트(관측 24,750): 등급별 향후 1년 폐업률 우수 2.01% → 양호 2.42% → 보통 2.95% → 주의 3.34% → 위험 3.74%(단조),
+  컴포넌트 ρ closure_stability +0.333 · persistence +0.317 · sales_level +0.105.
 
 ## 조회 성능 — 인덱스·캐시 (2026-07-27)
 
@@ -234,7 +241,8 @@ area_score의 예측력 실측 — 분기 t 데이터만으로 점수·등급을
   `ix_<fact>_trdar_code` 9개를 제거했다(`b2c3d4e5f6a7`). `ix_<fact>_year_quarter`는 유지 —
   `area_ranking`의 `WHERE year_quarter=?`와 벤치마크 캐시의 `max(year_quarter)`가 쓴다.
   실측: `store` 최신 1건이 670버퍼·2.2ms → **4버퍼·0.065ms**.
-- **시도 벤치마크 캐시**: `find_city_*_series`는 **상권과 무관하게 같은 값**인데 `/score`
+- **시도 벤치마크 캐시**(v2에서 대상이 `find_city_score_medians` — 서울 1,650곳 중앙값 — 로 바뀜, 첫 계산 1.9초·이후 상권당 7ms):
+  원래 `find_city_*_series`는 **상권과 무관하게 같은 값**인데 `/score`
   요청마다 재집계했다(1회 55,977버퍼로 5행). 최신 분기를 버전 키로 한 모듈 캐시를 붙였다 —
   분기 적재가 들어오면 자연 갱신(stock_forecast의 마지막 봉 ts 선례와 같은 방식).
   **캐시 키에 `quarters`를 넣지 않는다** — 화면이 4/8/20분기를 오갈 때 캐시가 조각난다.

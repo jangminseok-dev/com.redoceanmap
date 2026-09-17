@@ -91,30 +91,32 @@ async def test_팩트와_시도가_다르면_따로_캐시된다():
     assert len(calls) == 3
 
 
-async def test_분기수가_달라도_캐시를_공유한다(monkeypatch):
-    """4/8/20분기를 오갈 때 캐시가 조각나면 안 된다 — 최대 창을 캐시하고 잘라 쓴다."""
+async def test_서울_중앙값은_상권마다_재집계하지_않는다(monkeypatch):
+    """점수 v2 벤치마크(시도 안 1,650곳 중앙값)는 상권과 무관하다 — 분기 버전 키로 한 번만 계산한다."""
     from market.adapter.outbound.pg.area_score_pg_repository import AreaScorePgRepository as R
-    from market.domain.value_objects.area_score_vo import QuarterValue
 
-    session = _FakeSession(version=20254)
+    session = _FakeSession(version=20262)
     repo = R(session=session)
     computed = []
 
-    async def fake_city_series(self, key, sido_code, fact_orm, value_col):
-        async def compute():
-            computed.append(1)
-            return [QuarterValue(year_quarter=20211 + i, value=float(i)) for i in range(20)]
+    async def fake_rows(self, *, trdar_code, sido_code):
+        computed.append(sido_code)
+        row = type("Row", (), dict(closure4=2.0, n4=4, sc0=10, amt=30_000_000, sal_sc=10, om=100.0))
+        return 20262, [row, row]
 
-        return await self._cached_city((key, sido_code), _FakeOrm, compute)
+    monkeypatch.setattr(R, "_score_input_rows", fake_rows)
+    monkeypatch.setattr(R, "_latest_quarter", lambda self, orm: _async(20262))
 
-    monkeypatch.setattr(R, "_city_series", fake_city_series)
+    first = await repo.find_city_score_medians("11")
+    second = await repo.find_city_score_medians("11")
 
-    four = await repo.find_city_sales_series("11", 4)
-    twenty = await repo.find_city_sales_series("11", 20)
+    assert computed == ["11"], "두 번째 상권은 캐시에서 와야 한다"
+    assert first == second
+    assert first.closure_rate_4q == 2.0 and first.operating_months == 100.0 and first.sales_per_store_wan == 100.0
 
-    assert len(computed) == 1, "분기수가 달라도 집계는 한 번뿐이어야 한다"
-    assert len(four) == 4 and len(twenty) == 20
-    assert four == twenty[-4:], "짧은 창은 긴 창의 뒤쪽(최신)이어야 한다"
+
+async def _async(value):
+    return value
 
 
 async def test_데이터가_없으면_캐시하지_않는다():

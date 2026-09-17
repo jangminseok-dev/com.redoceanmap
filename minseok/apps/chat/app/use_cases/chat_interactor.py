@@ -655,13 +655,20 @@ _METHOD_QUERY_RE = re.compile(
     r"|서울\s?평균이?\s?기준"
     r"|상권\s?분석이?\s?(?:뭔데|뭐야|무엇)"
 )
+# 점수 v2 컴포넌트 실측치 표기 — 단위가 없으면 7.8B가 폐업률 2.9를 "2.9점"으로 읽었다(단위 없는 수치 오독 방지)
+_SCORE_VALUE_FORMAT = {
+    "closure_stability": "4분기 폐업률 {:.1f}%",
+    "persistence": "평균 영업 {:.0f}개월",
+    "sales_level": "점포당 월매출 {:,.0f}만원",
+}
 # 산출 방식 블록(I-20 wants_detail 주입분)과 같은 내용 — 정의가 갈리면 안 된다
 _METHOD_QUERY_TEXT = (
     "상권 분석은 서울시 공공데이터(분기 단위)로 상권별 매출·유동인구·점포·개폐업을 읽고,"
     " 업종·지역에 맞는 후보를 추려 드리는 기능이에요.\n"
-    "종합점수는 서울 평균을 50점으로 놓고 4개 컴포넌트 — 매출 성장·유동인구 성장(직전"
-    " 분기 대비)·개폐업 건강도·영업 지속성 — 를 0~100으로 환산해 종합한 값이에요."
-    " 50점보다 높으면 서울 평균 상회, '주의/위험' 등급은 평균에 크게 못 미친다는 뜻이에요.\n"
+    "종합점수는 '향후 1년 폐업률'을 가르는 3개 축 — 최근 4분기 폐업률(가중 45%)·평균 영업 개월(33%)·"
+    "점포당 매출 수준(22%) — 을 서울 중앙 상권과 비교해 0~100으로 환산한"
+    " 값이에요(50점 = 서울 중앙 상권). 과거 데이터로 검증했을 때 '우수' 상권의 다음 1년 폐업률이"
+    " '위험' 상권의 약 절반이었어요.\n"
     "특정 상권의 점수와 근거가 궁금하시면 \"성수역 상권 점수 알려줘\"처럼 상권 이름과"
     " 함께 물어봐 주세요."
 )
@@ -1464,8 +1471,8 @@ class ChatInteractor(ChatUseCase):
                 missing.append("상권 점수 백테스트 — 실행 이력이 없어요(scripts/backtest_area_score.py)")
             else:
                 grade_outcomes = {
-                    g.grade: {"n": g.n, "floating": g.avg_rel_floating_qoq, "positive": g.positive_share,
-                              "sales": g.avg_sales_qoq, "sales_n": g.sales_n}
+                    g.grade: {"n": g.n, "closure": g.avg_closure_next4, "closure_n": g.closure_n,
+                              "floating": g.avg_rel_floating_qoq}
                     for g in report.grade_outcomes
                 }
                 predictiveness = {c.key: (c.spearman, c.top_minus_bottom_quintile, c.n) for c in report.component_predictiveness}
@@ -2329,9 +2336,9 @@ class ChatInteractor(ChatUseCase):
             )
         if wants_detail:
             stats_context_lines.append(
-                "[종합점수 산출 방식] 시도(서울) 벤치마크 대비 4개 컴포넌트 — 매출 성장·"
-                "유동인구 성장(직전 분기 대비), 개폐업 건강도, 영업 지속성 — 를 0~100으로"
-                " 환산해 종합. 50점 = 서울 평균 동률."
+                "[종합점수 산출 방식] 서울 중앙 상권 대비 3개 축 — 최근 4분기 폐업률(45%)·평균 영업"
+                " 개월(33%)·점포당 매출 수준(22%) — 을 0~100으로 환산해 가중 평균."
+                " 50점 = 서울 중앙 상권. 향후 1년 폐업률을 가르도록 과거 데이터로 검증한 산식."
             )
         if area_articles:
             stats_context_lines.append(self._format_area_articles(area_articles))
@@ -3238,10 +3245,11 @@ class ChatInteractor(ChatUseCase):
         parts = []
         for c in score.components:
             side = "상회" if c.score > 50 else ("동률" if c.score == 50 else "미달")
-            if c.key in ("sales_growth", "floating_growth"):
+            fmt = _SCORE_VALUE_FORMAT.get(c.key)
+            if fmt is not None:
                 parts.append(
                     f"{c.name} {c.score}점(서울 평균 {side} —"
-                    f" 상권 {c.value:+.1f}% vs 서울 {c.benchmark:+.1f}%)"
+                    f" 상권 {fmt.format(c.value)} vs 서울 중앙 {fmt.format(c.benchmark)})"
                 )
             else:
                 parts.append(f"{c.name} {c.score}점(서울 평균 {side})")

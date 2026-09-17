@@ -8,11 +8,11 @@ QUINTILE_MIN_N = 25  # 5분위 스프레드 최소 표본 — 분위당 5개는 
 
 @dataclass(frozen=True)
 class ScoredObservation:
-    """워크포워드 관측 1건 — 분기 t의 점수와 t+1의 실제 결과.
+    """워크포워드 관측 1건 — 분기 t의 점수와 그 뒤의 실제 결과.
 
-    outcome_rel_floating_qoq: t+1 유동인구 QoQ(상권) − QoQ(서울) %p —
-    시 전체 대비 차분으로 분기 계절성을 통제한 주 결과 지표.
-    outcome_sales_qoq: t+1 매출 QoQ(%) — 매출 팩트는 2025년뿐이라 저표본 참고치.
+    outcome_closure_next4: t+1~t+4 점포 가중 폐업률(%) — **주 결과**(점수 v2가 가르려는 것, 낮을수록 좋다).
+    outcome_rel_floating_qoq: t+1 유동인구 QoQ(상권 − 서울) %p — v1 시절 주 결과, 참고치로 유지.
+    outcome_sales_qoq: t+1 매출 QoQ(%) — 참고치.
     """
 
     trdar_code: str
@@ -20,7 +20,8 @@ class ScoredObservation:
     grade: str
     total: float
     component_scores: dict[str, float]   # key → 0~100 (가용 컴포넌트만)
-    outcome_rel_floating_qoq: float
+    outcome_closure_next4: float | None = None
+    outcome_rel_floating_qoq: float | None = None
     outcome_sales_qoq: float | None = None
 
 
@@ -35,6 +36,7 @@ class AreaScoreBacktester:
             "n_observations": len(observations),
             "n_areas": len({o.trdar_code for o in observations}),
             "base_quarters": sorted({o.year_quarter for o in observations}),
+            "outcome": "closure_next4",
             "grade_outcomes": self._grade_outcomes(observations),
             "component_predictiveness": self._component_predictiveness(observations),
         }
@@ -43,11 +45,14 @@ class AreaScoreBacktester:
         rows = []
         for grade in GRADE_ORDER:
             group = [o for o in observations if o.grade == grade]
-            outcomes = [o.outcome_rel_floating_qoq for o in group]
+            closures = [o.outcome_closure_next4 for o in group if o.outcome_closure_next4 is not None]
+            outcomes = [o.outcome_rel_floating_qoq for o in group if o.outcome_rel_floating_qoq is not None]
             sales = [o.outcome_sales_qoq for o in group if o.outcome_sales_qoq is not None]
             rows.append({
                 "grade": grade,
                 "n": len(group),
+                "avg_closure_next4": self._mean(closures),
+                "closure_n": len(closures),
                 "avg_rel_floating_qoq": self._mean(outcomes),
                 "median_rel_floating_qoq": self._median(outcomes),
                 "positive_share": (
@@ -62,9 +67,12 @@ class AreaScoreBacktester:
         keys = sorted({k for o in observations for k in o.component_scores})
         rows = []
         for key in keys:
+            # 주 결과(향후 4분기 폐업률)의 **부호를 뒤집어** 쓴다 — ρ가 양수면 점수가 높을수록 덜 닫고,
+            # 5분위 스프레드는 (점수 하위 20% 폐업률 − 상위 20% 폐업률)%p가 된다
             pairs = [
-                (o.component_scores[key], o.outcome_rel_floating_qoq)
-                for o in observations if key in o.component_scores
+                (o.component_scores[key], -o.outcome_closure_next4)
+                for o in observations
+                if key in o.component_scores and o.outcome_closure_next4 is not None
             ]
             scores = [p[0] for p in pairs]
             outcomes = [p[1] for p in pairs]
