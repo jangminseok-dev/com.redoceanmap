@@ -450,6 +450,8 @@ def render_stock_compare(items: list[StockCompareItem], v: StockVerdict, *, brie
     out: list[str] = [v.line]
     out.append("**축별 판정**\n" + "\n".join(f"- {r.axis.label}: {r.verdict_text()}" for r in v.results))
     if brief:
+        # 거래량 신뢰/의심 판정(C1 골격)은 표를 생략해도 남긴다 — 골든셋 volume_verdict_rate가 결론만 답할 때 떨어졌다
+        out.append("**거래량 판정** " + " / ".join(f"{i.label} {i.volume_cell}" for i in items))
         out.append("'자세히 비교해줘'라고 하면 전체 지표 표를 드려요.")
         return "\n\n".join(out)
 

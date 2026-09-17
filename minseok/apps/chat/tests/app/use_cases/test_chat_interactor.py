@@ -3008,6 +3008,8 @@ async def test_종목_바구니_뒤_그래서_뭐가_나아는_바구니째_결�
     result = await interactor.ask("그래서 뭐가 나아?", conversation_id=100)
     assert stubs["stocks"].queries == ["테슬라", "애플"]
     assert result.text.startswith("**결론**") and "**전체 지표**" not in result.text
+    # 결론만 답해도 거래량 신뢰/의심 판정(C1 골격)은 남는다 — 골든셋 SF06 실측
+    assert "**거래량 판정** 테슬라(005930) 1.8배 · 신뢰" in result.text
 
 
 async def test_종목_바구니에서_제외하면_남은_종목으로_대조한다(monkeypatch):
