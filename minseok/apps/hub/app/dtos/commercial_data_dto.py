@@ -131,7 +131,7 @@ class AreaRawStat:
     weekday_sales_amount: int | None
     # 점포 (Store)
     has_store: bool
-    store_count: int | None
+    store_count: int | None  # 유사업종 점포 수(프랜차이즈 포함) — 매출·폐업과 같은 모수
     closure_rate: float | None
     opening_rate: float | None
     franchise_store_count: int | None

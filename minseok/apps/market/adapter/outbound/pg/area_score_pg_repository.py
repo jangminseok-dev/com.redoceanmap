@@ -21,9 +21,11 @@ from market.domain.value_objects.sales_unit import monthly_from_quarter
 
 # 점수 v2 입력 — 최신 점포 분기 q0 기준. 폐업률은 q0~q3 점포 가중,
 # 점포당 매출은 q0에서 매출·점포가 같은 업종으로 짝지어진 것만(업종 축 불일치 방지). scope는 상권 1곳 또는 시도 전체.
+# 점포 수는 유사업종 점포 수(= 점포_수 + 프랜차이즈) — 원본 점포_수는 프랜차이즈를 뺀 값인데 매출·폐업은 전체 점포 기준이다
+# (서울시 공식 폐업률 분모도 유사업종). 점포_수로 나누면 편의점 매출이 3배로 부풀었다(2026-09-17).
 _SCORE_INPUTS_SQL = """
 WITH st AS (
-    SELECT s.trdar_code, s.year_quarter, SUM(s.store_count) AS sc, SUM(s.closure_store_count) AS cc
+    SELECT s.trdar_code, s.year_quarter, SUM(s.similar_industry_store_count) AS sc, SUM(s.closure_store_count) AS cc
     FROM store s
     WHERE s.year_quarter IN (:q0, :q1, :q2, :q3) {scope}
     GROUP BY s.trdar_code, s.year_quarter
@@ -34,11 +36,11 @@ WITH st AS (
            MAX(sc) FILTER (WHERE year_quarter = :q0) AS sc0
     FROM st GROUP BY trdar_code
 ), sal AS (
-    SELECT es.trdar_code, SUM(es.monthly_sales_amount) AS amt, SUM(s.store_count) AS sal_sc
+    SELECT es.trdar_code, SUM(es.monthly_sales_amount) AS amt, SUM(s.similar_industry_store_count) AS sal_sc
     FROM estimated_sales es
     JOIN store s ON s.trdar_code = es.trdar_code AND s.year_quarter = es.year_quarter
                 AND s.service_code = es.service_code
-    WHERE es.year_quarter = :q0 AND s.store_count > 0 {scope}
+    WHERE es.year_quarter = :q0 AND s.similar_industry_store_count > 0 {scope}
     GROUP BY es.trdar_code
 ), om AS (
     SELECT DISTINCT ON (trdar_code) trdar_code, operating_months_avg AS om

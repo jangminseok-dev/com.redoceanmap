@@ -250,7 +250,7 @@ class CommercialDataGateway(CommercialDataPort):
             result = await self._session.execute(
                 select(
                     StoreOrm.trdar_code,
-                    func.sum(StoreOrm.store_count).label("stores"),
+                    func.sum(StoreOrm.similar_industry_store_count).label("stores"),
                     func.avg(StoreOrm.closure_rate).label("closure"),
                 )
                 .where(StoreOrm.year_quarter == store_quarter)
@@ -361,7 +361,7 @@ class CommercialDataGateway(CommercialDataPort):
 
         # 판정용 1년 폐업률 — 같은 업종(범용이면 전 업종) 최근 4분기 점포 가중. 4분기가 다 있어야 낸다
         closure_stmt = (
-            select(StoreOrm.trdar_code, func.sum(StoreOrm.closure_store_count), func.sum(StoreOrm.store_count),
+            select(StoreOrm.trdar_code, func.sum(StoreOrm.closure_store_count), func.sum(StoreOrm.similar_industry_store_count),
                    func.count(func.distinct(StoreOrm.year_quarter)))
             .where(StoreOrm.trdar_code.in_(trdar_codes), StoreOrm.year_quarter.in_(last_four_quarters(quarter)))
             .group_by(StoreOrm.trdar_code)
@@ -419,7 +419,8 @@ class CommercialDataGateway(CommercialDataPort):
                 monthly_sales_amount=monthly_from_quarter(s.monthly_sales_amount) if s else None,
                 weekday_sales_amount=monthly_from_quarter(s.weekday_sales_amount) if s else None,
                 has_store=st is not None,
-                store_count=st.store_count if st else None,
+                # 점포 수 = 유사업종(프랜차이즈 포함). 원본 점포_수는 프랜차이즈 제외라 매출·폐업과 모수가 다르다
+                store_count=st.similar_industry_store_count if st else None,
                 closure_rate=st.closure_rate if st else None,
                 opening_rate=st.opening_rate if st else None,
                 franchise_store_count=st.franchise_store_count if st else None,
@@ -468,7 +469,7 @@ class CommercialDataGateway(CommercialDataPort):
         store_rows = (await self._session.execute(
             select(
                 StoreOrm.trdar_code,
-                func.sum(StoreOrm.store_count),
+                func.sum(StoreOrm.similar_industry_store_count),
                 func.sum(StoreOrm.closure_store_count),
                 func.sum(StoreOrm.opening_store_count),
                 func.sum(StoreOrm.franchise_store_count),

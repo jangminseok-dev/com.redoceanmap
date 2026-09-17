@@ -133,13 +133,14 @@ class AreaRankingPgRepository(AreaRankingRepositoryPort):
     ) -> list[StoreAgg]:
         # 판정용 폐업률 = 최근 4분기 점포 가중(Σ폐업 ÷ Σ점포). 예전 값은 최신 분기 업종별 정수율의 단순평균이라
         # 과반이 0%였고 향후 1년 폐업률 예측력이 절반 이하였다(2026-09-17 점검). 점포 수는 최신 분기 그대로.
+        # 점포 수는 유사업종(프랜차이즈 포함) — 원본 점포_수는 프랜차이즈 제외라 매출·폐업과 모수가 어긋난다.
         quarters = last_four_quarters(year_quarter)
         stmt = (
             select(
                 StoreOrm.trdar_code,
-                func.sum(StoreOrm.store_count).filter(StoreOrm.year_quarter == year_quarter),
+                func.sum(StoreOrm.similar_industry_store_count).filter(StoreOrm.year_quarter == year_quarter),
                 func.sum(StoreOrm.closure_store_count),
-                func.sum(StoreOrm.store_count),
+                func.sum(StoreOrm.similar_industry_store_count),
                 func.count(func.distinct(StoreOrm.year_quarter)),
             )
             .where(StoreOrm.year_quarter.in_(quarters))

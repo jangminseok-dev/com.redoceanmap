@@ -212,7 +212,7 @@ class AreaDemandProfilePgRepository(AreaDemandProfilePort):
         closure_4q = (
             select(
                 StoreOrm.trdar_code.label("trdar_code"),
-                (func.sum(StoreOrm.closure_store_count) * 100.0 / func.nullif(func.sum(StoreOrm.store_count), 0)).label("value"),
+                (func.sum(StoreOrm.closure_store_count) * 100.0 / func.nullif(func.sum(StoreOrm.similar_industry_store_count), 0)).label("value"),
             )
             .where(StoreOrm.service_code == service_code, StoreOrm.year_quarter.in_(quarters))
             .group_by(StoreOrm.trdar_code)

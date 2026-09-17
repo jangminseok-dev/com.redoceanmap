@@ -269,7 +269,8 @@ class AreaDetailPgRepository(AreaDetailRepositoryPort):
         store_rows = (await self._session.execute(
             select(
                 StoreOrm.service_code,
-                func.sum(StoreOrm.store_count),
+                # 유사업종(프랜차이즈 포함) — 매출이 전체 점포 기준이라 점포_수(프랜차이즈 제외)로 나누면 부푼다
+                func.sum(StoreOrm.similar_industry_store_count),
                 func.avg(StoreOrm.closure_rate),
             )
             .where(StoreOrm.trdar_code == trdar_code, StoreOrm.year_quarter == latest)

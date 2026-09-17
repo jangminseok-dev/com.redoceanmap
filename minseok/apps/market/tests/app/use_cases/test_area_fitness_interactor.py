@@ -75,16 +75,16 @@ async def test_적합도와_진단을_함께_낸다():
 
 
 async def test_점포당_매출과_객단가는_실데이터에서_유도한다():
-    """(분기, 상권, 업종) 축이 일치해야 한다 — similar_industry와 섞으면 안 된다."""
+    """분모는 유사업종 점포 수 — 추정매출은 프랜차이즈 포함 전체 점포 기준이다(점포_수는 프랜차이즈 제외)."""
     result = await AreaFitnessInteractor(profiles=_StubProfiles(_profile())).evaluate(QUERY)
 
-    assert result.observed_sales_per_store == 600_000_000 // 20
+    assert result.observed_sales_per_store == 600_000_000 // 32
     assert result.observed_ticket_price == 600_000_000 // 120_000
 
 
 async def test_점포수가_0이어도_나눗셈이_터지지_않는다():
     result = await AreaFitnessInteractor(
-        profiles=_StubProfiles(_profile(observed_store_count=0, observed_monthly_sales_count=0))
+        profiles=_StubProfiles(_profile(observed_similar_store_count=0, observed_monthly_sales_count=0))
     ).evaluate(QUERY)
     assert result.observed_sales_per_store == 600_000_000
     assert result.observed_ticket_price == 600_000_000

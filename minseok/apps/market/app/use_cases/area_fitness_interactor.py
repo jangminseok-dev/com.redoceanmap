@@ -44,9 +44,10 @@ class AreaFitnessInteractor(AreaFitnessUseCase):
         )
 
         # 점포당 매출·객단가 — (분기, 상권, 업종) 축이 일치해야 한다.
-        # ⚠️ similar_industry_store_count와 섞지 않는다(집계 축이 다르다).
+        # 분모는 유사업종 점포 수(프랜차이즈 포함) — 추정매출은 전체 점포 기준이고 점포_수는 프랜차이즈 제외다
+        # (점포_수 + 프랜차이즈 = 유사업종, 168만 행 전부 성립 — 2026-09-17 실측).
         sales_per_store = (
-            profile.observed_monthly_sales_amount // max(profile.observed_store_count, 1)
+            profile.observed_monthly_sales_amount // max(profile.observed_similar_store_count, 1)
         )
         ticket_price = (
             profile.observed_monthly_sales_amount // max(profile.observed_monthly_sales_count, 1)

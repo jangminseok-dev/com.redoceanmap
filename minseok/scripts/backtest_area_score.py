@@ -70,14 +70,14 @@ def next_quarter(year_quarter: int) -> int:
 def load() -> dict[str, dict]:
     print("팩트 벌크 로드 중…")
     store = pd.read_sql(text(
-        "SELECT trdar_code, year_quarter, SUM(store_count) AS sc, SUM(closure_store_count) AS cc"
+        "SELECT trdar_code, year_quarter, SUM(similar_industry_store_count) AS sc, SUM(closure_store_count) AS cc"
         f" FROM store WHERE trdar_code IN ({_SEOUL_AREAS}) GROUP BY 1, 2"
     ), engine)
     sales = pd.read_sql(text(
-        "SELECT es.trdar_code, es.year_quarter, SUM(es.monthly_sales_amount) AS amt, SUM(s.store_count) AS sal_sc"
+        "SELECT es.trdar_code, es.year_quarter, SUM(es.monthly_sales_amount) AS amt, SUM(s.similar_industry_store_count) AS sal_sc"
         " FROM estimated_sales es JOIN store s ON s.trdar_code = es.trdar_code"
         " AND s.year_quarter = es.year_quarter AND s.service_code = es.service_code"
-        f" WHERE s.store_count > 0 AND es.trdar_code IN ({_SEOUL_AREAS}) GROUP BY 1, 2"
+        f" WHERE s.similar_industry_store_count > 0 AND es.trdar_code IN ({_SEOUL_AREAS}) GROUP BY 1, 2"
     ), engine)
     months = pd.read_sql(text(
         f"SELECT trdar_code, year_quarter, operating_months_avg AS om FROM commercial_change"
