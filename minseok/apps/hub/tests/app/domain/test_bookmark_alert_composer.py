@@ -18,8 +18,8 @@ def test_제목은_건수와_방향_요약을_담는다():
 
 def test_본문은_종목_줄과_고지를_담고_변동_미상은_그대로_말한다():
     _, body = compose_alert(_LINES)
-    assert "- 삼성전자(005930.KS): 상승 신호 · 전일 대비 +1.2% · 신호 8/22 기준 · 검증 참고 신호" in body
-    assert "- 테슬라(TSLA): 하락 신호 · 전일 대비 변동 미상 · 신호 8/22 기준" in body
+    assert "- 삼성전자(005930.KS): 반등 신호(과매도) · 전일 대비 +1.2% · 신호 8/22 기준 · 검증 참고 신호" in body
+    assert "- 테슬라(TSLA): 조정 신호(과열) · 전일 대비 변동 미상 · 신호 8/22 기준" in body
     assert DISCLAIMER in body
     assert "일일 수집 기준" in body  # 준실시간 오해 방지 문구
 

@@ -40,8 +40,8 @@ const DIRECTION_META: Record<
   BookmarkStockStatus["direction"],
   { label: string; icon: LucideIcon; className: string }
 > = {
-  UP: { label: "상승 신호", icon: TrendingUp, className: "text-up bg-up-weak" },
-  DOWN: { label: "하락 신호", icon: TrendingDown, className: "text-down bg-down-weak" },
+  UP: { label: "반등 신호", icon: TrendingUp, className: "text-up bg-up-weak" },
+  DOWN: { label: "조정 신호", icon: TrendingDown, className: "text-down bg-down-weak" },
   NEUTRAL: { label: "중립", icon: Minus, className: "text-foreground-muted bg-border/40" },
 };
 

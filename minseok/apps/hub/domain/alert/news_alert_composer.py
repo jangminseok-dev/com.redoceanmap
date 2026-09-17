@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-_DIRECTION_LABELS = {"UP": "상승 신호", "DOWN": "하락 신호", "NEUTRAL": "중립"}
+_DIRECTION_LABELS = {"UP": "반등 신호(과매도)", "DOWN": "조정 신호(과열)", "NEUTRAL": "중립"}
 
 NEWS_DISCLAIMER = (
     "감성 라벨은 수집 기사 제목에 대한 자동 분류이며 기사·종목에 대한 판단이 아닙니다. "

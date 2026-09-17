@@ -55,4 +55,8 @@ class StockBoardInteractor(StockBoardUseCase):
             # 거래대금은 마지막 봉의 종가 × 거래량이다. 정확한 체결 합계가 아니라 근사치이며,
             # 통화가 종목마다 다르므로 화면이 심볼로 단위를 붙인다.
             turnover=price * row.volume if row.volume is not None else None,
+            rsi=row.rsi,
+            bb_percent_b=row.bb_percent_b,
+            signal_days=row.signal_days,
+            since_signal_pct=(price / row.signal_start_price - 1.0) if row.signal_start_price else None,
         )

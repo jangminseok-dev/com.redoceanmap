@@ -95,4 +95,5 @@ class ForecastRefitInteractor(ForecastRefitUseCase):
             realized_return_pct=s.realized_return_pct,
             ticker=s.ticker,
             atr_pct=s.atr_pct,
+            as_of=s.as_of,
         )

@@ -612,7 +612,8 @@ _SURGE_PICK_RE = re.compile(
 # 보수적으로: 방향 어휘 또는 '나온/뜬' 류 동반 + 종목/주식 명사. "삼성전자 신호 어때?"처럼
 # 종목 하나를 묻는 문장은 잡지 않는다(그건 stock 경로의 몫).
 _SIGNAL_BOARD_RE = re.compile(
-    r"(?:상승|하락|매수|매도)\s*신호(?:가|이|는|은)?\s*(?:나온|뜬|난|있는|잡힌|보이는|켜진)?\s*(?:종목|주식)"
+    r"반등\s*후보(?:가|이|는|은)?\s*(?:나온|뜬|난|있는|잡힌|보이는|켜진)?\s*(?:종목|주식)"
+    r"|(?:상승|하락|매수|매도|반등)\s*신호(?:가|이|는|은)?\s*(?:나온|뜬|난|있는|잡힌|보이는|켜진)?\s*(?:종목|주식)"
     r"|신호(?:가|이)?\s*(?:나온|뜬|난|잡힌|켜진)\s*(?:종목|주식)"
     r"|신호\s*보드"
 )
@@ -2726,16 +2727,24 @@ class ChatInteractor(ChatUseCase):
 
         rows = [r for r in board.rows if r.direction == want][:_SIGNAL_BOARD_LIMIT]
         horizon = board.horizon_days
-        if not rows:
+        if want == "DOWN" and not rows:
+            # 2026-09-17 하락 무발화 — 81종목 10년 재검증의 최근 5년에서 기준선 미달(신호 뒤 5일 평균 +0.38%)
             text = (
-                f"지금은 워치리스트에 {horizon}거래일 지평 {word} 신호가 나온 종목이 없어요."
+                "하락 방향 신호는 지금 내지 않아요 — 과거 10년 데이터로 다시 검증했을 때 최근 5년 구간에서"
+                " 평소보다 잘 맞히지 못했고, 신호 뒤 5일 평균이 오히려 올랐어요(2026-09-17부터 중단)."
+                " 반등 후보(과매도) 종목은 \"반등 후보 종목 알려줘\"로 물어보시면 돼요."
+            )
+        elif not rows:
+            text = (
+                f"지금은 워치리스트에 {horizon}거래일 지평 반등 후보(과매도 반등 신호)가 나온 종목이 없어요."
                 " 신호는 하루 한 번 갱신되니 내일 다시 물어보셔도 돼요."
             )
         else:
             as_of = max(r.as_of for r in rows)
             lines = [
-                f"워치리스트에서 앞으로 {horizon}거래일 지평 {word} 신호가 나온 종목이에요"
-                f" (신호 {as_of:%m/%d} 기준, 신호가 뚜렷한 순)."
+                f"워치리스트에서 앞으로 {horizon}거래일 지평 반등 후보(과매도 반등 신호)가 나온 종목이에요"
+                f" (신호 {as_of:%m/%d} 기준, 신호가 뚜렷한 순). 최근 많이 내려 RSI·볼린저 기준 과매도인 종목이라"
+                " 지금은 떨어지는 중일 수 있어요 — 오르는 중이라는 뜻이 아니라 되돌림을 기대하는 역추세 신호예요."
             ]
             for i, r in enumerate(rows, 1):
                 unit = self._currency_unit(r.ticker)
@@ -2749,7 +2758,10 @@ class ChatInteractor(ChatUseCase):
                         f" · 평소 {r.baseline_up_rate * 100:.0f}%"
                         f" · {'통계적으로 유의' if r.ready else '유의성 미달'}"
                     )
-                lines.append(f"{i}. {r.name}({r.ticker}) — {price}{change} · {stat}")
+                basis = f" · RSI {r.rsi:.0f}" if r.rsi is not None else ""
+                since = f"(첫 신호 뒤 {r.since_signal_pct * 100:+.1f}%)" if r.since_signal_pct is not None and r.signal_days > 1 else ""
+                streak = f" · 신호 {r.signal_days}일째{since}" if r.signal_days > 1 else " · 오늘 새 신호"
+                lines.append(f"{i}. {r.name}({r.ticker}) — {price}{change} · {stat}{basis}{streak}")
             lines.append(
                 f"신호는 오늘 등락이 아니라 앞으로 {horizon}거래일 전망이고, 매매 지시가"
                 " 아니에요. 전체 보드는 종목 예측 화면에서 볼 수 있고, 종목명을 말씀하시면"

@@ -29,23 +29,17 @@ def test_forecast_signal_does_not_use_sentiment():
     assert config.w_rsi + config.w_bb + config.w_momentum == 1.0
 
 
-def test_forecast_signal_predicts_down_only_past_validated_threshold():
-    """하락은 -0.45(4차 재채점 검증값)를 넘어야만 발화한다 — 그 아래는 관망.
+def test_하락은_어떤_과매수에도_발화하지_않는다():
+    """2026-09-17 하락 무발화 복귀 — 81종목 10년 재검증의 뒤 5년에서 기준선 미달(-1.0%p, 신호 뒤 5일 +0.38%).
 
-    2026-08-28 정책 변경. 이전에는 임계가 도달 불가값(-1.01)이라 어떤 조합도 DOWN을 내지
-    못했다. 적중을 변동성 초과로 재정의하고 하락 기준선을 따로 세운 뒤 -0.40·-0.45가
-    홀드아웃·인샘플 두 구간을 통과했다(-0.35·-0.50은 미달). 경계 양쪽을 함께 고정한다.
+    8/28에 16종목으로 검증했던 -0.45가 넓은 워치리스트에서 유지되지 않았다. 점수는 [-1, 1]로
+    클램프되므로 -1.01은 도달 불가 — 가장 강한 과매수(-1.0)도 관망이다.
     """
     predictor = OutlookPredictor()
-    config = AnalysisConfig.forecast_signal()
-
-    # 강한 과매수 + 밴드 상단 = -0.60 → 검증 구간 안쪽이라 발화
-    strong = _ind(rsi=85.0, bb=1.0)
-    assert predictor.predict(strong, NEUTRAL, config).direction is Direction.DOWN
-
-    # 약한 과매수(-0.24)는 문턱에 못 미친다 — 미달 구간을 발화시키지 않는다
-    weak = _ind(rsi=70.0, bb=0.8)
-    assert predictor.predict(weak, NEUTRAL, config).direction is Direction.NEUTRAL
+    for config in (AnalysisConfig.forecast_signal(), AnalysisConfig.default()):
+        assert config.down_threshold < -1.0
+        extreme = _ind(rsi=100.0, bb=1.5, momentum=-1.0)
+        assert predictor.predict(extreme, NEUTRAL, config).direction is Direction.NEUTRAL
 
 
 def test_forecast_signal_reaches_up_on_oversold_reversal():

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-_DIRECTION_LABELS = {"UP": "상승 신호", "DOWN": "하락 신호"}
+_DIRECTION_LABELS = {"UP": "반등 신호(과매도)", "DOWN": "조정 신호(과열)"}
 
 DISCLAIMER = (
     "이 메일은 신호 관측 안내이며 매수·매도 권유가 아닙니다. "

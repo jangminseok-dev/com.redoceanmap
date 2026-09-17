@@ -431,7 +431,7 @@ class StockVerdict:
     line: str
 
 
-_DIR = {"UP": "상승 신호", "DOWN": "하락 신호", "NEUTRAL": "중립"}
+_DIR = {"UP": "반등 신호(과매도)", "DOWN": "조정 신호(과열)", "NEUTRAL": "중립"}
 
 
 def stock_verdict(items: list[StockCompareItem]) -> StockVerdict:

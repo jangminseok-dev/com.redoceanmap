@@ -26,6 +26,11 @@ class BoardSignalRow:
     price_as_of: datetime | None  # closes[-1]이 속한 세션일 — as_of(신호 기준일)와 다를 수 있다
     # 마지막 봉의 거래량. 봉이 없으면 None(수집 전 종목) — 기본값을 둬 기존 호출부를 깨지 않는다
     volume: int | None = None
+    # 신호 근거·연속성(2026-09-17) — "상승 신호인데 떨어지는 중"으로 읽히던 역추세 신호를 설명한다
+    rsi: float | None = None
+    bb_percent_b: float | None = None
+    signal_days: int = 1                 # 같은 방향 스냅샷이 끊기지 않고 이어진 일수(오늘 포함)
+    signal_start_price: float | None = None  # 그 연속 구간 첫 스냅샷의 기준가
 
 
 @dataclass(frozen=True)
@@ -47,6 +52,10 @@ class BoardRowView:
     # 거래대금 = 종가 × 거래량. **통화가 섞인다** — 워치리스트 대부분이 미국 종목이라
     # 달러와 원이 한 컬럼에 온다. 그래서 이 값으로 정렬하지 않는다(보드 정렬은 신호 세기 순).
     turnover: float | None
+    rsi: float | None = None
+    bb_percent_b: float | None = None
+    signal_days: int = 1
+    since_signal_pct: float | None = None  # 연속 신호 첫날 기준가 대비 최신가(0.03 = +3%)
 
 
 @dataclass(frozen=True)

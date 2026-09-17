@@ -19,8 +19,8 @@ type Props = {
 };
 
 const DIRECTION_META = {
-  UP: { label: "상승 신호", icon: TrendingUp, className: "text-up bg-up-weak border-up/20" },
-  DOWN: { label: "하락 신호", icon: TrendingDown, className: "text-down bg-down-weak border-down/20" },
+  UP: { label: "반등 신호", icon: TrendingUp, className: "text-up bg-up-weak border-up/20" },
+  DOWN: { label: "조정 신호", icon: TrendingDown, className: "text-down bg-down-weak border-down/20" },
   NEUTRAL: { label: "중립", icon: Minus, className: "text-foreground-muted bg-surface border-border" },
 } as const;
 

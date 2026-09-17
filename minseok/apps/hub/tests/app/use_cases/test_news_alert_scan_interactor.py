@@ -90,7 +90,7 @@ async def test_북마크한_종목의_강한_감성_뉴스만_사용자별로_�
     assert len(report.emails) == 1 and report.emails[0].to == "u1@example.com"
     body = report.emails[0].body
     assert "감성 -0.7(악재성)" in body
-    assert "현재 신호 상태: 하락 신호" in body  # B9 차별점 — 신호 병기
+    assert "현재 신호 상태: 조정 신호(과열)" in body  # B9 차별점 — 신호 병기
     assert "매수·매도 권유가 아니며" in body
 
 

@@ -33,6 +33,10 @@ class StockSignalBoardGateway(StockSignalBoardPort):
                     up_rate=r.up_rate,
                     baseline_up_rate=r.baseline_up_rate,
                     ready=r.ready,
+                    rsi=r.rsi,
+                    bb_percent_b=r.bb_percent_b,
+                    signal_days=r.signal_days,
+                    since_signal_pct=r.since_signal_pct,
                 )
                 for r in view.rows
             ),

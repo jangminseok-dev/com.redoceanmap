@@ -1,4 +1,6 @@
-"""weight_refit — 재채점 산식·승격 게이트·히스테리시스·멱등 검증."""
+"""weight_refit — 재채점 산식·승격 게이트·히스테리시스·멱등·표본 외 구간·실효 표본 검증."""
+from datetime import UTC, datetime, timedelta
+
 from stock.domain.entities.analysis_config import AnalysisConfig
 from stock.domain.services import weight_refit
 from stock.domain.services.weight_refit import (
@@ -14,7 +16,7 @@ CURRENT = AnalysisConfig.forecast_signal()  # RSI+BB+MOM 0.4/0.4/0.2 ±0.35
 # 이 문턱 밖이라 적중 판정이 부호 기준일 때와 같다(옛 기대값 그대로 유효).
 def _sample(
     rsi=0.0, bollinger=0.0, momentum=0.0, trend=0.0, obv=0.0, ret=0.01,
-    ticker="AAA", atr_pct=0.01,
+    ticker="AAA", atr_pct=0.01, as_of=None,
 ) -> RefitSample:
     return RefitSample(
         signals={
@@ -24,7 +26,25 @@ def _sample(
         realized_return_pct=ret,
         ticker=ticker,
         atr_pct=atr_pct,
+        as_of=as_of,
     )
+
+
+LATEST = datetime(2026, 9, 1, tzinfo=UTC)
+
+
+def _dated_universe(n_tickers: int, hit_tickers: int, *, first_day: int, signal=(0.4, 0.4)) -> list[RefitSample]:
+    """종목마다 강신호 1건(주 1개) + 무신호 하락 4건 — 실효 표본이 종목 수만큼 나오는 날짜 있는 표본.
+
+    first_day: LATEST로부터 며칠 전에 강신호를 둘지(>14면 선택 구간, ≤14면 표본 외 구간).
+    """
+    rows = []
+    for i in range(n_tickers):
+        t = f"T{first_day}_{i}"
+        rows.append(_sample(rsi=signal[0], bollinger=signal[1], ret=0.02 if i < hit_tickers else -0.02,
+                            ticker=t, as_of=LATEST - timedelta(days=first_day)))
+        rows += [_sample(ret=-0.02, ticker=t, as_of=LATEST - timedelta(days=first_day + 7 * (k + 1))) for k in range(4)]
+    return rows
 
 
 def _up_samples(n: int, hit_ratio: float) -> list[RefitSample]:
@@ -93,17 +113,16 @@ def test_멱등_최상위가_현행이면_승격하지_않는다():
 def test_승격_게이트_전부_통과():
     # 현행(임계 0.35)은 강신호(합산 0.32)를 놓쳐 n=0 — 임계를 낮춘 후보가
     # 강신호 120건(적중 110)을 골라내 기준선을 뚜렷이 이긴다.
-    strong = [
-        _sample(rsi=0.4, bollinger=0.4, ret=0.02 if i < 110 else -0.02)
-        for i in range(120)
-    ]
-    noise = [_sample(ret=-0.02) for _ in range(200)]
-    report = weight_refit.refit({5: strong + noise}, CURRENT)
-    assert report.promote is True
+    # 선택 구간 120종목(적중 110) + 표본 외 구간(최근 14일) 30종목(적중 25) — 날짜가 있어야 ④를 통과한다
+    samples = _dated_universe(120, 110, first_day=40) + _dated_universe(30, 25, first_day=3)
+    report = weight_refit.refit({5: samples}, CURRENT)
+    assert report.promote is True, report.reasons
+    assert report.winner_holdout is not None and report.winner_holdout.n_effective == 30
+    assert "표본 외" in report.reasons[-1]
     winner = report.winner
-    assert winner.n >= 100 and winner.gate_passed and not winner.is_current
+    assert winner.n_effective >= 100 and winner.gate_passed and not winner.is_current
     config = report.winner_config()
-    assert config.down_threshold == DOWN_THRESHOLD  # 검증된 하락 임계 고정(-0.45)
+    assert config.down_threshold == DOWN_THRESHOLD == -1.01  # 하락 무발화(2026-09-17 재검증 미달)
     assert config.w_sentiment == 0.0                # 감성 재적합은 E3의 몫
 
 
@@ -172,3 +191,33 @@ def test_기준선은_신호를_낸_종목만으로_만든다():
     fired = [r for r in board.rows if r.n > 0]
     assert fired and all(r.n == 120 for r in fired)
     assert all(abs(r.baseline - 0.6) < 1e-9 for r in fired)
+
+
+
+def test_표본_외_구간에서_기준선을_못_넘으면_승격하지_않는다():
+    # 선택 구간은 강하지만 최근 14일엔 30종목 전부 빗나감 — 9/1 승격이 9월에 무너진 모양
+    samples = _dated_universe(120, 110, first_day=40) + _dated_universe(30, 0, first_day=3)
+    report = weight_refit.refit({5: samples}, CURRENT)
+    assert report.promote is False
+    assert report.reasons[0].startswith("표본 외(최근 14일) 적중")
+
+
+def test_날짜_없는_표본은_표본_외_검증_불가로_승격하지_않는다():
+    strong = [_sample(rsi=0.4, bollinger=0.4, ret=0.02 if i < 110 else -0.02) for i in range(120)]
+    noise = [_sample(ret=-0.02) for _ in range(200)]
+    report = weight_refit.refit({5: strong + noise}, CURRENT)
+    assert report.promote is False
+    assert report.reasons[0].startswith("표본 외 검증 불가")
+
+
+def test_같은_종목_같은_주의_반복_신호는_실효_표본_1건이다():
+    # 한 종목이 같은 주 5거래일 연속 발화 = 원표본 5 · 실효 1
+    monday = datetime(2026, 8, 3, tzinfo=UTC)
+    repeats = [_sample(rsi=0.4, bollinger=0.4, ret=0.02, ticker="COST", as_of=monday + timedelta(days=d)) for d in range(5)]
+    other = [_sample(rsi=0.4, bollinger=0.4, ret=-0.02, ticker="MCD", as_of=monday + timedelta(days=7))]
+    # 최신 표본을 멀리 두어 위 신호들이 표본 외(최근 14일)가 아니라 선택 구간에 들어가게 한다
+    later = [_sample(ret=-0.02, ticker="XOM", as_of=monday + timedelta(days=60))]
+    board = weight_refit.refit({5: repeats + other + later}, CURRENT).boards[0]
+    row = next(r for r in board.rows if r.up_threshold == 0.25 and r.w_rsi == 0.4 and r.w_bb == 0.4 and r.w_momentum == 0.2)
+    assert row.n == 6 and row.n_effective == 2
+    assert row.hit_rate == 0.5  # 군집 평균 — 원표본 적중률 5/6이 아니다

@@ -21,6 +21,10 @@ class BoardRowSchema(BaseModel):
     price_as_of: datetime | None    # 가격 기준일 — 신호 기준일(as_of)과 다를 수 있다
     volume: int | None              # 마지막 봉 거래량(주)
     turnover: float | None          # 거래대금 = 종가 × 거래량. 통화는 종목을 따른다(원/달러 혼재)
+    rsi: float | None = None        # 신호 근거 — 역추세 신호라 "왜 떨어지는 종목에 상승 쪽 신호인가"를 설명한다
+    bb_percent_b: float | None = None
+    signal_days: int = 1            # 같은 방향 신호 연속 일수(오늘 포함)
+    since_signal_pct: float | None = None  # 연속 신호 첫날 기준가 대비 최신가
 
 
 class StockBoardResponse(BaseModel):

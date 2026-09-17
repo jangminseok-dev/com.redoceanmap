@@ -28,8 +28,10 @@ def test_감성은_지표를_보정할_뿐_단독으로_방향을_만들지_않�
     assert 0.0 < out.confidence <= 1.0
 
 
-def test_negative_sentiment_and_overbought_predicts_down():
-    """과매수 + 악재 뉴스면 하락 방향이 나온다.
+def test_negative_sentiment_and_overbought_no_longer_predicts_down():
+    """과매수 + 악재 뉴스여도 하락 방향은 나오지 않는다(2026-09-17 하락 무발화 복귀 — AnalysisConfig 참조).
+
+    아래는 8/28 당시의 조정 기록이다.
 
     두 번 조정됐다(2026-08-28). ① 감성 가중치가 0.5→0.2로 낮아져 약한 과매수는 뉴스가
     나빠도 문턱에 닿지 않는다. ② 하락 문턱이 검증값 -0.45의 0.8배인 **-0.36**으로 내려가
@@ -39,10 +41,10 @@ def test_negative_sentiment_and_overbought_predicts_down():
     -0.16뿐이라, 지표가 이미 문턱 가까이 와 있어야 방향이 굳는다.
     """
     predictor = OutlookPredictor()
-    # rsi 90(-0.373): 지표만으로 문턱을 넘는다
+    # rsi 90(-0.373): 8/28 정책에선 문턱을 넘었지만 이제 관망
     assert predictor.predict(
         _ind(rsi=90.0), SentimentScore(-0.8), AnalysisConfig.default()
-    ).direction is Direction.DOWN
+    ).direction is Direction.NEUTRAL
 
     # rsi 85(-0.32)는 악재 뉴스가 있어도 관망 — 뉴스는 판정을 뒤집지 못한다
     assert predictor.predict(

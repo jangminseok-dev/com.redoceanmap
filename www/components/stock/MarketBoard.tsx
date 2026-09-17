@@ -8,24 +8,25 @@ import { formatPrice, formatTurnover } from "@/lib/currency";
 import SymbolMark from "@/components/common/SymbolMark";
 import type { StockBoardRow } from "@/lib/types";
 
-// 적중률 라벨의 방향어 — 중립은 방향이 없으므로 "신호"로 둔다(중립 행은 up_rate가 대개 없다)
+// 적중률 라벨의 방향어 — 중립은 방향이 없으므로 "신호"로 둔다(중립 행은 up_rate가 대개 없다).
+// 적중은 "신호 뒤 그 방향으로 갔는가"라 상승·하락으로 둔다 — 반등 후보가 실제로 올랐는지의 비율이다.
 const DIRECTION_HIT_WORD: Record<StockBoardRow["direction"], string> = {
   UP: "상승",
   DOWN: "하락",
   NEUTRAL: "신호",
 };
 
-// 좌측 목록의 방향 필터 — 종목이 늘면 상승 신호만 훑는 동작이 기본이 된다(레퍼런스 토스 필터 칩)
+// 좌측 목록의 방향 필터. 신호는 역추세(과매도 반등)라 "상승"이 아니라 "반등 후보"로 부른다 —
+// 2026-09-17 사용자 신고: "상승 신호 종목은 대부분 떨어지는 중"으로 읽혔다. 하락 방향은 같은 날 발화 중단.
 const FILTERS = [
   { key: "ALL", label: "전체" },
-  { key: "UP", label: "상승" },
-  { key: "DOWN", label: "하락" },
+  { key: "UP", label: "반등 후보" },
 ] as const;
 type FilterKey = (typeof FILTERS)[number]["key"];
 
 const DIRECTION_META = {
-  UP: { label: "상승", icon: TrendingUp, className: "text-up bg-up-weak border-up/20" },
-  DOWN: { label: "하락", icon: TrendingDown, className: "text-down bg-down-weak border-down/20" },
+  UP: { label: "반등", icon: TrendingUp, className: "text-up bg-up-weak border-up/20" },
+  DOWN: { label: "조정", icon: TrendingDown, className: "text-down bg-down-weak border-down/20" },
   NEUTRAL: { label: "중립", icon: Minus, className: "text-foreground-muted bg-surface border-border" },
 } as const;
 
@@ -141,12 +142,28 @@ function BoardRow({
               {row.turnover != null ? formatTurnover(row.turnover, row.ticker) : "—"}
             </span>
 
+            {/* 신호 배지 + 근거 한 줄 — RSI·연속 일수·첫 신호 뒤 등락. 같은 종목이 매일 뜨면 새 신호처럼 보였다 */}
             <span
-              className={`hidden lg:inline-flex w-[104px] shrink-0 items-center justify-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium ${meta.className}`}
+              className="hidden lg:flex w-[104px] shrink-0 flex-col items-center gap-0.5"
+              title={
+                row.direction === "NEUTRAL"
+                  ? undefined
+                  : `최근 하락으로 과매도(RSI ${row.rsi != null ? Math.round(row.rsi) : "—"}${row.bb_percent_b != null ? ` · 볼린저 %B ${row.bb_percent_b.toFixed(2)}` : ""})라 되돌림을 기대하는 역추세 신호예요. 오르는 중이라는 뜻이 아닙니다.`
+              }
             >
-              <DirectionIcon size={11} strokeWidth={2} />
-              {meta.label} {row.score >= 0 ? "+" : ""}
-              {row.score.toFixed(2)}
+              <span
+                className={`inline-flex items-center justify-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium ${meta.className}`}
+              >
+                <DirectionIcon size={11} strokeWidth={2} />
+                {meta.label} {row.score >= 0 ? "+" : ""}
+                {row.score.toFixed(2)}
+              </span>
+              {row.direction !== "NEUTRAL" && (
+                <span className="text-[11px] tabular-nums text-foreground-muted">
+                  {(row.signal_days ?? 1) > 1 ? `${row.signal_days}일째` : "새 신호"}
+                  {(row.signal_days ?? 1) > 1 && row.since_signal_pct != null && ` · ${signedPct(row.since_signal_pct)}`}
+                </span>
+              )}
             </span>
 
             {/* 적중률은 **그 방향**의 과거 비율이다(verdict.ts와 같은 규칙) — DOWN 행의 62%는
@@ -265,16 +282,15 @@ export default function MarketBoard({
           "주식 분석" 제목은 뺐다 — 레일에서 주식이 활성이라 어디인지는 이미 알고 있다. */}
       {!compact && rows.length > 0 && (
         <>
-          <div className="grid grid-cols-3 gap-2 px-4 pt-4 pb-1">
-            <SummaryTile label="상승 신호" count={counts.UP} className="text-up" />
-            <SummaryTile label="하락 신호" count={counts.DOWN} className="text-down" />
-            <SummaryTile label="중립" count={counts.NEUTRAL} className="text-foreground-muted" />
+          <div className="grid grid-cols-2 gap-2 px-4 pt-4 pb-1">
+            <SummaryTile label="반등 후보(과매도)" count={counts.UP} className="text-up" />
+            <SummaryTile label="중립" count={counts.NEUTRAL + counts.DOWN} className="text-foreground-muted" />
           </div>
-          {/* 지평 안내 — 시장 전체가 내린 날 "상승 신호가 다 빨갛다"로 읽히는 실관찰(9/2).
-              신호는 당일 성적표가 아니라 5거래일 전망이라는 것을 표 앞에서 말한다. */}
+          {/* 신호의 뜻 — 역추세라 반등 후보는 대개 최근 떨어진 종목이다(9/17 신고). 하락 방향은 장기 검증 미달로 중단 */}
           <p className="px-4 pb-1 text-xs text-foreground-muted">
-            신호는 오늘 등락이 아니라 앞으로 {boardQ.data?.horizon_days ?? 5}거래일 전망이에요 —
-            시장이 크게 내린 날엔 상승 신호 종목도 함께 내릴 수 있어요.
+            반등 후보는 최근 많이 내려 RSI·볼린저 기준 과매도인 종목이에요. 지금 오르는 중이라는 뜻이 아니라 앞으로{" "}
+            {boardQ.data?.horizon_days ?? 5}거래일 안의 되돌림을 기대하는 신호예요. 하락 방향 신호는 10년 재검증에서
+            평소보다 잘 맞히지 못해 내지 않아요.
           </p>
         </>
       )}
@@ -344,7 +360,7 @@ export default function MarketBoard({
           </ul>
           {filtered.length === 0 && (
             <p className="px-4 py-6 text-center text-sm text-foreground-muted">
-              {filter === "UP" ? "상승" : "하락"} 신호인 종목이 지금은 없어요. 전체를 눌러 다른
+              반등 후보 종목이 지금은 없어요. 전체를 눌러 다른
               신호를 둘러보세요.
             </p>
           )}

@@ -40,3 +40,41 @@ def test_step_예정_시각이_지나면_누락이다():
 def test_본문에_모의투자_사유와_조치를_싣는다():
     body = _mod.build_body([], None, "AI 모의투자 판단 누락 1세션")
     assert "AI 모의투자 판단 누락 1세션" in body and "snapshot_forecasts.py" in body
+
+
+
+def _snap(ticker, day, ret, direction="UP", atr=0.01, cfg="refit-20260901"):
+    return (ticker, datetime(2026, 9, day, tzinfo=UTC), direction, ret, atr, cfg)
+
+
+def test_신호_성적이_기준선_아래면_사유를_낸다():
+    # 20종목 각 1군집 — 반등 신호 뒤 전부 하락, 이력상 기준선은 50%
+    recent = [_snap(f"T{i}", 8, -0.02) for i in range(20)]
+    history = recent + [_snap(f"T{i}", 1, 0.02, direction="NEUTRAL") for i in range(20)]
+    reason = _mod.signal_decay_verdict(recent, history)
+    assert "refit-20260901 반등 신호 적중 0.0% ≤ 종목 기준선 50.0% (실효 표본 20군집)" in reason
+    assert "신호 성적이 기준선 아래" in _mod.build_body([], None, None, reason)
+
+
+def test_옛_조합의_좋은_성적이_새_조합의_부진을_가리지_않는다():
+    # 9/17 실측 모양 — 옛 조합 20군집 전부 적중 + 새 조합 20군집 전부 실패. 합치면 50%로 기준선과 같아 보인다
+    old = [_snap(f"O{i}", 1, 0.02, cfg="refit-20260822") for i in range(20)]
+    new = [_snap(f"T{i}", 8, -0.02) for i in range(20)]
+    history = old + new + [_snap(f"O{i}", 2, -0.02, direction="NEUTRAL") for i in range(20)] \
+        + [_snap(f"T{i}", 2, 0.02, direction="NEUTRAL") for i in range(20)]
+    reason = _mod.signal_decay_verdict(old + new, history)
+    assert reason is not None and "refit-20260901" in reason and "refit-20260822" not in reason
+
+
+def test_신호_성적_표본이_적거나_기준선_위면_알리지_않는다():
+    few = [_snap(f"T{i}", 8, -0.02) for i in range(14)]
+    assert _mod.signal_decay_verdict(few, few) is None
+    good = [_snap(f"T{i}", 8, 0.02) for i in range(20)]
+    history = good + [_snap(f"T{i}", 1, -0.02, direction="NEUTRAL") for i in range(20)]
+    assert _mod.signal_decay_verdict(good, history) is None
+
+
+def test_같은_종목_같은_주_반복_신호는_한_군집이다():
+    # 2026-09-07(월)~11(금) COST 5건은 한 군집 — 다른 13종목과 합쳐 14군집이라 판단 보류(원표본은 18건)
+    repeats = [_snap("COST", d, -0.02) for d in (7, 8, 9, 10, 11)] + [_snap(f"T{i}", 8, -0.02) for i in range(13)]
+    assert _mod.signal_decay_verdict(repeats, repeats) is None

@@ -23,10 +23,10 @@ def _signals(rsi: float = 0.0, bollinger: float = 0.0) -> tuple[SignalContributi
 
 def _scored(
     snapshot_id: int, horizon: int = 5, rsi: float = 0.0, bollinger: float = 0.0,
-    ret: float | None = 0.01, earnings_veto: bool = False,
+    ret: float | None = 0.01, earnings_veto: bool = False, ticker: str = "TEST.KS", as_of: datetime = AS_OF,
 ) -> ForecastSnapshot:
     return ForecastSnapshot(
-        id=snapshot_id, ticker="TEST.KS", as_of=AS_OF, horizon_days=horizon,
+        id=snapshot_id, ticker=ticker, as_of=as_of, horizon_days=horizon,
         direction="NEUTRAL", base_price=100.0, score=0.0,
         signals=_signals(rsi=rsi, bollinger=bollinger),
         evaluated_at=datetime(2026, 7, 10, tzinfo=UTC),
@@ -35,13 +35,23 @@ def _scored(
 
 
 def _promotable_snapshots() -> list[ForecastSnapshot]:
-    """현행(임계 0.35)이 놓치는 강신호 고적중 120건 + 무신호 하락 200건 — 게이트 통과 표본."""
-    strong = [
-        _scored(i, rsi=0.4, bollinger=0.4, ret=0.02 if i < 110 else -0.02)
-        for i in range(120)
-    ]
-    noise = [_scored(1000 + i, ret=-0.02) for i in range(200)]
-    return strong + noise
+    """현행(임계 0.35)이 놓치는 강신호 — 선택 구간 120종목(적중 110) + 최근 14일 30종목(적중 25).
+
+    종목마다 강신호 1건 + 다른 주 무신호 하락 4건이라 실효 표본(종목×주)이 종목 수만큼 나온다.
+    """
+    from datetime import timedelta
+
+    rows, sid = [], 0
+    for days_ago, count, hits in ((40, 120, 110), (3, 30, 25)):
+        for i in range(count):
+            ticker = f"T{days_ago}_{i}"
+            rows.append(_scored(sid, rsi=0.4, bollinger=0.4, ret=0.02 if i < hits else -0.02,
+                                ticker=ticker, as_of=AS_OF - timedelta(days=days_ago)))
+            sid += 1
+            for k in range(4):
+                rows.append(_scored(sid, ret=-0.02, ticker=ticker, as_of=AS_OF - timedelta(days=days_ago + 7 * (k + 1))))
+                sid += 1
+    return rows
 
 
 class _StubSnapshots:
@@ -97,7 +107,7 @@ async def test_게이트_통과시_자동_승격하고_리포트를_남긴다():
     assert result.activated_key.startswith("refit-") and len(result.activated_key) <= 24
     [(key, config)] = configs.activated
     assert key == result.activated_key
-    assert config.down_threshold == -0.45 and config.w_sentiment == 0.0
+    assert config.down_threshold == -1.01 and config.w_sentiment == 0.0
     [(params, payload)] = reports.saved
     assert params["activated_key"] == result.activated_key
     assert payload["promote"] is True

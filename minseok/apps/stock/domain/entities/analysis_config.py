@@ -46,8 +46,9 @@ class AnalysisConfig:
 
         회귀 방지: tests/test_analysis_config.py가 "감성 0일 때 forecast_signal()과 방향 동일"을 고정.
         """
+        # 하락은 2026-09-17부터 무발화(-1.01) — forecast_signal() docstring의 81종목 10년 재검증 참조
         return cls(
-            up_threshold=0.28, down_threshold=-0.36,
+            up_threshold=0.28, down_threshold=-1.01,
             w_sentiment=0.2, w_rsi=0.32, w_trend=0.0, w_bb=0.32, w_momentum=0.16,
         )
 
@@ -81,9 +82,16 @@ class AnalysisConfig:
         양쪽에서 가장 크기 때문이며, 대신 발화가 드물다(홀드아웃 n=361·인샘플 n=667).
         **낙폭·회복 실측 분포(`DirectionStats`)는 그대로 병기한다** — 방향 라벨이 생겼다고
         분포 제시를 걷어내지 않는다.
+
+        **2026-09-17 하락 무발화 복귀(-1.01).** 위 검증은 16종목이었다. 워치리스트 81종목(10년치가 있는 67종목)
+        일봉을 2016-09~2021-09 / 2021-09~로 갈라 다시 채점하니 이 조합의 하락 신호는 뒤 5년에서
+        Wilson 하한 32.9% < 기준선 33.9%(우위 -1.0%p, n=2,969)로 미달했고, 신호 뒤 5일 평균 수익이 +0.38%였다
+        — 사용자 신고("하락 신호 종목이 오른다")와 같은 방향. RSI+BB(0.5/0.5)도 -1.4%p로 미달.
+        상승은 같은 재검증에서 앞 +2.6%p·뒤 +0.9%p로 두 구간 통과해 유지한다. 12-1 모멘텀 추세 필터는
+        상승에 +2.5%p·+0.6%p로 개선이 없어 채택하지 않았다.
         """
         return cls(
-            up_threshold=0.35, down_threshold=-0.45,
+            up_threshold=0.35, down_threshold=-1.01,
             w_sentiment=0.0, w_rsi=0.4, w_trend=0.0, w_bb=0.4, w_momentum=0.2,
         )
 

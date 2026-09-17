@@ -9,8 +9,10 @@
     python scripts/refit_forecast_weights.py            # 재적합 + 게이트 통과 시 승격
     python scripts/refit_forecast_weights.py --dry-run  # 리더보드 계산·리포트 저장까지(승격만 생략)
 
-백엔드 PC cron(매주 토 15:00 KST — 금요 세션 채점 cron 14:00 직후):
-    0 15 * * 6 cd /path/to/minseok && ../venv/bin/python scripts/refit_forecast_weights.py >> ~/refit_forecast_weights.log 2>&1
+백엔드 PC cron(매주 토 15:00 KST — 금요 세션 채점 cron 14:00 직후) — **2026-09-17부터 리포트 전용(--dry-run)**:
+    0 15 * * 6 cd /path/to/minseok && ../venv/bin/python scripts/refit_forecast_weights.py --dry-run >> ~/refit_forecast_weights.log 2>&1
+9/1 자동 승격(RSI+BB 0.5/0.5)이 6주 상승장 표본에만 맞춰져 9월에 반등 신호 적중 17.8%로 무너졌다. 게이트에 표본 외
+구간(최근 14일)·실효 표본(종목×주)을 넣었지만, 자동 교체는 사람이 리포트를 보고 판단할 때까지 끈다.
 
 현재 표본(UP 판정 n<100)으로는 당분간 "게이트 미달" 리포트만 쌓이는 것이 정상이다 —
 표본이 차는 시점(~2026-09)부터 승격이 실제로 발화한다.

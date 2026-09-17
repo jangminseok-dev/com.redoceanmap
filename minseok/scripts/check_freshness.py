@@ -36,6 +36,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "apps"))
 from admin.domain.services.dataset_freshness import FreshnessState, evaluate  # noqa: E402
 from core.key.secret_manager import get_secret_manager  # noqa: E402
+from stock.domain.value_objects.backtest_report import hit_unit, is_up_hit  # noqa: E402
 
 _secrets = get_secret_manager()
 
@@ -154,6 +155,58 @@ def paper_lag(engine, now: datetime) -> str | None:
             f"빠진 세션 {', '.join(f'{d:%m/%d}' for d in overdue)}")
 
 
+# 신호 성적 감시(2026-09-17) — 9/1 승격 조합의 반등(UP) 신호가 9월에 적중 17.8%(기준선 25%)로 무너졌는데
+# 2주 넘게 아무도 몰랐다. 매일 최근 SIGNAL_WINDOW_DAYS일 채점분을 실효 표본(종목×ISO 주 군집)으로 세어
+# 종목 기준선 아래면 알린다. 적중 정의는 백테스트·재적합·스냅샷 채점과 같은 is_up_hit(변동성 초과).
+SIGNAL_WINDOW_DAYS = 14
+SIGNAL_MIN_EFFECTIVE = 15  # 군집이 이보다 적으면 판단하지 않는다(잡음)
+
+
+def signal_decay_verdict(recent: list[tuple], history: list[tuple]) -> str | None:
+    """recent·history: (ticker, as_of, direction, realized_return_pct, atr_pct, signal_config). 순수 함수.
+
+    history(전 기간 채점분)로 종목 기준선(변동성 초과 상승 비율)을 만들고, recent의 UP 신호를 **판정 조합별로**
+    군집 평균해 그 군집들의 기준선 평균과 비교한다 — 창에 옛 조합의 잘 맞은 신호가 섞이면 새 조합의 부진이
+    평균에 묻힌다(9/17 실측: 8/27~31 옛 조합 49건이 9월 부진 45건을 가렸다). 기준선 이하인 조합이 있으면 사유.
+    """
+    base: dict[str, list[bool]] = {}
+    for ticker, _as_of, _d, ret, atr, _cfg in history:
+        base.setdefault(ticker, []).append(is_up_hit(ret, hit_unit(atr, 5)))
+    by_config: dict[str, dict[tuple, list[bool]]] = {}
+    for ticker, as_of, direction, ret, atr, cfg in recent:
+        if direction != "UP" or ticker not in base:
+            continue
+        year, week, _ = as_of.isocalendar()
+        by_config.setdefault(cfg or "(조합 미기록)", {}).setdefault((ticker, year, week), []).append(
+            is_up_hit(ret, hit_unit(atr, 5)))
+    reasons = []
+    for cfg, clusters in sorted(by_config.items()):
+        n = len(clusters)
+        if n < SIGNAL_MIN_EFFECTIVE:
+            continue
+        rate = sum(sum(h) / len(h) for h in clusters.values()) / n
+        baseline = sum(sum(base[k[0]]) / len(base[k[0]]) for k in clusters) / n
+        if rate <= baseline:
+            reasons.append(f"{cfg} 반등 신호 적중 {rate:.1%} ≤ 종목 기준선 {baseline:.1%} (실효 표본 {n}군집)")
+    if not reasons:
+        return None
+    return f"최근 {SIGNAL_WINDOW_DAYS}일 채점분에서 " + "; ".join(reasons) + " — 신호가 평소보다 못 맞히고 있습니다"
+
+
+def signal_decay(engine, now: datetime) -> str | None:
+    cols = "ticker, as_of, direction, realized_return_pct, atr_pct, signal_config"
+    with engine.connect() as conn:
+        recent = conn.execute(text(
+            f"SELECT {cols} FROM forecast_snapshots WHERE horizon_days = 5 AND realized_return_pct IS NOT NULL"
+            " AND NOT earnings_veto AND as_of >= :since"
+        ), {"since": now - timedelta(days=SIGNAL_WINDOW_DAYS + 7)}).all()  # 5거래일 채점 지연만큼 창을 늘린다
+        history = conn.execute(text(
+            f"SELECT {cols} FROM forecast_snapshots WHERE horizon_days = 5 AND realized_return_pct IS NOT NULL"
+            " AND NOT earnings_veto"
+        )).all()
+    return signal_decay_verdict([tuple(r) for r in recent], [tuple(r) for r in history])
+
+
 def collect_verdicts() -> list[tuple[str, str, object]]:
     """(표시명, 상태 라벨, 판정) 목록. DB 접속 자체가 실패하면 예외를 그대로 올린다."""
     now = datetime.now(UTC)
@@ -172,7 +225,7 @@ def collect_verdicts() -> list[tuple[str, str, object]]:
 
 
 def build_body(problems: list[tuple[str, str, object]], drift: str | None = None,
-               paper: str | None = None) -> str:
+               paper: str | None = None, signal: str | None = None) -> str:
     lines = []
     if problems:
         lines += ["다음 수집이 기대 주기를 넘겼습니다.", ""]
@@ -182,6 +235,9 @@ def build_body(problems: list[tuple[str, str, object]], drift: str | None = None
     if paper:
         lines += ["", "모의투자 일일 step이 돌지 않았습니다.", "", f"  · {paper}",
                   "    조치: 백엔드 PC에서 minseok/ 기준 ../venv/bin/python scripts/snapshot_forecasts.py (멱등)"]
+    if signal:
+        lines += ["", "주식 신호 성적이 기준선 아래입니다.", "", f"  · {signal}",
+                  "    조치: 어드민 → 예측 재적합에서 조합별 최근 성적 확인 · 활성 조합 교체 여부 판단(자동 승격은 꺼져 있음)"]
     if drift:
         lines += ["", "배포가 저장소보다 뒤처져 있습니다.", "", f"  · {drift}",
                   "    조치: 백엔드 PC에서 infra/deploy.sh"]
@@ -228,19 +284,21 @@ def main() -> int:
     engine = create_engine(shared_url(), pool_pre_ping=True)
     try:
         paper = paper_lag(engine, datetime.now(UTC))
+        signal = signal_decay(engine, datetime.now(UTC))
     finally:
         engine.dispose()
     print(f"  모의투자: {paper or '누락 세션 없음'}")
+    print(f"  신호 성적: {signal or '기준선 이상(또는 표본 부족)'}")
 
     problems = [r for r in rows if r[1] in ALERT_STATES]
-    if not problems and not drift and not paper:
-        print(f"{stamp} 전 데이터셋·배포·모의투자 정상 — 알림 없음", flush=True)
+    if not problems and not drift and not paper and not signal:
+        print(f"{stamp} 전 데이터셋·배포·모의투자·신호 성적 정상 — 알림 없음", flush=True)
         return 0
 
     parts = (([f"수집 지연·정지 {len(problems)}건"] if problems else []) + (["배포 드리프트"] if drift else [])
-             + (["모의투자 step 누락"] if paper else []))
+             + (["모의투자 step 누락"] if paper else []) + (["신호 성적 저하"] if signal else []))
     subject = f"[redoceanmap] {' / '.join(parts)}"
-    body = build_body(problems, drift, paper)
+    body = build_body(problems, drift, paper, signal)
     print(f"{stamp} 이상 감지\n{body}", flush=True)
     if dry_run:
         print("[dry-run] 메일 발송 생략", flush=True)

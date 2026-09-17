@@ -14,6 +14,23 @@ from stock.app.ports.output.stock_board_repository import StockBoardRepositoryPo
 # 이보다 오래된 스냅샷은 보드에서 뺀다 — 워치리스트에서 빠진 종목의 몇 달 전 판정이
 # 최신인 척 상단에 남는 것을 막는다. 연휴+주말을 넘기도록 10일로 둔다.
 STALE_AFTER_DAYS = 10
+# 같은 방향 신호의 연속 일수를 세는 창 — 연속이 이보다 길면 창 끝에서 자른다
+STREAK_LOOKBACK_DAYS = 45
+
+
+def _streak(rows_desc: list) -> tuple[int, float | None]:
+    """최신부터 같은 방향이 끊기지 않고 이어진 스냅샷 수와 그 첫 스냅샷의 기준가.
+
+    9/17 신호 보드 감사: 상승 신호의 45%가 같은 종목 3일 내 반복이었다 — 화면이 매일 새 신호처럼 보이면
+    "상승 신호인데 계속 떨어진다"로 읽힌다. 연속 일수와 첫 신호 이후 등락을 함께 보여주기 위한 값.
+    """
+    direction = rows_desc[0].direction
+    count, start = 0, rows_desc[0]
+    for row in rows_desc:
+        if row.direction != direction:
+            break
+        count, start = count + 1, row
+    return count, start.base_price
 
 
 class StockBoardPgRepository(StockBoardRepositoryPort):
@@ -27,19 +44,25 @@ class StockBoardPgRepository(StockBoardRepositoryPort):
         self._session = session
 
     async def find_latest_signals(self, horizon: int, sparkline_bars: int) -> list[BoardSignalRow]:
-        cutoff = datetime.now(UTC) - timedelta(days=STALE_AFTER_DAYS)
-        snapshots = (await self._session.execute(
+        now = datetime.now(UTC)
+        cutoff = now - timedelta(days=STALE_AFTER_DAYS)
+        # 연속 일수를 세려고 최근 STREAK_LOOKBACK_DAYS치를 함께 읽는다 — 티커당 수십 행이라 가볍다
+        recent = (await self._session.execute(
             select(ForecastSnapshotOrm)
             .where(
                 ForecastSnapshotOrm.horizon_days == horizon,
-                ForecastSnapshotOrm.as_of >= cutoff,
+                ForecastSnapshotOrm.as_of >= now - timedelta(days=STREAK_LOOKBACK_DAYS),
             )
-            # DISTINCT ON (ticker) — 티커별 가장 최근 as_of 한 줄
-            .distinct(ForecastSnapshotOrm.ticker)
             .order_by(ForecastSnapshotOrm.ticker, ForecastSnapshotOrm.as_of.desc())
         )).scalars().all()
+        by_ticker: dict[str, list[ForecastSnapshotOrm]] = {}
+        for s in recent:
+            by_ticker.setdefault(s.ticker, []).append(s)
+        latest = {t: rows[0] for t, rows in by_ticker.items() if rows[0].as_of >= cutoff}
+        snapshots = list(latest.values())
         if not snapshots:
             return []
+        streaks = {t: _streak(by_ticker[t]) for t in latest}
 
         closes, price_dates, volumes = await self._recent_closes(
             [s.ticker for s in snapshots], sparkline_bars
@@ -57,6 +80,10 @@ class StockBoardPgRepository(StockBoardRepositoryPort):
                 closes=tuple(closes.get(s.ticker, ())),
                 price_as_of=price_dates.get(s.ticker),
                 volume=volumes.get(s.ticker),
+                rsi=s.rsi,
+                bb_percent_b=s.bb_percent_b,
+                signal_days=streaks[s.ticker][0],
+                signal_start_price=streaks[s.ticker][1],
             )
             for s in snapshots
         ]

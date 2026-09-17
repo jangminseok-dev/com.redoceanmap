@@ -21,6 +21,10 @@ class StockSignalRow:
     up_rate: float | None          # 같은 신호일 때 **그 방향**으로 간 과거 비율(표본 없으면 None)
     baseline_up_rate: float | None
     ready: bool                    # 통계적 유의(Wilson 하한 > 기준선)
+    rsi: float | None = None       # 신호 근거(역추세 — 과매도일수록 상승 쪽 신호)
+    bb_percent_b: float | None = None
+    signal_days: int = 1           # 같은 방향 신호 연속 일수
+    since_signal_pct: float | None = None  # 연속 신호 첫날 대비 최신가 등락
 
 
 @dataclass(frozen=True)

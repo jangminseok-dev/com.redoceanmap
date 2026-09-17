@@ -80,16 +80,12 @@ async def test_상승_합성봉의_확률은_결정적이다():
     assert view.symbol == "TEST"
     assert view.resolved_ticker == "TEST.KS"
     assert view.horizon_days == 5
-    # 단조 상승 합성봉은 RSI 100 + 밴드 상단이라 **과매수 하락 신호**가 난다
-    # (2026-08-28 하락 임계 -0.45 검증·발화 이후. 그전에는 임계 도달 불가라 NEUTRAL이었다).
-    # 확률 필드는 방향을 따라간다 — DOWN이면 "변동성 초과 하락" 비율이고, 단조 상승이라 0이다.
-    assert view.signal_direction == "DOWN"
+    # 단조 상승 합성봉은 RSI 100 + 밴드 상단 — 8/28~9/16엔 하락 신호였지만 2026-09-17 하락 무발화 복귀로 관망이다.
+    # 관망은 방향 주장이 아니므로 확률은 유의 판정을 하지 않는다(ready False 고정).
+    assert view.signal_direction == "NEUTRAL"
     p = view.probability
     assert p is not None
-    assert p.hits == 0 and p.up_rate == 0.0
-    assert p.baseline_up_rate == 0.0     # 하락 기준선 — 내린 날이 없다
-    assert p.ready is False              # 기준선을 못 이기므로 확률 제시 불가
-    assert p.ci_low == 0.0 < p.ci_high
+    assert p.ready is False
     assert any(i.key == "probability" for i in view.insights)
     assert any(i.key == "basis" for i in view.insights)
 

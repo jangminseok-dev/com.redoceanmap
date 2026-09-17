@@ -10,16 +10,22 @@
 후보는 명시 열거 ~32조합(재채점 2·3차 관례 — 조합 폭발·다중 비교 억제):
 5신호 가중치 대표 조합 × up_threshold 4종. `w_sentiment=0` 고정(스냅샷 경로는 감성
 중립이라 sentiment 원신호가 항상 0 — 감성 재적합은 ROADMAP E3의 몫),
-`down_threshold=-0.45` 고정(4차 재채점에서 검증된 값 — 상승 가중치만 스윕하고 하락 임계는
-스윕하지 않는다. 하락 재적합은 스냅샷에 DOWN 표본이 쌓인 뒤의 몫이다), atr_veto·volume_confirm 스윕 없음(기각된 손잡이 +
+`down_threshold=-1.01` 고정(하락 무발화 — 2026-09-17 81종목 10년 재검증에서 뒤 5년 미달, AnalysisConfig.forecast_signal
+docstring 참조. 상승 가중치만 스윕한다), atr_veto·volume_confirm 스윕 없음(기각된 손잡이 +
 volume_ratio 미저장).
 
-승격 게이트(전부 gate_horizon 표본 기준):
+승격 게이트(전부 gate_horizon 표본 기준, 2026-09-17 개정):
+  0) 표본을 **선택 구간**(최신 as_of로부터 HOLDOUT_DAYS일 이전)과 **표본 외 구간**(최신 HOLDOUT_DAYS일)으로 가른다 —
+     9/1 승격은 7/20~8/31 상승장 표본 안에서만 골라 9월에 무너졌다(상승 적중 51.9% → 17.8%).
+     n·적중률·Wilson은 **실효 표본**(같은 종목·같은 ISO 주의 신호를 1군집으로 묶어 군집 평균)으로 센다 —
+     상승 신호의 45%가 같은 종목 3일 내 반복이라 원표본 수로는 신뢰구간이 부풀었다.
   ① n ≥ MIN_SIGNAL_SAMPLES(100) AND Wilson 95% 하한 > 기준선
      (기준선은 후보가 신호를 낸 **종목들의 자기 기준선을 신호 수로 가중**한 값 —
       2026-08-28 [1]-③. 표본 전체 pooled 값을 쓰면 신호를 안 낸 종목이 섞여 왜곡된다)
   ② 후보 하한 ≥ 현행 조합 재채점 하한 + PROMOTION_MARGIN(히스테리시스 — 승격 진동 방지)
   ③ 승자 파라미터 ≠ 현행 파라미터(멱등 — 같은 날 재실행이 재승격하지 않는다)
+  ④ 승자가 표본 외 구간에서도 실효 표본 ≥ MIN_HOLDOUT_EFFECTIVE이고 실효 적중률 > 그 구간 종목 기준선
+     (날짜 없는 표본이면 표본 외 검증 불가 — 승격하지 않는다)
 
 payload 스키마의 단일 정의처는 `RefitReport.to_payload()`다(event_study 선례).
 """
@@ -28,6 +34,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 from stock.domain.entities.analysis_config import AnalysisConfig
 from stock.domain.value_objects.backtest_report import (
@@ -38,7 +45,9 @@ from stock.domain.value_objects.backtest_report import (
 )
 
 PROMOTION_MARGIN = 0.02   # 현행 대비 Wilson 하한 개선 최소폭 — 승격 히스테리시스
-DOWN_THRESHOLD = -0.45    # 4차 재채점(2026-08-28)에서 두 구간 연속 통과한 하락 임계
+DOWN_THRESHOLD = -1.01    # 하락 무발화(2026-09-17 재검증 미달) — AnalysisConfig.forecast_signal 참조
+HOLDOUT_DAYS = 14         # 선택에 쓰지 않는 최신 구간(달력일)
+MIN_HOLDOUT_EFFECTIVE = 20  # 표본 외 구간 최소 실효 표본(종목×ISO 주 군집)
 
 # (w_rsi, w_trend, w_bb, w_obv, w_momentum) — 합 1.0 대표 조합 명시 열거
 _WEIGHT_SETS: tuple[tuple[float, float, float, float, float], ...] = (
@@ -66,6 +75,7 @@ class RefitSample:
     realized_return_pct: float
     ticker: str
     atr_pct: float | None
+    as_of: datetime | None = None  # 실효 표본 군집(종목×ISO 주)·표본 외 구간 분할 — 없으면 표본마다 따로 센다
 
 
 @dataclass(frozen=True)
@@ -78,13 +88,14 @@ class CandidateResult:
     w_bb: float
     w_obv: float
     w_momentum: float
-    n: int                    # UP 판정 표본 수
+    n: int                    # UP 판정 원표본 수
     hits: int                 # 그중 적중(변동성 초과 상승)
-    hit_rate: float | None
-    baseline: float           # 이 후보가 신호를 낸 종목들의 기준선(신호 수 가중)
-    wilson_lower: float
+    hit_rate: float | None    # 실효 적중률(군집 평균의 평균) — 게이트가 쓰는 값
+    baseline: float           # 이 후보가 신호를 낸 군집들의 종목 기준선 평균
+    wilson_lower: float       # 실효 표본 기준 Wilson 95% 하한
     is_current: bool
-    gate_passed: bool         # 게이트 ①(n·Wilson>기준선)만 — ②③은 리포트 수준 판정
+    gate_passed: bool         # 게이트 ①(실효 n·Wilson>기준선)만 — ②③④는 리포트 수준 판정
+    n_effective: int = 0      # 종목×ISO 주 군집 수
 
     def params(self) -> tuple[float, ...]:
         return (
@@ -113,6 +124,7 @@ class RefitReport:
     promote: bool
     winner: CandidateResult | None    # promote=True일 때 승격 대상(게이트 통과 최상위)
     reasons: list[str]                # 판정 사유 — 미달이어도 "왜"를 남긴다
+    winner_holdout: CandidateResult | None = None  # 승자의 표본 외 구간 재채점(없으면 검증 불가)
 
     def winner_config(self) -> AnalysisConfig | None:
         if self.winner is None:
@@ -131,6 +143,8 @@ class RefitReport:
             "promote": self.promote,
             "winner": _candidate_payload(self.winner) if self.winner else None,
             "reasons": list(self.reasons),
+            "holdout_days": HOLDOUT_DAYS,
+            "winner_holdout": _candidate_payload(self.winner_holdout) if self.winner_holdout else None,
             "boards": [
                 {
                     "horizon_days": b.horizon_days,
@@ -149,7 +163,7 @@ def _candidate_payload(c: CandidateResult) -> dict:
         "up_threshold": c.up_threshold,
         "w_rsi": c.w_rsi, "w_trend": c.w_trend, "w_bb": c.w_bb,
         "w_obv": c.w_obv, "w_momentum": c.w_momentum,
-        "n": c.n, "hits": c.hits, "hit_rate": c.hit_rate,
+        "n": c.n, "n_effective": c.n_effective, "hits": c.hits, "hit_rate": c.hit_rate,
         "baseline": c.baseline,
         "wilson_lower": c.wilson_lower,
         "is_current": c.is_current, "gate_passed": c.gate_passed,
@@ -166,17 +180,47 @@ def refit(
         current.up_threshold, current.w_rsi, current.w_trend,
         current.w_bb, current.w_obv, current.w_momentum,
     )
-    boards = [
-        _board(horizon, samples_by_horizon.get(horizon, ()), current, current_params)
-        for horizon in sorted(samples_by_horizon, key=lambda h: (h != gate_horizon, h))
-    ]
+    boards = []
+    holdouts: dict[int, list[RefitSample]] = {}
+    for horizon in sorted(samples_by_horizon, key=lambda h: (h != gate_horizon, h)):
+        selection, holdouts[horizon] = split_holdout(samples_by_horizon.get(horizon, ()))
+        boards.append(_board(horizon, selection, current, current_params))
 
     gate_board = next((b for b in boards if b.horizon_days == gate_horizon), None)
     promote, winner, reasons = _judge(gate_board, gate_horizon)
+    winner_holdout = None
+    if winner is not None and not winner.is_current:
+        held = holdouts.get(gate_horizon, [])
+        if held:
+            winner_holdout = _evaluate(
+                _scored(gate_horizon, held), winner.up_threshold,
+                (winner.w_rsi, winner.w_trend, winner.w_bb, winner.w_obv, winner.w_momentum), current_params,
+            )
+        if promote:
+            promote, reasons = _judge_holdout(winner_holdout, reasons)
     return RefitReport(
         gate_horizon=gate_horizon, boards=boards,
-        promote=promote, winner=winner, reasons=reasons,
+        promote=promote, winner=winner, reasons=reasons, winner_holdout=winner_holdout,
     )
+
+
+def split_holdout(samples: Sequence[RefitSample]) -> tuple[list[RefitSample], list[RefitSample]]:
+    """최신 as_of로부터 HOLDOUT_DAYS일 안쪽은 표본 외 구간 — 날짜 없는 표본이 섞이면 분할하지 않는다."""
+    if not samples or any(s.as_of is None for s in samples):
+        return list(samples), []
+    cutoff = max(s.as_of for s in samples) - timedelta(days=HOLDOUT_DAYS)
+    return [s for s in samples if s.as_of <= cutoff], [s for s in samples if s.as_of > cutoff]
+
+
+def _judge_holdout(holdout: CandidateResult | None, reasons: list[str]) -> tuple[bool, list[str]]:
+    if holdout is None:
+        return False, [f"표본 외 검증 불가 — 최근 {HOLDOUT_DAYS}일 표본이 없거나 날짜가 없습니다. 승격 보류.", *reasons]
+    if holdout.n_effective < MIN_HOLDOUT_EFFECTIVE:
+        return False, [f"표본 외(최근 {HOLDOUT_DAYS}일) 실효 표본 {holdout.n_effective} < {MIN_HOLDOUT_EFFECTIVE} — 승격 보류.", *reasons]
+    if holdout.hit_rate is None or holdout.hit_rate <= holdout.baseline:
+        rate = f"{holdout.hit_rate:.3f}" if holdout.hit_rate is not None else "없음"
+        return False, [f"표본 외(최근 {HOLDOUT_DAYS}일) 적중 {rate} ≤ 기준선 {holdout.baseline:.3f} — 승격 보류.", *reasons]
+    return True, [*reasons, f"표본 외(최근 {HOLDOUT_DAYS}일) 통과: 실효 n={holdout.n_effective}, 적중 {holdout.hit_rate:.3f} > 기준선 {holdout.baseline:.3f}."]
 
 
 def _judge(
@@ -253,7 +297,7 @@ def _board(
         (current.w_rsi, current.w_trend, current.w_bb, current.w_obv, current.w_momentum),
         current_params,
     )
-    rows.sort(key=lambda r: (-r.wilson_lower, -r.n, r.up_threshold))
+    rows.sort(key=lambda r: (-r.wilson_lower, -r.n_effective, r.up_threshold))
     return HorizonBoard(
         horizon_days=horizon, total=len(samples), baseline_up_rate=baseline,
         current=current_row if samples else None, rows=rows,
@@ -268,8 +312,8 @@ def _evaluate(
 ) -> CandidateResult:
     w_rsi, w_trend, w_bb, w_obv, w_momentum = weights
     n = hits = 0
-    baseline_sum = 0.0
-    for row in scored:
+    clusters: dict[tuple, list[_Scored]] = {}
+    for i, row in enumerate(scored):
         s = row.sample
         # OutlookPredictor.score와 같은 합산·클램프 — sentiment는 스냅샷 경로에서 항상 0
         score = (
@@ -282,19 +326,31 @@ def _evaluate(
         score = max(-1.0, min(1.0, score))
         if score >= up_threshold:
             n += 1
-            baseline_sum += row.ticker_baseline
             if row.hit:
                 hits += 1
+            clusters.setdefault(_cluster_key(s, i), []).append(row)
+    # 실효 표본 — 군집마다 적중률·종목 기준선을 평균낸 뒤 군집을 1건으로 센다.
     # 후보가 실제로 신호를 낸 종목 구성으로 기준선을 만든다 — 신호를 안 낸 종목은 안 섞인다
-    baseline = baseline_sum / n if n else 0.0
-    lower = wilson_lower_bound(hits, n)
+    n_eff = len(clusters)
+    eff_hits = sum(sum(r.hit for r in rows) / len(rows) for rows in clusters.values())
+    baseline = sum(rows[0].ticker_baseline for rows in clusters.values()) / n_eff if n_eff else 0.0
+    lower = wilson_lower_bound(eff_hits, n_eff)
     params = (up_threshold, *weights)
     return CandidateResult(
         up_threshold=up_threshold,
         w_rsi=w_rsi, w_trend=w_trend, w_bb=w_bb, w_obv=w_obv, w_momentum=w_momentum,
-        n=n, hits=hits, hit_rate=hits / n if n else None,
+        n=n, hits=hits, hit_rate=eff_hits / n_eff if n_eff else None,
         baseline=baseline,
         wilson_lower=lower,
         is_current=all(math.isclose(a, b, abs_tol=1e-9) for a, b in zip(params, current_params)),
-        gate_passed=n >= MIN_SIGNAL_SAMPLES and lower > baseline,
+        gate_passed=n_eff >= MIN_SIGNAL_SAMPLES and lower > baseline,
+        n_effective=n_eff,
     )
+
+
+def _cluster_key(sample: RefitSample, index: int) -> tuple:
+    """같은 종목·같은 ISO 주는 한 군집 — 날짜가 없으면 표본마다 따로(옛 스냅샷·테스트 호환)."""
+    if sample.as_of is None:
+        return (sample.ticker, index)
+    year, week, _ = sample.as_of.isocalendar()
+    return (sample.ticker, year, week)
