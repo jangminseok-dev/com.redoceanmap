@@ -164,6 +164,8 @@ class AreaRawStat:
     # 폐업 점포가 버틴 개월 — 운영개월(생존 중)과 짝이 돼야 "얼마 만에 닫는가"가 보인다.
     closure_months_avg: float | None = None
     region_closure_months_avg: float | None = None
+    # 판정용 폐업률(2026-09-17) — 최근 4분기 점포 가중(%). 한 분기 closure_rate는 사실 표시용으로만 쓴다.
+    closure_rate_4q: float | None = None
 
 
 @dataclass(frozen=True)

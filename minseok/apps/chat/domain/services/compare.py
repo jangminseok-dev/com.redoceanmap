@@ -92,7 +92,7 @@ def tally(results: list[AxisResult], names: list[str]) -> dict[str, list[str]]:
 
 AREA_AXES = [
     Axis("sales_per_store", "점포당 월매출", True, "{:,.0f}", "만원"),
-    Axis("closure_rate", "분기 폐업률", False, "{:g}", "%"),
+    Axis("closure_rate", "최근 1년 폐업률", False, "{:.1f}", "%"),
     Axis("foot_daily", "일평균 유동인구", True, "{:,.0f}", "명"),
     Axis("score_total", "상권 건강 점수", True, "{:.1f}", "점"),
     Axis("operating_months", "평균 영업 개월", True, "{:.0f}", "개월"),
@@ -109,7 +109,7 @@ class AreaCompareItem:
     district: str
     texts: dict[str, str]                      # _format_stats 결과(revenue_text 등) — 표에 그대로 싣는다
     sales_per_store: float | None              # 만원 — 표본 작음(점포 5개 미만)이면 None
-    closure_rate: float | None                 # % — 표본 작음이면 None
+    closure_rate: float | None                 # % — 최근 4분기 점포 가중(판정용), 표본 작음·4분기 미만이면 None
     foot_daily: float | None
     operating_months: float | None
     small_sample: bool
@@ -150,48 +150,46 @@ class AreaVerdict:
     line: str                         # "**결론** …" 한 줄
 
 
+GRADE_ORDER = ("우수", "양호", "보통", "주의", "위험")
+
+
 def area_verdict(items: list[AreaCompareItem]) -> AreaVerdict:
+    """1순위는 **검증된 점수 v2의 등급**으로만 정한다(2026-09-17 개정).
+
+    예전 규칙은 8축 다수결이었다 — 건강 점수와 그 구성요소(폐업률·영업개월·점포당 매출)를 따로 또 세고,
+    예측력이 확인되지 않은 유동인구·입지 적합도가 같은 한 표를 가졌다. 등급 구간은 향후 1년 폐업률이
+    단조로 갈리는 것이 백테스트로 확인된 유일한 판정이라(우수 2.0% → 위험 3.7%), 등급이 한 단계 이상 높은
+    곳만 1순위로 부르고 같은 등급이면 우열을 가르지 않는다. 나머지 축은 참고 비교로만 보여준다.
+    """
     names = [i.name for i in items]
     results = judge_axes(AREA_AXES, {i.name: i.axis_values() for i in items})
     wins = tally(results, names)
     compared = sum(1 for r in results if not r.skipped)
-    by_item = {i.name: i for i in items}
+    graded = sorted(
+        (i for i in items if i.grade in GRADE_ORDER and i.score_total is not None),
+        key=lambda i: (GRADE_ORDER.index(i.grade), -i.score_total),
+    )
+    ungraded = [i.name for i in items if i not in graded]
+    tail = f" 점수 미산출: {'·'.join(ungraded)}." if ungraded else ""
+    scores = " · ".join(f"{i.name} '{i.grade}' {i.score_total:.1f}점" for i in graded)
 
-    def sort_key(n: str):
-        it = by_item[n]
-        return (-len(wins[n]), -(it.sales_per_store or 0))
-
-    ordered = sorted(names, key=sort_key)
-    caution = [n for n in names if (by_item[n].grade or "") in CAUTION_GRADES]
-    eligible = [n for n in ordered if n not in caution]
-    first = eligible[0] if eligible else None
+    first: str | None = None
     caution_note = ""
-    if ordered and ordered[0] in caution:
-        top = ordered[0]
-        if first is not None:
-            caution_note = (f"수치로는 {josa(top, '이', '가')} {len(wins[top])}축 앞서지만 상권 건강 등급이"
-                            f" '{by_item[top].grade}'라 1순위에서 뺐어요.")
-        else:
-            caution_note = "비교한 상권이 모두 '주의' 이하 등급이라 1순위를 두지 않아요."
-
-    def wins_text(n: str) -> str:
-        detail = []
-        for r in results:
-            if r.winner == n:
-                detail.append(f"{r.axis.label} {r.listing()}" if len(names) <= 2 else r.axis.label)
-        return " · ".join(detail) if detail else "우위 축 없음"
-
-    if compared == 0:
-        line = (f"**결론** {' vs '.join(names)} — 이 업종 매출·점포 데이터가 없거나 표본이 작아"
-                " 수치로는 우열을 가르지 않아요.")
-    elif first is None:
-        line = f"**결론** 1순위 없음 — {caution_note} 수치 우위는 {ordered[0]}({wins_text(ordered[0])})."
+    if len(graded) < 2:
+        line = (f"**결론** 1순위 없음 — 상권 건강 점수(v2)가 있는 곳이 2곳 미만이라 판정하지 않아요.{tail}"
+                " 아래 참고 지표로 비교해 보세요.")
+    elif graded[0].grade == graded[1].grade:
+        same = [i.name for i in items if i in graded and i.grade == graded[0].grade]  # 입력 순서 — 순위처럼 보이지 않게
+        line = (f"**결론** 1순위 없음 — {josa('·'.join(same), '은', '는')} 같은 '{graded[0].grade}' 등급이라"
+                f" 우열을 가르지 않아요({scores}). 등급 안의 점수 차이는 향후 폐업률 차이로 검증되지 않았어요.{tail}")
     else:
-        others = [n for n in ordered if n != first]
-        rest = "; ".join(f"{josa(n, '은', '는')} {len(wins[n])}축({', '.join(wins[n]) or '없음'})" for n in others)
-        line = (f"**결론** {first} 1순위 — 비교한 {compared}축 중 {len(wins[first])}축 우위"
-                f"({wins_text(first)}). {rest}.")
-        if caution_note:
+        top, runner = graded[0], graded[1]
+        first = top.name
+        line = (f"**결론** {first} 1순위 — 상권 건강 등급이 '{top.grade}'({top.score_total:.1f}점)로"
+                f" 다음인 {runner.name} '{runner.grade}'({runner.score_total:.1f}점)보다 높아요."
+                f" 등급은 향후 1년 폐업률로 검증된 점수(v2) 구간이에요({scores}).{tail}")
+        if top.grade in CAUTION_GRADES:
+            caution_note = f"다만 {josa(first, '은', '는')} '{top.grade}' 등급이라 유의점을 먼저 보세요."
             line += f" {caution_note}"
     return AreaVerdict(first, wins, results, compared, caution_note, line)
 
@@ -222,7 +220,8 @@ def render_area_compare(items: list[AreaCompareItem], v: AreaVerdict, *, service
     win_of = {r.axis.key: r.winner for r in v.results}
     out: list[str] = [v.line]
 
-    out.append("**축별 판정**\n" + "\n".join(f"- {r.axis.label}: {r.verdict_text()}" for r in v.results))
+    out.append("**참고 지표별 비교** (1순위 판정에는 쓰지 않아요)\n"
+               + "\n".join(f"- {r.axis.label}: {r.verdict_text()}" for r in v.results))
     if brief:
         out.append("'자세히 비교해줘'라고 하면 전체 지표 표를 드려요.")
         return "\n\n".join(out)
@@ -239,7 +238,8 @@ def render_area_compare(items: list[AreaCompareItem], v: AreaVerdict, *, service
     row("매출 산식", [_cell(x.get("revenue_source"), "-") for x in t])
     row("서울 순위(점포당 매출)", [f"{i.rank_sales[0]:,}위 / {i.rank_sales[1]:,}곳" if i.rank_sales else "순위 없음" for i in items])
     row("주중/주말 매출", [_cell(x.get("weekday_text")) for x in t])
-    row("분기 폐업률", [_cell(x.get("closure_text")) for x in t], "closure_rate")
+    row("최근 1년 폐업률(4분기 점포 가중)", [f"{i.closure_rate:.1f}%" if i.closure_rate is not None else "산출 불가" for i in items], "closure_rate")
+    row("분기 폐업률", [_cell(x.get("closure_text")) for x in t])
     row("서울 순위(폐업률 낮은 순)", [f"{i.rank_closure[0]:,}위 / {i.rank_closure[1]:,}곳" if i.rank_closure else "순위 없음" for i in items])
     row("분기 개업률", [_cell(x.get("opening_text")) for x in t])
     row("점포 수", [_cell(x.get("store_count_text")) for x in t])

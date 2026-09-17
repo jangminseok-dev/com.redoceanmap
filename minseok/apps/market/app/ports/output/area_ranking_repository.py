@@ -39,11 +39,11 @@ class SalesAgg:
 
 @dataclass(frozen=True)
 class StoreAgg:
-    """상권별 점포 합·폐업률 평균 — 최신 분기."""
+    """상권별 점포 합(최신 분기)·**최근 4분기 점포 가중 폐업률**(4분기가 다 있을 때만, 2026-09-17 정의 교체)."""
 
     trdar_code: int
     store_count: int
-    closure_rate: float
+    closure_rate: float | None
 
 
 class AreaRankingRepositoryPort(ABC):

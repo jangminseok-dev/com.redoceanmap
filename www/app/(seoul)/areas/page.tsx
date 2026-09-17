@@ -449,7 +449,7 @@ function CompareBar({ rows, onClear }: { rows: AreaRankingRow[]; onClear: () => 
       const d = density(r.storeCount, r.areaSize);
       return d ? `${d.toFixed(1)}개/ha` : "—";
     }],
-    ["폐업률", (r) => (r.closureRate != null ? `${r.closureRate}%` : "—")],
+    ["1년 폐업률", (r) => (r.closureRate != null ? `${r.closureRate}%` : "—")],
   ];
   return (
     <div className="sticky bottom-4 rounded-2xl bg-surface border border-brand/30 shadow-lg p-4">

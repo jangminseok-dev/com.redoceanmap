@@ -132,7 +132,7 @@ function MetricsBlock({ area }: { area: AreaPublic }) {
   const cells: { label: string; value: string }[] = [
     { label: `${area.serviceName ?? "기준 업종"} 점포당 월매출`, value: won(area.salesPerStore) },
     { label: "매출 전분기 대비", value: pct(area.salesQoq) },
-    { label: "폐업률", value: area.closureRate == null ? "—" : `${area.closureRate.toFixed(1)}%` },
+    { label: "최근 1년 폐업률", value: area.closureRate == null ? "—" : `${area.closureRate.toFixed(1)}%` },
     { label: "주간 통행 인구", value: area.floatingPop == null ? "—" : `${Math.round(area.floatingPop / 10_000).toLocaleString()}만명` },
   ];
   return (

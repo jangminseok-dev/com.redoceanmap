@@ -80,6 +80,18 @@ def prev_quarter(year_quarter: int) -> int:
     return year_quarter - 1
 
 
+def last_four_quarters(year_quarter: int) -> list[int]:
+    """year_quarter 포함 최근 4분기 — 점포 가중 1년 폐업률의 창. 판정용 폐업률의 단일 정의처(2026-09-17).
+
+    한 분기 폐업률은 정수(%)라 서울 상권 절반 이상이 0%이고, 향후 1년 폐업률과의 분기 내 순위상관이
+    0.14에 그친다. 최근 4분기 점포 가중(Σ폐업 점포 ÷ Σ점포)은 0.34다.
+    """
+    out = [year_quarter]
+    for _ in range(3):
+        out.append(prev_quarter(out[-1]))
+    return out
+
+
 def prev_year_quarter(year_quarter: int) -> int:
     """전년 동분기 코드 — 20244 → 20234.
 

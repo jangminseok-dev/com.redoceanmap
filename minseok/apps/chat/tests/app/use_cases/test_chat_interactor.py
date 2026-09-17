@@ -795,9 +795,10 @@ async def test_조건_질의는_LLM_없이_랭킹으로_결정론_응답한다(m
     result = await interactor.ask("유동인구 많고 폐업률 낮은 상권 3곳 추천해줘")
 
     assert len(llm.calls) == 1  # phase0만 — phase1·phase2 LLM 미호출
-    # 폐업률 낮은 순, 동률은 월매출 높은 순: C(0%, 80억) → A(0%, 30억) → B(2%, 100억)
+    # 1년 폐업률 낮은 순, 동률은 월매출 높은 순: C(0%, 80억) → A(0%, 30억) → B(2%, 100억)
     lines = result.text.split("\n")
-    assert lines[1].startswith("1. C상권") and "폐업률 0% · 월매출 80.0억원" in lines[1]
+    assert "최근 1년 폐업률 낮은 순" in lines[0]
+    assert lines[1].startswith("1. C상권") and "1년 폐업률 0.0% · 월매출 80.0억원" in lines[1]
     assert lines[2].startswith("2. A상권")
     assert lines[3].startswith("3. B상권")
     assert "극단상권" not in result.text
@@ -2189,7 +2190,7 @@ async def test_phase1_표에_폐업률_점포당매출_열이_붙고_미집계�
     ranking = {1: _ranking_row(trdar_code=1, closure_rate=3.25, sales_per_store=75_000_000)}
     context = interactor._build_area_context(_summary_two_areas(), "성수동 카페 어때?", ranking=ranking)
     header, first, second = context.splitlines()
-    assert header.endswith("|폐업률(%)|점포당월매출(만원)|질문지역")
+    assert header.endswith("|1년폐업률(%)|점포당월매출(만원)|질문지역")
     assert first.startswith("1|성수역") and "|3.2|7500|★" in first  # 성수(언급) 먼저
     assert second.startswith("2|") and second.endswith("|-|-|")  # 랭킹 없는 상권은 '-'
 
@@ -2276,14 +2277,16 @@ def test_최상급_비교는_코드가_폐업률로_고른다():
     from types import SimpleNamespace as NS
     from chat.app.use_cases.chat_interactor import ChatInteractor
     # store_count는 5 이상 — 점포 5개 미만은 표본이 작아 후보에서 빠진다(2026-09-08 감사)
-    raw = {1: NS(has_store=True, closure_rate=3.0, has_sales=True, monthly_sales_amount=1, store_count=10),
-           2: NS(has_store=True, closure_rate=0.0, has_sales=True, monthly_sales_amount=1, store_count=10),
-           3: NS(has_store=True, closure_rate=0.0, has_sales=True, monthly_sales_amount=1, store_count=10)}
+    # 판정은 한 분기 closure_rate가 아니라 최근 4분기 점포 가중 closure_rate_4q(2026-09-17)
+    raw = {1: NS(has_store=True, closure_rate=0.0, closure_rate_4q=3.0, has_sales=True, monthly_sales_amount=1, store_count=10),
+           2: NS(has_store=True, closure_rate=5.0, closure_rate_4q=0.0, has_sales=True, monthly_sales_amount=1, store_count=10),
+           3: NS(has_store=True, closure_rate=5.0, closure_rate_4q=0.0, has_sales=True, monthly_sales_amount=1, store_count=10)}
     area = {1: NS(trdar_name="성수역"), 2: NS(trdar_name="성수동카페거리"), 3: NS(trdar_name="뚝섬역상점가")}
     pick = ChatInteractor._superlative_pick("그 중에서 제일 안전한 데 하나만", [1, 2, 3], raw, area)
     assert pick is not None
     best, line = pick
-    assert best == 2 and "성수동카페거리 0%" in line and "성수역 3%" in line and "가장 낮은 곳은 성수동카페거리·뚝섬역상점가" in line
+    assert best == 2 and "최근 1년 폐업률 기준" in line and "성수동카페거리 0%" in line and "성수역 3%" in line
+    assert "가장 낮은 곳은 성수동카페거리·뚝섬역상점가" in line
     assert ChatInteractor._superlative_pick("성수동 카페 어때", [1, 2], raw, area) is None
 
 
@@ -2378,9 +2381,9 @@ def test_결론_줄은_표본_작은_상권의_매출_폐업률을_근거로_쓰
 def test_최상급_선택은_점포_5개_미만_상권을_후보에서_뺀다():
     area_map = {1: SimpleNamespace(trdar_name="A"), 2: SimpleNamespace(trdar_name="B"), 3: SimpleNamespace(trdar_name="C")}
     raw = {
-        1: _raw_stat(has_store=True, store_count=2, closure_rate=0),    # 표본 작음 — 0%지만 제외
-        2: _raw_stat(has_store=True, store_count=30, closure_rate=3),
-        3: _raw_stat(has_store=True, store_count=12, closure_rate=5),
+        1: _raw_stat(has_store=True, store_count=2, closure_rate_4q=0.0),    # 표본 작음 — 0%지만 제외
+        2: _raw_stat(has_store=True, store_count=30, closure_rate_4q=3.0),
+        3: _raw_stat(has_store=True, store_count=12, closure_rate_4q=5.0),
     }
     best, line = ChatInteractor._superlative_pick("제일 안전한 데가 어디야", [1, 2, 3], raw, area_map)
     assert best == 2 and "A" not in line
@@ -2880,14 +2883,21 @@ _CMP_SALES = {3110131: 500_000_000, 3120052: 300_000_000, 3130070: 80_000_000}
 
 class _CompareMarket(_StubMarket):
     """상권마다 다른 점포당 매출 — 결론(가장 높은 곳)이 코드로 정해지는지 본다."""
-    def __init__(self, **kw):
-        super().__init__(areas=_CMP_AREAS, **kw)
+    def __init__(self, scores=None, **kw):
+        # 1순위는 점수 v2 등급으로 정한다 — 기본 등급: 성수 양호 · 길음 주의 · 뚝섬 보통
+        default = {
+            3110131: AreaScoreInfo(total=65.0, grade="양호", components=()),
+            3130070: AreaScoreInfo(total=43.4, grade="주의", components=()),
+            3120052: AreaScoreInfo(total=57.0, grade="보통", components=()),
+        }
+        super().__init__(areas=_CMP_AREAS, scores={**default, **(scores or {})}, **kw)
         self.raw_calls: list[tuple[list[int], str]] = []
 
     async def get_area_raw_stats(self, codes, service_code, quarter):
         self.raw_calls.append((list(codes), service_code))
         return {c: _raw_stat(has_sales=True, monthly_sales_amount=_CMP_SALES[c], has_store=True,
-                             store_count=10, franchise_store_count=2, closure_rate=2.0 if c != 3130070 else 5.0) for c in codes}
+                             store_count=10, franchise_store_count=2, closure_rate=2.0 if c != 3130070 else 5.0,
+                             closure_rate_4q=2.4 if c != 3130070 else 4.1) for c in codes}
 
 
 def _cmp_history(*cards: tuple[int, str]) -> list[Message]:
@@ -2901,19 +2911,20 @@ def _cmp_history(*cards: tuple[int, str]) -> list[Message]:
 async def test_지역_하나를_들어_비교하면_직전_1순위와_짝지어_표로_대조한다(monkeypatch):
     # 실대화 t2: "길음역과 비교해봐" → 길음역 8번 단독 추천('주의' 등급인데 "부터 보세요")으로 끝났다
     conversations = _StubConversations(history=_cmp_history((3110131, "성수동카페거리")))
-    market = _CompareMarket(scores={3130070: AreaScoreInfo(total=43.4, grade="주의", components=())})
+    market = _CompareMarket()
     interactor, llm, _ = _build(monkeypatch, [], conversations=conversations, market=market)
     result = await interactor.ask("길음역과 비교해봐", conversation_id=100)
     assert llm.calls == []  # 비교표는 LLM 없이 코드가 만든다
-    # 결론이 맨 앞 — 어느 상권이 몇 축 중 몇 축 우위인지 수치와 함께
-    assert result.text.startswith("**결론** 성수동카페거리 1순위 — 비교한 2축 중 2축 우위(점포당 월매출 성수동카페거리 5,000만원 vs 길음역 8번 800만원")
-    assert "길음역 8번은 0축(없음)" in result.text
+    # 결론이 맨 앞 — 1순위는 검증된 점수 v2 등급 차이로만(2026-09-17 개정, 축 다수결 폐지)
+    assert result.text.startswith("**결론** 성수동카페거리 1순위 — 상권 건강 등급이 '양호'(65.0점)로 다음인 길음역 8번 '주의'(43.4점)보다 높아요.")
     # 등급 고지는 결론 바로 뒤
     assert result.text.split("\n\n")[1].startswith("※ 길음역 8번 상권은 상권 전체 건강 점수 43.4점 '주의' 등급")
-    assert "**축별 판정**" in result.text and "**전체 지표** — 커피-음료, 2025년 4분기 기준" in result.text
+    assert "**참고 지표별 비교** (1순위 판정에는 쓰지 않아요)" in result.text
+    assert "**전체 지표** — 커피-음료, 2025년 4분기 기준" in result.text
     assert "| 점포당 월매출 | ★ 점포당 월평균 5,000만원 | 점포당 월평균 800만원 |" in result.text
-    assert "| 분기 폐업률 | ★ 분기 폐업률 2.0% | 분기 폐업률 5.0% |" in result.text
-    assert "| 상권 건강 점수(50 = 서울 중앙 상권) | 미산출 | 43.4점 '주의' |" in result.text
+    assert "| 최근 1년 폐업률(4분기 점포 가중) | ★ 2.4% | 4.1% |" in result.text
+    assert "| 분기 폐업률 | 분기 폐업률 2.0% | 분기 폐업률 5.0% |" in result.text  # 사실 표시만, 판정 ★ 없음
+    assert "| 상권 건강 점수(50 = 서울 중앙 상권) | ★ 65.0점 '양호' | 43.4점 '주의' |" in result.text
     assert "**이번 비교에 못 쓴 데이터**" in result.text and "임대료·손익분기" in result.text
     assert [r.name for r in result.recommendations] == ["성수동카페거리", "길음역 8번"]
     assert market.raw_calls == [([3110131, 3130070], "CS100010")]  # 업종은 직전 카드에서 승계
@@ -2995,7 +3006,7 @@ async def test_그래서_어디야는_결론과_축별_판정만_준다(monkeypa
     result = await interactor.ask("그래서 어디야", conversation_id=100)
     assert llm.calls == []
     assert result.text.startswith("**결론** 성수동카페거리 1순위")
-    assert "**축별 판정**" in result.text and "**전체 지표**" not in result.text
+    assert "**참고 지표별 비교**" in result.text and "**전체 지표**" not in result.text
 
 
 async def test_바구니가_있어도_지역·비교_없는_후속은_가로채지_않는다(monkeypatch):
@@ -3039,16 +3050,22 @@ async def test_종목_바구니에서_제외하면_남은_종목으로_대조한
     assert stubs["stocks"].queries == ["테슬라", "엔비디아"]
 
 
-def test_상권_판정은_축별_다수결이고_주의_등급은_1순위에서_뺀다():
+def test_상권_1순위는_점수_등급_차이로만_정하고_같은_등급이면_가르지_않는다():
     from chat.domain.services.compare import AreaCompareItem, area_verdict
-    a = AreaCompareItem(1, "A", "강남구", {}, 1000, 3.0, 9000, 60, False, 44.0, "주의")
-    b = AreaCompareItem(2, "B", "성동구", {}, 800, 2.0, 8000, 70, False, 55.0, "보통")
+    # 수치 축은 역삼이 더 많이 앞서도(매출·유동인구) 등급이 높은 성수가 1순위 — 다수결 폐지
+    a = AreaCompareItem(1, "역삼", "강남구", {}, 1000, 3.0, 9000, 60, False, 44.0, "주의")
+    b = AreaCompareItem(2, "성수", "성동구", {}, 800, 2.0, 8000, 70, False, 55.0, "보통")
     v = area_verdict([a, b])
-    assert v.first == "B" and v.wins == {"A": ["점포당 월매출", "일평균 유동인구"], "B": ["분기 폐업률", "상권 건강 점수", "평균 영업 개월"]}
-    assert v.line.startswith("**결론** B 1순위 — 비교한 5축 중 3축 우위(")
-    c = AreaCompareItem(3, "C", "마포구", {}, 2000, 1.0, 9500, 80, False, 30.0, "위험")
-    v2 = area_verdict([a, c])
-    assert v2.first is None and "1순위 없음" in v2.line and "모두 '주의' 이하" in v2.line
+    assert v.first == "성수"
+    assert v.line.startswith("**결론** 성수 1순위 — 상권 건강 등급이 '보통'(55.0점)로 다음인 역삼 '주의'(44.0점)보다 높아요.")
+    # 같은 등급이면 점수 차가 있어도 1순위 없음(이름은 입력 순서)
+    c = AreaCompareItem(3, "망원", "마포구", {}, 2000, 1.0, 9500, 80, False, 58.0, "보통")
+    v2 = area_verdict([b, c])
+    assert v2.first is None and v2.line.startswith("**결론** 1순위 없음 — 성수·망원은 같은 '보통' 등급이라 우열을 가르지 않아요")
+    # 점수 없는 곳이 끼면 판정 대상에서 빠지고 명시
+    d = AreaCompareItem(4, "이태원", "용산구", {}, 900, None, None, None, False, None, None)
+    v3 = area_verdict([b, d])
+    assert v3.first is None and "2곳 미만" in v3.line and "점수 미산출: 이태원" in v3.line
 
 
 # --- 비교표: 적합도·백테스트·그래프·창업비용·공실률까지(2026-09-17 "가진 데이터 전부") ---
@@ -3136,8 +3153,8 @@ async def test_비교표에_적합도·백테스트·그래프·창업비용·�
     assert llm.calls == []
     t = result.text
     # 결론이 맨 앞이고 적합도·공실률이 판정 축에 들어간다
-    assert t.startswith("**결론** 성수동카페거리 1순위 — 비교한")
-    assert "입지 적합도 성수동카페거리 72점 vs 길음역 8번 41점" in t
+    assert t.startswith("**결론** 성수동카페거리 1순위 — 상권 건강 등급이 '양호'")
+    assert "- 입지 적합도: 성수동카페거리 우위 (성수동카페거리 72점 vs 길음역 8번 41점)" in t  # 참고 비교로만
     # 입지 적합도 행·컴포넌트·객단가·유사 업종·진단
     assert "| 입지 적합도(업종×상권, 100점) | ★ 72점 | 41점 |" in t
     assert "|   └ 수요 일치 | 80점 (가중치 40%) | 80점 (가중치 40%) |" in t
@@ -3195,10 +3212,8 @@ def test_세_곳_비교에서_최선값을_둘이_나누면_공동_우위로_적
     c = AreaCompareItem(3, "삼성", "", {}, 2000, 6.0, None, None, False, None, None)
     v = area_verdict([a, b, c])
     text = render_area_compare([a, b, c], v, service_name="커피-음료", quarter_label="2026년 2분기", brief=True, missing_notes=[])
-    assert "- 분기 폐업률: 역삼·선릉 공동 우위 (역삼 0% vs 선릉 0% vs 삼성 6%)" in text
-    # 3곳 이상이면 결론 줄은 축 이름만(수치는 축별 판정에). 조사는 받침에 맞춘다
-    assert v.line.startswith("**결론** 삼성 1순위 — 비교한 2축 중 1축 우위(점포당 월매출). ")
-    assert "역삼은 0축(없음); 선릉은 0축(없음)." in v.line
+    assert "- 최근 1년 폐업률: 역삼·선릉 공동 우위 (역삼 0.0% vs 선릉 0.0% vs 삼성 6.0%)" in text
+    assert v.first is None and "점수 미산출: 역삼·선릉·삼성" in v.line
 
 
 async def test_바구니에서_뺀_뒤에도_자기자본이_승계된다(monkeypatch):

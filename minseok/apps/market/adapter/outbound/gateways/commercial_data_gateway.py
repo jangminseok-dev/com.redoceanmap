@@ -44,7 +44,7 @@ from market.adapter.outbound.orm.region_orm import RegionOrm
 from market.adapter.outbound.orm.service_category_orm import ServiceCategoryOrm
 from market.adapter.outbound.orm.store_orm import StoreOrm
 from market.adapter.outbound.orm.trade_area_orm import TradeAreaOrm
-from market.domain.services.area_scorer import prev_year_quarter
+from market.domain.services.area_scorer import last_four_quarters, prev_year_quarter
 from market.domain.value_objects.sales_unit import monthly_from_quarter
 
 GENERIC_SERVICE_CODE = "CS000000"   # chat이 업종 미지정 질문에 쓰는 범용 코드
@@ -359,6 +359,21 @@ class CommercialDataGateway(CommercialDataPort):
         )).scalars().all()
         fp_map = {r.trdar_code: r for r in fp_rows}
 
+        # 판정용 1년 폐업률 — 같은 업종(범용이면 전 업종) 최근 4분기 점포 가중. 4분기가 다 있어야 낸다
+        closure_stmt = (
+            select(StoreOrm.trdar_code, func.sum(StoreOrm.closure_store_count), func.sum(StoreOrm.store_count),
+                   func.count(func.distinct(StoreOrm.year_quarter)))
+            .where(StoreOrm.trdar_code.in_(trdar_codes), StoreOrm.year_quarter.in_(last_four_quarters(quarter)))
+            .group_by(StoreOrm.trdar_code)
+        )
+        if service_code != GENERIC_SERVICE_CODE:
+            closure_stmt = closure_stmt.where(StoreOrm.service_code == service_code)
+        closure_4q = {
+            code: round(int(closed) * 100 / int(total), 1)
+            for code, closed, total, n in (await self._session.execute(closure_stmt)).all()
+            if n == 4 and total
+        }
+
         cc_rows = (await self._session.execute(
             select(CommercialChangeOrm, ChangeIndicatorOrm.name.label("indicator_name"))
             .outerjoin(
@@ -431,6 +446,7 @@ class CommercialDataGateway(CommercialDataPort):
                 region_operating_months_avg=bench.operating_months_avg if bench else None,
                 closure_months_avg=cc.closure_months_avg if cc else None,
                 region_closure_months_avg=bench.closure_months_avg if bench else None,
+                closure_rate_4q=closure_4q.get(code),
             )
         return result
 

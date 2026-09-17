@@ -20,6 +20,7 @@ from market.app.ports.output.area_ranking_repository import (
     StoreAgg,
 )
 from market.utils.coords import tm_to_wgs84
+from market.domain.services.area_scorer import last_four_quarters
 from market.domain.value_objects.sales_unit import monthly_from_quarter
 
 
@@ -130,13 +131,18 @@ class AreaRankingPgRepository(AreaRankingRepositoryPort):
     async def find_stores(
         self, year_quarter: int, service_code: str | None
     ) -> list[StoreAgg]:
+        # 판정용 폐업률 = 최근 4분기 점포 가중(Σ폐업 ÷ Σ점포). 예전 값은 최신 분기 업종별 정수율의 단순평균이라
+        # 과반이 0%였고 향후 1년 폐업률 예측력이 절반 이하였다(2026-09-17 점검). 점포 수는 최신 분기 그대로.
+        quarters = last_four_quarters(year_quarter)
         stmt = (
             select(
                 StoreOrm.trdar_code,
+                func.sum(StoreOrm.store_count).filter(StoreOrm.year_quarter == year_quarter),
+                func.sum(StoreOrm.closure_store_count),
                 func.sum(StoreOrm.store_count),
-                func.avg(StoreOrm.closure_rate),
+                func.count(func.distinct(StoreOrm.year_quarter)),
             )
-            .where(StoreOrm.year_quarter == year_quarter)
+            .where(StoreOrm.year_quarter.in_(quarters))
             .group_by(StoreOrm.trdar_code)
         )
         if service_code:
@@ -144,8 +150,9 @@ class AreaRankingPgRepository(AreaRankingRepositoryPort):
         return [
             StoreAgg(
                 trdar_code=code,
-                store_count=int(total or 0),
-                closure_rate=round(float(rate), 1) if rate is not None else 0.0,
+                store_count=int(latest or 0),
+                closure_rate=round(int(closed) * 100 / int(total), 1) if n == 4 and total else None,
             )
-            for code, total, rate in (await self._session.execute(stmt)).all()
+            for code, latest, closed, total, n in (await self._session.execute(stmt)).all()
+            if latest is not None
         ]

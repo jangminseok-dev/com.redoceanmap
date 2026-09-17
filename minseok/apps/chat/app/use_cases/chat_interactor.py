@@ -1186,8 +1186,8 @@ class ChatInteractor(ChatUseCase):
                 continue
             if r.has_store and r.store_count is not None and 0 < r.store_count < SMALL_SAMPLE_STORES:
                 continue  # 점포 5개 미만 — 폐업률 0%(0개)·점포당 매출이 표본 때문에 튄다
-            if axis == "closure" and r.has_store and r.closure_rate is not None:
-                rows.append((c, float(r.closure_rate)))
+            if axis == "closure" and r.has_store and r.closure_rate_4q is not None:
+                rows.append((c, float(r.closure_rate_4q)))  # 판정용 1년 폐업률(최근 4분기 점포 가중)
             elif axis == "sales" and r.has_sales and r.monthly_sales_amount and (r.store_count or 0) > 0:
                 rows.append((c, r.monthly_sales_amount / r.store_count / 10000))
         if len(rows) < 2:
@@ -1198,7 +1198,7 @@ class ChatInteractor(ChatUseCase):
             listing = " · ".join(f"{area_map[c].trdar_name} {v:g}%" for c, v in rows)
             ties = [c for c, v in rows if v == rows[0][1]]
             who = "·".join(area_map[c].trdar_name for c in ties)
-            line = f"분기 폐업률 기준({listing}) — 가장 낮은 곳은 {who}입니다."
+            line = f"최근 1년 폐업률 기준({listing}) — 가장 낮은 곳은 {who}입니다."
         else:
             listing = " · ".join(f"{area_map[c].trdar_name} {round(v):,}만원" for c, v in rows)
             line = f"점포당 월매출 기준({listing}) — 가장 높은 곳은 {area_map[best].trdar_name}입니다."
@@ -1518,7 +1518,7 @@ class ChatInteractor(ChatUseCase):
             small = bool(st.get("small_sample"))
             per_store = (raw.monthly_sales_amount / raw.store_count / 10000
                          if raw is not None and raw.has_sales and raw.has_store and raw.store_count and not small else None)
-            closure = raw.closure_rate if raw is not None and raw.has_store and raw.closure_rate is not None and not small else None
+            closure = raw.closure_rate_4q if raw is not None and raw.has_store and raw.closure_rate_4q is not None and not small else None
             foot = raw.total_floating_pop / 91 if raw is not None and raw.has_fp and raw.total_floating_pop else None
             op_months = raw.operating_months_avg if raw is not None and raw.has_cc and raw.operating_months_avg else None
             if small:
@@ -1797,9 +1797,9 @@ class ChatInteractor(ChatUseCase):
         # 판정 축 2열(I-11) — 표에 없는 축을 물으면 모델이 근거 없이 "폐업률이 낮다"고
         # 서술했다(3차 실측 M1·M6). 랭킹 집계(전 업종)에서 잇고, 미집계는 '-'로 남긴다.
         lines = [
-            ("[질문자는 안정 최우선 — 폐업률(%)이 낮은 상권을 먼저 고를 것. 표는 폐업률 낮은 순]\n" if safety_first else "")
+            ("[질문자는 안정 최우선 — 1년폐업률(%)이 낮은 상권을 먼저 고를 것. 표는 1년폐업률 낮은 순]\n" if safety_first else "")
             + "상권코드|상권명|자치구|행정동|상권전체월매출합계(만원)|매출전년동분기대비(%)"
-            "|폐업률(%)|점포당월매출(만원)|질문지역"
+            "|1년폐업률(%)|점포당월매출(만원)|질문지역"
         ]
         for a in picked:
             sales = summary.sales_by_code.get(a.trdar_code)
@@ -2549,7 +2549,7 @@ class ChatInteractor(ChatUseCase):
             await self._conversations.add_message(conversation_id, "assistant", text)
             return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
 
-        crit = "폐업률 낮은 순(동률은 월매출 높은 순)" if want_closure else "월매출 높은 순"
+        crit = "최근 1년 폐업률 낮은 순(동률은 월매출 높은 순)" if want_closure else "월매출 높은 순"
         lines = [f"서울 전체(업종 무관, 점포 {_CONDITION_MIN_STORES}개 이상 상권)에서"
                  f" {crit} 상위 {len(top)}곳이에요."]
         for i, r in enumerate(top, 1):
@@ -2560,7 +2560,7 @@ class ChatInteractor(ChatUseCase):
             change = f" · {r.change_indicator_name}" if r.change_indicator_name else ""
             lines.append(
                 f"{i}. {r.trdar_name} ({r.district_name} {r.dong_name}) —"
-                f" 폐업률 {r.closure_rate:.0f}% · 월매출 {r.monthly_sales / 1e8:.1f}억원"
+                f" 1년 폐업률 {r.closure_rate:.1f}% · 월매출 {r.monthly_sales / 1e8:.1f}억원"
                 f"{per}{change}"
             )
         if "flow" in axes:

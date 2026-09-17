@@ -8,6 +8,7 @@ from market.adapter.outbound.orm.estimated_sales_orm import EstimatedSalesOrm
 from market.adapter.outbound.orm.floating_population_orm import FloatingPopulationOrm
 from market.adapter.outbound.orm.service_category_orm import ServiceCategoryOrm
 from market.adapter.outbound.orm.store_orm import StoreOrm
+from market.domain.services.area_scorer import last_four_quarters
 from market.adapter.outbound.orm.trade_area_orm import TradeAreaOrm
 from market.app.dtos.area_demand_profile_dto import AreaDemandProfile
 from market.app.ports.output.area_demand_profile_port import AreaDemandProfilePort
@@ -206,11 +207,21 @@ class AreaDemandProfilePgRepository(AreaDemandProfilePort):
         )
         saturation = await self._rank(density, my_density)
 
-        closure_sub = select(StoreOrm.closure_rate.label("value")).where(
-            StoreOrm.service_code == service_code,
-            StoreOrm.year_quarter == year_quarter,
-        ).subquery()
-        closure = await self._rank(closure_sub, float(store.closure_rate))
+        # 생존 백분위 — 판정용 1년 폐업률(최근 4분기 점포 가중, 2026-09-17). 한 분기 정수율은 과반이 0%라 순위가 무의미했다.
+        quarters = last_four_quarters(year_quarter)
+        closure_4q = (
+            select(
+                StoreOrm.trdar_code.label("trdar_code"),
+                (func.sum(StoreOrm.closure_store_count) * 100.0 / func.nullif(func.sum(StoreOrm.store_count), 0)).label("value"),
+            )
+            .where(StoreOrm.service_code == service_code, StoreOrm.year_quarter.in_(quarters))
+            .group_by(StoreOrm.trdar_code)
+            .having(func.count(func.distinct(StoreOrm.year_quarter)) == 4)
+            .subquery()
+        )
+        my_closure = await self._session.scalar(select(closure_4q.c.value).where(closure_4q.c.trdar_code == trdar_code))
+        # 1년 폐업률을 못 내는 조합(4분기 미만)은 중립 0.5 — _rank의 0.0은 "가장 덜 닫는다"로 읽혀 생존 가점이 됐다
+        closure = await self._rank(closure_4q, float(my_closure)) if my_closure is not None else 0.5
 
         operating_sub = select(CommercialChangeOrm.operating_months_avg.label("value")).where(
             CommercialChangeOrm.year_quarter == year_quarter
