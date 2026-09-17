@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 MIN_BASELINE_SAMPLES = 5  # 이 미만이면 서프라이즈 대신 당일 절대값(기존 동작) 사용
 
 
+REFERENCE_SIGNAL_ENABLED = False  # 재검증에서 두 구간 모두 통과하면 켠다
+
+
 class StockInteractor(StockUseCase):
     """주식 분석 대장(오케스트레이터).
 
@@ -78,7 +81,10 @@ class StockInteractor(StockUseCase):
         reference = self._predictor.predict(
             indicators, SentimentScore(value=0.0), AnalysisConfig.rsi_bb_reference()
         )
-        reference_up = reference.direction is Direction.UP
+        # 참고 신호 배지는 2026-09-17 중단 — 81종목 10년을 겹침 보정(유효 표본 ÷5)으로 다시 채점하니 최근 5년 우위 -0.5%p로
+        # 검증 기준 미달이었다. 옛 통과(+0.4%p)는 겹치는 5일 창을 독립 표본으로 센 결과였다. 계산식은 재검증용으로 남기고 노출만 끈다.
+        _reference_raw = reference.direction is Direction.UP
+        reference_up = REFERENCE_SIGNAL_ENABLED and _reference_raw
         insights = narrate(
             outlook, score, contributions, indicators, self._config, reference_up,
             sentiment_surprise=surprise,

@@ -56,7 +56,7 @@ class _OversoldMarketData(_StubMarketData):
         )
 
 
-async def test_과매도_밴드하단이면_참고_신호가_켜진다():
+async def test_참고_신호는_재검증_미달로_과매도_밴드하단이어도_꺼져_있다():
     interactor = StockInteractor(
         market_data=_OversoldMarketData(),
         sentiment=_StubSentiment(),
@@ -65,7 +65,7 @@ async def test_과매도_밴드하단이면_참고_신호가_켜진다():
     )
     result = await interactor.analyze(Symbol("AAPL"))
 
-    assert result.reference_up_signal is True
+    assert result.reference_up_signal is False  # 2026-09-17 겹침 보정 재검증 미달 — REFERENCE_SIGNAL_ENABLED=False
     # 참고 신호는 본 판정(기본 config + 감성)을 오염시키지 않는다.
     assert result.direction in {"UP", "DOWN", "NEUTRAL"}
     assert result.sentiment == 0.7

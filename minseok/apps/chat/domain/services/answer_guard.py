@@ -312,7 +312,7 @@ def grade_caution_notice(name: str, grade: str, total: float) -> str:
     """
     return (
         f"※ {name} 상권은 상권 전체 건강 점수 {total:.1f}점 '{grade}' 등급으로"
-        " 서울 평균(50점)에 못 미칩니다(업종 적합도와는 다른 지표예요). 아래 유의점을 먼저 확인하세요."
+        " 서울 중앙 상권(50점)에 못 미칩니다(업종 적합도와는 다른 지표예요). 아래 유의점을 먼저 확인하세요."
     )
 
 

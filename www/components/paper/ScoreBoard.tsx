@@ -3,7 +3,7 @@
 import type { PaperBoard } from "@/lib/types";
 import { fmtKrw, fmtPct } from "./format";
 
-/** 성적표 — 계정 하나에 숫자 하나. EXAONE · 지표 규칙 · SPY 보유(기준선)를 같은 크기로 나란히. */
+/** 성적표 — 계정 하나에 숫자 하나. AI 판단 · 지표 규칙 · SPY 보유(기준선)를 같은 크기로 나란히. */
 export default function ScoreBoard({ board }: { board: PaperBoard }) {
   const find = (key: string) => board.rows.find((r) => r.key === key);
   const exaone = find("exaone");
@@ -26,8 +26,8 @@ export default function ScoreBoard({ board }: { board: PaperBoard }) {
   return (
     <div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {tile("EXAONE", "AI가 직접 판단", exaone?.return_pct, exaone?.equity_krw)}
-        {tile("지표 규칙", "검증된 신호만 따라감", signal?.return_pct, signal?.equity_krw)}
+        {tile("AI 판단", "AI가 직접 판단", exaone?.return_pct, exaone?.equity_krw)}
+        {tile("지표 규칙", "활성 지표 신호를 따라감", signal?.return_pct, signal?.equity_krw)}
         {tile("SPY 보유", "사서 들고만 있었다면", spyReturn, spy?.equity_krw)}
       </div>
       <p className="mt-2 text-xs text-foreground-muted tabular-nums">

@@ -4,6 +4,9 @@ from stock.domain.entities.fundamental_snapshot import FundamentalSnapshot
 from stock.domain.value_objects.insight_vo import Insight
 
 # 임계값 — 일반적 밸류에이션 관례 수준. 업종 벤치마크가 없으므로 단정 대신 '권' 표현을 쓴다.
+# 저PER·저PBR은 긍정(강조색)이 아니라 중립이다(2026-09-17) — 자체 백테스트(_docs/FUNDAMENTAL_BACKTEST_2026-08.md)에서
+# 저평가 5분위(Q1)의 초과수익이 PER·PBR 모두 음수로 게이트 미달이었다. "싸 보인다"를 좋은 신호처럼 칠하지 않는다.
+LOW_VALUE_CAVEAT = " 다만 이 워치리스트 백테스트에서는 이런 종목이 평균보다 더 오르지 않았어요."
 PER_LOW = 8.0
 PER_HIGH = 30.0
 PBR_LOW = 1.0
@@ -30,8 +33,8 @@ def narrate(snapshots: list[FundamentalSnapshot]) -> list[Insight]:
             ))
         elif per < PER_LOW:
             insights.append(Insight(
-                key="per", tone="positive",
-                text=f"PER {per:.1f}배 — 이익 대비 주가가 낮은 편(저평가권)입니다.",
+                key="per", tone="neutral",
+                text=f"PER {per:.1f}배 — 이익 대비 주가가 낮은 편입니다.{LOW_VALUE_CAVEAT}",
             ))
         elif per > PER_HIGH:
             insights.append(Insight(
@@ -41,8 +44,8 @@ def narrate(snapshots: list[FundamentalSnapshot]) -> list[Insight]:
     if pbr is not None and pbr > 0:
         if pbr < PBR_LOW:
             insights.append(Insight(
-                key="pbr", tone="positive",
-                text=f"PBR {pbr:.2f}배 — 회사 장부가치보다 주가가 낮습니다.",
+                key="pbr", tone="neutral",
+                text=f"PBR {pbr:.2f}배 — 회사 장부가치보다 주가가 낮습니다.{LOW_VALUE_CAVEAT}",
             ))
         elif pbr > PBR_HIGH:
             insights.append(Insight(

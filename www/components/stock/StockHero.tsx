@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BellRing, Minus, ShieldCheck, TrendingDown, TrendingUp } from "lucide-react";
+import { BellRing, Minus, TrendingDown, TrendingUp } from "lucide-react";
 import type { StockAnalyzeResult } from "@/lib/types";
 import { formatPrice } from "@/lib/currency";
 import { strength } from "@/lib/verdict";
@@ -96,12 +96,6 @@ export default function StockHero({
             <DirectionIcon size={12} strokeWidth={2} />
             {meta.label} · {strength(analyze)}
           </span>
-          {analyze.reference_up_signal && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-border bg-surface text-xs text-foreground-muted">
-              <ShieldCheck size={12} strokeWidth={2} className="text-brand" />
-              백테스트 참고
-            </span>
-          )}
           <span className="text-xs text-foreground-muted tabular-nums">
             {asOfLabel ?? "지연 시세"}
             {quotePrice != null && " · 30초 갱신"}

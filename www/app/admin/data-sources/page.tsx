@@ -17,7 +17,7 @@ const NOTES: Record<string, string> = {
   recommendations: "AI 추천 파이프라인 산출물",
   price_bars: "yfinance OHLCV · 자동 수집",
   news_articles: "Google News RSS · 30분 주기",
-  news_labels: "EXAONE 7.8B 라벨링 · 야간 배치",
+  news_labels: "Gemma 4 e4b 라벨링 · 야간 배치",
   fundamental_snapshots: "yfinance + DART · 주 1회",
   forecast_snapshots: "예측 동결 스냅샷 · 매일 14:00",
 };

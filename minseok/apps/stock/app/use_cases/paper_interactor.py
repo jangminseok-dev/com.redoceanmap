@@ -56,7 +56,7 @@ NEWS_WINDOW_DAYS = 3
 PENDING_EXPIRY_DAYS = 7  # 캘린더일 — 이 안에 체결 봉이 없으면 주문 폐기(휴장 연속 대비)
 SCORE_MIN_SAMPLES = 30
 MAX_CANDIDATES = 25
-LABELS = {"exaone": "EXAONE", "signal": "지표 규칙"}
+LABELS = {"exaone": "AI 판단", "signal": "지표 규칙"}  # 계정 키는 유지 — 판단 모델이 9/15부터 Gemma라 표시명만 일반화
 
 
 def _positions_list(account: AccountRecord) -> list[paper_ledger.Position]:

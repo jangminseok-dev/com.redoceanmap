@@ -2256,7 +2256,7 @@ async def test_AI가_뭐_사는지_물으면_모의투자_기록을_코드가_�
     interactor, llm, _ = _build(monkeypatch, [], paper=paper)
     result = await interactor.ask("AI는 요즘 뭐 사?")
     assert paper.calls == 1 and llm.calls == []  # LLM 미사용
-    assert "EXAONE 계정" in result.text and "매수 COST" in result.text and "체결: QCOM" in result.text
+    assert "AI 계정(AI가 직접 판단)" in result.text and "매수 COST" in result.text and "체결: QCOM" in result.text
     assert "-5.5%" in result.text and "권유가 아니에요" in result.text and "/paper" in result.text
 
 

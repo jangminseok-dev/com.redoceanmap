@@ -66,7 +66,7 @@ export default function PaperPage() {
         <div>
           <h1 className="text-xl font-bold tracking-tight flex items-center gap-2"><Bot size={20} /> AI 모의투자</h1>
           <p className="mt-1 text-sm text-foreground-muted">
-            EXAONE이 매일 우리 뉴스·신호를 읽고 1억원으로 사고팝니다. 검증된 지표 규칙, SPY 보유와 나란히 봅니다.
+            로컬 AI가 매일 우리 뉴스·신호를 읽고 1억원으로 사고팝니다. 지표 규칙 계정, SPY 보유와 나란히 봅니다.
           </p>
         </div>
 
@@ -104,7 +104,7 @@ export default function PaperPage() {
 
             {view.details && (
               <div className="space-y-5">
-                <Card title="자산 곡선" sub="점은 EXAONE의 체결 · 음영은 리플레이 구간 · 클릭하면 그날 판단으로">
+                <Card title="자산 곡선" sub="점은 AI 계정의 체결 · 음영은 리플레이 구간 · 클릭하면 그날 판단으로">
                   <EquityCurve
                     series={series}
                     spy={boardQ.data.spy}
@@ -115,16 +115,16 @@ export default function PaperPage() {
                     onPickDate={pickDate}
                   />
                 </Card>
-                <Card title="EXAONE의 판단 원문" sub={`${dates.length}일치 · 되감기`}>
+                <Card title="AI의 판단 원문" sub={`${dates.length}일치 · 되감기`}>
                   <TimeScrubber dates={dates} index={dateIndex} onChange={(i) => setView((prev) => ({ ...prev, dateIndex: i }))} />
                   <div className="mt-4">
                     {decisionsQ.isLoading ? <div className="skeleton h-32 rounded-xl" /> : <DecisionFeed decision={selected} />}
                   </div>
                 </Card>
-                <Card title="EXAONE 판단 채점" sub="검증되지 않은 판단 — 표본이 쌓이면 숫자가 열립니다">
+                <Card title="AI 판단 채점" sub="검증되지 않은 판단 — 표본이 쌓이면 숫자가 열립니다">
                   {scorecardQ.data ? <Scorecard card={scorecardQ.data} /> : <p className="text-sm text-foreground-muted">아직 채점된 판단이 없습니다.</p>}
                 </Card>
-                <Card title="지표 규칙 계정" sub="검증된 신호만 그대로 따르는 대조군">
+                <Card title="지표 규칙 계정" sub="활성 지표 조합의 신호를 그대로 따르는 대조군">
                   <HoldingsGrid positions={signalQ.data?.positions ?? []} empty="지금은 다 현금이에요." />
                   {signalQ.data && signalQ.data.trades.length > 0 && (
                     <div className="mt-4">

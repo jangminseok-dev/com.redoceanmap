@@ -115,7 +115,7 @@ def narrate(
     if reference_up_signal:
         insights.append(Insight(
             key="reference", tone="neutral",
-            text="백테스트 검증(인샘플·홀드아웃 통과)을 만족한 '과매도+밴드 하단' 참고 신호가 켜졌습니다 — "
+            text="'과매도+밴드 하단' 참고 조건에 해당합니다 — 통계적으로 검증된 신호가 아니며 "
                  "상승 확률이나 매수 근거는 아닙니다.",
         ))
     return insights

@@ -1646,7 +1646,7 @@ class ChatInteractor(ChatUseCase):
             logger.warning("[chat] 모의투자 기록 조회 실패", exc_info=True)
             infos = []
         act = {"BUY": "매수", "SELL": "매도", "SHORT": "숏 진입", "COVER": "숏 청산"}
-        label = {"exaone": "EXAONE 계정(AI가 직접 판단)", "signal": "지표 규칙 계정(검증된 신호만 따름)"}
+        label = {"exaone": "AI 계정(AI가 직접 판단)", "signal": "지표 규칙 계정(활성 지표 신호를 따름)"}
         lines = []
         for info in infos:
             orders = ", ".join(f"{act.get(o.action, o.action)} {o.ticker}" for o in info.orders) or "주문 없음(관망)"
@@ -1657,11 +1657,11 @@ class ChatInteractor(ChatUseCase):
                 o = info.orders[0]
                 lines.append(f"  · {o.ticker} 이유: {o.reason[:120]}")
         if not lines:
-            text = ("AI 모의투자 기록이 아직 없어요. EXAONE 계정은 매일 14:00 판단하고 다음 장 시가에 사후 체결돼요 —"
+            text = ("AI 모의투자 기록이 아직 없어요. AI 계정은 매일 14:00 판단하고 다음 장 시가에 사후 체결돼요 —"
                     " AI 모의투자 화면(/paper)에서 볼 수 있어요.")
         else:
             text = (
-                "AI 모의투자는 실제 돈이 아닌 기록이에요 — EXAONE이 매일 우리 예측 스냅샷·뉴스 라벨을 읽고 1억원으로"
+                "AI 모의투자는 실제 돈이 아닌 기록이에요 — 로컬 AI가 매일 우리 예측 스냅샷·뉴스 라벨을 읽고 1억원으로"
                 " 판단한 것을 다음 장 시가에 사후 체결합니다.\n" + "\n".join(lines) +
                 "\n\n어느 계정이 무엇을 샀다는 사실이지 매수·매도 권유가 아니에요. 판단 근거·인용 기사·거부된 주문은"
                 " AI 모의투자 화면(/paper)에서 볼 수 있어요."
@@ -3501,8 +3501,8 @@ class ChatInteractor(ChatUseCase):
         if r.reference_up_signal:
             # 신호 없음(False)은 라인 자체를 생략 — 소형 모델이 '신호 부재'를 부정 신호로 오독하는 것 차단
             lines += (
-                "- 참고 신호: 백테스트 검증(인샘플·홀드아웃 통과)된 '과매도+볼린저 하단' 조건 충족"
-                " — 통계적 참고일 뿐 상승 확률이나 매수 근거가 아님\n"
+                "- 참고 신호: '과매도+볼린저 하단' 조건 충족"
+                " — 통계적으로 검증된 신호가 아니며 상승 확률이나 매수 근거가 아님\n"
             )
         lines += cls._forecast_text(forecast)
         if value_notes:

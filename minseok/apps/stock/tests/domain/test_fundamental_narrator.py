@@ -30,7 +30,7 @@ def test_dart에_없는_필드는_yfinance로_보강한다():
         _snap(source="dart", per=5.0),
         _snap(source="yfinance", roe=0.20),
     ]))
-    assert got["per"].tone == "positive"  # 저평가권
+    assert got["per"].tone == "neutral" and "더 오르지 않았어요" in got["per"].text  # 저PER은 긍정색 아님(백테스트 미달)
     assert got["roe"].tone == "positive"
 
 
@@ -41,7 +41,7 @@ def test_적자_PER은_경고():
 
 def test_PBR_1미만은_장부가_이하():
     got = _by_key(narrate([_snap(pbr=0.8)]))
-    assert got["pbr"].tone == "positive"
+    assert got["pbr"].tone == "neutral"
 
 
 def test_ROE_15퍼센트_경계는_우수():

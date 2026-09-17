@@ -331,11 +331,6 @@ function StockSummaryCard({ stock, onClick }: { stock: StockAnalysis; onClick: (
         </div>
       )}
       <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-        {stock.referenceUpSignal && (
-          <span className="inline-flex px-2 py-0.5 rounded-full bg-up-weak border border-up/20 text-up text-xs font-medium">
-            백테스트 검증 참고 신호
-          </span>
-        )}
         {stock.sentimentLabel && (
           <span className="text-xs text-foreground-muted">뉴스 감성 {stock.sentimentLabel}</span>
         )}

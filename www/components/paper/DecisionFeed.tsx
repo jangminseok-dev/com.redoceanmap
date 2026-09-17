@@ -120,7 +120,7 @@ export default function DecisionFeed({ decision }: { decision: PaperDecision | n
 
       <details className="text-xs">
         <summary className="cursor-pointer select-none text-foreground-muted">
-          이날 EXAONE이 본 후보 {decision.candidates.length}종목
+          이날 AI가 본 후보 {decision.candidates.length}종목
         </summary>
         <div className="mt-2 overflow-x-auto">
           <table className="w-full text-xs">
