@@ -1,7 +1,7 @@
 """업종군별 원가율·영업이익률 벤치마크 — 결정론 상수(KOSIS API 적재 안 함, FINANCE_ENGINE D3).
 
 값은 소상공인실태조사 발표 표와 대조해 교체한다 — 대조 전까지 잠정치이며 source에 "잠정"을 남긴다.
-B8 `PAYBACK_MARGIN`과 같은 방식: 가정치를 답변에 출처와 함께 병기한다.
+B8 회수기간과 같은 방식: 가정치를 답변에 출처와 함께 병기한다(외식 이익률은 확인된 출처 — EATOUT_MARGIN).
 """
 from __future__ import annotations
 
@@ -21,6 +21,14 @@ MARGIN_WARN_FACTOR = 1.5        # 계산된 영업이익률이 업종 벤치마�
 
 _SOURCE = "소상공인실태조사 2024(중기부·통계청) 대조 전 잠정치"
 
+# 외식업(음식점·카페·주점) 영업이익률 — 농촌경제연구원 「2024년 외식업체 경영실태조사」 8.7%
+# (업체당 연매출 2억 5,526만원·영업이익 2,220만원, 2020년 12.1%에서 하락). 조사가 세 군을 나눠 발표하지
+# 않아 한 값으로 둔다(2026-09-17 교체 — 이전 잠정치 12~14%는 출처 없이 1.4~1.6배 높았다).
+# 이익률 출처가 확인된 업종군은 이것뿐이다 — 나머지 군의 margin_ratio는 여전히 잠정치.
+EATOUT_MARGIN = 0.087
+EATOUT_MARGIN_SOURCE = "농촌경제연구원 외식업체 경영실태조사 2024"
+VERIFIED_MARGIN_GROUPS = frozenset({"food", "cafe", "pub"})
+
 
 @dataclass(frozen=True)
 class CostBenchmark:
@@ -32,9 +40,9 @@ class CostBenchmark:
 
 
 COST_BENCHMARKS: dict[str, CostBenchmark] = {
-    "food": CostBenchmark("food", "음식점", 0.38, 0.12, _SOURCE),
-    "cafe": CostBenchmark("cafe", "카페·음료", 0.30, 0.14, _SOURCE),
-    "pub": CostBenchmark("pub", "주점", 0.35, 0.13, _SOURCE),
+    "food": CostBenchmark("food", "음식점", 0.38, EATOUT_MARGIN, _SOURCE),
+    "cafe": CostBenchmark("cafe", "카페·음료", 0.30, EATOUT_MARGIN, _SOURCE),
+    "pub": CostBenchmark("pub", "주점", 0.35, EATOUT_MARGIN, _SOURCE),
     "retail": CostBenchmark("retail", "소매", 0.72, 0.05, _SOURCE),
     "service": CostBenchmark("service", "미용·서비스", 0.15, 0.20, _SOURCE),
     "education": CostBenchmark("education", "교육", 0.05, 0.22, _SOURCE),

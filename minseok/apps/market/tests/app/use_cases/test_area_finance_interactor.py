@@ -59,7 +59,7 @@ async def test_상권_평균과_공정위_가정으로_빈_값을_채운다():
     assert i.monthly_payroll.value == 10_320 * 209 and "점주 본인" in i.monthly_payroll.note
     assert abs(i.cost_ratio.value - 0.315) < 1e-9 and "카드 결제 수수료 1.5%" in i.cost_ratio.note
     assert i.loan_rate.value == 4.5 and i.loan_rate.source == Source.ECOS
-    assert view.plan.benchmark_margin == 0.14 and "공과금·소모품·배달 수수료 미반영" in view.assumption_note
+    assert view.plan.benchmark_margin == 0.087 and "공과금·소모품·배달 수수료 미반영" in view.assumption_note
     assert i.expected_monthly_sales.value == 15_000_000
     assert "손익분기" in view.headline and view.rent is RENT
 

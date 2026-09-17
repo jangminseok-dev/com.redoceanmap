@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from market.domain.services import cost_benchmarks
 from market.domain.value_objects.area_profile_vo import (
     ApartmentProfile,
     AssetPrice,
@@ -67,9 +68,9 @@ CHURN_TURNOVER_HIGH = 0.38  # 교체율((개업+폐업)/영업중) p90 = 0.381. 
 ASSET_TRADES_MIN = 30
 PYEONG_PER_M2 = 3.3058  # 평 ↔ ㎡ — 상가 시세는 평당 표기가 관례
 
-# 창업비용 회수기간(B8) — 영업이익률은 우리 데이터에 없는 **가정치**다(2026-09-14 사용자 확정 15%).
-# 문장에 "가정"으로 명시하고, 가정 없는 사실(매출 배수)을 나란히 둔다.
-PAYBACK_MARGIN = 0.15
+# 창업비용 회수기간(B8) — 영업이익률은 우리 데이터에 없는 **가정치**다. 문장에 "가정"으로 명시하고,
+# 가정 없는 사실(매출 배수)을 나란히 둔다. 2026-09-14 전 업종 15%로 시작 → 2026-09-17 출처가 확인된
+# 외식업 평균 8.7%만 쓰고(15%는 1.7배 낙관), 출처 없는 업종(편의점·이미용·세탁)은 년수를 내지 않는다.
 PAYBACK_MIN_STORES = 5  # 점포 5개 미만은 점포당 매출이 표본 잡음(2026-09-08 소표본 규칙과 동일)
 
 # 서울시 업종명 → 공정위 가맹 업종 중분류. 가맹 업종이 아닌 것(의약품·부동산 …)은 비워 둔다.
@@ -184,13 +185,18 @@ def _payback_insight(rank: ServiceRank | None, cost: StartupCost | None) -> Insi
     if rank.store_count is None or rank.store_count < PAYBACK_MIN_STORES:
         return None
     months = cost.total_amount / rank.sales_per_store
-    years = cost.total_amount / (rank.sales_per_store * PAYBACK_MARGIN) / 12
+    if cost_benchmarks.benchmark_for(rank.name).group in cost_benchmarks.VERIFIED_MARGIN_GROUPS:
+        margin = cost_benchmarks.EATOUT_MARGIN
+        years = cost.total_amount / (rank.sales_per_store * margin) / 12
+        tail = (f"{months:.1f}개월치, 외식업 평균 영업이익률 {margin:.1%}"
+                f"({cost_benchmarks.EATOUT_MARGIN_SOURCE}) 가정 시 회수 약 {years:.1f}년입니다.")
+    else:
+        tail = f"{months:.1f}개월치입니다(이 업종은 확인된 평균 영업이익률이 없어 회수 년수는 계산하지 않습니다)."
     return Insight(
         key="payback", tone="neutral",
         text=(f"{cost.industry_name} 업종 창업비용은 공정위 정보공개서({cost.year}) 중앙 "
               f"{_money(cost.total_amount)}(가맹금·교육비·보증금·기타 합, 임대료·권리금 제외) — "
-              f"이 상권 {rank.name} 점포당 월매출 {_money(rank.sales_per_store)}의 {months:.1f}개월치, "
-              f"영업이익률 {PAYBACK_MARGIN:.0%} 가정 시 회수 약 {years:.1f}년입니다."),
+              f"이 상권 {rank.name} 점포당 월매출 {_money(rank.sales_per_store)}의 {tail}"),
     )
 
 

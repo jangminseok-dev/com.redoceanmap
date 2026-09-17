@@ -687,8 +687,18 @@ def test_매출_배수와_이익률_가정_회수기간을_한_문장에_병기�
     assert "8,036만원" in got.text and "임대료" in got.text and "권리금" in got.text
     # 8,036만원 ÷ 775만원 = 10.37 → 10.4개월치 (가정 없는 사실)
     assert "775만원" in got.text and "10.4개월치" in got.text
-    # 8,036만원 ÷ (775만원 × 0.15) ÷ 12 = 5.76 → 5.8년 (가정 명시)
-    assert "영업이익률 15% 가정" in got.text and "약 5.8년" in got.text
+    # 8,036만원 ÷ (775만원 × 0.087) ÷ 12 = 9.93 → 9.9년 (외식업 실측 이익률, 출처 명시)
+    assert "외식업 평균 영업이익률 8.7%" in got.text and "경영실태조사 2024" in got.text
+    assert "약 9.9년" in got.text
+
+
+def test_이익률_출처가_없는_업종은_매출_배수만_말하고_년수는_내지_않는다():
+    from market.domain.value_objects.area_profile_vo import ServiceRank
+    rank = ServiceRank(code="CS300002", name="편의점", monthly_sales=50_000_000 * 10, store_count=10,
+                       sales_per_store=50_000_000, sales_qoq=None, closure_rate=None)
+    got = _payback_text(rank, _cost(total=54_700_000))
+    assert got is not None and "1.1개월치" in got.text
+    assert "회수 약" not in got.text and "영업이익률이 없어" in got.text
 
 
 def test_서울_업종명을_공정위_중분류로_잇는다():
