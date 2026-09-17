@@ -70,10 +70,15 @@ class AreaFinanceInteractor(AreaFinanceUseCase):
             startup_cost = (Sourced(cost.total_amount, Source.FRANCHISE, f"공정위 {cost.industry_name}({cost.year}) 중앙값, 임대료·권리금 제외")
                             if cost else Sourced(0, Source.ASSUMED, "창업비용 자료 없음 — 0으로 가정"))
 
-        payroll = (Sourced(cb.monthly_payroll(query.headcount), Source.ASSUMED, f"최저임금 기준 {query.headcount}명")
-                   if query.headcount else Sourced(0, Source.ASSUMED, "1인 운영 가정"))
+        # 인원 미입력이면 점주 본인 1인분 — 0으로 두면 "이익"에 점주 노동값이 섞여 과대해졌다(2026-09-17)
+        payroll = (Sourced(cb.monthly_payroll(query.headcount), Source.ASSUMED, f"최저임금 기준 {query.headcount}명(점주 포함)")
+                   if query.headcount else
+                   Sourced(cb.monthly_payroll(cb.DEFAULT_WORKERS), Source.ASSUMED, "점주 본인 인건비 최저임금 1인분 포함"))
         bench = cb.benchmark_for(service.name)
-        cost_ratio = Sourced(bench.cost_ratio, Source.ASSUMED, f"{bench.label} 원가율 {bench.cost_ratio:.0%}({bench.source})")
+        cost_ratio = Sourced(
+            bench.cost_ratio + cb.CARD_FEE_RATIO, Source.ASSUMED,
+            f"{bench.label} 원가율 {bench.cost_ratio:.0%}({bench.source}) + 카드 결제 수수료 {cb.CARD_FEE_RATIO:.1%} 가정",
+        )
         rate = await self._finance.find_loan_rate()
         loan_rate = (Sourced(rate[1], Source.ECOS, f"한국은행 {rate[0] // 100}-{rate[0] % 100:02d} 대출평균")
                      if rate else Sourced(cb.DEFAULT_LOAN_RATE, Source.ASSUMED, f"금리 자료 없음 — {cb.DEFAULT_LOAN_RATE}% 가정"))
@@ -91,9 +96,12 @@ class AreaFinanceInteractor(AreaFinanceUseCase):
             key_money=key_money, startup_cost=startup_cost, monthly_payroll=payroll, cost_ratio=cost_ratio,
             loan_rate=loan_rate, desired_loan=desired_loan, expected_monthly_sales=expected,
         )
-        plan = finance_engine.plan(inputs, assumptions=(
-            "이자만 반영(원리금 상환 제외)", f"운전자금 {cb.WORKING_CAPITAL_MONTHS}개월분 포함",
-        ))
+        plan = finance_engine.plan(
+            inputs,
+            assumptions=("이자만 반영(원리금 상환 제외)", f"운전자금 {cb.WORKING_CAPITAL_MONTHS}개월분 포함",
+                         "공과금·소모품·배달 수수료 미반영"),
+            benchmark_margin=bench.margin_ratio, benchmark_label=bench.label,
+        )
         return AreaFinanceView(
             trdar_code=header.trdar_code, trdar_name=header.trdar_name, district_name=header.district_name,
             service_code=service.code, service_name=service.name, plan=plan, rent=rent,

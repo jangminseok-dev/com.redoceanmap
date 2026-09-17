@@ -70,6 +70,10 @@ class FinancePlan:
     stress: tuple[StressPoint, ...]
     scenarios: tuple[Scenario, ...]
     assumptions: tuple[str, ...]
+    # 업종 평균 영업이익률 대조(2026-09-17) — 이 엔진은 공과금·소모품·배달 수수료 같은 기타 비용을 모르므로
+    # 계산 이익률이 업종 평균보다 크게 높으면 과대 추정일 가능성이 크다. 벤치마크가 없으면 None
+    benchmark_margin: float | None = None
+    benchmark_label: str = ""
 
 
 @dataclass(frozen=True)

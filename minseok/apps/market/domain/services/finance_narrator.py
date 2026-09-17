@@ -4,6 +4,8 @@
 """
 from __future__ import annotations
 
+from market.domain.services.cost_benchmarks import MARGIN_WARN_FACTOR
+from market.domain.services.finance_engine import is_margin_overstated, operating_margin
 from market.domain.value_objects.finance_vo import FinancePlan, Source, Sourced
 
 _SOURCE_LABEL = {
@@ -51,6 +53,14 @@ def headline(plan: FinancePlan, trdar_name: str, service_name: str) -> str:
             f"{trdar_name} {service_name} 점포당 월매출 {won(sales.value)}이면 달성률 {plan.attainment:.0%}"
             f"(월 {'이익' if plan.monthly_profit >= 0 else '적자'} 약 {won(abs(plan.monthly_profit))})."
         )
+        margin = operating_margin(plan)
+        if is_margin_overstated(plan, MARGIN_WARN_FACTOR):
+            # 공과금·소모품·배달 수수료 등 이 계산에 없는 비용 때문에 실제 이익은 대개 이보다 작다
+            out.append(
+                f"다만 이 계산의 영업이익률 {margin:.0%}는 {plan.benchmark_label} 업종 평균 {plan.benchmark_margin:.0%}보다"
+                f" 크게 높아요 — 공과금·소모품·배달 수수료 같은 비용이 빠진 값이라, 업종 평균 이익률로 보면"
+                f" 월 이익은 약 {won(sales.value * plan.benchmark_margin)}이에요."
+            )
     out.append(f"가게를 열고 3개월 버티려면 부족 자금 {won(plan.funding_gap)}이 필요해요."
                if plan.funding_gap else "자기자본으로 개업 비용과 3개월 운전자금이 충당돼요.")
     if plan.runway_months is not None:

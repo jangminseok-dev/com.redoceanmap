@@ -75,3 +75,17 @@ def test_스트레스_점이_하나여도_헤드라인이_깨지지_않는다():
     one = replace(p, stress=p.stress[:1])
     text = fn.headline(one, "성수동카페거리", "커피-음료")
     assert "금리가 1%p 오르면" in text and "2%p" not in text
+
+
+
+def test_계산_이익률이_업종_평균보다_크게_높으면_경고하고_평균_이익률_기준_이익을_병기한다():
+    from dataclasses import replace
+    # 월매출 1,500만원, 이익 = 1,050만 − 300만 − 이자 ≈ 745만 → 이익률 약 50% vs 카페 평균 14%
+    p = replace(_plan(), benchmark_margin=0.14, benchmark_label="카페·음료")
+    text = fn.headline(p, "성수동카페거리", "커피-음료")
+    assert "이 계산의 영업이익률 50%는 카페·음료 업종 평균 14%보다 크게 높아요" in text
+    assert "업종 평균 이익률로 보면 월 이익은 약 210만원이에요" in text
+    # 벤치마크 없거나 이익률이 평균 1.5배 이내면 경고 없음
+    assert "업종 평균" not in fn.headline(_plan(), "성수동카페거리", "커피-음료")
+    modest = replace(_plan(sales=4_800_000), benchmark_margin=0.14, benchmark_label="카페·음료")
+    assert "업종 평균" not in fn.headline(modest, "성수동카페거리", "커피-음료")

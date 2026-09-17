@@ -18,7 +18,10 @@ def _runway(cash_after: int, monthly_profit: int | None) -> float | None:
     return round(cash_after / abs(monthly_profit), 1)
 
 
-def plan(inputs: FinanceInputs, assumptions: tuple[str, ...] = ()) -> FinancePlan:
+def plan(
+    inputs: FinanceInputs, assumptions: tuple[str, ...] = (),
+    benchmark_margin: float | None = None, benchmark_label: str = "",
+) -> FinancePlan:
     cost_ratio = float(inputs.cost_ratio.value)
     if not 0.0 <= cost_ratio < 1.0:
         raise ValueError(f"cost_ratio는 0 이상 1 미만이어야 합니다: {cost_ratio}")
@@ -65,4 +68,18 @@ def plan(inputs: FinanceInputs, assumptions: tuple[str, ...] = ()) -> FinancePla
         loan_interest=interest, fixed_monthly=fixed, bep_monthly_sales=bep, attainment=attainment,
         monthly_profit=profit, cash_after=cash_after, runway_months=_runway(cash_after, profit),
         stress=stress, scenarios=scenarios, assumptions=tuple(assumptions),
+        benchmark_margin=benchmark_margin, benchmark_label=benchmark_label,
     )
+
+
+def operating_margin(p: FinancePlan) -> float | None:
+    """계산된 월 이익 ÷ 예상 월매출 — 매출이 없으면 None."""
+    sales = p.inputs.expected_monthly_sales
+    if p.monthly_profit is None or sales is None or sales.value <= 0:
+        return None
+    return p.monthly_profit / sales.value
+
+
+def is_margin_overstated(p: FinancePlan, factor: float) -> bool:
+    margin = operating_margin(p)
+    return margin is not None and p.benchmark_margin is not None and margin > p.benchmark_margin * factor
