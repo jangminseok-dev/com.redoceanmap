@@ -3103,7 +3103,12 @@ class _FullMarket(_CompareMarket):
 
 async def test_비교표에_적합도·백테스트·그래프·창업비용·공실률이_전부_실린다(monkeypatch):
     conversations = _StubConversations(history=_cmp_history((3110131, "성수동카페거리")))
-    finance = _StubFinance(info=_finance_info(vacancy_rate=8.5, rent_region="뚝섬", rent_level="zone"))
+    finance = _StubFinance(info=_finance_info(
+        vacancy_rate=8.5, rent_region="뚝섬", rent_level="zone", income_return=0.327, capital_return=2.97,
+        inputs=(FinanceInputItem("equity", 100_000_000, "input", ""), FinanceInputItem("monthly_rent", 3_000_000, "area_avg", "기타 평균"),
+                FinanceInputItem("key_money", 30_000_000, "assumed",
+                                 "권리금 3,000만원 가정(R-ONE 2025 서울 숙박 및 음식점업 권리금 있는 점포 중위수, 있는 비율 80%)")),
+    ))
     interactor, llm, _ = _build(
         monkeypatch, [], conversations=conversations, market=_FullMarket(), finance=finance,
         fitness=_StubFitness({3110131: _fitness(3110131, 0.72), 3130070: _fitness(3130070, 0.41, ticket=9000, similar=4)}),
@@ -3136,6 +3141,10 @@ async def test_비교표에_적합도·백테스트·그래프·창업비용·�
     assert "| 월세(추정) | 300만원 (권역 평균 뚝섬) | 300만원 (권역 평균 뚝섬) |" in t
     assert "| 공실률(R-ONE) | 8.5% | 8.5% |" in t and "공실률: 동률" in t
     assert len(finance.requests) == 2 and finance.requests[0].equity == 100_000_000
+    # 권리금 — 칸은 금액·출처 유형만, 근거 문구는 한 번만
+    assert "| 권리금 | 3,000만원 (가정) | 3,000만원 (가정) |" in t
+    assert t.count("권리금 3,000만원 가정(R-ONE 2025 서울 숙박 및 음식점업") == 1
+    assert "| 상가 수익률(분기, 소득·자본) | 소득 0.33% · 자본 +2.97% | 소득 0.33% · 자본 +2.97% |" in t
 
 
 async def test_포트가_없으면_못_쓴_데이터에_이유를_적고_비교는_계속된다(monkeypatch):

@@ -310,7 +310,8 @@ def render_area_compare(items: list[AreaCompareItem], v: AreaVerdict, *, service
             f"소득 {x['income_return']:.2f}% · 자본 {x['capital_return']:+.2f}%"
             if x.get("income_return") is not None and x.get("capital_return") is not None else "산출 불가" for x in f
         ])
-        row("권리금", [f"{x['key_money']:,}만원 ({x.get('key_money_note') or ''})" if x.get("key_money") is not None else "산출 불가" for x in f])
+        row("권리금", [f"{x['key_money']:,}만원 ({'입력' if x.get('key_money_note') == '입력' else '가정'})"
+                       if x.get("key_money") is not None else "산출 불가" for x in f])
         row("손익분기 월매출", [f"{x['bep']:,}만원" if x.get("bep") is not None else "산출 불가" for x in f])
         row("손익분기 달성률", [f"{x['attainment']:.0%}" if x.get("attainment") is not None else "산출 불가" for x in f], "attainment")
         row("월 이익(추정)", [f"{x['profit']:,}만원" if x.get("profit") is not None else "산출 불가" for x in f])
@@ -328,6 +329,11 @@ def render_area_compare(items: list[AreaCompareItem], v: AreaVerdict, *, service
             line += (f" 예산 {c['budget'] / 10000:,.0f}만원의 70%({cap / 10000:,.0f}만원) 안에 "
                      + ("들어와요." if c["total"] * 10000 <= cap else "안 들어와요."))
         out.append(line)
+    key_money_notes = list(dict.fromkeys(
+        n for i in items if (n := (i.finance or {}).get("key_money_note")) and n != "입력"
+    ))
+    if key_money_notes:
+        out.append("**권리금 가정** " + " / ".join(key_money_notes) + " — 권리금 없는 자리면 \"권리금 0\"이라고 말해 주세요.")
 
     extras = []
     for i in items:
