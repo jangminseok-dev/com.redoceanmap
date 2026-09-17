@@ -2896,7 +2896,7 @@ async def test_지역_하나를_들어_비교하면_직전_1순위와_짝지어_
     assert "**축별 판정**" in result.text and "**전체 지표** — 커피-음료, 2025년 4분기 기준" in result.text
     assert "| 점포당 월매출 | ★ 점포당 월평균 5,000만원 | 점포당 월평균 800만원 |" in result.text
     assert "| 분기 폐업률 | ★ 분기 폐업률 2.0% | 분기 폐업률 5.0% |" in result.text
-    assert "| 상권 건강 점수(서울 평균 50) | 미산출 | 43점 '주의' |" in result.text
+    assert "| 상권 건강 점수(50 = 서울 중앙 상권) | 미산출 | 43.4점 '주의' |" in result.text
     assert "**이번 비교에 못 쓴 데이터**" in result.text and "임대료·손익분기" in result.text
     assert [r.name for r in result.recommendations] == ["성수동카페거리", "길음역 8번"]
     assert market.raw_calls == [([3110131, 3130070], "CS100010")]  # 업종은 직전 카드에서 승계

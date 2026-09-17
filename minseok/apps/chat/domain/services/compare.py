@@ -94,7 +94,7 @@ AREA_AXES = [
     Axis("sales_per_store", "점포당 월매출", True, "{:,.0f}", "만원"),
     Axis("closure_rate", "분기 폐업률", False, "{:g}", "%"),
     Axis("foot_daily", "일평균 유동인구", True, "{:,.0f}", "명"),
-    Axis("score_total", "상권 건강 점수", True, "{:.0f}", "점"),
+    Axis("score_total", "상권 건강 점수", True, "{:.1f}", "점"),
     Axis("operating_months", "평균 영업 개월", True, "{:.0f}", "개월"),
     Axis("attainment", "손익분기 달성률", True, "{:.0%}", ""),
     Axis("fitness", "입지 적합도", True, "{:.0f}", "점"),
@@ -196,6 +196,14 @@ def area_verdict(items: list[AreaCompareItem]) -> AreaVerdict:
     return AreaVerdict(first, wins, results, compared, caution_note, line)
 
 
+# 점수 v2 컴포넌트 실측치 단위 — chat_interactor._SCORE_VALUE_FORMAT과 같은 축(표에서는 짧게)
+_COMPONENT_VALUE_FORMAT = {
+    "closure_stability": "4분기 폐업률 {:.1f}%",
+    "persistence": "{:.0f}개월",
+    "sales_level": "{:,.0f}만원",
+}
+
+
 def _cell(text: str | None, fallback: str = "데이터 없음") -> str:
     return text if text and "없음" not in text else fallback
 
@@ -242,7 +250,7 @@ def render_area_compare(items: list[AreaCompareItem], v: AreaVerdict, *, service
     row("유동인구 피크 시간", [_cell(x.get("peak_time")) for x in t])
     row("상권 변화 유형", [_cell(x.get("change_text")) for x in t])
     row("영업 지속(개월)", [_cell(x.get("op_months_text")) for x in t], "operating_months")
-    row("상권 건강 점수(서울 평균 50)", [f"{i.score_total:.0f}점 '{i.grade}'" if i.score_total is not None else "미산출" for i in items], "score_total")
+    row("상권 건강 점수(50 = 서울 중앙 상권)", [f"{i.score_total:.1f}점 '{i.grade}'" if i.score_total is not None else "미산출" for i in items], "score_total")
     comp_keys: list[tuple[str, str]] = []
     for i in items:
         for c in i.components:
@@ -252,7 +260,8 @@ def render_area_compare(items: list[AreaCompareItem], v: AreaVerdict, *, service
         cells = []
         for i in items:
             c = next((c for c in i.components if c[0] == key), None)
-            cells.append(f"{c[2]:.0f}점 (상권 {c[3]:+.1f} / 서울 {c[4]:+.1f})" if c else "미산출")
+            fmt = _COMPONENT_VALUE_FORMAT.get(key, "{:.1f}")
+            cells.append(f"{c[2]:.0f}점 ({fmt.format(c[3])} / 서울 중앙 {fmt.format(c[4])})" if c else "미산출")
         pred = (predictiveness or {}).get(key)
         tag = ""
         if pred is not None and pred[0] is not None:
