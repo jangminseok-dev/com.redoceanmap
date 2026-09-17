@@ -11,3 +11,4 @@ resources:
   - collect-franchise-costs.yaml
   - collect-rone-rent.yaml
   - collect-ecos-rates.yaml
+  - backtest-area-score.yaml

@@ -1,0 +1,37 @@
+# 상권 점수 워크포워드 백테스트 — 매주 목 06:00(수 05:30 서울 분기 수집 뒤). chat 비교표의 "등급별 t+1 실측"·컴포넌트 예측력 원천.
+# 새 분기가 없으면 같은 관측으로 리포트 1행만 더해진다(멱등 아님·저비용).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backtest-area-score
+spec:
+  schedule: "0 6 * * 4"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          hostAliases:
+            - ip: 172.17.0.1
+              hostnames: ["host.docker.internal"]
+          containers:
+            - name: job
+              image: minseok97/redoceanmap-backend:latest
+              imagePullPolicy: Never
+              workingDir: /app
+              command: ["python", "scripts/backtest_area_score.py"]
+              envFrom:
+                - secretRef:
+                    name: redocean-env
+                - configMapRef:
+                    name: redocean-runtime
+              env:
+                - name: DATABASE_URL
+                  value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@pgvector:5432/$(POSTGRES_DB)
+                - name: MARKET_DATABASE_URL
+                  value: $(MARKET_DATABASE_URL_DOCKER)
