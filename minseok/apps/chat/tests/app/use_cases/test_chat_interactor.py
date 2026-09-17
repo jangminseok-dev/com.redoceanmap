@@ -1070,8 +1070,9 @@ async def test_자기_지칭_없는_검증_질문은_기존_경로를_탄다(mon
 async def test_상권_특정_실패는_오류가_아니라_안내_답변이다(monkeypatch):
     # "목동 반찬가게" 류가 422 원문을 받았다(2026-08-31 프로덕션). 조건 어휘가 있는
     # 질문("유동인구 많은 상권 3곳")은 이제 랭킹 결정론 라우팅이 선점한다(별도 테스트).
+    # 지명은 말했지만 데이터에 매칭되는 상권이 없는 경우 — 안내로 끝난다(지명 토큰이 있어 되묻기 경로는 타지 않는다)
     interactor, _, stubs = _build(monkeypatch, [INTENT_MARKET, PHASE1_EMPTY])
-    result = await interactor.ask("장사 잘되는 동네 어디야?")
+    result = await interactor.ask("목동 반찬가게 어때?")
     assert "분석할 상권을 특정하지 못했어요" in result.text
     assert "랭킹" in result.text  # 조건 검색 대안 안내
     assert result.recommendations == []
@@ -1083,7 +1084,7 @@ async def test_의도_파싱_실패면_market_폴백(monkeypatch):
     interactor, _, stubs = _build(
         monkeypatch, ["JSON 아님", "역시 JSON 아님", PHASE1_JSON, PHASE2_JSON]
     )
-    result = await interactor.ask("아무 질문")
+    result = await interactor.ask("역삼동 아무 질문")
     assert stubs["market"].summary_calls == 1
     assert len(result.recommendations) == 1
 
@@ -3270,3 +3271,24 @@ async def test_지역_구절이_동_단위로_잡혀도_이름을_지목한_상�
     result = await interactor.ask("성수동카페거리랑 길음역 카페 비교해줘")
     assert llm.calls == []
     assert sorted(r.name for r in result.recommendations) == ["길음역 8번", "성수동카페거리"]
+
+
+
+# --- 첫 경험: 지역·업종·단서 없는 상권 질문은 되묻는다(2026-09-17) ---
+
+async def test_지역_업종_단서가_모두_없으면_추측하지_않고_되묻는다(monkeypatch):
+    interactor, llm, stubs = _build(monkeypatch, [INTENT_MARKET])
+    result = await interactor.ask("요즘 서울에서 뜨는 상권 어디야?")
+    assert len(llm.calls) == 1  # phase0만 — phase1이 업종·지역을 임의로 고르지 않는다
+    assert result.recommendations == []
+    assert result.text.startswith("어느 동네에서 어떤 가게를 생각하시는지")
+    assert stubs["market"].summary_calls == 1  # 의도는 market으로 채점된다
+
+
+async def test_업종이나_성격_단서가_있으면_되묻지_않는다(monkeypatch):
+    interactor, llm, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON])
+    await interactor.ask("직장인 많은 곳에서 점심 장사 하려는데 어디가 좋아?")
+    assert len(llm.calls) == 3
+    interactor2, llm2, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON])
+    await interactor2.ask("커피-음료 가게 어디가 좋을까?")
+    assert len(llm2.calls) == 3

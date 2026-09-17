@@ -751,6 +751,12 @@ _CONDITION_AXES = (
     ("sales", re.compile(r"매출\s*(?:이|가|은|는|도)?\s*(?:높|많|큰|잘)")),
 )
 _CONDITION_COUNT = re.compile(r"(\d+)\s*(?:곳|군데|개)")
+# 상권 성격 단서 — 지역·업종이 없어도 이런 단서가 있으면 phase1이 고를 근거가 있다(골든 MN01~09 형태)
+_AREA_TRAIT_HINT_RE = re.compile(
+    r"직장인|오피스|점심|저녁|밤|새벽|주말|평일|\d0대|대학|학생|학원가|주거|아파트|역세권|유동\s*인구|객단가|관광|외국인|가족|아이|키즈"
+    # 지명처럼 생긴 토큰 — 데이터 요약에 없는 지명("목동")이라도 사용자는 지역을 말한 것이다(기존 안내 경로가 맡는다)
+    r"|[가-힣]{1,6}(?:역|동|구|입구|거리|시장|사거리)(?=$|[^가-힣]|[이가은는에서랑과와도의로])"
+)
 _CONDITION_DEFAULT_COUNT = 3
 _CONDITION_MAX_COUNT = 10
 # 점포 극단값 컷 — 점포 1~2개 상권은 폐업률 0%가 흔하다(랭킹 쇼케이스 하한과 같은 취지)
@@ -1600,6 +1606,25 @@ class ChatInteractor(ChatUseCase):
         await self._conversations.add_message(conversation_id, "assistant", text, payload=payload)
         return AskResponse(text=text, recommendations=recommendations, conversationId=conversation_id)
 
+    async def _answer_market_clarify(
+        self, conversation_id: int, prompt: str, profile: UserProfileSummary | None, history: list[Message],
+    ) -> AskResponse:
+        """지역·업종·성격 단서가 없는 상권 질문 — 추측해 랭킹을 내지 않고, 답에 필요한 두 가지를 되묻는다(LLM 없음).
+
+        예산을 말했으면 공정위 창업비용으로 그 안에 드는 업종을 먼저 보여준다(기존 예산 고지 재사용).
+        """
+        budget = await self._budget_notice(prompt, profile, history)
+        text = (
+            budget
+            + "어느 동네에서 어떤 가게를 생각하시는지 알려주시면 데이터로 바로 비교해 드릴게요.\n"
+            "- 동네·역 이름 + 업종: \"성수동 카페 어때?\", \"노원역 분식집 해볼만해?\"\n"
+            "- 후보가 여럿이면: \"망원동이랑 연남동 카페 비교해줘\"\n"
+            "- 동네를 아직 못 정했으면 조건으로: \"폐업률 낮은 상권 5곳\", \"직장인 많은 곳에 김밥집\"\n"
+            "상권 판정은 서울시 공공데이터(최근 분기)와 향후 1년 폐업률로 검증한 점수로 해요. 서울만 지원해요."
+        )
+        await self._conversations.add_message(conversation_id, "assistant", text)
+        return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
+
     async def _answer_service_candidates(self, conversation_id: int, history: list[Message], on_stage=None) -> AskResponse | None:
         """직전 추천 상권 1곳의 업종별 점포당 월매출·폐업률을 코드가 나열한다. 직전 카드가 없으면 None(기존 흐름)."""
         previous = None
@@ -2080,6 +2105,13 @@ class ChatInteractor(ChatUseCase):
                 return await self._answer_condition_ranking(
                     conversation_id, prompt, axes, on_stage,
                 )
+            # 지역·업종·상권 성격 단서가 전부 없는 첫 질문은 되묻는다(2026-09-17 첫 경험 점검).
+            # "요즘 서울에서 뜨는 상권 어디야?"·"자영업 처음인데 뭐부터 봐야 해?"에 모델이 업종(한식)·지역을 임의로 채워
+            # 주의 등급 상권까지 섞인 랭킹을 냈다. 직전 상권 카드가 있는 후속은 기존 흐름(승계)이 맡는다.
+            if (not self._previous_area_codes(history, {a.trdar_code: a for a in summary.areas})
+                    and not _AREA_TRAIT_HINT_RE.search(prompt) and not _has_exclusion(prompt)
+                    and _detect_service(prompt, await self._market.get_service_codes()) is None):
+                return await self._answer_market_clarify(conversation_id, prompt, profile, history)
 
         # 반경 질의 가드(I-10) — 중심 상권을 좌표로 특정할 수 있으면 반경 안 상권 집합을
         # 만들어 phase1 결과를 자르고, 못 하면 "미적용"을 답변 문두에 결정론으로 명시한다.
