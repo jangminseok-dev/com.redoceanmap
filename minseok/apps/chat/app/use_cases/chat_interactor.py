@@ -23,6 +23,7 @@ from chat.app.ports.output.conversation_repository import ConversationRepository
 from chat.domain.entities.conversation_entity import ConversationSummary, Message
 from chat.domain.services import answer_guard
 from chat.domain.services import compare as compare_svc
+from chat.domain.services import trait_ranking as trait_svc
 from chat.domain.services.amount_parser import (
     fmt_won,
     parse_budget_krw,
@@ -348,13 +349,14 @@ def _has_exclusion(prompt: str) -> bool:
 # 일반명사와 동음인 지명 어간(4차 실측 M8 t2: "방학엔 장사 안 되지 않아?"의 '방학'이
 # 도봉구 방학역에 걸려 관악구 질문이 방학역 추천으로 샜다). 이 어간은 장소 접미가
 # 따라올 때만 지명으로 인정한다. 실측으로 잡힌 것만 등재한다.
-_HOMONYM_STEMS = ("방학", "신사", "대치")
+# '대학'(2026-09-17 골든 MN09): "대학로"의 어간이 "대학가 근처 스터디카페"에 걸려 성격형 질문이 대학로 추천으로 샜다.
+_HOMONYM_STEMS = ("방학", "신사", "대치", "대학")
 
 
 def _stem_means_place(stem: str, prompt: str) -> bool:
     if stem not in _HOMONYM_STEMS:
         return True
-    return bool(re.search(re.escape(stem) + r"\s?(?:역|동|상권|쪽|근처|인근|사거리)", prompt))
+    return bool(re.search(re.escape(stem) + r"\s?(?:역|동|로|상권|쪽|근처|인근|사거리)", prompt))
 
 
 # 장소를 겨눈 제외("다른 데/곳/동네" 류)는 어떤 경우든 지역 승계를 끊어야 한다
@@ -402,6 +404,7 @@ def _service_hinted(prompt: str, service_name: str) -> bool:
 _SERVICE_ALIASES = (
     ("떡볶이", "분식"), ("떡볶기", "분식"), ("순대", "분식"), ("어묵", "분식"),
     ("라볶이", "분식"), ("김밥", "분식"), ("튀김", "분식"),
+    ("분식", "분식"),   # 2026-09-17 결론 오라클 MC05: "분식집"이 업종 미감지 → 비교가 매출 최상급 한 줄로 샜다
     ("카페", "커피"), ("커피", "커피"), ("디저트", "제과"), ("빵", "제과"),
     ("베이커리", "제과"), ("케이크", "제과"),
     ("치킨", "치킨"), ("통닭", "치킨"),
@@ -415,6 +418,7 @@ _SERVICE_ALIASES = (
     ("파스타", "양식"), ("피자", "양식"), ("스테이크", "양식"), ("양식", "양식"),
     ("편의점", "편의점"), ("반찬", "반찬"), ("미용", "미용"), ("헤어", "미용"),
     ("네일", "네일"), ("세탁", "세탁"), ("문구", "문구"), ("서점", "서적"),
+    ("옷가게", "의류"), ("옷집", "의류"),   # 2026-09-17 성격형 골든 MN04 — 전 업종으로 줄 세워졌다
 )
 
 # 정정 신호 — 사용자가 앞선 답을 바로잡는 중이면 직전 업종을 승계하지 않는다
@@ -760,6 +764,12 @@ _AREA_TRAIT_HINT_RE = re.compile(
     # 지명처럼 생긴 토큰 — 데이터 요약에 없는 지명("목동")이라도 사용자는 지역을 말한 것이다(기존 안내 경로가 맡는다)
     r"|[가-힣]{1,6}(?:역|동|구|입구|거리|시장|사거리)(?=$|[^가-힣]|[이가은는에서랑과와도의로])"
 )
+# 지명처럼 생긴 토큰 — 성격형 결정론 랭킹은 서울 전역을 줄 세우므로, 요약이 모르는 지명("목동")을 말했으면 타지 않는다.
+# "지하철역·전철역·유동인구·직장인구·운동·활동"은 지명이 아니라 성격 어휘다.
+_PLACE_TOKEN_RE = re.compile(
+    r"[가-힣]{0,5}(?:(?<!지하철)(?<!전철)역|(?<![운활이])동|(?<!인)구|입구|거리|시장|사거리)(?=$|[^가-힣]|[이가은는에서랑과와도의로])"
+)
+_TRAIT_CANDIDATES = 20   # 성격 순위 상위 몇 곳까지 점수를 조회해 위험 등급을 거를지
 _CONDITION_DEFAULT_COUNT = 3
 _CONDITION_MAX_COUNT = 10
 # 점포 극단값 컷 — 점포 1~2개 상권은 폐업률 0%가 흔하다(랭킹 쇼케이스 하한과 같은 취지)
@@ -2112,6 +2122,14 @@ class ChatInteractor(ChatUseCase):
                 )
             # 조건 질의 결정론 라우팅 — 지역 미언급 + 조건 어휘면 LLM 없이 랭킹으로 답한다
             axes = [key for key, pattern in _CONDITION_AXES if pattern.search(prompt)]
+            # 성격형 질문("직장인 많은 곳 점심 장사") — 성격 어휘를 지표로 바꿔 코드가 줄 세운다(2026-09-17).
+            # phase1 표에는 성격 열이 없어 모델이 월매출 상위를 골랐다. 성격 데이터가 없으면 기존 경로로 떨어진다.
+            trait_query = trait_svc.detect(prompt, axes)
+            if (trait_query is not None and not _has_deixis(prompt) and not _has_exclusion(prompt)
+                    and not _PLACE_TOKEN_RE.search(prompt)):
+                answered = await self._answer_trait_ranking(conversation_id, prompt, trait_query, axes, on_stage)
+                if answered is not None:
+                    return answered
             if axes:
                 return await self._answer_condition_ranking(
                     conversation_id, prompt, axes, on_stage,
@@ -2558,6 +2576,69 @@ class ChatInteractor(ChatUseCase):
             text=text, recommendations=recommendations, conversationId=conversation_id,
             finance=finance_card,
         )
+
+    async def _answer_trait_ranking(
+        self, conversation_id: int, prompt: str, query: trait_svc.TraitQuery, axes: list[str], on_stage,
+    ) -> AskResponse | None:
+        """성격형 질문 결정론 응답 — 성격 지표 백분위 평균으로 줄 세우고 위험 등급을 거른다(LLM 미사용).
+
+        성격 순위는 "이 성격이 뚜렷한 상권"이지 창업 성공 순위가 아니다 — 등급·1년 폐업률을 같은 줄에 싣는다.
+        데이터 조회 실패·후보 없음이면 None(호출자가 기존 경로로 진행).
+        """
+        self._notify(on_stage, "data", "질문한 상권 성격에 맞는 곳을 찾고 있어요")
+        service = _detect_service(prompt, await self._market.get_service_codes())
+        if service is not None:
+            scope, scope_label = service[0], service[1]
+        elif query.eatout_default:
+            scope, scope_label = trait_svc.EATOUT_SCOPE, "외식업 전체"
+        else:
+            scope, scope_label = None, "전 업종"
+        try:
+            rows = await self._market.get_area_traits(scope)
+            ranking = {r.trdar_code: r for r in await self._market.get_area_ranking(service[0] if service else None)}
+        except Exception:
+            logger.warning("[chat] 성격 지표 조회 실패 — 기존 경로로 진행", exc_info=True)
+            return None
+        ordered = trait_svc.rank(rows, query)
+        filters = ["위험 등급 제외"]
+        if "closure" in axes:
+            rates = sorted(r.closure_rate for r in ranking.values() if r.closure_rate is not None)
+            if rates:
+                median = rates[len(rates) // 2]
+                ordered = [r for r in ordered
+                           if (c := ranking.get(r.trdar_code)) and c.closure_rate is not None and c.closure_rate <= median]
+                filters.append(f"1년 폐업률 서울 중앙값 {median:.1f}% 이하")
+        candidates = ordered[:_TRAIT_CANDIDATES]
+        if not candidates:
+            return None
+        scores = await self._market.get_area_scores([r.trdar_code for r in candidates])
+        count_match = _CONDITION_COUNT.search(prompt)
+        count = max(1, min(int(count_match.group(1)) if count_match else _CONDITION_DEFAULT_COUNT, _CONDITION_MAX_COUNT))
+        top = [r for r in candidates if not (s := scores.get(r.trdar_code)) or s.grade != "위험"][:count]
+        if not top:
+            return None
+
+        lines = [f"서울 상권을 '{query.labels}' 기준으로 줄 세운 상위 {len(top)}곳이에요"
+                 f"({scope_label} 기준 · {' · '.join(filters)})."]
+        for i, r in enumerate(top, 1):
+            score = scores.get(r.trdar_code)
+            closure = ranking.get(r.trdar_code)
+            tail = f" · 등급 {score.grade}" if score else " · 등급 산출 불가"
+            if closure is not None and closure.closure_rate is not None:
+                tail += f" · 1년 폐업률 {closure.closure_rate:.1f}%"
+            lines.append(f"{i}. {r.trdar_name} ({r.district_name} {r.dong_name}) — {trait_svc.describe(r, query)}{tail}")
+        if query.uses_sales:
+            lines.append(f"※ 매출 지표는 같은 업종({scope_label}) 점포가 {trait_svc.MIN_SERVICE_STORES}곳 이상인 상권만 비교했어요.")
+        lines.extend(f"※ {note}" for note in query.notes)
+        lines.append("※ 성격이 뚜렷한 순서이지 창업이 잘되는 순서가 아니에요 — 등급(향후 1년 폐업률을 가르는 종합점수)과"
+                     " 폐업률을 함께 보세요.")
+        lines.append('두 곳을 골라 "A랑 B 비교해줘"라고 하면 창업비용·재무까지 나란히 비교해 드려요.')
+        text = "\n".join(lines)
+        await self._conversations.add_message(
+            conversation_id, "assistant", text,
+            payload={"rankingCodes": [r.trdar_code for r in top]},
+        )
+        return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
 
     async def _answer_condition_ranking(
         self, conversation_id: int, prompt: str, axes: list[str], on_stage,

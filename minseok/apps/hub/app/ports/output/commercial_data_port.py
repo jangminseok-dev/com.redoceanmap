@@ -10,6 +10,7 @@ from hub.app.dtos.commercial_data_dto import (
     AreaRawStat,
     AreaScoreInfo,
     AreaSummary,
+    AreaTraitRow,
     PermitChurnInfo,
     ServiceCode,
 )
@@ -50,6 +51,14 @@ class CommercialDataPort(ABC):
         self, service_code: str | None = None
     ) -> list[AreaRankingInfo]:
         """전 상권 랭킹 행 — 조건 질의("폐업률 낮은 N곳")의 결정론 근거. 정렬은 소비자 몫."""
+        ...
+
+    @abstractmethod
+    async def get_area_traits(self, service_scope: str | None = None) -> list[AreaTraitRow]:
+        """전 상권 성격 원지표 — 성격형 질문의 결정론 근거. 정렬은 소비자 몫.
+
+        service_scope: 업종 코드("CS100010") 또는 업종군 접두("CS1" = 외식 전체), None이면 전 업종.
+        """
         ...
 
     @abstractmethod

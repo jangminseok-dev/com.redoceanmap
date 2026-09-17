@@ -24,7 +24,8 @@ ORM/DB는 갖지 않는다 — 저장·분석 등 구체 작업은 아웃바운�
 apps/hub/app/
 ├── ports/output/commercial_data_port.py   # CommercialDataPort (ABC)
 │     get_service_codes / get_area_summary / get_area_raw_stats / get_area_scores
-│     / get_area_insights / get_area_permit_churn / get_area_overview / get_dataset_stats
+│     / get_area_ranking / get_area_traits / get_area_insights / get_area_permit_churn
+│     / get_area_overview / get_dataset_stats
 └── dtos/commercial_data_dto.py            # ServiceCode · AreaInfo · AreaSummary · AreaRawStat
 │                                          #   · AreaScoreInfo · AreaScoreComponent · AreaOverviewRow
 │                                          #   · AreaInsight · PermitChurnInfo
@@ -34,6 +35,9 @@ apps/hub/dependencies/commercial_data_provider.py  # get_commercial_data_port (N
 
 `get_area_scores`는 서울 중앙 상권 대비 상권 종합점수 v2(market의 `area_scorer` 도메인 서비스 —
 4분기 폐업률·평균 영업 개월·점포당 매출 수준 3축, 50점=서울 중앙 상권, 향후 1년 폐업률로 검증)를 반환한다 — chat이 상권 추천 서술의 근거로 주입(①-M5 잔여, 2026-07-15).
+`get_area_traits`(2026-09-17)는 전 상권 성격 원지표(`AreaTraitRow` — 직장/유동/밤 유동/상주 가구·대학·지하철역·
+유치원·초등학교 + 업종 범위의 시간대·요일·연령 매출과 점포 수)를 나른다. 범위는 업종 코드·업종군 접두("CS1" 외식)·None(전 업종).
+정렬·가중은 chat `trait_ranking`의 몫이다.
 `get_area_insights`는 `area_narrator`가 만든 해석 문장(`AreaInsight`)을 나른다 — 고객층·
 배후 수요·소비력·객단가. 지도 오버레이만 보던 인사이트를 chat phase2에도 공급한다(2026-07-27).
 

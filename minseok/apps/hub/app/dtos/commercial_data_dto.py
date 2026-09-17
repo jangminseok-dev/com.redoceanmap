@@ -103,6 +103,39 @@ class AreaScoreInfo:
 
 
 @dataclass(frozen=True)
+class AreaTraitRow:
+    """상권 1곳의 성격 원지표 — "직장인 많은 곳 점심 장사" 같은 성격형 질문의 결정론 근거(2026-09-17).
+
+    각 팩트의 최신 분기 값. 금액은 월 환산(원), 점포 수는 유사업종(프랜차이즈 포함).
+    매출·점포는 요청한 업종 범위(업종 코드·업종군 접두·전 업종) 합계, 인구·시설은 상권 전체.
+    정렬·가중은 소비자 몫 — 값이 없으면 None.
+    """
+
+    trdar_code: int
+    trdar_name: str
+    district_name: str
+    dong_name: str
+    store_count: int                  # 요청 업종 범위 점포 수
+    area_store_count: int             # 상권 전 업종 점포 수(극단값 컷용)
+    monthly_sales: int | None
+    monthly_sales_count: int | None
+    lunch_sales: int | None           # 11~14시
+    dinner_sales: int | None          # 17~21시
+    night_sales: int | None           # 21~24시 + 00~06시
+    weekend_sales: int | None
+    weekday_sales: int | None
+    age_sales: tuple[int, ...] | None  # 10·20·30·40·50·60+대
+    working_pop: int | None
+    floating_pop: int | None          # 분기 합계(일평균은 ÷91)
+    night_floating_pop: int | None    # 21~24시 + 00~06시 분기 합계
+    total_households: int | None
+    apartment_households: int | None
+    university_count: int | None
+    subway_station_count: int | None
+    child_facility_count: int | None  # 유치원 + 초등학교
+
+
+@dataclass(frozen=True)
 class AreaRankingInfo:
     """상권 1곳의 랭킹 행 — 조건 질의("폐업률 낮은 N곳") 결정론 라우팅용(1-4).
 

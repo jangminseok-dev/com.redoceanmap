@@ -3319,3 +3319,73 @@ async def test_예산_업종_목록에서_점포_없는_가맹업은_뺀다(monk
     head = result.text.split("\n\n")[0]
     assert "치킨 5,236만원" in head and "편의점" in head
     assert "운송" not in head and "이사" not in head
+
+
+# --- 성격형 질문 결정론 랭킹 (2026-09-17) ---
+
+def _trait_row(code, name, **overrides):
+    from hub.app.dtos.commercial_data_dto import AreaTraitRow
+    base = dict(
+        trdar_code=code, trdar_name=name, district_name="중구", dong_name="명동",
+        store_count=20, area_store_count=100, monthly_sales=100_000_000, monthly_sales_count=10_000,
+        lunch_sales=30_000_000, dinner_sales=None, night_sales=None, weekend_sales=None, weekday_sales=None,
+        age_sales=None, working_pop=1_000, floating_pop=None, night_floating_pop=None,
+        total_households=None, apartment_households=None, university_count=None,
+        subway_station_count=None, child_facility_count=None,
+    )
+    return AreaTraitRow(**{**base, **overrides})
+
+
+class _TraitMarket(_StubMarket):
+    def __init__(self, traits, **kwargs):
+        super().__init__(**kwargs)
+        self.traits = traits
+        self.trait_calls: list[str | None] = []
+
+    async def get_area_traits(self, service_scope=None):
+        self.trait_calls.append(service_scope)
+        return self.traits
+
+
+def _grade(g):
+    return AreaScoreInfo(total=50.0, grade=g, components=())
+
+
+async def test_성격형_질문은_LLM_없이_성격_지표로_줄_세우고_위험_등급을_거른다(monkeypatch):
+    traits = [
+        _trait_row(1, "오피스A", working_pop=90_000, lunch_sales=80_000_000),
+        _trait_row(2, "위험B", working_pop=95_000, lunch_sales=90_000_000),
+        _trait_row(3, "주거C", working_pop=500, lunch_sales=5_000_000),
+    ]
+    market = _TraitMarket(
+        traits, scores={1: _grade("양호"), 2: _grade("위험"), 3: _grade("보통")},
+        ranking=[_ranking_row(trdar_code=1, closure_rate=1.5), _ranking_row(trdar_code=3, closure_rate=2.0)],
+    )
+    interactor, llm, stubs = _build(monkeypatch, [INTENT_MARKET], market=market)
+    result = await interactor.ask("직장인 많은 곳에서 점심 장사 하려는데 어디가 좋아?")
+
+    assert len(llm.calls) == 1  # phase0만
+    assert market.trait_calls == ["CS1"]  # 업종 미지정 점심 장사 → 외식 전체
+    lines = result.text.split("\n")
+    assert "'직장인구·점포당 점심(11~14시) 월매출' 기준" in lines[0] and "외식업 전체" in lines[0]
+    assert lines[1].startswith("1. 오피스A") and "직장인구 90,000명" in lines[1]
+    assert "등급 양호 · 1년 폐업률 1.5%" in lines[1]
+    assert "위험B" not in result.text
+    assert "창업이 잘되는 순서가 아니에요" in result.text and "추천" not in result.text
+    assert "매출 지표는 같은 업종(외식업 전체) 점포가 5곳 이상" in result.text
+    assert stubs["conversations"].payloads[-1] == {"rankingCodes": [1, 3]}
+
+
+async def test_성격형_질문에_지명이_있으면_전역_랭킹을_타지_않는다(monkeypatch):
+    market = _TraitMarket([_trait_row(1, "오피스A")])
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON], market=market)
+    await interactor.ask("목동역 직장인 많은 곳 점심 장사 어때?")
+    assert market.trait_calls == []
+
+
+async def test_성격_지표가_없으면_기존_조건_경로로_떨어진다(monkeypatch):
+    market = _TraitMarket([], ranking=[_ranking_row(trdar_code=7, trdar_name="A상권")])
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET], market=market)
+    result = await interactor.ask("유동인구 많고 폐업률 낮은 상권 3곳 추천해줘")
+    assert market.trait_calls == [None]
+    assert "최근 1년 폐업률 낮은 순" in result.text

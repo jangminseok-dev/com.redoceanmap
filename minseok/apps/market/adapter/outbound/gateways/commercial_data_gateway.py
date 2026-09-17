@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -17,6 +17,7 @@ from hub.app.dtos.commercial_data_dto import (
     AreaScoreComponent,
     AreaScoreInfo,
     AreaSummary,
+    AreaTraitRow,
     AreaTrendPoint,
     PermitChurnInfo,
     ServiceCode,
@@ -195,6 +196,27 @@ class CommercialDataGateway(CommercialDataPort):
                 change_indicator_name=r.change_indicator_name,
             )
             for r in view.rows
+        ]
+
+    async def get_area_traits(self, service_scope: str | None = None) -> list[AreaTraitRow]:
+        # 팩트마다 최신 분기가 다를 수 있어 각자 최신을 쓴다. 매출·점포는 같은 분기(매출 최신)로 짝짓는다 —
+        # 점포당 금액의 분자·분모 분기 불일치 방지. 점포 수는 유사업종(프랜차이즈 포함, 9/17 모수 교정).
+        rows = (await self._session.execute(text(_AREA_TRAITS_SQL), {"svc": f"{service_scope or ''}%"})).all()
+        month = monthly_from_quarter
+        return [
+            AreaTraitRow(
+                trdar_code=r.code, trdar_name=r.name, district_name=r.gu or "", dong_name=r.dong or "",
+                store_count=int(r.sc or 0), area_store_count=int(r.all_sc or 0),
+                monthly_sales=month(r.amt), monthly_sales_count=month(r.cnt),
+                lunch_sales=month(r.lunch), dinner_sales=month(r.dinner), night_sales=month(r.night),
+                weekend_sales=month(r.wkend), weekday_sales=month(r.wkday),
+                age_sales=(tuple(month(v) or 0 for v in (r.a10, r.a20, r.a30, r.a40, r.a50, r.a60))
+                           if r.amt is not None else None),
+                working_pop=r.work, floating_pop=r.fp, night_floating_pop=r.night_fp,
+                total_households=r.hh, apartment_households=r.apt_hh,
+                university_count=r.univ, subway_station_count=r.subway, child_facility_count=r.child,
+            )
+            for r in rows
         ]
 
     async def get_area_insights(
@@ -505,3 +527,52 @@ class CommercialDataGateway(CommercialDataPort):
         return [StartupCostRow(year=r.year, sector=r.sector, industry_name=r.industry_name, total_amount=int(r.total_amount),
                                franchise_fee=int(r.franchise_fee), education_fee=int(r.education_fee),
                                deposit=int(r.deposit), other_fee=int(r.other_fee)) for r in rows]
+
+
+# 성격형 질문 원지표(get_area_traits) — 상권 1행에 매출(업종 범위)·점포·직장/유동/상주 인구·시설을 붙인다.
+_AREA_TRAITS_SQL = """
+WITH q AS (
+    SELECT (SELECT max(year_quarter) FROM estimated_sales) AS qs,
+           (SELECT max(year_quarter) FROM working_population) AS qw,
+           (SELECT max(year_quarter) FROM floating_population) AS qf,
+           (SELECT max(year_quarter) FROM resident_population) AS qr,
+           (SELECT max(year_quarter) FROM facility) AS qfa
+), sal AS (
+    SELECT es.trdar_code,
+           SUM(es.monthly_sales_amount) AS amt, SUM(es.monthly_sales_count) AS cnt,
+           SUM(es.time_11_14_sales_amount) AS lunch, SUM(es.time_17_21_sales_amount) AS dinner,
+           SUM(es.time_21_24_sales_amount + es.time_00_06_sales_amount) AS night,
+           SUM(es.weekend_sales_amount) AS wkend, SUM(es.weekday_sales_amount) AS wkday,
+           SUM(es.age_10_sales_amount) AS a10, SUM(es.age_20_sales_amount) AS a20,
+           SUM(es.age_30_sales_amount) AS a30, SUM(es.age_40_sales_amount) AS a40,
+           SUM(es.age_50_sales_amount) AS a50, SUM(es.age_60_plus_sales_amount) AS a60
+    FROM estimated_sales es, q
+    WHERE es.year_quarter = q.qs AND es.service_code LIKE :svc
+    GROUP BY es.trdar_code
+), st AS (
+    SELECT s.trdar_code,
+           SUM(s.similar_industry_store_count) FILTER (WHERE s.service_code LIKE :svc) AS sc,
+           SUM(s.similar_industry_store_count) AS all_sc
+    FROM store s, q
+    WHERE s.year_quarter = q.qs
+    GROUP BY s.trdar_code
+)
+SELECT ta.code, ta.name, gu.name AS gu, dong.name AS dong,
+       st.sc, st.all_sc, sal.amt, sal.cnt, sal.lunch, sal.dinner, sal.night, sal.wkend, sal.wkday,
+       sal.a10, sal.a20, sal.a30, sal.a40, sal.a50, sal.a60,
+       wp.total_working_pop AS work,
+       fp.total_floating_pop AS fp, fp.time_21_24_floating_pop + fp.time_00_06_floating_pop AS night_fp,
+       rp.total_household_count AS hh, rp.apartment_household_count AS apt_hh,
+       fa.university_count AS univ, fa.subway_station_count AS subway,
+       fa.kindergarten_count + fa.elementary_school_count AS child
+FROM trade_area ta
+CROSS JOIN q
+LEFT JOIN region dong ON ta.region_code = dong.code
+LEFT JOIN region gu ON dong.parent_code = gu.code
+LEFT JOIN sal ON sal.trdar_code = ta.code
+LEFT JOIN st ON st.trdar_code = ta.code
+LEFT JOIN working_population wp ON wp.trdar_code = ta.code AND wp.year_quarter = q.qw
+LEFT JOIN floating_population fp ON fp.trdar_code = ta.code AND fp.year_quarter = q.qf
+LEFT JOIN resident_population rp ON rp.trdar_code = ta.code AND rp.year_quarter = q.qr
+LEFT JOIN facility fa ON fa.trdar_code = ta.code AND fa.year_quarter = q.qfa
+"""
