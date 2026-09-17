@@ -751,6 +751,8 @@ _CONDITION_AXES = (
     ("sales", re.compile(r"매출\s*(?:이|가|은|는|도)?\s*(?:높|많|큰|잘)")),
 )
 _CONDITION_COUNT = re.compile(r"(\d+)\s*(?:곳|군데|개)")
+# 창업 의도 어휘 — phase0가 general로 흔들려도 상권 경로로 되돌린다(주식 어휘와 겹치지 않는 것만)
+_STARTUP_INTENT_RE = re.compile(r"창업|자영업|가게\s*(?:차|내|열|하)|장사\s*(?:하|시작|해볼)|개업|가맹점|프랜차이즈\s*(?:차|내|창업)")
 # 상권 성격 단서 — 지역·업종이 없어도 이런 단서가 있으면 phase1이 고를 근거가 있다(골든 MN01~09 형태)
 _AREA_TRAIT_HINT_RE = re.compile(
     r"직장인|오피스|점심|저녁|밤|새벽|주말|평일|\d0대|대학|학생|학원가|주거|아파트|역세권|유동\s*인구|객단가|관광|외국인|가족|아이|키즈"
@@ -2068,6 +2070,11 @@ class ChatInteractor(ChatUseCase):
             )
         if intent == "market_news":
             return await self._answer_market_news(conversation_id, prompt, on_stage, history=history)
+        if intent == "general" and _STARTUP_INTENT_RE.search(prompt):
+            # 창업 어휘가 있으면 일반 대화로 보내지 않는다(2026-09-17 실측: "자영업 처음인데 뭐부터 봐야 해? 돈은 5천만원"이
+            # general로 분류돼 인사말만 나갔다). 상권 경로의 되묻기·예산 고지가 받는다.
+            intent = "market"
+            profile = await self._load_profile(user_id)
         if intent == "general":
             self._notify(on_stage, "answer", "답변을 만들고 있어요")
             return await self._answer_general(conversation_id, prompt, history=history)

@@ -3292,3 +3292,12 @@ async def test_업종이나_성격_단서가_있으면_되묻지_않는다(monke
     interactor2, llm2, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON])
     await interactor2.ask("커피-음료 가게 어디가 좋을까?")
     assert len(llm2.calls) == 3
+
+
+
+async def test_창업_어휘가_있으면_general로_분류돼도_상권_경로로_되돌린다(monkeypatch):
+    interactor, llm, stubs = _build(monkeypatch, [INTENT_GENERAL])
+    result = await interactor.ask("자영업 처음인데 뭐부터 봐야 해? 돈은 5천만원 있어")
+    assert stubs["gemini"].prompts == []  # 일반 대화(외부 모델)로 가지 않는다
+    assert stubs["market"].summary_calls == 1
+    assert "어느 동네에서 어떤 가게를" in result.text
