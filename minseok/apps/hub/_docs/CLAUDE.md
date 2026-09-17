@@ -82,6 +82,24 @@ apps/hub/dependencies/area_finance_provider.py  # get_area_finance_port (NotImpl
 배선: main.py `app.dependency_overrides[get_area_finance_port] = get_area_finance_gateway`.
 ```
 
+## 소유 계약 — AreaFitnessPort · AreaGraphPort (2026-09-17, chat 비교표)
+
+chat 비교표가 "가진 데이터 전부"를 싣기 위해 연 조회 전용 계약 2종. 둘 다 market이 구현한다.
+
+```
+apps/hub/app/
+├── ports/output/area_fitness_port.py   # AreaFitnessPort (ABC) — evaluate(trdar_code, service_code) → AreaFitnessInfo | None
+├── dtos/area_fitness_dto.py            # AreaFitnessInfo · FitnessComponentInfo · FitnessDiagnosisInfo (market area_fitness View의 계약판)
+├── ports/output/area_graph_port.py     # AreaGraphPort (ABC) — describe(trdar_code, service_code) → AreaGraphInfo | None
+└── dtos/area_graph_dto.py              # AreaGraphInfo — Neo4j 투영(Area·Region·Industry·Article·Topic)에서 읽은 관계 사실만
+apps/hub/dependencies/area_fitness_provider.py · area_graph_provider.py  # NotImplementedError 스텁
+배선: main.py `dependency_overrides[get_area_fitness_port] = get_area_fitness_gateway`,
+      `dependency_overrides[get_area_graph_port] = get_area_graph_gateway`(market `adapter/outbound/graph/`, 드라이버 싱글턴).
+```
+
+그래프는 파생본(정본 PG, `scripts/project_graph.py` 매일 02:15)이라 그래프에만 있는 사실을 만들지 않는다 —
+행정 계층·같은 동 상권 수·업종 연결·같은 동 같은 업종 상권 수·연결 기사 수만 센다. 미설정(`NEO4J_URI` 빈 값)·장애면 None.
+
 ## 소유 계약 — GradePolicyPort
 
 등급(=roles 재해석) 구성 협력. admin(소비)과 auth(구현·영속: roles + role_tabs)를 잇는다.

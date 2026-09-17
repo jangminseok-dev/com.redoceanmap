@@ -67,6 +67,8 @@ from hub.adapter.inbound.api.v1.news_alert_scan_router import news_alert_scan_ro
 from hub.adapter.inbound.api.v1.signal_scan_router import signal_scan_router
 from hub.adapter.inbound.api.v1.stock_demand_router import stock_demand_router
 from hub.dependencies.area_backtest_report_provider import get_area_backtest_report_port
+from hub.dependencies.area_fitness_provider import get_area_fitness_port
+from hub.dependencies.area_graph_provider import get_area_graph_port
 from hub.dependencies.area_finance_provider import get_area_finance_port
 from hub.dependencies.forecast_refit_provider import get_forecast_refit_port
 from hub.dependencies.forecast_snapshot_provider import get_forecast_snapshot_port
@@ -110,6 +112,8 @@ from hub.dependencies.stock_demand_provider import get_stock_demand_port
 from hub.dependencies.stock_dataset_stats_provider import get_stock_dataset_stats_port
 from hub.dependencies.news_event_study_provider import get_news_event_study_port
 from market.dependencies.area_backtest_report_provider import get_area_backtest_report_gateway
+from market.dependencies.area_fitness_provider import get_area_fitness_gateway
+from market.dependencies.area_graph_provider import get_area_graph_gateway
 from market.dependencies.area_finance_provider import get_area_finance_gateway
 from market.dependencies.commercial_data_provider import get_commercial_data_gateway
 from market.dependencies.market_news_provider import (
@@ -348,6 +352,8 @@ app.dependency_overrides[get_paper_trading_port] = get_paper_trading_gateway
 app.dependency_overrides[get_paper_decision_port] = get_paper_decision_gateway
 app.dependency_overrides[get_forecast_refit_port] = get_forecast_refit_gateway
 app.dependency_overrides[get_area_backtest_report_port] = get_area_backtest_report_gateway
+app.dependency_overrides[get_area_fitness_port] = get_area_fitness_gateway
+app.dependency_overrides[get_area_graph_port] = get_area_graph_gateway
 app.dependency_overrides[get_area_finance_port] = get_area_finance_gateway
 app.dependency_overrides[get_news_event_study_port] = get_news_event_study_gateway
 

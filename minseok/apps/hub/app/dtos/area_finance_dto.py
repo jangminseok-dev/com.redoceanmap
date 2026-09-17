@@ -51,3 +51,5 @@ class AreaFinancePlanInfo:
     stress_runway: tuple[tuple[float, float | None], ...]  # (금리 +pp, runway)
     expected_monthly_sales: int | None
     rent_level: str | None  # area | zone | city
+    vacancy_rate: float | None = None   # R-ONE 공실률(%) — 벤치마크가 없으면 None
+    rent_region: str = ""                # 임대료 기준 지역명(예: 뚝섬)

@@ -325,7 +325,7 @@ def _area_score() -> AreaScoreInfo:
 
 def _build(monkeypatch, llm_responses, *, stocks=None, news=None, conversations=None,
            market=None, market_news=None, gemini=None, forecaster=None, fundamentals=None,
-           profiles=None, signals=None, paper=None, finance=None):
+           profiles=None, signals=None, paper=None, finance=None, fitness=None, backtests=None, graph=None):
     llm = _StubLLM(llm_responses)
     monkeypatch.setattr("chat.app.use_cases.chat_interactor.llm_orchestrator", llm)
     market, recorder = market or _StubMarket(), _StubRecorder()
@@ -340,7 +340,7 @@ def _build(monkeypatch, llm_responses, *, stocks=None, news=None, conversations=
         market=market, recorder=recorder, conversations=conversations,
         stocks=stocks, news=news, market_news=market_news, gemini=gemini,
         forecaster=forecaster, fundamentals=fundamentals, profiles=profiles,
-        signals=signals, paper=paper, finance=finance,
+        signals=signals, paper=paper, finance=finance, fitness=fitness, backtests=backtests, graph=graph,
     )
     return interactor, llm, dict(market=market, recorder=recorder,
                                  conversations=conversations, stocks=stocks, news=news,
@@ -366,11 +366,14 @@ async def test_비교_질문은_종목마다_분석해_비교표와_결정론_�
     interactor, llm, stubs = _build(monkeypatch, [intent])
     result = await interactor.ask("테슬라랑 애플 중 어디에 투자할까?")
     assert stubs["stocks"].queries == ["테슬라", "애플"]
-    assert result.text.startswith("**비교**") and "| 종목 |" in result.text
-    assert "테슬라(005930)" in result.text and "애플(005930)" in result.text
+    assert result.text.startswith("**결론**") and "| 항목 | 테슬라(005930) | 애플(005930) |" in result.text
     # 거래량 판정 열 — 골든셋 volume_verdict_rate가 비교표 경로에서도 성립해야 한다(2026-09-08 게이트 실측)
     assert "| 거래량(20일 대비) |" in result.text and "1.8배 · 신뢰" in result.text
-    assert "**결론**" in result.text and "매매 지시가 아니에요" in result.text or "우열을 가르지 않아요" in result.text
+    # 같은 스텁 결과라 전 축 동률 — 우열을 짓지 않는다. 가진 데이터 전부가 표에 있다
+    assert "우위가 갈리지 않아요" in result.text
+    for row in ("| RSI(14) |", "| 볼린저 %B |", "| 이동평균 위치 |", "| 60일 저점~고점 |", "| 12-1 모멘텀 |",
+                "| 뉴스 감성 |", "| 펀더멘털 |", "| 워치리스트 신호 |", "| AI 모의투자 |", "| 과거 같은 신호 상승 비율 |"):
+        assert row in result.text, row
     assert result.stock is None  # 비교 답에 한 종목 카드를 싣지 않는다
     assert result.text.endswith("투자 판단과 그 결과는 본인 책임입니다.")
     assert len(llm.calls) == 1  # 비교표는 LLM 없이 코드가 만든다(의도 분류 1회뿐)
@@ -381,7 +384,7 @@ async def test_비교_질문_쉼표_결합_문자열도_두_종목_모두_분석
     interactor, _, stubs = _build(monkeypatch, [intent])
     result = await interactor.ask("테슬라랑 애플 중 어디에 투자할까?")
     assert stubs["stocks"].queries == ["테슬라", "애플"]
-    assert "| 종목 |" in result.text
+    assert "| 항목 |" in result.text
 
 
 async def test_비교_질문_리스트_문자열_표기도_두_종목_분석한다(monkeypatch):
@@ -2846,3 +2849,377 @@ async def test_업종_미확정_질의는_재무_경로를_타지_않고_임대�
     result = await interactor.ask("역삼동 임대료 어때?")
     assert finance.requests == []
     assert "임대료·보증금·권리금 데이터는 제공하지 않아요" in result.text
+
+
+# --- 상권 비교 후속(2026-09-17 실대화 289) ---
+
+_CMP_AREAS = [
+    AreaInfo(trdar_code=3110131, trdar_name="성수동카페거리", district_name="성동구", adm_dong_name="성수동", lat=37.54, lng=127.05),
+    AreaInfo(trdar_code=3120052, trdar_name="뚝섬역상점가", district_name="성동구", adm_dong_name="성수동", lat=37.54, lng=127.04),
+    AreaInfo(trdar_code=3130070, trdar_name="길음역 8번", district_name="성북구", adm_dong_name="길음동", lat=37.60, lng=127.02),
+]
+_CMP_SALES = {3110131: 500_000_000, 3120052: 300_000_000, 3130070: 80_000_000}
+
+
+class _CompareMarket(_StubMarket):
+    """상권마다 다른 점포당 매출 — 결론(가장 높은 곳)이 코드로 정해지는지 본다."""
+    def __init__(self, **kw):
+        super().__init__(areas=_CMP_AREAS, **kw)
+        self.raw_calls: list[tuple[list[int], str]] = []
+
+    async def get_area_raw_stats(self, codes, service_code, quarter):
+        self.raw_calls.append((list(codes), service_code))
+        return {c: _raw_stat(has_sales=True, monthly_sales_amount=_CMP_SALES[c], has_store=True,
+                             store_count=10, franchise_store_count=2, closure_rate=2.0 if c != 3130070 else 5.0) for c in codes}
+
+
+def _cmp_history(*cards: tuple[int, str]) -> list[Message]:
+    msgs = [Message(id=1, conversation_id=100, role="user", content="성수동 카페 상권 어때요?", created_at=_NOW)]
+    for i, (code, name) in enumerate(cards, 2):
+        msgs.append(Message(id=i, conversation_id=100, role="assistant", content=f"{name} 추천", created_at=_NOW,
+                            payload={"recommendations": [{"id": str(code), "name": name, "serviceCode": "CS100010", "category": "커피-음료"}]}))
+    return msgs
+
+
+async def test_지역_하나를_들어_비교하면_직전_1순위와_짝지어_표로_대조한다(monkeypatch):
+    # 실대화 t2: "길음역과 비교해봐" → 길음역 8번 단독 추천('주의' 등급인데 "부터 보세요")으로 끝났다
+    conversations = _StubConversations(history=_cmp_history((3110131, "성수동카페거리")))
+    market = _CompareMarket(scores={3130070: AreaScoreInfo(total=43.4, grade="주의", components=())})
+    interactor, llm, _ = _build(monkeypatch, [], conversations=conversations, market=market)
+    result = await interactor.ask("길음역과 비교해봐", conversation_id=100)
+    assert llm.calls == []  # 비교표는 LLM 없이 코드가 만든다
+    # 결론이 맨 앞 — 어느 상권이 몇 축 중 몇 축 우위인지 수치와 함께
+    assert result.text.startswith("**결론** 성수동카페거리 1순위 — 비교한 2축 중 2축 우위(점포당 월매출 성수동카페거리 5,000만원 vs 길음역 8번 800만원")
+    assert "길음역 8번은 0축(없음)" in result.text
+    # 등급 고지는 결론 바로 뒤
+    assert result.text.split("\n\n")[1].startswith("※ 길음역 8번 상권은 상권 전체 건강 점수 43.4점 '주의' 등급")
+    assert "**축별 판정**" in result.text and "**전체 지표** — 커피-음료, 2025년 4분기 기준" in result.text
+    assert "| 점포당 월매출 | ★ 점포당 월평균 5,000만원 | 점포당 월평균 800만원 |" in result.text
+    assert "| 분기 폐업률 | ★ 분기 폐업률 2.0% | 분기 폐업률 5.0% |" in result.text
+    assert "| 상권 건강 점수(서울 평균 50) | 미산출 | 43점 '주의' |" in result.text
+    assert "**이번 비교에 못 쓴 데이터**" in result.text and "임대료·손익분기" in result.text
+    assert [r.name for r in result.recommendations] == ["성수동카페거리", "길음역 8번"]
+    assert market.raw_calls == [([3110131, 3130070], "CS100010")]  # 업종은 직전 카드에서 승계
+    # 바구니가 payload로 남아 다음 후속이 같은 짝을 이어받는다
+    assert conversations.payloads[-1]["compareSet"] == {"kind": "area", "items": [3110131, 3130070], "serviceCode": "CS100010", "serviceName": "커피-음료"}
+
+
+async def test_지역_없이_둘을_비교하라면_직전_카드들을_짝짓는다(monkeypatch):
+    # 실대화 t4: "둘이 자세하게 비교해줘야지" → 직전 답(뚝섬역상점가)을 그대로 반복했다
+    conversations = _StubConversations(history=_cmp_history((3110131, "성수동카페거리"), (3130070, "길음역 8번")))
+    interactor, llm, _ = _build(monkeypatch, [], conversations=conversations, market=_CompareMarket())
+    result = await interactor.ask("둘이 자세하게 비교해줘야지", conversation_id=100)
+    assert llm.calls == []
+    # 최근 카드가 앞 — 길음역 8번, 성수동카페거리 순. 제3의 상권(뚝섬역상점가)은 끼지 않는다
+    assert [r.name for r in result.recommendations] == ["길음역 8번", "성수동카페거리"]
+    assert "뚝섬" not in result.text
+    assert result.text.startswith("**결론** 성수동카페거리 1순위")
+
+
+async def test_두_지역을_되물으면_각_지역의_직전_카드로_대조한다(monkeypatch):
+    # 실대화 t3: "그래서 성수가 괜찮다는거야 길음이 괜찮다는거야" → 뚝섬역상점가가 튀어나오고
+    # 본문은 "성수동 상권(3130070)"에 뚝섬 수치를 붙였다
+    conversations = _StubConversations(history=_cmp_history((3110131, "성수동카페거리"), (3130070, "길음역 8번")))
+    interactor, llm, _ = _build(monkeypatch, [], conversations=conversations, market=_CompareMarket())
+    result = await interactor.ask("그래서 성수가 괜찮다는거야 길음이 괜찮다는거야", conversation_id=100)
+    assert llm.calls == []
+    assert sorted(r.name for r in result.recommendations) == ["길음역 8번", "성수동카페거리"]
+    assert "뚝섬" not in result.text and "3130070" not in result.text
+
+
+async def test_직전_카드가_없으면_비교_후속_게이트를_타지_않는다(monkeypatch):
+    # 첫 질문 "성수동이랑 연남동 중에"는 기존 지역 비교 흐름(phase1) 그대로
+    interactor, llm, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON])
+    result = await interactor.ask("성수동이랑 연남동 중에 어디가 나아?")
+    assert len(llm.calls) == 3 and len(result.recommendations) == 1
+
+
+async def test_비교_후속_짝이_안_되면_기존_흐름으로_돌아간다(monkeypatch):
+    # 직전 카드 하나 + 지역 미언급 → 짝 없음 → phase0부터 기존 흐름
+    conversations = _StubConversations(history=_cmp_history((3110131, "성수동카페거리")))
+    interactor, llm, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_EMPTY, PHASE2_JSON],
+                                conversations=conversations, market=_CompareMarket())
+    result = await interactor.ask("둘이 비교해줘", conversation_id=100)
+    assert len(llm.calls) == 3
+
+
+def _basket_history(codes_names: list[tuple[int, str]], kind: str = "area") -> list[Message]:
+    recs = [{"id": str(c), "name": n, "serviceCode": "CS100010", "category": "커피-음료"} for c, n in codes_names]
+    return [
+        Message(id=1, conversation_id=100, role="user", content="길음역과 비교해봐", created_at=_NOW),
+        Message(id=2, conversation_id=100, role="assistant", content="**결론** …", created_at=_NOW,
+                payload={"recommendations": recs,
+                         "compareSet": {"kind": kind, "items": [c for c, _ in codes_names], "serviceCode": "CS100010", "serviceName": "커피-음료"}}),
+    ]
+
+
+async def test_바구니가_있으면_새_지역은_비교_어휘_없이도_열로_추가된다(monkeypatch):
+    conversations = _StubConversations(history=_basket_history([(3110131, "성수동카페거리"), (3130070, "길음역 8번")]))
+    interactor, llm, _ = _build(monkeypatch, [], conversations=conversations, market=_CompareMarket())
+    result = await interactor.ask("뚝섬역상점가는 어때?", conversation_id=100)
+    assert llm.calls == []
+    assert [r.name for r in result.recommendations] == ["성수동카페거리", "길음역 8번", "뚝섬역상점가"]
+    assert "| 항목 | 성수동카페거리 | 길음역 8번 | 뚝섬역상점가 |" in result.text
+    assert conversations.payloads[-1]["compareSet"]["items"] == [3110131, 3130070, 3120052]
+
+
+async def test_바구니에서_제외_어휘로_상권을_뺀다(monkeypatch):
+    conversations = _StubConversations(history=_basket_history(
+        [(3110131, "성수동카페거리"), (3130070, "길음역 8번"), (3120052, "뚝섬역상점가")]))
+    interactor, llm, _ = _build(monkeypatch, [], conversations=conversations, market=_CompareMarket())
+    result = await interactor.ask("길음 빼고 다시 비교해줘", conversation_id=100)
+    assert llm.calls == []
+    assert [r.name for r in result.recommendations] == ["성수동카페거리", "뚝섬역상점가"]
+
+
+async def test_그래서_어디야는_결론과_축별_판정만_준다(monkeypatch):
+    conversations = _StubConversations(history=_basket_history([(3110131, "성수동카페거리"), (3130070, "길음역 8번")]))
+    interactor, llm, _ = _build(monkeypatch, [], conversations=conversations, market=_CompareMarket())
+    result = await interactor.ask("그래서 어디야", conversation_id=100)
+    assert llm.calls == []
+    assert result.text.startswith("**결론** 성수동카페거리 1순위")
+    assert "**축별 판정**" in result.text and "**전체 지표**" not in result.text
+
+
+async def test_바구니가_있어도_지역·비교_없는_후속은_가로채지_않는다(monkeypatch):
+    # "임대료는 얼마야?"는 재무 경로(기존 흐름)로 가야 한다
+    conversations = _StubConversations(history=_basket_history([(3110131, "성수동카페거리"), (3130070, "길음역 8번")]))
+    interactor, llm, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_EMPTY, PHASE2_JSON],
+                                conversations=conversations, market=_CompareMarket())
+    await interactor.ask("임대료는 얼마야?", conversation_id=100)
+    assert len(llm.calls) == 3
+
+
+async def test_종목_바구니는_새_종목을_더해_다시_대조한다(monkeypatch):
+    history = [Message(id=2, conversation_id=100, role="assistant", content="**결론** …", created_at=_NOW,
+                       payload={"compareSet": {"kind": "stock", "items": [{"query": "테슬라", "symbol": "TSLA"}, {"query": "애플", "symbol": "AAPL"}]}})]
+    intent = '{"intent": "stock", "stock_query": "엔비디아"}'
+    interactor, llm, stubs = _build(monkeypatch, [intent], conversations=_StubConversations(history=history))
+    result = await interactor.ask("그럼 엔비디아는?", conversation_id=100)
+    assert stubs["stocks"].queries == ["테슬라", "애플", "엔비디아"]
+    assert result.text.startswith("**결론**") and "| 항목 | 테슬라(005930) | 애플(005930) | 엔비디아(005930) |" in result.text
+    assert [i["query"] for i in stubs["conversations"].payloads[-1]["compareSet"]["items"]] == ["테슬라", "애플", "엔비디아"]
+
+
+async def test_종목_바구니_뒤_그래서_뭐가_나아는_바구니째_결론만(monkeypatch):
+    history = [Message(id=2, conversation_id=100, role="assistant", content="**결론** …", created_at=_NOW,
+                       payload={"compareSet": {"kind": "stock", "items": [{"query": "테슬라", "symbol": "TSLA"}, {"query": "애플", "symbol": "AAPL"}]}})]
+    interactor, llm, stubs = _build(monkeypatch, [INTENT_STOCK_NO_QUERY], conversations=_StubConversations(history=history))
+    result = await interactor.ask("그래서 뭐가 나아?", conversation_id=100)
+    assert stubs["stocks"].queries == ["테슬라", "애플"]
+    assert result.text.startswith("**결론**") and "**전체 지표**" not in result.text
+
+
+async def test_종목_바구니에서_제외하면_남은_종목으로_대조한다(monkeypatch):
+    history = [Message(id=2, conversation_id=100, role="assistant", content="**결론** …", created_at=_NOW,
+                       payload={"compareSet": {"kind": "stock", "items": [
+                           {"query": "테슬라", "symbol": "TSLA"}, {"query": "애플", "symbol": "AAPL"}, {"query": "엔비디아", "symbol": "NVDA"}]}})]
+    intent = '{"intent": "stock", "stock_query": "애플"}'
+    interactor, _, stubs = _build(monkeypatch, [intent], conversations=_StubConversations(history=history))
+    await interactor.ask("애플 빼고 비교해줘", conversation_id=100)
+    assert stubs["stocks"].queries == ["테슬라", "엔비디아"]
+
+
+def test_상권_판정은_축별_다수결이고_주의_등급은_1순위에서_뺀다():
+    from chat.domain.services.compare import AreaCompareItem, area_verdict
+    a = AreaCompareItem(1, "A", "강남구", {}, 1000, 3.0, 9000, 60, False, 44.0, "주의")
+    b = AreaCompareItem(2, "B", "성동구", {}, 800, 2.0, 8000, 70, False, 55.0, "보통")
+    v = area_verdict([a, b])
+    assert v.first == "B" and v.wins == {"A": ["점포당 월매출", "일평균 유동인구"], "B": ["분기 폐업률", "상권 건강 점수", "평균 영업 개월"]}
+    assert v.line.startswith("**결론** B 1순위 — 비교한 5축 중 3축 우위(")
+    c = AreaCompareItem(3, "C", "마포구", {}, 2000, 1.0, 9500, 80, False, 30.0, "위험")
+    v2 = area_verdict([a, c])
+    assert v2.first is None and "1순위 없음" in v2.line and "모두 '주의' 이하" in v2.line
+
+
+# --- 비교표: 적합도·백테스트·그래프·창업비용·공실률까지(2026-09-17 "가진 데이터 전부") ---
+
+class _StubFitness:
+    def __init__(self, by_code: dict):
+        self.by_code, self.calls = by_code, []
+
+    async def evaluate(self, trdar_code, service_code):
+        self.calls.append((trdar_code, service_code))
+        return self.by_code.get(trdar_code)
+
+
+class _StubBacktests:
+    def __init__(self, report):
+        self.report = report
+
+    async def latest(self):
+        return self.report
+
+
+class _StubGraph:
+    def __init__(self, by_code: dict):
+        self.by_code = by_code
+
+    async def describe(self, trdar_code, service_code):
+        return self.by_code.get(trdar_code)
+
+
+def _fitness(code, total, ticket=15000, similar=12):
+    from hub.app.dtos.area_fitness_dto import AreaFitnessInfo, FitnessComponentInfo, FitnessDiagnosisInfo
+    return AreaFitnessInfo(
+        trdar_code=code, trdar_name="", service_code="CS100010", service_name="커피-음료", year_quarter=20254,
+        total_score=total,
+        components=(FitnessComponentInfo("demand_match", "수요 일치", 0.8, 0.4), FitnessComponentInfo("saturation", "포화도", 0.5, 0.3)),
+        diagnoses=(FitnessDiagnosisInfo("good", "20대 유동인구와 업종 고객층이 맞아요"),),
+        observed_ticket_price=ticket, observed_similar_store_count=similar, has_sales=True, has_store=True,
+    )
+
+
+def _backtest_report():
+    from datetime import datetime as _dt
+    from hub.app.dtos.area_backtest_report_dto import AreaBacktestReportInfo, ComponentRow, GradeOutcomeRow
+    return AreaBacktestReportInfo(
+        ran_at=_dt(2026, 7, 27, 12, 44), params={}, n_observations=42879, n_areas=1650, base_quarters=[20244],
+        grade_outcomes=[GradeOutcomeRow("주의", 500, -2.1, -1.0, 0.41, -3.0, 120), GradeOutcomeRow("양호", 800, 3.2, 1.1, 0.58, 1.5, 200)],
+        component_predictiveness=[ComponentRow("sales_growth", 42876, 0.12, 4.1)],
+    )
+
+
+def _graph(code, siblings=5, industries=68, has=True, rivals=3, articles=40):
+    from hub.app.dtos.area_graph_dto import AreaGraphInfo
+    return AreaGraphInfo(code, ("성수동2가", "성동구", "서울특별시"), siblings, industries, has, rivals, articles)
+
+
+class _FullMarket(_CompareMarket):
+    """창업비용 표까지 있는 market 스텁."""
+    def __init__(self):
+        super().__init__(scores={
+            3110131: AreaScoreInfo(total=65.0, grade="양호", components=(AreaScoreComponent("sales_growth", "매출 성장", 91.9, 21.9, 5.2),)),
+            3130070: AreaScoreInfo(total=43.4, grade="주의", components=(AreaScoreComponent("sales_growth", "매출 성장", 30.0, -1.0, 5.2),)),
+        })
+
+    async def get_startup_costs(self, year=None):
+        from hub.app.dtos.franchise_cost_dto import StartupCostRow
+        return [StartupCostRow(2025, "외식", "커피", 80_360_000, 10_000_000, 3_000_000, 5_000_000, 62_360_000)]
+
+
+async def test_비교표에_적합도·백테스트·그래프·창업비용·공실률이_전부_실린다(monkeypatch):
+    conversations = _StubConversations(history=_cmp_history((3110131, "성수동카페거리")))
+    finance = _StubFinance(info=_finance_info(vacancy_rate=8.5, rent_region="뚝섬", rent_level="zone"))
+    interactor, llm, _ = _build(
+        monkeypatch, [], conversations=conversations, market=_FullMarket(), finance=finance,
+        fitness=_StubFitness({3110131: _fitness(3110131, 0.72), 3130070: _fitness(3130070, 0.41, ticket=9000, similar=4)}),
+        backtests=_StubBacktests(_backtest_report()),
+        graph=_StubGraph({3110131: _graph(3110131), 3130070: _graph(3130070, siblings=2, industries=40, rivals=1, articles=3)}),
+    )
+    result = await interactor.ask("자기자본 1억으로 길음역과 자세히 비교해봐", conversation_id=100)
+    assert llm.calls == []
+    t = result.text
+    # 결론이 맨 앞이고 적합도·공실률이 판정 축에 들어간다
+    assert t.startswith("**결론** 성수동카페거리 1순위 — 비교한")
+    assert "입지 적합도 성수동카페거리 72점 vs 길음역 8번 41점" in t
+    # 입지 적합도 행·컴포넌트·객단가·유사 업종·진단
+    assert "| 입지 적합도(업종×상권, 100점) | ★ 72점 | 41점 |" in t
+    assert "|   └ 수요 일치 | 80점 (가중치 40%) | 80점 (가중치 40%) |" in t
+    assert "| 객단가(건당 결제액) | 15,000원 | 9,000원 |" in t and "| 유사 업종 점포 수 | 12개 | 4개 |" in t
+    assert "적합도 진단: ○ 20대 유동인구와 업종 고객층이 맞아요" in t
+    # 백테스트: 등급별 다음 분기 실측 + 컴포넌트 예측력
+    assert "| 이 등급의 다음 분기 실측(백테스트) | '양호' 등급 800건: 유동인구 상대 QoQ 평균 +3.2%p · 양(+) 비율 58% · 매출 QoQ +1.5% (n=200) | '주의' 등급 500건:" in t
+    assert "└ 매출 성장 · 예측력 ρ=+0.12, 상위−하위 5분위 +4.1%p |" in t
+    assert "백테스트 리포트는 2026-07-27 실행분(42,879건)" in t
+    # 그래프
+    assert "| 행정 계층(그래프) | 성수동2가 → 성동구 → 서울특별시 | 성수동2가 → 성동구 → 서울특별시 |" in t
+    assert "| 같은 동 상권 수(그래프) | 5곳 | 2곳 |" in t and "| 영업 업종 수(그래프, 100개 중) | 68개 | 40개 |" in t
+    assert "| 같은 동 커피-음료 상권 수(그래프 경쟁) | 3곳 | 1곳 |" in t and "| 연결된 지역 기사 수(그래프) | 40건 | 3건 |" in t
+    # 창업비용(업종 공통 블록) + 예산 70% 판정
+    assert "**업종 공통 — 창업비용(공정위 정보공개서 2025, 커피 브랜드 중앙값)** 합계 8,036만원 = 가맹금 1,000 · 교육비 300 · 보증금 500 · 기타 6,236만원." in t
+    assert "예산 10,000만원의 70%(7,000만원) 안에 안 들어와요." in t
+    # 재무: 월세(지역명)·공실률
+    assert "| 월세(추정) | 300만원 (권역 평균 뚝섬) | 300만원 (권역 평균 뚝섬) |" in t
+    assert "| 공실률(R-ONE) | 8.5% | 8.5% |" in t and "공실률: 동률" in t
+    assert len(finance.requests) == 2 and finance.requests[0].equity == 100_000_000
+
+
+async def test_포트가_없으면_못_쓴_데이터에_이유를_적고_비교는_계속된다(monkeypatch):
+    conversations = _StubConversations(history=_cmp_history((3110131, "성수동카페거리")))
+    interactor, _, _ = _build(monkeypatch, [], conversations=conversations, market=_CompareMarket())
+    result = await interactor.ask("길음역과 비교해봐", conversation_id=100)
+    tail = result.text.split("**이번 비교에 못 쓴 데이터**")[1]
+    for note in ("입지 적합도 — 포트 미배선", "상권 그래프(Neo4j) — 포트 미배선", "상권 점수 백테스트 — 포트 미배선",
+                 "창업비용(공정위) — 적재된 표가 없어요", "임대료·손익분기"):
+        assert note in tail, note
+
+
+async def test_티커와_이름이_같은_종목이면_이름_열만_남긴다(monkeypatch):
+    # 실측(2026-09-17): phase0가 "TSLA"로 정규화하고 연결어 보강이 "테슬라"를 더해 같은 종목이 두 열로 나왔다
+    class _Multi(_StubStocks):
+        async def analyze(self, query):
+            self.queries.append(query)
+            return _analysis(symbol={"TSLA": "TSLA", "테슬라": "TSLA", "애플": "AAPL"}[query])
+
+    intent = '{"intent": "stock", "stock_query": ["TSLA", "테슬라", "애플"]}'
+    interactor, _, stubs = _build(monkeypatch, [intent], stocks=_Multi())
+    result = await interactor.ask("테슬라랑 애플 비교해줘")
+    assert "| 항목 | 테슬라(TSLA) | 애플(AAPL) |" in result.text and "TSLA(TSLA)" not in result.text
+    assert [i["query"] for i in stubs["conversations"].payloads[-1]["compareSet"]["items"]] == ["테슬라", "애플"]
+
+
+def test_세_곳_비교에서_최선값을_둘이_나누면_공동_우위로_적는다():
+    from chat.domain.services.compare import AreaCompareItem, area_verdict, render_area_compare
+    a = AreaCompareItem(1, "역삼", "", {}, 1000, 0.0, None, None, False, None, None)
+    b = AreaCompareItem(2, "선릉", "", {}, 800, 0.0, None, None, False, None, None)
+    c = AreaCompareItem(3, "삼성", "", {}, 2000, 6.0, None, None, False, None, None)
+    v = area_verdict([a, b, c])
+    text = render_area_compare([a, b, c], v, service_name="커피-음료", quarter_label="2026년 2분기", brief=True, missing_notes=[])
+    assert "- 분기 폐업률: 역삼·선릉 공동 우위 (역삼 0% vs 선릉 0% vs 삼성 6%)" in text
+    # 3곳 이상이면 결론 줄은 축 이름만(수치는 축별 판정에). 조사는 받침에 맞춘다
+    assert v.line.startswith("**결론** 삼성 1순위 — 비교한 2축 중 1축 우위(점포당 월매출). ")
+    assert "역삼은 0축(없음); 선릉은 0축(없음)." in v.line
+
+
+async def test_바구니에서_뺀_뒤에도_자기자본이_승계된다(monkeypatch):
+    conversations = _StubConversations(history=_basket_history([(3110131, "성수동카페거리"), (3130070, "길음역 8번"), (3120052, "뚝섬역상점가")]))
+    finance = _StubFinance(info=_finance_info())
+    interactor, _, _ = _build(monkeypatch, [], conversations=conversations, market=_CompareMarket(), finance=finance)
+    await interactor.ask("자기자본 1억으로 비교해줘", conversation_id=100)
+    card = conversations.payloads[-1]["finance"]
+    assert card["inputs"] == [{"key": "equity", "value": 100_000_000, "source": "input", "note": ""}]
+    # 다음 턴: 금액 없이 "길음 빼고" — 직전 finance 카드에서 자기자본을 이어받아 재무 열이 유지된다
+    conversations._history.append(Message(id=9, conversation_id=100, role="assistant", content="**결론** …", created_at=_NOW,
+                                          payload=conversations.payloads[-1]))
+    await interactor.ask("길음 빼고 비교해줘", conversation_id=100)
+    assert finance.requests[-1].equity == 100_000_000 and finance.requests[-1].sources.get("equity") == "history"
+
+
+async def test_첫_턴부터_상권_세_곳을_나열해_비교하면_LLM_없이_세_열로_대조한다(monkeypatch):
+    # 실측(2026-09-17): "성수동카페거리, 길음역, 뚝섬역 카페 … 비교해줘"가 phase1로 가서 미아사거리를 골랐다
+    interactor, llm, stubs = _build(monkeypatch, [], market=_CompareMarket())
+    result = await interactor.ask("성수동카페거리, 길음역, 뚝섬역상점가 카페 자기자본 1억으로 비교해줘")
+    assert llm.calls == []
+    assert sorted(r.name for r in result.recommendations) == ["길음역 8번", "뚝섬역상점가", "성수동카페거리"]
+    assert stubs["conversations"].payloads[-1]["compareSet"]["kind"] == "area"
+
+
+async def test_첫_턴에_지역이_하나뿐이면_비교_어휘가_있어도_기존_흐름이다(monkeypatch):
+    interactor, llm, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON])
+    result = await interactor.ask("역삼동 카페 다른 데랑 비교해줘")
+    assert len(llm.calls) == 3 and len(result.recommendations) == 1
+
+
+async def test_지역_구절이_동_단위로_잡혀도_이름을_지목한_상권이_우선이다(monkeypatch):
+    # 실측(2026-09-17): "길음역"이 길음동 전체로 잡혀 매출 상위 미아사거리가 길음역 8번 대신 들어왔다
+    areas = _CMP_AREAS + [AreaInfo(trdar_code=3140001, trdar_name="미아사거리", district_name="강북구", adm_dong_name="길음동", lat=37.61, lng=127.03)]
+
+    class _M(_CompareMarket):
+        def __init__(self):
+            super().__init__()
+            self._areas = areas
+
+        async def get_area_summary(self):
+            summary = await super().get_area_summary()
+            summary.sales_by_code[3140001] = 900_000_000  # 길음역 8번보다 큼
+            return summary
+
+        async def get_area_raw_stats(self, codes, service_code, quarter):
+            return {c: _raw_stat(has_sales=True, monthly_sales_amount=_CMP_SALES.get(c, 900_000_000), has_store=True,
+                                 store_count=10, franchise_store_count=2, closure_rate=2.0) for c in codes}
+
+    interactor, llm, _ = _build(monkeypatch, [], market=_M())
+    result = await interactor.ask("성수동카페거리랑 길음역 카페 비교해줘")
+    assert llm.calls == []
+    assert sorted(r.name for r in result.recommendations) == ["길음역 8번", "성수동카페거리"]

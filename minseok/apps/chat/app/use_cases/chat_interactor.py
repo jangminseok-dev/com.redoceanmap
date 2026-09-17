@@ -22,6 +22,7 @@ from chat.app.ports.input.chat_use_case import ChatUseCase
 from chat.app.ports.output.conversation_repository import ConversationRepository
 from chat.domain.entities.conversation_entity import ConversationSummary, Message
 from chat.domain.services import answer_guard
+from chat.domain.services import compare as compare_svc
 from chat.domain.services.amount_parser import (
     fmt_won,
     parse_budget_krw,
@@ -47,7 +48,10 @@ from hub.app.dtos.recommendation_record_dto import RecommendedArea
 from hub.app.dtos.stock_forecast_dto import StockForecastSummary
 from hub.app.dtos.stock_analysis_dto import StockAnalysisResult
 from hub.app.dtos.user_profile_dto import UserProfileSummary
+from hub.app.ports.output.area_backtest_report_port import AreaBacktestReportPort
 from hub.app.ports.output.area_finance_port import AreaFinancePort
+from hub.app.ports.output.area_fitness_port import AreaFitnessPort
+from hub.app.ports.output.area_graph_port import AreaGraphPort
 from hub.app.ports.output.commercial_data_port import CommercialDataPort
 from hub.app.ports.output.gemini_answer_port import GeminiAnswerError, GeminiAnswerPort
 from hub.app.ports.output.market_news_search_port import MarketNewsSearchPort
@@ -579,6 +583,21 @@ _INDUSTRY_ALIASES = (
 _SERVICE_FOCUS_RE = re.compile(r"업종|뭘\s*팔|무슨\s*(?:장사|가게|업)|어떤\s*(?:가게|장사|업)|아이템")
 _SERVICE_SHORTLIST = ("커피", "치킨", "한식", "분식", "편의점", "미용", "네일", "제과", "호프", "중식", "일식", "패스트푸드", "의약품", "세탁")
 _COMPARE_RE = re.compile(r"비교|vs|중에|둘\s*중|셋\s*중|어디가|어느\s*(?:쪽|게|것)|(?:랑|이랑|와|과|하고)\s")
+# 상권 비교 후속(2026-09-17 실대화 289) — "길음역과 비교해봐"는 길음역 단독 추천으로, "그래서 성수야
+# 길음이야"는 제3의 상권으로, "둘이 비교해줘"는 직전 답 반복으로 끝났다. 직전 카드가 있고 우열·비교를
+# 물으면 LLM 없이 코드가 두 상권을 표로 대조한다. 연결어만("카페랑 분식")으로는 잡지 않는다.
+_AREA_COMPARE_FOLLOWUP_RE = re.compile(
+    r"비교|vs|둘\s*(?:이|다|중)|(?:어디|어느\s*(?:쪽|게|데|곳))\s*(?:가|이)?\s*(?:제일|가장|더)?\s*(?:낫|나아|좋|괜찮)"
+    r"|(?:어디|어느\s*쪽)(?:가|이)\s*(?:더|제일|가장)"
+)
+# 지역 두 곳을 들고 우열을 되묻는 꼴("그래서 성수가 괜찮다는거야 길음이 괜찮다는거야") — 비교 어휘가 없어
+# 위 정규식이 못 잡는다. 이 꼴은 질문에 지역 구절이 2개 이상일 때만 비교로 본다.
+_WHICH_ONE_RE = re.compile(r"(?:괜찮|낫|좋|나아)(?:다는|은|는)?\s*(?:거|건|것|게)?\s*(?:야|가|지|니|요)")
+# 비교 바구니(compareSet) 후속의 분량·조작 — "그래서 어디야"는 결론+축별 판정만, "자세히"는 전체 표.
+# "새로/처음부터/따로"는 바구니를 버리고 기존 흐름(단독 답)으로 돌아간다.
+_COMPARE_BRIEF_RE = re.compile(r"결론|그래서|어디야|어느|뭐가\s*(?:더|낫|나아)|괜찮|낫[냐니]|나아\?")
+_COMPARE_DETAIL_RE = re.compile(r"자세|상세|전부|다\s*보여|표로|항목|모든|디테일")
+_COMPARE_RESET_RE = re.compile(r"새로|처음부터|따로|단독|이것만|얘만|만\s*(?:봐|보여|분석|알려)")
 _SURGE_PICK_RE = re.compile(
     # 4차 실측 S4: "내일 급등할 종목 알려줘"가 관형형 어미(할/하는) 때문에 빠져나가
     # market_news로 낙하했다. 거절 후 재요구("아 그러지 말고 하나만 찍어줘")도 잡는다.
@@ -761,9 +780,15 @@ class ChatInteractor(ChatUseCase):
         signals: StockSignalBoardPort | None = None,
         paper: PaperDecisionPort | None = None,
         finance: AreaFinancePort | None = None,
+        fitness: AreaFitnessPort | None = None,
+        backtests: AreaBacktestReportPort | None = None,
+        graph: AreaGraphPort | None = None,
     ) -> None:
         self._paper = paper
         self._finance = finance
+        self._fitness = fitness
+        self._backtests = backtests
+        self._graph = graph
         self._market = market
         self._recorder = recorder
         self._conversations = conversations
@@ -1109,6 +1134,10 @@ class ChatInteractor(ChatUseCase):
             card = payload.get("stock")
             if card and card.get("symbol"):
                 return "stock", [str(card["symbol"])]
+            basket = payload.get("compareSet") or {}
+            if basket.get("kind") == "stock" and basket.get("items"):
+                # 비교 바구니 뒤의 "그래서 뭐가 나아?" — 바구니 첫 종목으로 stock 경로에 들어가 바구니째 대조한다
+                return "stock", [str(basket["items"][0]["query"])]
         return None
 
     @staticmethod
@@ -1232,6 +1261,332 @@ class ChatInteractor(ChatUseCase):
             # 업종 언급 없는 예산 후속("그 예산 안에서 가능한 데야?") — 예산 자체를 먼저 말한다
             others = f"예산 {fmt_won(budget)}의 70%({fmt_won(cap)}) 안에 드는 가맹 업종: {listing}{more}."
         return f"※ {lead}{others} 공정위 정보공개서({year}) 기준이며 {note}\n\n"
+
+    @staticmethod
+    def _area_card(
+        area: AreaInfo, st: dict, service_code: str, service_name: str, reason: str, quarter_label: str,
+    ) -> AreaRecommendation:
+        """추천·비교 카드 한 장 — 수치 문구는 _format_stats 결과를 그대로 싣는다."""
+        return AreaRecommendation(
+            id=str(area.trdar_code),
+            name=area.trdar_name,
+            lat=area.lat,
+            lng=area.lng,
+            category=service_name,
+            serviceCode=service_code,
+            reason=reason,
+            stats=AreaStats(
+                monthlyRevenueText=st.get("revenue_text", ""),
+                revenueSourceText=st.get("revenue_source", ""),
+                weekdayText=st.get("weekday_text", ""),
+                storeCountText=st.get("store_count_text", ""),
+                closureRateText=st.get("closure_text", ""),
+                openingRateText=st.get("opening_text", ""),
+                franchiseText=st.get("franchise_text", ""),
+                footTrafficText=st.get("foot_text", ""),
+                topAgeText=st.get("top_age", ""),
+                peakTimeText=st.get("peak_time", ""),
+                changeText=st.get("change_text", ""),
+                operatingMonthsText=st.get("op_months_text", ""),
+                dataSource=f"서울시 공공데이터 {quarter_label} 기준",
+                hasRealData=st.get("has_data", False),
+            ),
+        )
+
+    @staticmethod
+    def _compare_basket(history: list[Message]) -> dict | None:
+        """가장 최근 비교 바구니(payload.compareSet) — 없으면 None."""
+        for m in reversed(history):
+            basket = (m.payload or {}).get("compareSet")
+            if basket:
+                return basket
+        return None
+
+    def _compare_targets(self, summary: AreaSummary, prompt: str, history: list[Message]) -> list[int]:
+        """비교할 상권 2~4곳 — 바구니(직전 compareSet)에 질문의 지역을 더하고, 제외 어휘("길음은 빼")면 뺀다.
+        바구니가 없으면 ①질문의 지역 구절마다 하나 ②지역 하나면 직전 1순위와 짝 ③지역이 없으면 직전 카드들.
+        직전 카드에 있는 상권을 우선하고, 없으면 그 지역의 전 업종 매출 상위 하나."""
+        area_map = {a.trdar_code: a for a in summary.areas}
+        previous = self._previous_area_codes(history, area_map)
+        basket = self._compare_basket(history)
+        base: list[int] = []
+        if basket and basket.get("kind") == "area":
+            base = [int(c) for c in basket.get("items", []) if int(c) in area_map]
+
+        def top(codes) -> int | None:
+            own = [c for c in [*base, *previous] if c in codes]
+            if own:
+                return own[0]
+            return max(codes, key=lambda c: summary.sales_by_code.get(c) or 0, default=None)
+
+        mentioned = self._mentioned_codes(summary, prompt)
+        excluded = self._excluded_area_codes(summary, prompt, history) if _has_exclusion(prompt) else set()
+        if excluded:
+            base = [c for c in base if c not in excluded]
+            mentioned = mentioned - excluded
+        picked: list[int] = []
+        if mentioned:
+            named = self._named_codes(summary, prompt) - excluded
+            groups = self._compare_place_groups(summary, prompt)
+            for _label, codes in groups:
+                # 지역 구절("길음역")이 행정동 단위로 넓게 잡혀도 이름을 직접 지목한 상권(길음역 8번)이 우선 —
+                # 안 그러면 같은 동의 매출 상위(미아사거리)가 대신 들어온다(2026-09-17 실측)
+                c = top((codes & named) or (codes - excluded))
+                if c is not None and c not in picked:
+                    picked.append(c)
+            # 상권명을 그대로 지목한 곳은 연결어 구문 분석이 놓쳐도 들어간다(쉼표 나열의 세 번째 "뚝섬역") —
+            # 같은 어간에 이름이 여럿 걸리면(길음역 8번·길음역 3번) 매출 상위 하나만
+            by_stem: dict[str, list[int]] = {}
+            for c in named:
+                by_stem.setdefault(self._place_stem(area_map[c].trdar_name), []).append(c)
+            for stem_codes in by_stem.values():
+                if any(c in picked for c in stem_codes):
+                    continue
+                c = top(set(stem_codes))
+                if c is not None and c not in picked:
+                    picked.append(c)
+            if len(picked) < 2:
+                named = self._named_codes(summary, prompt) - excluded
+                c = top(named or mentioned)
+                if c is not None and c not in picked:
+                    picked.append(c)
+                if not base:
+                    # 직전 1순위가 앞 — 사용자가 이야기하던 상권이 기준, 새로 든 지역이 비교 대상
+                    anchor = next((c for c in previous if c not in picked and c not in mentioned), None)
+                    if anchor is not None:
+                        picked.insert(0, anchor)
+        elif not base:
+            # 지역 미언급("둘이 비교해줘") — 직전 카드가 여럿이면 그 카드들, 하나면 그 앞 카드까지 거슬러 짝을 만든다
+            for m in reversed(history):
+                for r in (m.payload or {}).get("recommendations") or []:
+                    if str(r.get("id", "")).isdigit() and int(r["id"]) in area_map and int(r["id"]) not in picked:
+                        picked.append(int(r["id"]))
+                if len(picked) >= 2:
+                    break
+        merged = base + [c for c in picked if c not in base]
+        return merged[-4:] if len(merged) > 4 else merged
+
+    async def _answer_area_compare(
+        self, conversation_id: int, prompt: str, history: list[Message], on_stage=None,
+        user_id: int | None = None, need_two_regions: bool = False, continuation: bool = False,
+    ) -> AskResponse | None:
+        """상권 비교 — 바구니(직전 비교 집합)에 질문의 지역을 더해 가진 데이터를 전부 표로 대조하고 결론을 맨 앞에 쓴다.
+        업종은 질문에 있으면 그것, 없으면 직전 카드의 업종. 짝이 안 되면 None(기존 흐름).
+        need_two_regions: 비교 어휘 없이 우열만 되물은 꼴 — 질문에 지역 구절이 2개 이상일 때만 가로챈다.
+        continuation: 바구니가 있을 뿐 비교 어휘가 없는 후속 — 새 지역을 들거나 제외를 말할 때만 가로챈다."""
+        summary = await self._market.get_area_summary()
+        quarter = summary.latest_quarter
+        if not quarter:
+            return None
+        if need_two_regions and len(self._compare_place_groups(summary, prompt)) < 2:
+            return None
+        if continuation:
+            basket = self._compare_basket(history) or {}
+            base = {int(c) for c in basket.get("items", [])}
+            mentioned = self._mentioned_codes(summary, prompt)
+            excluded = self._excluded_area_codes(summary, prompt, history) if _has_exclusion(prompt) else set()
+            asks_verdict = _COMPARE_BRIEF_RE.search(prompt) or _COMPARE_DETAIL_RE.search(prompt)
+            if not (mentioned - base) and not (excluded & base) and not asks_verdict:
+                return None
+        codes = self._compare_targets(summary, prompt, history)
+        if len(codes) < 2:
+            return None
+        service_codes = await self._market.get_service_codes()
+        service = _detect_service(prompt, service_codes) or self._previous_service(history)
+        if service is None:
+            return None
+        service_code, service_name = service
+        self._notify(on_stage, "data", f"{len(codes)}개 상권의 데이터를 전부 모으고 있어요")
+        area_map = {a.trdar_code: a for a in summary.areas}
+        raw_stats = await self._market.get_area_raw_stats(codes, service_code, quarter)
+        real_stats = self._format_stats(raw_stats, quarter, generic=(service_code == GENERIC_SERVICE_CODE))
+        area_scores = await self._market.get_area_scores(codes)
+        area_insights = await self._market.get_area_insights(codes, service_code)
+        permit_churn = await self._market.get_area_permit_churn(codes)
+        try:
+            ranking = await self._market.get_area_ranking(service_code)
+        except Exception:
+            logger.warning("[chat] 비교 랭킹 조회 실패", exc_info=True)
+            ranking = []
+        by_sales = [r for r in ranking if r.sales_per_store is not None]
+        by_sales.sort(key=lambda r: -r.sales_per_store)
+        by_closure = [r for r in ranking if r.closure_rate is not None]
+        by_closure.sort(key=lambda r: r.closure_rate)
+        rank_sales = {r.trdar_code: (i + 1, len(by_sales)) for i, r in enumerate(by_sales)}
+        rank_closure = {r.trdar_code: (i + 1, len(by_closure)) for i, r in enumerate(by_closure)}
+        quarter_label = f"{str(quarter)[:4]}년 {str(quarter)[4]}분기"
+        missing: list[str] = []
+
+        # 재무(임대료·손익분기) — 자기자본이 입력·이력·프로파일 어디에도 없으면 열을 만들지 않고 이유를 적는다
+        finance_by_code: dict[int, dict] = {}
+        finance_inputs_card: dict | None = None   # 다음 턴 승계용(입력·이력·프로파일 기원만) — 바구니 뒤에도 자기자본이 살아남게
+        if self._finance is not None and service_code != GENERIC_SERVICE_CODE:
+            profile = await self._load_profile(user_id)
+            for code in codes:
+                request = self._finance_request(prompt, history, profile, code, service_code)
+                if request is None:
+                    missing.append("임대료·손익분기·부족 자금 — 자기자본을 알려주시면(예: \"자기자본 1억\") 표에 열이 추가돼요")
+                    break
+                if finance_inputs_card is None:
+                    finance_inputs_card = {"inputs": [
+                        {"key": k, "value": v, "source": request.sources.get(k, "input"), "note": ""}
+                        for k in _FINANCE_FIELDS if (v := getattr(request, k, None)) is not None
+                    ]}
+                try:
+                    info = await self._finance.plan(request)
+                except Exception:
+                    logger.warning("[chat] 비교 재무 계산 실패", exc_info=True)
+                    info = None
+                if info is None:
+                    missing.append(f"{area_map[code].trdar_name} 임대료 — R-ONE 상권·권역 매칭이 없어 산출 불가")
+                    continue
+                rent = next((i.value for i in info.inputs if i.key == "monthly_rent"), None)
+                finance_by_code[code] = {
+                    "rent": round(rent / 10000) if rent else None, "rent_level": {"area": "상권 실측", "zone": "권역 평균", "city": "서울 평균"}.get(info.rent_level or "", ""),
+                    "bep": round(info.bep_monthly_sales / 10000), "attainment": info.attainment,
+                    "profit": round(info.monthly_profit / 10000) if info.monthly_profit is not None else None,
+                    "gap": round(info.funding_gap / 10000),
+                    "vacancy": info.vacancy_rate, "rent_region": info.rent_region,
+                }
+        else:
+            missing.append("임대료·손익분기 — 업종이 정해져야 계산돼요" if service_code == GENERIC_SERVICE_CODE else "임대료·손익분기 — 재무 엔진 미배선")
+
+        # 백테스트 리포트 — 등급이 다음 분기를 얼마나 갈랐는지(전체 1건, 등급별 행) + 컴포넌트 예측력
+        grade_outcomes: dict[str, dict] = {}
+        predictiveness: dict[str, tuple[float | None, float | None, int]] = {}
+        if self._backtests is not None:
+            try:
+                report = await self._backtests.latest()
+            except Exception:
+                logger.warning("[chat] 비교 백테스트 리포트 조회 실패", exc_info=True)
+                report = None
+            if report is None:
+                missing.append("상권 점수 백테스트 — 실행 이력이 없어요(scripts/backtest_area_score.py)")
+            else:
+                grade_outcomes = {
+                    g.grade: {"n": g.n, "floating": g.avg_rel_floating_qoq, "positive": g.positive_share,
+                              "sales": g.avg_sales_qoq, "sales_n": g.sales_n}
+                    for g in report.grade_outcomes
+                }
+                predictiveness = {c.key: (c.spearman, c.top_minus_bottom_quintile, c.n) for c in report.component_predictiveness}
+                missing.append(f"(참고) 백테스트 리포트는 {report.ran_at:%Y-%m-%d} 실행분({report.n_observations:,}건)이에요")
+        else:
+            missing.append("상권 점수 백테스트 — 포트 미배선")
+        # 창업비용(공정위) — 업종 단위라 상권 열이 아니라 공통 블록. 예산이 있으면 70% 컷 판정까지
+        startup_cost: dict | None = None
+        try:
+            costs = await self._market.get_startup_costs()
+        except Exception:
+            costs = []
+        if costs:
+            by_name = {c.industry_name: c for c in costs}
+            industry = next((name for word, name in _INDUSTRY_ALIASES if word in service_name and name in by_name), None)
+            if industry is None:
+                missing.append(f"창업비용 — 공정위 업종 표에 '{service_name}'과 맞는 업종이 없어요")
+            else:
+                c = by_name[industry]
+                budget = parse_budget_krw(prompt) or self._previous_finance_inputs(history).get("equity")
+                startup_cost = {
+                    "year": c.year, "industry": c.industry_name, "total": round(c.total_amount / 10000),
+                    "franchise_fee": round(c.franchise_fee / 10000), "education_fee": round(c.education_fee / 10000),
+                    "deposit": round(c.deposit / 10000), "other_fee": round(c.other_fee / 10000), "budget": budget,
+                }
+        else:
+            missing.append("창업비용(공정위) — 적재된 표가 없어요")
+        if self._fitness is None:
+            missing.append("입지 적합도 — 포트 미배선")
+        if self._graph is None:
+            missing.append("상권 그래프(Neo4j) — 포트 미배선")
+
+        order = {k: i for i, k in enumerate(_INSIGHT_PRIORITY)}
+        items: list[compare_svc.AreaCompareItem] = []
+        for code in codes:
+            area, raw, st = area_map[code], raw_stats.get(code), real_stats.get(code, {})
+            score = area_scores.get(code)
+            small = bool(st.get("small_sample"))
+            per_store = (raw.monthly_sales_amount / raw.store_count / 10000
+                         if raw is not None and raw.has_sales and raw.has_store and raw.store_count and not small else None)
+            closure = raw.closure_rate if raw is not None and raw.has_store and raw.closure_rate is not None and not small else None
+            foot = raw.total_floating_pop / 91 if raw is not None and raw.has_fp and raw.total_floating_pop else None
+            op_months = raw.operating_months_avg if raw is not None and raw.has_cc and raw.operating_months_avg else None
+            if small:
+                missing.append(f"{area.trdar_name} 점포당 매출·폐업률 — 점포 {raw.store_count}개(5개 미만)라 표본이 작아 판정 축에서 뺐어요")
+            elif raw is None or not raw.has_sales:
+                missing.append(f"{area.trdar_name} {service_name} 매출 — 이 업종 데이터가 없어요")
+            insights = sorted(area_insights.get(code) or (), key=lambda i: order.get(i.key, len(order)))[:4]
+            churn = permit_churn.get(code)
+            try:
+                hits = await self._market_news.search(f"{area.trdar_name} {service_name}", limit=2)
+            except Exception:
+                hits = []
+            news = tuple(f"{h.title}({h.published_at:%m/%d})" if h.published_at else h.title for h in hits)
+            trend = self._trend_text(score).strip().removeprefix("- ") if score is not None else ""
+            fitness_info = None
+            if self._fitness is not None:
+                try:
+                    fitness_info = await self._fitness.evaluate(code, service_code)
+                except Exception:
+                    logger.warning("[chat] 비교 입지 적합도 조회 실패: %s", code, exc_info=True)
+                if fitness_info is None:
+                    missing.append(f"{area.trdar_name} 입지 적합도 — 이 업종의 수요 프로필(연령·성별·시간대)이 없어요")
+            graph_info = None
+            if self._graph is not None:
+                try:
+                    graph_info = await self._graph.describe(code, service_code)
+                except Exception:
+                    graph_info = None
+                if graph_info is None:
+                    missing.append(f"{area.trdar_name} 상권 그래프 — Neo4j에 노드가 없거나 그래프가 응답하지 않아요")
+            grade = getattr(score, "grade", None) if score is not None else None
+            items.append(compare_svc.AreaCompareItem(
+                code=code, name=area.trdar_name, district=area.district_name, texts=st,
+                sales_per_store=per_store, closure_rate=closure, foot_daily=foot, operating_months=op_months,
+                small_sample=small,
+                score_total=score.total if score is not None else None,
+                grade=getattr(score, "grade", None) if score is not None else None,
+                components=tuple((c.key, c.name, c.score, c.value, c.benchmark) for c in (score.components if score is not None else ())),
+                trend=trend, insights=tuple(i.text for i in insights),
+                permit=(churn.opened, churn.closed, churn.active, churn.months) if churn is not None else None,
+                rank_sales=rank_sales.get(code), rank_closure=rank_closure.get(code), news=news,
+                finance=finance_by_code.get(code),
+                fitness=({"total": fitness_info.total_score * 100,
+                          "components": tuple((c.label, c.score, c.weight) for c in fitness_info.components),
+                          "diagnoses": tuple((d.tone, d.message) for d in fitness_info.diagnoses),
+                          "ticket": fitness_info.observed_ticket_price if fitness_info.has_sales else None,
+                          "similar": fitness_info.observed_similar_store_count if fitness_info.has_store else None}
+                         if fitness_info is not None else None),
+                graph=({"region_path": graph_info.region_path, "siblings": graph_info.sibling_area_count,
+                        "industries": graph_info.industry_count, "has_service": graph_info.has_service,
+                        "rivals": graph_info.same_service_sibling_count, "articles": graph_info.article_count}
+                       if graph_info is not None else None),
+                backtest=grade_outcomes.get(grade) if grade else None,
+            ))
+        verdict = compare_svc.area_verdict(items)
+        brief = bool(_COMPARE_BRIEF_RE.search(prompt)) and not _COMPARE_DETAIL_RE.search(prompt)
+        text = compare_svc.render_area_compare(
+            items, verdict, service_name=service_name, quarter_label=quarter_label, brief=brief, missing_notes=missing,
+            startup_cost=startup_cost, predictiveness=predictiveness,
+        )
+        # 등급 고지는 결론 바로 뒤(둘째 문단) — 결론은 항상 맨 앞이다
+        notices = [
+            answer_guard.grade_caution_notice(area_map[c].trdar_name, area_scores[c].grade, area_scores[c].total)
+            for c in codes if (sc := area_scores.get(c)) is not None and getattr(sc, "grade", None) in answer_guard.CAUTION_GRADES
+        ]
+        if notices:
+            first, _, rest = text.partition("\n\n")
+            text = f"{first}\n\n{' '.join(notices)}\n\n{rest}"
+        recommendations = [
+            self._area_card(area_map[c], real_stats.get(c, {}), service_code, service_name, "", quarter_label)
+            for c in codes
+        ]
+        payload = {
+            "recommendations": [r.model_dump() for r in recommendations],
+            "compareSet": {"kind": "area", "items": codes, "serviceCode": service_code, "serviceName": service_name},
+        }
+        if finance_inputs_card is not None:
+            payload["finance"] = finance_inputs_card
+        await self._conversations.add_message(conversation_id, "assistant", text, payload=payload)
+        return AskResponse(text=text, recommendations=recommendations, conversationId=conversation_id)
 
     async def _answer_service_candidates(self, conversation_id: int, history: list[Message], on_stage=None) -> AskResponse | None:
         """직전 추천 상권 1곳의 업종별 점포당 월매출·폐업률을 코드가 나열한다. 직전 카드가 없으면 None(기존 흐름)."""
@@ -1650,6 +2005,20 @@ class ChatInteractor(ChatUseCase):
             focus = await self._answer_service_candidates(conversation_id, history, on_stage)
             if focus is not None:
                 return focus
+        strong_compare = bool(_AREA_COMPARE_FOLLOWUP_RE.search(prompt))
+        basket = self._compare_basket(history)
+        area_basket = (basket is not None and basket.get("kind") == "area"
+                       and not _COMPARE_RESET_RE.search(prompt))
+        if strong_compare or (history and (_WHICH_ONE_RE.search(prompt) or area_basket)):
+            # 첫 턴("성수동카페거리, 길음역, 뚝섬역 카페 비교해줘")도 지역 2곳 이상이면 코드가 대조한다 —
+            # phase1이 미아사거리를 고르고 "길음 빼고"에 동서시장을 내던 실측(2026-09-17)
+            compare = await self._answer_area_compare(
+                conversation_id, prompt, history, on_stage, user_id=user_id,
+                need_two_regions=(not history) or (not strong_compare and not area_basket),
+                continuation=area_basket and not strong_compare,
+            )
+            if compare is not None:
+                return compare
 
         # phase0(의도 분류 = 도메인 판단) — 단일 모델(7.8B) 정책
         self._notify(on_stage, "intent", "질문 의도를 파악하고 있어요")
@@ -2065,35 +2434,11 @@ class ChatInteractor(ChatUseCase):
             if reason_map.get(code):
                 reason_map[code] = answer_guard.suppress_recommendation(reason_map[code])
 
-        recommendations: list[AreaRecommendation] = []
-        for code in valid_codes:
-            area = area_map[code]
-            st = real_stats.get(code, {})
-            recommendations.append(AreaRecommendation(
-                id=str(code),
-                name=area.trdar_name,
-                lat=area.lat,
-                lng=area.lng,
-                category=service_name,
-                serviceCode=service_code,
-                reason=reason_map.get(code, ""),
-                stats=AreaStats(
-                    monthlyRevenueText=st.get("revenue_text", ""),
-                    revenueSourceText=st.get("revenue_source", ""),
-                    weekdayText=st.get("weekday_text", ""),
-                    storeCountText=st.get("store_count_text", ""),
-                    closureRateText=st.get("closure_text", ""),
-                    openingRateText=st.get("opening_text", ""),
-                    franchiseText=st.get("franchise_text", ""),
-                    footTrafficText=st.get("foot_text", ""),
-                    topAgeText=st.get("top_age", ""),
-                    peakTimeText=st.get("peak_time", ""),
-                    changeText=st.get("change_text", ""),
-                    operatingMonthsText=st.get("op_months_text", ""),
-                    dataSource=f"서울시 공공데이터 {quarter_label} 기준",
-                    hasRealData=st.get("has_data", False),
-                ),
-            ))
+        recommendations: list[AreaRecommendation] = [
+            self._area_card(area_map[code], real_stats.get(code, {}), service_code, service_name,
+                            reason_map.get(code, ""), quarter_label)
+            for code in valid_codes
+        ]
 
         if superlative is not None:
             text = f"{superlative_line}\n\n{text}" if text else superlative_line
@@ -2285,8 +2630,11 @@ class ChatInteractor(ChatUseCase):
         if intent == "stock" and stock_queries:
             return "stock", stock_queries
         if intent == "stock":
-            # 종목 추출 실패 — 직전 종목 카드가 있으면 그 종목(5차 실측 S7 t5 "이 종목은 모멘텀이…"),
-            # 없으면 상권으로 보내던 기존 오답 대신 뉴스 RAG가 차선
+            # 종목 추출 실패 — 비교 바구니가 있으면 그 첫 종목으로(바구니째 다시 대조), 직전 종목 카드가
+            # 있으면 그 종목(5차 실측 S7 t5 "이 종목은 모멘텀이…"), 없으면 상권으로 보내던 기존 오답 대신 뉴스 RAG가 차선
+            basket = self._compare_basket(history)
+            if basket and basket.get("kind") == "stock" and basket.get("items"):
+                return "stock", [str(basket["items"][0]["query"])]
             inherited = self._inherit_intent(prompt, history)
             if inherited is not None and inherited[0] == "stock":
                 return inherited
@@ -2574,63 +2922,112 @@ class ChatInteractor(ChatUseCase):
 
     async def _answer_stock_compare(
         self, conversation_id: int, prompt: str, queries: list[str], on_stage=None,
+        history: list[Message] = (),
     ) -> AskResponse:
-        """종목 2~3개 비교표 — 방향·현재가·과거 같은 신호 상승 비율/평소·RSI·모멘텀·거래량 판정을 나란히. 결론도 코드가 쓴다."""
-        self._notify(on_stage, "analyze", f"{len(queries)}개 종목을 나란히 보고 있어요")
-        rows, failed = [], []
+        """종목 2~4개 상세 비교 — 가진 데이터(지표·과거 통계·펀더멘털·키워드·기사·워치리스트·AI 모의투자)를
+        전부 표로 대조하고 결론(축별 다수결)을 맨 앞에 쓴다. 코드가 만든다 — LLM이 수치 우열을 지어내지 않게."""
+        self._notify(on_stage, "analyze", f"{len(queries)}개 종목의 데이터를 전부 모으고 있어요")
+        board_rows: dict[str, str] = {}
+        if self._signals is not None:
+            try:
+                board = await self._signals.current_board(limit=50)
+                for r in board.rows:
+                    stat = f"{r.up_rate:.0%}/{r.baseline_up_rate:.0%}" if r.up_rate is not None and r.baseline_up_rate is not None else "표본 없음"
+                    board_rows[r.ticker] = f"{ {'UP': '상승', 'DOWN': '하락', 'NEUTRAL': '중립'}.get(r.direction, r.direction)} ({r.as_of:%m/%d}, 같은 신호 {stat})"
+            except Exception:
+                logger.warning("[chat] 비교 신호 보드 조회 실패", exc_info=True)
+        paper_rows: dict[str, str] = {}
+        if self._paper is not None:
+            try:
+                for info in await self._paper.latest(["exaone", "signal"]):
+                    who = "EXAONE" if info.account == "exaone" else "지표 규칙"
+                    for o in info.orders:
+                        act = {"BUY": "매수", "SELL": "매도", "SHORT": "숏 진입", "COVER": "숏 청산"}.get(o.action, o.action)
+                        paper_rows[o.ticker] = f"{who} 계정 {info.as_of:%m/%d} {act} 판단"
+            except Exception:
+                logger.warning("[chat] 비교 모의투자 조회 실패", exc_info=True)
+
+        items: list[compare_svc.StockCompareItem] = []
+        basket_items: list[dict] = []
+        failed: list[str] = []
+        missing: list[str] = []
         for q in queries:
             try:
                 a = await self._stocks.analyze(q)
             except StockAnalysisUnavailable as e:
                 failed.append(f"{q}({e.detail})")
                 continue
+            unit = self._currency_unit(a.symbol)
+            label = f"{q}({a.symbol})"
             f = None
             if self._forecaster is not None:
                 try:
                     f = await self._forecaster.forecast(a.symbol)
                 except Exception:
                     f = None
-            rows.append((q, a, f))
-        if not rows:
-            text = "비교할 종목을 찾지 못했어요: " + ", ".join(failed) + " — 정확한 종목명이나 티커로 다시 물어봐 주세요."
+            if f is None or f.up_rate is None:
+                missing.append(f"{label} 과거 같은 신호 통계 — 표본 없음")
+            fundamentals: tuple[tuple[str, str], ...] = ()
+            if self._fundamentals is not None:
+                try:
+                    fundamentals = tuple((i.tone, i.text) for i in (await self._fundamentals.latest_insights(a.symbol))[:4])
+                except Exception:
+                    fundamentals = ()
+            if not fundamentals:
+                missing.append(f"{label} 펀더멘털(PER·PBR·ROE 등) — 미수집")
+            try:
+                keywords = tuple(k.keyword for k in await self._news.top_keywords(a.symbol))
+            except Exception:
+                keywords = ()
+            try:
+                hits = await self._news.search(q, ticker=a.symbol, limit=2)
+            except Exception:
+                hits = []
+            news = tuple(f"{h.title}({h.published_at:%m/%d})" if h.published_at else h.title for h in hits)
+            if not news:
+                news = tuple(a.headlines[:2])  # 의미 검색 히트가 없으면 분석 결과의 최근 헤드라인이라도 싣는다
+            base = a.symbol.split(".")[0]
+            items.append(compare_svc.StockCompareItem(
+                label=label, symbol=a.symbol, unit=unit, price=a.price, direction=a.direction,
+                strength=verdict_strength(a.score, a.up_threshold), score=a.score, rsi=a.rsi, ma20=a.ma20, ma50=a.ma50,
+                support=a.support, resistance=a.resistance, atr_pct=a.atr_pct, bb_percent_b=a.bb_percent_b,
+                volume_ratio=a.volume_ratio,
+                volume_cell=answer_guard.volume_verdict_cell(ma20=a.ma20, ma50=a.ma50, volume_ratio=a.volume_ratio),
+                obv_slope=a.obv_slope, momentum_12_1=a.momentum_12_1, reference_up_signal=a.reference_up_signal,
+                sentiment=a.sentiment, sentiment_label=a.sentiment_label,
+                poc_text=self._volume_profile_text(a, unit).strip().removeprefix("- 거래 밀집 구간: "),
+                forecast=({"up_rate": f.up_rate, "baseline": f.baseline_up_rate, "n": f.sample_size, "ready": f.ready,
+                           "ci_low": f.ci_low, "ci_high": f.ci_high} if f is not None else None),
+                fundamentals=fundamentals, keywords=keywords, news=news,
+                watch=self._watch_point(a.price, a.support, a.resistance, unit),
+                board=board_rows.get(a.symbol) or board_rows.get(base), paper=paper_rows.get(a.symbol) or paper_rows.get(base),
+            ))
+            basket_items.append({"query": q, "symbol": a.symbol})
+        # 같은 종목이 티커·이름으로 두 번 들어온 경우("TSLA"·"테슬라" — phase0 정규화 + 연결어 보강) — 이름 쪽만 남긴다
+        dup_symbols = {i.symbol for i in items if sum(1 for j in items if j.symbol == i.symbol) > 1}
+        if dup_symbols:
+            keep = [i for i in items if not (i.symbol in dup_symbols and i.label.startswith(f"{i.symbol}("))]
+            if len(keep) >= 2:
+                kept_labels = {i.label for i in keep}
+                dropped = [i.label for i in items if i.label not in kept_labels]
+                items = keep
+                basket_items = [b for b in basket_items if f"{b['query']}({b['symbol']})" in kept_labels]
+                missing = [m for m in missing if not any(m.startswith(lbl) for lbl in dropped)]
+        if len(items) < 2:
+            text = ("비교할 종목을 둘 이상 찾지 못했어요" + (f": {', '.join(failed)}" if failed else "")
+                    + " — 정확한 종목명이나 티커로 다시 물어봐 주세요.")
             await self._conversations.add_message(conversation_id, "assistant", text)
             return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
-        direction_word = {"UP": "상승 신호", "DOWN": "하락 신호", "NEUTRAL": "중립"}
-        header = ("| 종목 | 현재가(지연) | 지금 신호 | 과거 같은 신호일 때 상승 비율 / 평소 | RSI | 12-1 모멘텀"
-                  " | 거래량(20일 대비) | 뉴스 감성 |\n|---|---|---|---|---|---|---|---|")
-        table = [header]
-        for q, a, f in rows:
-            unit = self._currency_unit(a.symbol)
-            price = f"{a.price:,.0f}{unit}" if unit == "원" else f"${a.price:,.2f}"
-            if f is not None and f.up_rate is not None and f.baseline_up_rate is not None:
-                stat = f"{f.up_rate:.0%} / {f.baseline_up_rate:.0%}(n={f.sample_size}{'' if f.ready else ', 유의성 미달'})"
-            else:
-                stat = "표본 없음"
-            table.append(
-                f"| {q}({a.symbol}) | {price} | {direction_word.get(a.direction, a.direction)} | {stat}"
-                f" | {a.rsi:.0f} | {a.momentum_12_1:+.1%}"
-                f" | {answer_guard.volume_verdict_cell(ma20=a.ma20, ma50=a.ma50, volume_ratio=a.volume_ratio)}"
-                f" | {a.sentiment_label} |"
-            )
-        ups = [q for q, a, _ in rows if a.direction == "UP"]
-        downs = [q for q, a, _ in rows if a.direction == "DOWN"]
-        if not ups and not downs:
-            verdict = "지금은 두 종목 모두 방향 신호가 중립이라, 이 데이터로는 우열을 가르지 않아요."
-        else:
-            parts = []
-            if ups:
-                parts.append(f"{'·'.join(ups)}에 상승 참고 신호")
-            if downs:
-                parts.append(f"{'·'.join(downs)}에 하락 참고 신호")
-            verdict = " / ".join(parts) + "가 있어요 — 과거 통계 참고치이지 매매 지시가 아니에요."
-        text = (
-            "**비교**\n" + "\n".join(table) + f"\n\n**결론** {verdict}"
-            + (f"\n(찾지 못함: {', '.join(failed)})" if failed else "")
-            + "\n각 종목을 따로 물으면 뉴스·매물대·가치 근거까지 서술해 드려요."
-        )
+        if failed:
+            missing.append("찾지 못한 종목: " + ", ".join(failed))
+        verdict = compare_svc.stock_verdict(items)
+        brief = bool(_COMPARE_BRIEF_RE.search(prompt)) and not _COMPARE_DETAIL_RE.search(prompt)
+        text = compare_svc.render_stock_compare(items, verdict, brief=brief, missing_notes=missing)
         text = answer_guard.ensure_disclaimer(text)
-        # 카드는 싣지 않는다 — 비교 답에 한 종목 카드만 붙으면 그 종목을 고른 것처럼 읽힌다
-        await self._conversations.add_message(conversation_id, "assistant", text)
+        # 카드는 싣지 않는다 — 비교 답에 한 종목 카드만 붙으면 그 종목을 고른 것처럼 읽힌다. 바구니만 남긴다.
+        await self._conversations.add_message(
+            conversation_id, "assistant", text, payload={"compareSet": {"kind": "stock", "items": basket_items}},
+        )
         return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
 
     async def _answer_stock(
@@ -2638,11 +3035,28 @@ class ChatInteractor(ChatUseCase):
         profile: UserProfileSummary | None = None, history: list[Message] = (),
     ) -> AskResponse:
         stock_query, extra_queries = stock_queries[0], stock_queries[1:]
+        basket = self._compare_basket(history)
+        if basket and basket.get("kind") == "stock" and not _COMPARE_RESET_RE.search(prompt):
+            # 비교 바구니 승계 — "그럼 하이닉스는?"은 바구니에 더해 다시 대조, "하이닉스는 빼"는 빼고 대조,
+            # "그래서 뭐가 나아"는 같은 바구니로 결론만. "따로/새로"가 있으면 바구니를 버린다.
+            items = [dict(i) for i in basket.get("items", [])]
+            if _has_exclusion(prompt):
+                items = [i for i in items
+                         if i["query"] not in stock_queries and i["symbol"] not in stock_queries and i["query"] not in prompt]
+            else:
+                for q in stock_queries:
+                    if all(q not in (i["query"], i["symbol"]) for i in items):
+                        items.append({"query": q, "symbol": ""})
+            items = items[-4:]
+            if len(items) >= 2:
+                return await self._answer_stock_compare(
+                    conversation_id, prompt, [i["query"] for i in items], on_stage, history=history,
+                )
         if extra_queries and _COMPARE_RE.search(prompt):
             # 다종목 비교(2026-09-08 QA P07) — 예전엔 첫 종목만 분석하고 "따로 물어봐 주세요"로 끝났다.
             # 비교표는 LLM 없이 코드가 만든다(수치 비교에 서술이 끼면 우열을 지어낸다). 비교 어휘가
             # 없는 다중 질의(분류기가 "PER 낮은 저평가"를 셋으로 쪼갠 경우)는 기존 단일 경로로 둔다.
-            return await self._answer_stock_compare(conversation_id, prompt, stock_queries[:3], on_stage)
+            return await self._answer_stock_compare(conversation_id, prompt, stock_queries[:4], on_stage, history=history)
         compare_notice = (
             f"여러 종목을 한 번에 물으셔서 '{stock_query}'만 분석했어요. "
             f"{', '.join(extra_queries)}은(는) 따로 물어봐 주세요.\n\n"

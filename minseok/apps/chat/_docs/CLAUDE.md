@@ -23,6 +23,9 @@ chat은 다른 스포크를 **직접 import하지 않는다**. 허브 `hub`가 �
 | `GeminiAnswerPort` | hub 자체 구현 (`GeminiApiAdapter`) | 일반 질문(general) 외부 Gemini 답변 |
 | `UserProfilePort` | recommendation (`UserProfileGateway`) | 투자·창업 프로파일(개인화 ⓪ — 서술 관점 조정) |
 | `AreaFinancePort` | market (`AreaFinanceGateway`) | 창업 재무 계산(BEP·부족 자금·runway) — 첫 줄은 코드 |
+| `AreaFitnessPort` | market (`AreaFitnessGateway`) | 입지 적합도(업종×상권 4축·진단·객단가) — 비교표 전용(2026-09-17) |
+| `AreaBacktestReportPort` | market (`AreaBacktestReportGateway`) | 상권 점수 백테스트 리포트(등급별 t+1 실측·컴포넌트 예측력) — 비교표 전용 |
+| `AreaGraphPort` | market (`AreaGraphNeo4jAdapter`) | Neo4j 투영 관계(행정 계층·같은 동 상권·업종 연결·기사 연결) — 비교표 전용, 그래프 장애 시 행만 비움 |
 
 ## 의도 라우팅 — phase0 (4분류)
 
@@ -187,3 +190,16 @@ check_freshness와 같다(n8n 웹훅 → 메일). 세 축을 본다:
 `region_hit_rate`는 1.0이었다 — 결정론 지역 가드가 대신 채웠기 때문이다. 품질 지표는
 폴백이 가려주지만 **형식 계약은 못 가린다**. 그래서 카나리아는 정확도가 아니라
 "JSON 스키마가 돌아오는가"만 본다.
+
+## 비교 바구니 — 상권·종목 비교는 대화 상태다 (2026-09-17)
+
+실대화 289("길음역과 비교해봐" → 단독 추천, "그래서 어디야" → 제3의 상권, "둘이 비교해줘" → 답 반복)의
+원인은 비교가 매 턴 새 추천이었던 것. 이제 비교 답의 payload에 `compareSet`(`kind` area|stock, `items`,
+업종)을 남기고 다음 턴이 이어받는다 — 새 지역·종목을 말하면 열이 늘고, 제외 어휘("길음 빼고")면 빠지고,
+"새로/따로/처음부터"면 바구니를 버린다(최대 4). 표·결론은 `domain/services/compare.py`(순수)가 만든다:
+결론이 **항상 첫 줄**(축별 다수결 — "X 1순위 — 비교한 N축 중 M축 우위(축마다 수치 vs 수치)"),
+'주의'·'위험' 등급은 수치가 앞서도 1순위에서 빼고 이유를 적는다. 종목은 "데이터상 우위"까지만(권유 금지).
+"그래서 어디야/뭐가 나아"는 결론+축별 판정만, 그 외는 전체 표(★ = 축 우위)·업종 공통 창업비용 블록·
+못 쓴 데이터 목록(왜 못 썼는지)까지. 상권 표는 분기 팩트·건강 점수(컴포넌트마다 백테스트 예측력 병기)·
+서울 순위·인허가·재무(자기자본이 있을 때 월세·공실률·손익분기)·입지 적합도·그래프·기사를 전부 싣는다.
+

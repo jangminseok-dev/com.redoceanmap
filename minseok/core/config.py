@@ -124,3 +124,8 @@ KAKAO_CLIENT_SECRET = _secrets.get("KAKAO_CLIENT_SECRET")  # 콘솔에서 선택
 KAKAO_APP_ID = _secrets.get("KAKAO_APP_ID")
 NAVER_CLIENT_ID = _secrets.get("NAVER_CLIENT_ID")
 NAVER_CLIENT_SECRET = _secrets.get("NAVER_CLIENT_SECRET")
+
+# Neo4j 그래프(상권 관계 투영 — scripts/project_graph.py가 매일 적재). 미설정이면 그래프 행을 비운다(열화).
+NEO4J_URI = _secrets.get("NEO4J_URI", "")
+NEO4J_USER = _secrets.get("NEO4J_USER", "neo4j")
+NEO4J_PASSWORD = _secrets.get("NEO4J_PASSWORD", "")

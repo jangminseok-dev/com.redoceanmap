@@ -6,6 +6,9 @@ from chat.app.ports.input.chat_use_case import ChatUseCase
 from chat.app.use_cases.chat_interactor import ChatInteractor
 from core.database import get_db
 from hub.app.ports.output.area_finance_port import AreaFinancePort
+from hub.app.ports.output.area_backtest_report_port import AreaBacktestReportPort
+from hub.app.ports.output.area_fitness_port import AreaFitnessPort
+from hub.app.ports.output.area_graph_port import AreaGraphPort
 from hub.app.ports.output.commercial_data_port import CommercialDataPort
 from hub.app.ports.output.gemini_answer_port import GeminiAnswerPort
 from hub.app.ports.output.market_news_search_port import MarketNewsSearchPort
@@ -19,6 +22,9 @@ from hub.app.ports.output.paper_decision_port import PaperDecisionPort
 from hub.app.ports.output.stock_signal_board_port import StockSignalBoardPort
 from hub.app.ports.output.user_profile_port import UserProfilePort
 from hub.dependencies.area_finance_provider import get_area_finance_port
+from hub.dependencies.area_backtest_report_provider import get_area_backtest_report_port
+from hub.dependencies.area_fitness_provider import get_area_fitness_port
+from hub.dependencies.area_graph_provider import get_area_graph_port
 from hub.dependencies.commercial_data_provider import get_commercial_data_port
 from hub.dependencies.forecast_refit_provider import get_forecast_refit_port
 from hub.dependencies.fundamental_read_provider import get_fundamental_read_port
@@ -47,6 +53,9 @@ def get_chat_use_case(
     signals: StockSignalBoardPort = Depends(get_stock_signal_board_port),
     paper: PaperDecisionPort = Depends(get_paper_decision_port),
     finance: AreaFinancePort = Depends(get_area_finance_port),
+    fitness: AreaFitnessPort = Depends(get_area_fitness_port),
+    backtests: AreaBacktestReportPort = Depends(get_area_backtest_report_port),
+    graph: AreaGraphPort = Depends(get_area_graph_port),
     db: AsyncSession = Depends(get_db),
 ) -> ChatUseCase:
     return ChatInteractor(
@@ -64,4 +73,7 @@ def get_chat_use_case(
         signals=signals,
         paper=paper,
         finance=finance,
+        fitness=fitness,
+        backtests=backtests,
+        graph=graph,
     )

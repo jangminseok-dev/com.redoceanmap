@@ -36,4 +36,6 @@ class AreaFinanceGateway(AreaFinancePort):
             stress_runway=tuple((s.rate_delta_pp, s.runway_months) for s in p.stress),
             expected_monthly_sales=int(p.inputs.expected_monthly_sales.value) if p.inputs.expected_monthly_sales else None,
             rent_level=view.rent.level if view.rent else None,
+            vacancy_rate=view.rent.vacancy_rate if view.rent else None,
+            rent_region=view.rent.region_name if view.rent else "",
         )
