@@ -15,7 +15,7 @@ class EvalCase:
 
     case_id: str
     # market_region | market_noregion | market_nonseoul | market_finance
-    # | stock_kr | stock_us | stock_fuzzy | market_news | general | multiturn
+    # | stock_kr | stock_us | stock_fuzzy | market_news | general | multiturn | market_compare
     category: str
     prompt: str
     expected_intent: str                       # stock | market_news | market | general

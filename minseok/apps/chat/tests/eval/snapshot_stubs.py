@@ -23,6 +23,7 @@ from hub.app.dtos.commercial_data_dto import (
     AreaScoreComponent,
     AreaScoreInfo,
     AreaSummary,
+    AreaTraitRow,
     PermitChurnInfo,
     ServiceCode,
 )
@@ -225,6 +226,32 @@ class SnapshotMarket:
 
     async def get_area_permit_churn(self, trdar_codes, months=12):
         return {c: p for c in trdar_codes if (p := synthetic_permit_churn(c)) is not None}
+
+    async def get_area_traits(self, service_scope=None):
+        # 성격형 질문 결정론 랭킹(2026-09-17, MN03·04·06·07·09)용 — 요약 스냅샷에서 시드 합성(다른 합성과 동일 규칙)
+        rows = []
+        for a in self._areas:
+            s = _seed(a.trdar_code)
+            h = (a.trdar_code * 2654435761) % 1_000_003  # 인구·시설용 넓은 시드 — 동률이 흔하면 결론 오라클이 순서 오류를 못 잡는다
+            sales = self._sales.get(a.trdar_code)
+            month = (sales // 3) if sales else None
+            rows.append(AreaTraitRow(
+                trdar_code=a.trdar_code, trdar_name=a.trdar_name,
+                district_name=a.district_name, dong_name=a.adm_dong_name,
+                store_count=150 + s % 300, area_store_count=400 + s % 800,  # 업종 범위 합계 수준 — 점포당 금액이 현실 범위에 오게
+                monthly_sales=month, monthly_sales_count=(month // (8_000 + s % 20_000)) if month else None,
+                lunch_sales=month * (15 + s % 25) // 100 if month else None,
+                dinner_sales=month * (20 + s % 20) // 100 if month else None,
+                night_sales=month * (3 + s % 15) // 100 if month else None,
+                weekend_sales=month * (20 + s % 30) // 100 if month else None,
+                weekday_sales=month * (50 + s % 30) // 100 if month else None,
+                age_sales=tuple(month * p // 100 for p in (3, 20 + s % 15, 25, 20, 15, 10)) if month else None,
+                working_pop=1_000 + h % 150_000, floating_pop=3_000_000 + h * 7 % 9_000_000,
+                night_floating_pop=300_000 + h * 13 % 1_500_000, total_households=500 + h * 3 % 9_000,
+                apartment_households=h * 11 % 5_000, university_count=h % 7, subway_station_count=h % 3,
+                child_facility_count=h % 5,
+            ))
+        return rows
 
     async def get_area_ranking(self, service_code=None):
         # 조건 질의 결정론 라우팅(I-14, MN11)용 — 요약 스냅샷에서 시드 합성(다른 합성과 동일 규칙)

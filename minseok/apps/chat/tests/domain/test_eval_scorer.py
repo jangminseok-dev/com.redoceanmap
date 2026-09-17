@@ -141,6 +141,15 @@ def test_리스크_문장_포함률은_모든_추천_이유에_유의가_있어�
     assert report.risk_mention_rate == 0.5
 
 
+def test_이유가_빈_결정론_비교_카드는_리스크_문장_모수에서_뺀다():
+    cases = [_case("C1"), _case("C2", prompt="성수랑 연남 비교")]
+    marked = _trace("C1", recommendation_codes=(1,), recommendation_labels=("a|b|c",),
+                    recommendation_reasons=("좋아요. 유의할 점: 폐업률.",))
+    compare_cards = _trace("C2", recommendation_codes=(1, 2), recommendation_labels=("a|b|c", "d|e|f"),
+                           recommendation_reasons=("", ""))
+    assert score(cases, [marked, compare_cards]).risk_mention_rate == 1.0
+
+
 # --- 절대 규칙 ---
 
 def test_환각_숫자_판정():

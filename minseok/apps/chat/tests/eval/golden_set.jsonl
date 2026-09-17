@@ -142,3 +142,8 @@
 {"case_id": "MF08", "category": "market_finance", "prompt": "망원동 카페 자기자본 6천만원이면 얼마나 버틸 수 있어?", "expected_intent": "market", "region": "망원동"}
 {"case_id": "MF09", "category": "market_finance", "prompt": "혜화동 카페 월세 200이면 손익분기 얼마야?", "expected_intent": "market", "region": "혜화동"}
 {"case_id": "MF10", "category": "market_finance", "prompt": "노원역 헬스장 자본금 3억 인테리어 1억 월세 500 흑자 가능해?", "expected_intent": "market", "region": "노원역"}
+{"case_id": "MC01", "category": "market_compare", "prompt": "성수동이랑 연남동 카페 비교해줘", "expected_intent": "market"}
+{"case_id": "MC02", "category": "market_compare", "prompt": "강남역과 잠실역 중 치킨집 어디가 나아?", "expected_intent": "market"}
+{"case_id": "MC03", "category": "market_compare", "prompt": "홍대입구역 vs 신촌역 호프집 비교", "expected_intent": "market"}
+{"case_id": "MC04", "category": "market_compare", "prompt": "망원동이랑 연남동 중에 카페 차리기 어디가 나아?", "expected_intent": "market"}
+{"case_id": "MC05", "category": "market_compare", "prompt": "노원역하고 왕십리역 분식집 비교해줘", "expected_intent": "market"}

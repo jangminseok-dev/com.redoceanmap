@@ -325,8 +325,10 @@ def score(cases: list[EvalCase], traces: list[CaseTrace]) -> EvalReport:
     )
     volume_verdict_rate = _rate(volume_verdicts, len(stock_answers))
 
+    # 이유가 전부 빈 카드는 결정론 비교(2026-09-17 MC01~05)의 대상 상권 카드다 — 유의점은 비교표·결론이 맡고
+    # 모델이 쓴 추천 이유가 없으니 C2(모델 리스크 의무) 모수에서 뺀다.
     market_recs = [t for _, t in scored
-                   if t.final_intent == "market" and t.recommendation_reasons]
+                   if t.final_intent == "market" and any(r.strip() for r in t.recommendation_reasons)]
     risk_mentions = sum(
         1 for t in market_recs
         if all("유의" in reason for reason in t.recommendation_reasons)
