@@ -406,3 +406,12 @@ def test_자기자본이_충분하면_충당돼요_문구도_계산_성공으로
     cases = [_case("F1", category="market_finance", prompt="성수동 카페 자기자본 1억 월세 300")]
     traces = [_trace("F1", answer_text="…손익분기 월매출은 434만원이에요. 자기자본으로 개업 비용과 3개월 운전자금이 충당돼요.")]
     assert score(cases, traces).finance_answer_rate == 1.0
+
+
+def test_코드가_쓴_상권_리포트의_수치는_환각_숫자로_세지_않는다():
+    from chat.domain.services.compare import REPORT_HEADING
+    from chat.domain.value_objects.eval_trace import LlmCall
+    cases = [_case("C1")]
+    trace = _trace("C1", answer_text=f"결론 문장.\n\n{REPORT_HEADING}성수** — 서울 1,064곳 중 246위",
+                   calls=(LlmCall(phase="phase2", prompt="컨텍스트", response="{}", latency_ms=1.0),))
+    assert not [v for v in score(cases, [trace]).violations if v.rule == "hallucinated_number"]

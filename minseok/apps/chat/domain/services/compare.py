@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from chat.domain.services.answer_guard import CAUTION_GRADES
@@ -126,6 +127,7 @@ class AreaCompareItem:
     fitness: dict | None = None                                   # total(0~100)·components[(label,score,weight)]·diagnoses[(tone,msg)]·ticket·similar
     graph: dict | None = None                                     # region_path·siblings·industries·has_service·rivals·articles
     backtest: dict | None = None                                  # 이 등급의 실측(점수 v2 백테스트): n·closure(향후 1년 폐업률)·closure_n·floating
+    has_industry_sales: bool = True                               # 이 업종 매출 기록이 있나 — 없으면 1순위 판정에서 뺀다
 
     def axis_values(self) -> dict[str, float | None]:
         return {
@@ -165,12 +167,17 @@ def area_verdict(items: list[AreaCompareItem]) -> AreaVerdict:
     results = judge_axes(AREA_AXES, {i.name: i.axis_values() for i in items})
     wins = tally(results, names)
     compared = sum(1 for r in results if not r.skipped)
+    # 업종 매출이 없는 상권은 등급이 높아도 1순위에서 뺀다 — 등급은 상권 전체 점수라 "이 업종으로 해볼 곳"의 근거가
+    # 되지 못한다(2026-09-17 실사용: 커피 매출 기록이 없는 길음시장이 '양호'로 1순위 후보에 올랐다)
     graded = sorted(
-        (i for i in items if i.grade in GRADE_ORDER and i.score_total is not None),
+        (i for i in items if i.grade in GRADE_ORDER and i.score_total is not None and i.has_industry_sales),
         key=lambda i: (GRADE_ORDER.index(i.grade), -i.score_total),
     )
-    ungraded = [i.name for i in items if i not in graded]
+    no_sales = [i.name for i in items if not i.has_industry_sales]
+    ungraded = [i.name for i in items if i not in graded and i.has_industry_sales]
     tail = f" 점수 미산출: {'·'.join(ungraded)}." if ungraded else ""
+    if no_sales:
+        tail += f" 이 업종 매출 기록 없음(1순위 판정 제외): {'·'.join(no_sales)}."
     scores = " · ".join(f"{i.name} '{i.grade}' {i.score_total:.1f}점" for i in graded)
 
     first: str | None = None
@@ -214,15 +221,202 @@ def _mark(name: str, winner: str | None) -> str:
     return "★ " if winner == name else ""
 
 
+def strengths_block(items: list[AreaCompareItem], results: list[AxisResult]) -> str:
+    """상권별 특장점 — 축별 판정을 상권 기준으로 다시 묶는다(2026-09-17 실사용: "각 지역마다 특장점을 이야기 해줘야지").
+
+    강점 = 그 축 최선값(단독·공동), 약점 = 비교 대상 3곳 이상에서 최악값이거나 2곳 비교에서 진 축.
+    판정(1순위)과 별개로, 사용자가 곳마다 무엇을 얻고 무엇을 감수하는지 한 줄씩 보게 한다.
+    """
+    lines = []
+    for i in items:
+        strong, weak = [], []
+        for r in results:
+            if r.skipped or i.name not in r.values:
+                continue
+            vals, axis = r.values, r.axis
+            v = vals[i.name]
+            value = f"{axis.fmt.format(v)}{axis.unit}"
+            n = len(vals)
+            worst = min(vals.values()) if axis.higher_is_better else max(vals.values())
+            if i.name in r.tied or r.winner == i.name:
+                strong.append(f"{axis.label} {value}" + (f"({n}곳 중 1위)" if n >= 3 and len(r.tied) <= 1 else ""))
+            elif v == worst:
+                tag = "최하" if axis.higher_is_better else "최고"
+                weak.append(f"{axis.label} {value}" + (f"({n}곳 중 {tag})" if n >= 3 else ""))
+        grade = f" ('{i.grade}' {i.score_total:.1f}점)" if i.grade and i.score_total is not None else " (등급 미산출)"
+        parts = [f"강점 — {' · '.join(strong)}" if strong else "강점 — 비교 축에서 앞선 항목 없음"]
+        if weak:
+            parts.append(f"약점 — {' · '.join(weak)}")
+        if i.insights:
+            parts.append(f"성격 — {i.insights[0]}")
+        if i.fitness and i.fitness.get("diagnoses"):
+            bad = next((m for t, m in i.fitness["diagnoses"] if t == "bad"), None)
+            if bad:
+                parts.append(f"주의 — {bad}")
+        lines.append(f"- **{i.name}**{grade}: " + " / ".join(parts))
+    return "**상권별 특장점**\n" + "\n".join(lines)
+
+
+def _startup_cost_line(c: dict) -> str:
+    # 항목별 중앙값은 서로 다른 브랜드에서 나와 더해도 합계 중앙값이 되지 않는다("합계 8,036 = … 기타 9,262" 오독, 2026-09-17)
+    line = (f"**업종 공통 — 창업비용(공정위 정보공개서 {c['year']}, {c['industry']} 브랜드 중앙값)** 합계 {c['total']:,}만원"
+            f" (항목별 중앙값: 가맹금 {c['franchise_fee']:,} · 교육비 {c['education_fee']:,} · 보증금 {c['deposit']:,} · 기타 {c['other_fee']:,}만원"
+            " — 브랜드마다 달라 더해도 합계와 같지 않아요). 점포 임대료·인테리어는 별도라 실제 총액은 이보다 커요.")
+    if c.get("budget"):
+        cap = c["budget"] * 0.7
+        line += (f" 예산 {c['budget'] / 10000:,.0f}만원의 70%({cap / 10000:,.0f}만원) 안에 "
+                 + ("들어와요." if c["total"] * 10000 <= cap else "안 들어와요."))
+    return line
+
+
+def _quarters(text: str) -> str:
+    """추이 문구의 분기 코드(20251)를 읽히는 표기(2025년 1분기)로."""
+    return re.sub(r"\b(20\d{2})([1-4])\b", r"\1년 \2분기", text)
+
+
+def _finance_text(f: dict) -> str:
+    parts = []
+    if f.get("rent") is not None:
+        parts.append(f"월세(추정) {f['rent']:,}만원({f.get('rent_level', '')}{' ' + f['rent_region'] if f.get('rent_region') else ''})")
+    if f.get("vacancy") is not None:
+        parts.append(f"공실률 {f['vacancy']:.1f}%")
+    if f.get("key_money") is not None:
+        parts.append(f"권리금 {f['key_money']:,}만원({'입력' if f.get('key_money_note') == '입력' else '가정'})")
+    if f.get("bep") is not None:
+        parts.append(f"손익분기 월매출 {f['bep']:,}만원")
+    if f.get("attainment") is not None:
+        parts.append(f"현재 점포당 매출로 손익분기 {f['attainment']:.0%} 달성")
+    if f.get("profit") is not None:
+        parts.append(f"월 이익(추정) {f['profit']:,}만원")
+    if f.get("gap") is not None:
+        parts.append(f"부족 자금 {f['gap']:,}만원" if f["gap"] > 0 else "자기자본으로 충당")
+    return " · ".join(parts)
+
+
+def _area_detail_blocks(items: list[AreaCompareItem]) -> list[str]:
+    """곳마다 성격·추이·적합도 진단·재무·인허가·기사를 한 단락으로 — 특장점 후속·단일 리포트용."""
+    mark = {"good": "○", "warn": "△", "bad": "✕"}
+    out = []
+    for i in items:
+        lines = [f"**{i.name}** ({i.district})"]
+        if i.insights:
+            lines.append("- 고객·배후 성격: " + " / ".join(i.insights))
+        if i.trend:
+            lines.append(f"- 추이: {_quarters(i.trend)}")
+        if i.permit:
+            opened, closed, active, months = i.permit
+            lines.append(f"- 인허가 교체(최근 {months}개월): 개업 {opened} · 폐업 {closed} · 영업중 {active}")
+        if i.fitness and i.fitness.get("diagnoses"):
+            lines.append("- 입지 적합도 진단: " + " / ".join(f"{mark.get(t, '·')} {m}" for t, m in i.fitness["diagnoses"]))
+        if i.finance:
+            lines.append(f"- 재무: {_finance_text(i.finance)}")
+        if i.news:
+            lines.append("- 최근 기사: " + " / ".join(i.news))
+        if len(lines) > 1:
+            out.append("\n".join(lines))
+    return out
+
+
+# 단일 상권 리포트 머리 — 채점기가 이 뒤(코드가 데이터로 쓴 근거 블록)를 모델 서술의 환각 숫자 판정에서 뺀다
+REPORT_HEADING = "**상권 리포트 — "
+
+
+def render_area_report(item: AreaCompareItem, *, service_name: str, quarter_label: str, missing_notes: list[str],
+                       startup_cost: dict | None = None,
+                       predictiveness: dict[str, tuple[float | None, float | None, int]] | None = None) -> str:
+    """단일 상권 리포트 — 비교와 같은 데이터를 한 곳에 대해 판단 순서(수익성 → 안정성 → 수요 → 경쟁 → 비용)로 푼다.
+
+    2026-09-17 실사용: "성수동 카페 상권 어때요?"의 답이 결론 한 줄 + 1문장(168자)이었다. 수치는 전부 코드가 넣는다
+    (LLM 서술은 앞 단락의 해석, 이 블록은 근거표). 서울 순위·등급 구성요소·백테스트 실측으로 "그래서 좋은 편인가"를 붙인다.
+    """
+    t = item.texts
+    lines = [f"{REPORT_HEADING}{item.name}** ({item.district} · {service_name} · {quarter_label})"]
+    rev = [_cell(t.get("revenue_text"), "")]
+    if item.rank_sales:
+        rev.append(f"서울 {item.rank_sales[1]:,}곳 중 {item.rank_sales[0]:,}위")
+    if t.get("weekday_text") and "없음" not in t["weekday_text"]:
+        rev.append(t["weekday_text"])
+    if item.small_sample:
+        rev.append("점포 5개 미만이라 표본이 작아요")
+    lines.append("- **수익성**: " + " · ".join(p for p in rev if p) + (f" (산식: {t['revenue_source']})" if t.get("revenue_source") else ""))
+
+    stab = []
+    if item.closure_rate is not None:
+        stab.append(f"최근 1년 폐업률 {item.closure_rate:.1f}%" + (f"(서울 낮은 순 {item.rank_closure[0]:,}위/{item.rank_closure[1]:,}곳)" if item.rank_closure else ""))
+    if t.get("op_months_text") and "없음" not in t["op_months_text"]:
+        stab.append(t["op_months_text"])
+    if item.score_total is not None:
+        comps = []
+        for key, cname, cscore, value, bench in item.components:
+            fmt = _COMPONENT_VALUE_FORMAT.get(key, "{:.1f}")
+            pred = (predictiveness or {}).get(key)
+            rho = f", 예측력 ρ={pred[0]:+.2f}" if pred and pred[0] is not None else ""
+            comps.append(f"{cname} {cscore:.0f}점({fmt.format(value)} / 서울 중앙 {fmt.format(bench)}{rho})")
+        stab.append(f"상권 건강 {item.score_total:.1f}점 '{item.grade}'" + (f" — {' · '.join(comps)}" if comps else ""))
+    if item.backtest and item.backtest.get("closure") is not None:
+        stab.append(f"같은 '{item.grade}' 등급 상권의 다음 1년 폐업률 실측 평균 {item.backtest['closure']:.2f}%({item.backtest['closure_n']:,}건)")
+    if stab:
+        lines.append("- **안정성**: " + " · ".join(stab))
+
+    demand = [x for x in (t.get("foot_text"), f"피크 {t['peak_time']}" if t.get("peak_time") and "없음" not in t["peak_time"] else "",
+                          f"유동인구 최다 연령 {t['top_age']}" if t.get("top_age") and "없음" not in t["top_age"] else "",
+                          f"상권 변화 '{t['change_text']}'" if t.get("change_text") and "없음" not in t["change_text"] else "")
+              if x and "없음" not in x]
+    if demand:
+        lines.append("- **수요**: " + " · ".join(demand))
+    if item.insights:
+        lines.append("- **고객·배후 성격**: " + " / ".join(item.insights))
+
+    comp = [x for x in (t.get("store_count_text"), t.get("franchise_text"), t.get("closure_text"), t.get("opening_text")) if x and "없음" not in x]
+    if item.permit:
+        opened, closed, active, months = item.permit
+        comp.append(f"인허가 최근 {months}개월 개업 {opened}·폐업 {closed}·영업중 {active}")
+    if item.graph and item.graph.get("rivals") is not None:
+        comp.append(f"같은 동 {service_name} 상권 {item.graph['rivals']}곳")
+    if comp:
+        lines.append("- **경쟁**: " + " · ".join(comp))
+    if item.fitness:
+        mark = {"good": "○", "warn": "△", "bad": "✕"}
+        f = item.fitness
+        head = f"{f['total']:.0f}점" if f.get("total") is not None else "산출 불가"
+        parts = [f"{label} {score * 100:.0f}점" for label, score, _w in f.get("components", ())]
+        if f.get("ticket"):
+            parts.append(f"객단가 {f['ticket']:,}원")
+        diag = " / ".join(f"{mark.get(tone, '·')} {m}" for tone, m in f.get("diagnoses", ()))
+        lines.append(f"- **입지 적합도(업종×상권)**: {head}" + (f" — {' · '.join(parts)}" if parts else "") + (f" · 진단: {diag}" if diag else ""))
+    if item.finance:
+        lines.append(f"- **재무**: {_finance_text(item.finance)}")
+    if item.trend:
+        lines.append(f"- **추이**: {_quarters(item.trend)}")
+    if item.news:
+        lines.append("- **최근 기사**: " + " / ".join(item.news))
+    out = ["\n".join(lines)]
+    if startup_cost:
+        out.append(_startup_cost_line(startup_cost))
+    notes = [m for m in missing_notes if not m.startswith("(참고)")]
+    if notes:
+        out.append("**이 리포트에 못 쓴 데이터**\n" + "\n".join(f"- {m}" for m in notes))
+    out.append("다른 동네와 나란히 보려면 \"성수동이랑 연남동 비교해줘\"처럼 물어봐 주세요.")
+    return "\n\n".join(out)
+
+
 def render_area_compare(items: list[AreaCompareItem], v: AreaVerdict, *, service_name: str,
                         quarter_label: str, brief: bool, missing_notes: list[str],
                         startup_cost: dict | None = None,
-                        predictiveness: dict[str, tuple[float | None, float | None, int]] | None = None) -> str:
+                        predictiveness: dict[str, tuple[float | None, float | None, int]] | None = None,
+                        focus: str = "") -> str:
     """결론 → (등급 고지) → 축별 판정 → 전체 표 → 업종 공통(창업비용) → 상권 성격·추이·진단·기사 → 못 쓴 데이터 → 조작 안내.
     startup_cost: 업종 공통 창업비용(공정위) — 상권마다 같아 열이 아니라 블록. predictiveness: 컴포넌트 키 → (spearman, 상하위 5분위 차, n)."""
     names = [i.name for i in items]
     win_of = {r.axis.key: r.winner for r in v.results}
-    out: list[str] = [v.line]
+    out: list[str] = [v.line, strengths_block(items, v.results)]
+    if focus == "strengths":
+        # "각 지역마다 특장점" 후속 — 같은 전체 표를 다시 내지 않고 곳마다 성격·추이·진단·재무를 풀어 쓴다
+        out.extend(_area_detail_blocks(items))
+        if startup_cost:
+            out.append(_startup_cost_line(startup_cost))
+        out.append("축별 판정과 전체 지표 표는 \"자세히 비교해줘\"라고 하면 다시 보여 드려요.")
+        return "\n\n".join(out)
 
     out.append("**참고 지표별 비교** (1순위 판정에는 쓰지 않아요)\n"
                + "\n".join(f"- {r.axis.label}: {r.verdict_text()}" for r in v.results))
@@ -324,15 +518,7 @@ def render_area_compare(items: list[AreaCompareItem], v: AreaVerdict, *, service
     out.append(f"**전체 지표** — {service_name}, {quarter_label} 기준 (★ = 그 축 우위)\n{table}")
 
     if startup_cost:
-        c = startup_cost
-        line = (f"**업종 공통 — 창업비용(공정위 정보공개서 {c['year']}, {c['industry']} 브랜드 중앙값)** 합계 {c['total']:,}만원"
-                f" = 가맹금 {c['franchise_fee']:,} · 교육비 {c['education_fee']:,} · 보증금 {c['deposit']:,} · 기타 {c['other_fee']:,}만원."
-                " 점포 임대료·인테리어는 별도라 실제 총액은 이보다 커요.")
-        if c.get("budget"):
-            cap = c["budget"] * 0.7
-            line += (f" 예산 {c['budget'] / 10000:,.0f}만원의 70%({cap / 10000:,.0f}만원) 안에 "
-                     + ("들어와요." if c["total"] * 10000 <= cap else "안 들어와요."))
-        out.append(line)
+        out.append(_startup_cost_line(startup_cost))
     key_money_notes = list(dict.fromkeys(
         n for i in items if (n := (i.finance or {}).get("key_money_note")) and n != "입력"
     ))

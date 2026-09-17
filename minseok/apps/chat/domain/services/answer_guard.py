@@ -192,6 +192,16 @@ def enforce_sentiment_claim(answer: str, sentiment: float | None) -> str:
 _DISCLAIMER_PLACEHOLDER = re.compile(r"\s*[\[(【][^\]\)】\n]*고지[^\]\)】\n]*[\])】]\s*$")
 
 
+def strip_disclaimer_lines(answer: str) -> str:
+    """본문 중간의 짧은 고지 줄을 뺀다 — 뒤에 리포트를 붙이면 고지가 두 번 나온다(2026-09-17 종목 리포트).
+    고지는 ensure_disclaimer가 맨 끝에 한 번 붙인다. 40자 넘는 줄은 고지가 아니라 서술로 보고 건드리지 않는다."""
+    kept = [
+        line for line in answer.split("\n")
+        if not (len(line.strip()) <= 40 and _DISCLAIMER_SUBJECT.search(line) and _DISCLAIMER_OWNER.search(line))
+    ]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(kept))
+
+
 def ensure_disclaimer(answer: str) -> str:
     """책임 고지가 꼬리에 없으면 붙인다. 있으면 그대로 둔다(중복 고지 방지)."""
     answer = _DISCLAIMER_PLACEHOLDER.sub("", answer)

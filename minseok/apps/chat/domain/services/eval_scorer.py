@@ -29,6 +29,8 @@ import re
 from dataclasses import dataclass
 
 from chat.domain.services import answer_guard
+from chat.domain.services.compare import REPORT_HEADING
+from chat.domain.services.stock_report import STOCK_REPORT_HEADING
 from chat.domain.services.amount_parser import parse_won
 from chat.domain.value_objects.eval_trace import CaseTrace, EvalCase, LlmCall
 
@@ -189,6 +191,13 @@ def _stem(name: str) -> str:
     while len(stem) > 2 and stem[-1] in "구동가로읍면리":
         stem = stem[:-1]
     return stem
+
+
+def _model_text(answer: str) -> str:
+    """모델 서술 구간 — 코드가 데이터로 쓴 리포트(상권·종목, 2026-09-17)는 인용·환각 판정 대상이 아니다."""
+    for heading in (REPORT_HEADING, STOCK_REPORT_HEADING):
+        answer = answer.split(f"\n\n{heading}", 1)[0]
+    return answer
 
 
 def _numbers(text: str) -> set[str]:
@@ -363,7 +372,7 @@ def score(cases: list[EvalCase], traces: list[CaseTrace]) -> EvalReport:
             violations.append(RuleViolation(c.case_id, "dangling_citation", f"[{n}]"))
         if not sources:
             continue  # 마커 도입 전 트레이스 — 커버리지 표본에서 제외
-        for sentence in _sentences_with_markers(t.answer_text):
+        for sentence in _sentences_with_markers(_model_text(t.answer_text)):
             # 마커 자체의 숫자([12])가 문장을 '수치 주장'으로 만들지 않게 벗겨내고 센다
             if not _numbers(_MARKER_NUM.sub("", sentence)):
                 continue
@@ -441,7 +450,9 @@ def score(cases: list[EvalCase], traces: list[CaseTrace]) -> EvalReport:
                 violations.append(RuleViolation(c.case_id, "grade_caution", "본문 추천 어휘"))
         gen = _generative_call(t)
         if gen is not None:
-            answer = t.answer_text + " " + " ".join(t.recommendation_reasons)
+            # 코드가 데이터로 쓴 상권 리포트(2026-09-17)는 모델 서술이 아니다 — 컨텍스트 밖 수치(서울 순위·백테스트)가 있어도 창작이 아니다
+            model_text = _model_text(t.answer_text)
+            answer = model_text + " " + " ".join(t.recommendation_reasons)
             grounded = _numbers(gen.prompt) | _numbers(c.prompt)
             # 반올림 동치 — 컨텍스트가 182.36을 주면 모델은 182로 되받는다(2026-08-05 실측
             # SU08). 소수 원값이 있는 숫자의 정수 반올림형은 근거 있는 숫자로 인정한다.

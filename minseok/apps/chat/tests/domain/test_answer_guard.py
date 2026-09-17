@@ -199,3 +199,9 @@ def test_ensure_disclaimer_자리표시자_고지는_걷어내고_실제_고지�
     assert "[투자 판단 책임 고지]" not in out
     assert out.rstrip()[-1] in ".!?…" and "본인" in out[-80:]
 
+
+
+def test_짧은_고지_줄만_빼고_서술은_남긴다():
+    from chat.domain.services.answer_guard import strip_disclaimer_lines
+    text = "추세는 중립입니다 [1].\n\n투자 판단은 본인의 책임입니다.\n\n지금은 방향 신호가 중립이에요."
+    assert strip_disclaimer_lines(text) == "추세는 중립입니다 [1].\n\n지금은 방향 신호가 중립이에요."

@@ -24,6 +24,7 @@ from chat.domain.entities.conversation_entity import ConversationSummary, Messag
 from chat.domain.services import answer_guard
 from chat.domain.services import compare as compare_svc
 from chat.domain.services import trait_ranking as trait_svc
+from chat.domain.services.stock_report import StockReportInput, render_stock_report
 from chat.domain.services.amount_parser import (
     fmt_won,
     parse_budget_krw,
@@ -600,7 +601,13 @@ _WHICH_ONE_RE = re.compile(r"(?:괜찮|낫|좋|나아)(?:다는|은|는)?\s*(?:�
 # 비교 바구니(compareSet) 후속의 분량·조작 — "그래서 어디야"는 결론+축별 판정만, "자세히"는 전체 표.
 # "새로/처음부터/따로"는 바구니를 버리고 기존 흐름(단독 답)으로 돌아간다.
 _COMPARE_BRIEF_RE = re.compile(r"결론|그래서|어디야|어느|뭐가\s*(?:더|낫|나아)|괜찮|낫[냐니]|나아\?")
-_COMPARE_DETAIL_RE = re.compile(r"자세|상세|전부|다\s*보여|표로|항목|모든|디테일")
+_COMPARE_DETAIL_RE = re.compile(r"자세|상세|전부|다\s*보여|표로|항목|모든|디테일|특장점|장단점|강점|약점|각\s*(?:지역|상권|곳|동네)|하나씩|구체")
+# 여러 지역을 나열하고 분석·추천을 요청하는 첫 질문 — 비교 어휘가 없어도 코드가 전부 대조한다(2026-09-17 실사용:
+# "수유,길음,홍대,성수,강남 커피상권분석해서 4000만원으로 진행할만한곳 추천해줘"에 phase1이 3곳만 골라 한남IC를 섞었다)
+_MULTI_AREA_ASK_RE = re.compile(r"분석|추천|어때|알려|할만|해볼만|괜찮|좋을|골라|찾아|봐\s*줘|정리")
+_AREA_COMPARE_MAX = 5
+# "각 지역마다 특장점"은 같은 전체 표 반복이 아니라 곳마다 풀어 쓴 답이 필요하다(2026-09-17 실사용: 11,102자 표가 세 번)
+_COMPARE_STRENGTH_RE = re.compile(r"특장점|장단점|강점|약점|각\s*(?:지역|상권|곳|동네)|하나씩|지역마다|곳마다")
 _COMPARE_RESET_RE = re.compile(r"새로|처음부터|따로|단독|이것만|얘만|만\s*(?:봐|보여|분석|알려)")
 _SURGE_PICK_RE = re.compile(
     # 4차 실측 S4: "내일 급등할 종목 알려줘"가 관형형 어미(할/하는) 때문에 빠져나가
@@ -999,27 +1006,42 @@ class ChatInteractor(ChatUseCase):
                 return True
         return False
 
-    def _compare_place_groups(self, summary: AreaSummary, prompt: str) -> list[tuple[str, set[int]]]:
-        """비교 질문의 지역 구절별 상권 집합 — "성수동이랑 연남동 중", "잠실역 vs 석촌고분역".
-        연결어 앞뒤 어절을 지명으로 보고 각각 언급 판정을 돌린다. 2개 미만이면 자치구 묶음으로 폴백."""
-        groups: list[tuple[str, set[int]]] = []
+    def _explicit_place_groups(self, summary: AreaSummary, prompt: str) -> list[tuple[str, set[int]]]:
+        """질문이 직접 나열한 지역 구절별 상권 집합 — "성수동이랑 연남동 중", "잠실역 vs 석촌고분역", "수유,길음,홍대,성수,강남".
+
+        짝 정규식은 겹치지 않게 찾아 쉼표 나열의 세 번째부터 놓쳤다(2026-09-17 실사용: 5곳 중 성수·홍대만) —
+        쉼표·빗금 조각도 본다(첫 조각은 마지막 어절, 나머지는 첫 어절). 자치구 폴백은 하지 않는다."""
+        tokens: list[str] = []
         for m in _COMPARE_PAIR_RE.finditer(prompt):
-            for raw in m.groups():
-                token = re.sub(r"(?:은|는|이|가|을|를)$", "", raw)
-                if len(token) < 2 or any(token == g[0] for g in groups):
-                    continue
-                codes = self._mentioned_codes(summary, token)
-                if codes:
-                    groups.append((token, codes))
+            tokens.extend(m.groups())
+        pieces = [p for p in re.split(r"\s*[,，、/]\s*", prompt) if p.strip()]
+        if len(pieces) >= 2:
+            for idx, piece in enumerate(pieces):
+                words = re.findall(r"[A-Za-z가-힣0-9&.\-]+", piece)
+                if words:
+                    tokens.append(words[-1] if idx == 0 else words[0])
+        groups: list[tuple[str, set[int]]] = []
+        for raw in tokens:
+            token = re.sub(r"(?:은|는|이|가|을|를)$", "", raw)
+            if len(token) < 2 or any(token == g[0] for g in groups):
+                continue
+            codes = self._mentioned_codes(summary, token)
+            if codes:
+                groups.append((token, codes))
+        return groups[:_AREA_COMPARE_MAX]
+
+    def _compare_place_groups(self, summary: AreaSummary, prompt: str) -> list[tuple[str, set[int]]]:
+        """비교 질문의 지역 구절별 상권 집합 — 직접 나열이 2개 미만이면 자치구 묶음으로 폴백."""
+        groups = self._explicit_place_groups(summary, prompt)
         if len(groups) >= 2:
-            return groups[:3]
+            return groups
         mentioned = self._mentioned_codes(summary, prompt)
         area_map = {a.trdar_code: a for a in summary.areas}
         districts = {area_map[c].district_name for c in mentioned}
         if len(districts) < 2:
             return []
         ordered = sorted(districts, key=lambda d: (prompt.find(d[:2]) if d[:2] in prompt else 10**6, d))
-        return [(d, {c for c in mentioned if area_map[c].district_name == d}) for d in ordered]
+        return [(d, {c for c in mentioned if area_map[c].district_name == d}) for d in ordered][:_AREA_COMPARE_MAX]
 
     def _mentioned_codes(self, summary: AreaSummary, prompt: str) -> set[int]:
         """질문에 지역(자치구·행정동·상권명 어간)이 언급된 상권 코드 집합."""
@@ -1128,6 +1150,14 @@ class ChatInteractor(ChatUseCase):
         return dx * dx + dy * dy <= radius_m * radius_m
 
     @staticmethod
+    def _last_card_count(history: list[Message]) -> int:
+        """가장 최근 assistant 답의 상권 카드 수 — 카드 없는 답이면 0."""
+        for m in reversed(history):
+            if m.role == "assistant":
+                return len((m.payload or {}).get("recommendations") or [])
+        return 0
+
+    @staticmethod
     def _previous_area_codes(
         history: list[Message], area_map: dict[int, AreaInfo]
     ) -> list[int]:
@@ -1181,7 +1211,9 @@ class ChatInteractor(ChatUseCase):
         else:
             if st.get("revenue_text") and "없음" not in st["revenue_text"]:
                 parts.append(st["revenue_text"])
-            if st.get("closure_text") and "없음" not in st["closure_text"]:
+            if st.get("closure_year_text"):
+                parts.append(st["closure_year_text"])
+            elif st.get("closure_text") and "없음" not in st["closure_text"]:
                 parts.append(st["closure_text"])
         score = area_scores.get(code)
         if score is not None and getattr(score, "grade", None):
@@ -1274,9 +1306,14 @@ class ChatInteractor(ChatUseCase):
         lead = ""
         for name in asked_names[:1]:
             c = by_name[name]
-            verdict = "들어와요" if c.total_amount <= cap else "넘어요"
-            lead = (f"{c.industry_name} 업종 평균 창업비용 {fmt_won(c.total_amount)}은(는) 예산 {fmt_won(budget)}의 70%"
-                    f"({fmt_won(cap)}) 안에 {verdict}. ")
+            # "70%(2,800만원) 안에 넘어요" 비문(2026-09-17 실사용) — 넘는 경우는 초과액까지 말한다
+            cost_subject = compare_svc.josa(fmt_won(c.total_amount), "은", "는")
+            if c.total_amount <= cap:
+                lead = (f"{c.industry_name} 업종 평균 창업비용 {cost_subject} 예산 {fmt_won(budget)}의 70%"
+                        f"({fmt_won(cap)}) 안에 들어와요. ")
+            else:
+                lead = (f"{c.industry_name} 업종 평균 창업비용 {cost_subject} 예산 {fmt_won(budget)}의 70%"
+                        f"({fmt_won(cap)})를 {fmt_won(c.total_amount - cap)} 넘어요. ")
         fit = [c for c in costs if c.total_amount <= cap and c.industry_name not in asked_names[:1]]
         listing = ", ".join(f"{c.industry_name} {fmt_won(c.total_amount)}" for c in fit[:6])
         more = f" 외 {len(fit) - 6}개" if len(fit) > 6 else ""
@@ -1310,7 +1347,7 @@ class ChatInteractor(ChatUseCase):
                 revenueSourceText=st.get("revenue_source", ""),
                 weekdayText=st.get("weekday_text", ""),
                 storeCountText=st.get("store_count_text", ""),
-                closureRateText=st.get("closure_text", ""),
+                closureRateText=st.get("closure_year_text") or st.get("closure_text", ""),
                 openingRateText=st.get("opening_text", ""),
                 franchiseText=st.get("franchise_text", ""),
                 footTrafficText=st.get("foot_text", ""),
@@ -1333,7 +1370,7 @@ class ChatInteractor(ChatUseCase):
         return None
 
     def _compare_targets(self, summary: AreaSummary, prompt: str, history: list[Message]) -> list[int]:
-        """비교할 상권 2~4곳 — 바구니(직전 compareSet)에 질문의 지역을 더하고, 제외 어휘("길음은 빼")면 뺀다.
+        """비교할 상권 2~5곳 — 바구니(직전 compareSet)에 질문의 지역을 더하고, 제외 어휘("길음은 빼")면 뺀다.
         바구니가 없으면 ①질문의 지역 구절마다 하나 ②지역 하나면 직전 1순위와 짝 ③지역이 없으면 직전 카드들.
         직전 카드에 있는 상권을 우선하고, 없으면 그 지역의 전 업종 매출 상위 하나."""
         area_map = {a.trdar_code: a for a in summary.areas}
@@ -1358,10 +1395,19 @@ class ChatInteractor(ChatUseCase):
         if mentioned:
             named = self._named_codes(summary, prompt) - excluded
             groups = self._compare_place_groups(summary, prompt)
-            for _label, codes in groups:
+            for label, codes in groups:
                 # 지역 구절("길음역")이 행정동 단위로 넓게 잡혀도 이름을 직접 지목한 상권(길음역 8번)이 우선 —
-                # 안 그러면 같은 동의 매출 상위(미아사거리)가 대신 들어온다(2026-09-17 실측)
-                c = top((codes & named) or (codes - excluded))
+                # 안 그러면 같은 동의 매출 상위(미아사거리)가 대신 들어온다(2026-09-17 실측).
+                # 2자 구절("강남"·"길음")은 named(3자 이상)에 안 걸려 자치구 매출 상위(압구정역)가 들어왔다 —
+                # 상권명이 그 구절로 시작하는 곳(강남역·길음역)을 다음 순위로 둔다
+                # 정확한 지명은 자치구 경계와 무관하게 찾는다 — "강남역"은 서초구라 "강남" 구절(강남구 언급)에 안 걸렸다
+                exact = {c for c, a in area_map.items()
+                         if a.trdar_name in (label, f"{label}역", f"{label}동", f"{label}입구역")
+                         or a.trdar_name.startswith((f"{label}역(", f"{label}역 ", f"{label}입구역("))}
+                prefixed = {c for c in codes if area_map[c].trdar_name.startswith(label)}
+                # 다른 구절이 지목한 이름("뚝섬역상점가")이 같은 동이라는 이유로 이 구절("성수동")에 뽑히지 않게 구절을 포함한 이름만
+                own_named = {c for c in codes & named if label in area_map[c].trdar_name}
+                c = top(own_named or (exact - excluded) or (prefixed - excluded) or (codes - excluded))
                 if c is not None and c not in picked:
                     picked.append(c)
             # 상권명을 그대로 지목한 곳은 연결어 구문 분석이 놓쳐도 들어간다(쉼표 나열의 세 번째 "뚝섬역") —
@@ -1394,43 +1440,17 @@ class ChatInteractor(ChatUseCase):
                 if len(picked) >= 2:
                     break
         merged = base + [c for c in picked if c not in base]
-        return merged[-4:] if len(merged) > 4 else merged
+        return merged[-_AREA_COMPARE_MAX:] if len(merged) > _AREA_COMPARE_MAX else merged
 
-    async def _answer_area_compare(
-        self, conversation_id: int, prompt: str, history: list[Message], on_stage=None,
-        user_id: int | None = None, need_two_regions: bool = False, continuation: bool = False,
-    ) -> AskResponse | None:
-        """상권 비교 — 바구니(직전 비교 집합)에 질문의 지역을 더해 가진 데이터를 전부 표로 대조하고 결론을 맨 앞에 쓴다.
-        업종은 질문에 있으면 그것, 없으면 직전 카드의 업종. 짝이 안 되면 None(기존 흐름).
-        need_two_regions: 비교 어휘 없이 우열만 되물은 꼴 — 질문에 지역 구절이 2개 이상일 때만 가로챈다.
-        continuation: 바구니가 있을 뿐 비교 어휘가 없는 후속 — 새 지역을 들거나 제외를 말할 때만 가로챈다."""
-        summary = await self._market.get_area_summary()
-        quarter = summary.latest_quarter
-        if not quarter:
-            return None
-        if need_two_regions and len(self._compare_place_groups(summary, prompt)) < 2:
-            return None
-        if continuation:
-            basket = self._compare_basket(history) or {}
-            base = {int(c) for c in basket.get("items", [])}
-            mentioned = self._mentioned_codes(summary, prompt)
-            excluded = self._excluded_area_codes(summary, prompt, history) if _has_exclusion(prompt) else set()
-            asks_verdict = _COMPARE_BRIEF_RE.search(prompt) or _COMPARE_DETAIL_RE.search(prompt)
-            if not (mentioned - base) and not (excluded & base) and not asks_verdict:
-                return None
-        codes = self._compare_targets(summary, prompt, history)
-        if len(codes) < 2:
-            return None
-        service_codes = await self._market.get_service_codes()
-        service = _detect_service(prompt, service_codes) or self._previous_service(history)
-        if service is None:
-            return None
-        service_code, service_name = service
-        self._notify(on_stage, "data", f"{len(codes)}개 상권의 데이터를 전부 모으고 있어요")
-        area_map = {a.trdar_code: a for a in summary.areas}
-        raw_stats = await self._market.get_area_raw_stats(codes, service_code, quarter)
-        real_stats = self._format_stats(raw_stats, quarter, generic=(service_code == GENERIC_SERVICE_CODE))
-        area_scores = await self._market.get_area_scores(codes)
+    async def _collect_area_items(
+        self, prompt: str, history: list[Message], user_id: int | None, codes: list[int], service_code: str,
+        service_name: str, quarter: int, area_map: dict, raw_stats: dict, real_stats: dict, area_scores: dict,
+    ) -> tuple[list[compare_svc.AreaCompareItem], list[str], dict | None, dict, str, dict | None]:
+        """상권별 가진 데이터를 전부 모은다 — 순위·재무·백테스트·창업비용·성격·인허가·적합도·그래프·기사.
+
+        비교(여러 곳)와 단일 상권 리포트가 같은 수집을 쓴다(2026-09-17 실사용: 단일 상권 답이 168자라 깊이가 없었다).
+        반환: (항목, 못 쓴 데이터, 창업비용 블록, 컴포넌트 예측력, 분기 라벨, 재무 입력 카드).
+        """
         area_insights = await self._market.get_area_insights(codes, service_code)
         permit_churn = await self._market.get_area_permit_churn(codes)
         try:
@@ -1594,12 +1614,56 @@ class ChatInteractor(ChatUseCase):
                         "rivals": graph_info.same_service_sibling_count, "articles": graph_info.article_count}
                        if graph_info is not None else None),
                 backtest=grade_outcomes.get(grade) if grade else None,
+                has_industry_sales=bool(raw is not None and raw.has_sales) or service_code == GENERIC_SERVICE_CODE,
             ))
+        return items, missing, startup_cost, predictiveness, quarter_label, finance_inputs_card
+
+    async def _answer_area_compare(
+        self, conversation_id: int, prompt: str, history: list[Message], on_stage=None,
+        user_id: int | None = None, need_two_regions: bool = False, continuation: bool = False,
+    ) -> AskResponse | None:
+        """상권 비교 — 바구니(직전 비교 집합)에 질문의 지역을 더해 가진 데이터를 전부 표로 대조하고 결론을 맨 앞에 쓴다.
+        업종은 질문에 있으면 그것, 없으면 직전 카드의 업종. 짝이 안 되면 None(기존 흐름).
+        need_two_regions: 비교 어휘 없이 우열만 되물은 꼴 — 질문에 지역 구절이 2개 이상일 때만 가로챈다.
+        continuation: 바구니가 있을 뿐 비교 어휘가 없는 후속 — 새 지역을 들거나 제외를 말할 때만 가로챈다."""
+        summary = await self._market.get_area_summary()
+        quarter = summary.latest_quarter
+        if not quarter:
+            return None
+        if need_two_regions and len(self._compare_place_groups(summary, prompt)) < 2:
+            return None
+        if continuation:
+            basket = self._compare_basket(history) or {}
+            base = {int(c) for c in basket.get("items", [])}
+            mentioned = self._mentioned_codes(summary, prompt)
+            excluded = self._excluded_area_codes(summary, prompt, history) if _has_exclusion(prompt) else set()
+            asks_verdict = _COMPARE_BRIEF_RE.search(prompt) or _COMPARE_DETAIL_RE.search(prompt)
+            if not (mentioned - base) and not (excluded & base) and not asks_verdict:
+                return None
+        codes = self._compare_targets(summary, prompt, history)
+        if len(codes) < 2:
+            return None
+        service_codes = await self._market.get_service_codes()
+        service = _detect_service(prompt, service_codes) or self._previous_service(history)
+        if service is None:
+            return None
+        service_code, service_name = service
+        self._notify(on_stage, "data", f"{len(codes)}개 상권의 데이터를 전부 모으고 있어요")
+        area_map = {a.trdar_code: a for a in summary.areas}
+        raw_stats = await self._market.get_area_raw_stats(codes, service_code, quarter)
+        real_stats = self._format_stats(raw_stats, quarter, generic=(service_code == GENERIC_SERVICE_CODE))
+        area_scores = await self._market.get_area_scores(codes)
+        items, missing, startup_cost, predictiveness, quarter_label, finance_inputs_card = await self._collect_area_items(
+            prompt, history, user_id, codes, service_code, service_name, quarter, area_map, raw_stats, real_stats, area_scores,
+        )
         verdict = compare_svc.area_verdict(items)
         brief = bool(_COMPARE_BRIEF_RE.search(prompt)) and not _COMPARE_DETAIL_RE.search(prompt)
+        # "좀 더 자세하게"인데 직전 답이 이미 전체 표였다면 같은 표를 반복하지 않고 곳마다 풀어 쓴다(2026-09-17 실사용)
+        already_full = any(m.role == "assistant" and "**전체 지표**" in (m.content or "") for m in history[-2:])
+        focus = "strengths" if _COMPARE_STRENGTH_RE.search(prompt) or (already_full and _COMPARE_DETAIL_RE.search(prompt)) else ""
         text = compare_svc.render_area_compare(
-            items, verdict, service_name=service_name, quarter_label=quarter_label, brief=brief, missing_notes=missing,
-            startup_cost=startup_cost, predictiveness=predictiveness,
+            items, verdict, service_name=service_name, quarter_label=quarter_label, brief=brief and not focus,
+            missing_notes=missing, startup_cost=startup_cost, predictiveness=predictiveness, focus=focus,
         )
         # 등급 고지는 결론 바로 뒤(둘째 문단) — 결론은 항상 맨 앞이다
         notices = [
@@ -1903,6 +1967,11 @@ class ChatInteractor(ChatUseCase):
                 if raw.has_store and raw.closure_store_count is not None
                 else f"분기 폐업률 {raw.closure_rate}%" if raw.has_store else "데이터 없음"
             )
+            # 판정용 1년 폐업률(최근 4분기 점포 가중) — 결론·카드가 "분기 폐업률 0%(0개)"를 내세웠다(2026-09-17 실사용).
+            # 한 분기 정수율은 과반이 0%라 안정성으로 읽히면 오독이다. 분기 값은 비교표 참고 행에만 남긴다.
+            closure_year_text = (
+                f"최근 1년 폐업률 {raw.closure_rate_4q:.1f}%" if raw.has_store and raw.closure_rate_4q is not None else ""
+            )
             opening_text = (
                 f"분기 개업률 {raw.opening_rate}%({raw.opening_store_count}개)"
                 if raw.has_store and raw.opening_store_count is not None
@@ -1956,6 +2025,7 @@ class ChatInteractor(ChatUseCase):
                 "weekday_text": weekday_text,
                 "store_count_text": store_count_text,
                 "closure_text": closure_text,
+                "closure_year_text": closure_year_text,
                 "opening_text": opening_text,
                 "franchise_text": franchise_text,
                 "rival_text": rival_text,
@@ -2062,12 +2132,20 @@ class ChatInteractor(ChatUseCase):
         basket = self._compare_basket(history)
         area_basket = (basket is not None and basket.get("kind") == "area"
                        and not _COMPARE_RESET_RE.search(prompt))
-        if strong_compare or (history and (_WHICH_ONE_RE.search(prompt) or area_basket)):
+        # 직전 답이 추천 카드 여러 장이고 "좀 더 자세하게·각 지역마다 특장점"이면 그 카드들을 전부 대조한다 —
+        # 같은 짧은 답이 세 번 반복됐다(2026-09-17 실사용)
+        detail_followup = bool(history and _COMPARE_DETAIL_RE.search(prompt) and self._last_card_count(history) >= 2)
+        multi_ask = (bool(_MULTI_AREA_ASK_RE.search(prompt)) and not _has_exclusion(prompt) and not area_basket
+                     and bool(_COMPARE_PAIR_RE.search(prompt) or re.search(r"[,，、/]", prompt)))   # 나열 꼴일 때만 요약 조회
+        if multi_ask and not strong_compare:
+            summary_for_groups = await self._market.get_area_summary()
+            multi_ask = len(self._explicit_place_groups(summary_for_groups, prompt)) >= 2
+        if strong_compare or multi_ask or detail_followup or (history and (_WHICH_ONE_RE.search(prompt) or area_basket)):
             # 첫 턴("성수동카페거리, 길음역, 뚝섬역 카페 비교해줘")도 지역 2곳 이상이면 코드가 대조한다 —
             # phase1이 미아사거리를 고르고 "길음 빼고"에 동서시장을 내던 실측(2026-09-17)
             compare = await self._answer_area_compare(
                 conversation_id, prompt, history, on_stage, user_id=user_id,
-                need_two_regions=(not history) or (not strong_compare and not area_basket),
+                need_two_regions=not detail_followup and ((not history) or (not strong_compare and not area_basket)),
                 continuation=area_basket and not strong_compare,
             )
             if compare is not None:
@@ -2496,6 +2574,10 @@ class ChatInteractor(ChatUseCase):
             first = min((c for c in valid_codes if mention[c] >= 0), key=lambda c: mention[c], default=None)
             if first is not None and valid_codes[0] != first:
                 valid_codes = [first] + [c for c in valid_codes if c != first]
+        # 본문 언급·승계 순서가 업종 데이터 없는 상권을 1순위로 올리면 되돌린다(2026-09-17 실사용: "길음동 카페"의 결론이
+        # 커피 매출이 없는 길음시장이었다) — 결론·리포트는 판단할 데이터가 있는 곳이 앞이어야 한다
+        if len({_tier(c) for c in valid_codes}) > 1:
+            valid_codes = sorted(valid_codes, key=_tier)
 
         # 등급 결정론 가드(2026-08-31 실측 p04) — '주의'/'위험' 상권은 모델이 무엇을 썼든
         # 추천 어휘를 차단하고, 등급 고지를 답변 첫 문단에 코드로 삽입한다(아래 text 조립).
@@ -2548,6 +2630,23 @@ class ChatInteractor(ChatUseCase):
         # 재무 헤드라인은 등급 고지보다도 앞이어야 한다(코드가 쓴 계산 결과가 최우선)
         if finance_info is not None:
             text = f"{finance_info.headline}\n{finance_info.assumption_note}\n\n{text}" if text else finance_info.headline
+        # 1순위 상권 리포트(2026-09-17 실사용: 결론 한 줄 + 1문장이라 깊이가 없었다) — 비교와 같은 수집으로 코드가 근거를 푼다.
+        # 실패해도 답 자체는 나간다(열화 동작).
+        if valid_codes and superlative is None and service_code != GENERIC_SERVICE_CODE:
+            try:
+                top_code = valid_codes[0]
+                items, missing, startup_cost, predictiveness, _ql, _fin = await self._collect_area_items(
+                    prompt, history, user_id, [top_code], service_code, service_name, quarter,
+                    area_map, {top_code: raw_stats[top_code]} if top_code in raw_stats else {}, real_stats, area_scores,
+                )
+                if items:
+                    report = compare_svc.render_area_report(
+                        items[0], service_name=service_name, quarter_label=quarter_label, missing_notes=missing,
+                        startup_cost=startup_cost, predictiveness=predictiveness,
+                    )
+                    text = f"{text.rstrip()}\n\n{report}"
+            except Exception:
+                logger.warning("[chat] 상권 리포트 조립 실패 — 리포트 없이 답한다", exc_info=True)
         # 구조화 카드를 payload로 동반 저장 — 히스토리 재진입 시 카드 복원용
         payload: dict = {"recommendations": [r.model_dump() for r in recommendations]}
         finance_card = self._finance_card(finance_info) if finance_info is not None else None
@@ -3240,9 +3339,11 @@ class ChatInteractor(ChatUseCase):
 
         # 가치·체력 — "이 회사 싼가/튼튼한가"(펀더멘털). 미수집·실패면 빈 리스트로 열화.
         value_notes: list[str] = []
+        fundamental_items: list = []
         if self._fundamentals is not None:
             try:
                 insights = await self._fundamentals.latest_insights(analysis.symbol)
+                fundamental_items = list(insights)
                 value_notes = [i.text for i in insights[:2]]
             except Exception:
                 logger.warning("[chat] 펀더멘털 조회 실패: %s", analysis.symbol, exc_info=True)
@@ -3304,6 +3405,20 @@ class ChatInteractor(ChatUseCase):
             )
         # 용어 결정론 풀이(I-19) — 질문에 없는 전문용어의 첫 등장에 괄호 설명을 붙인다
         text = answer_guard.attach_glossary(text, prompt)
+        # 종목 리포트(2026-09-17 실사용: 300자대 지표 두세 문장) — 가진 수치를 코드가 판단 순서로 전부 푼다. 고지는 맨 끝.
+        report = render_stock_report(StockReportInput(
+            symbol=analysis.symbol, unit=self._currency_unit(analysis.symbol), price=analysis.price,
+            ma20=analysis.ma20, ma50=analysis.ma50, support=analysis.support, resistance=analysis.resistance,
+            rsi=analysis.rsi, bb_percent_b=analysis.bb_percent_b, atr_pct=analysis.atr_pct,
+            volume_ratio=analysis.volume_ratio, obv_slope=analysis.obv_slope, momentum_12_1=analysis.momentum_12_1,
+            poc_low=analysis.volume_poc_low, poc_high=analysis.volume_poc_high, poc_share=analysis.volume_poc_share,
+            forecast_ready=bool(forecast and forecast.ready), up_rate=forecast.up_rate if forecast else None,
+            baseline_up_rate=forecast.baseline_up_rate if forecast else None,
+            sample_size=forecast.sample_size if forecast else 0,
+            fundamentals=tuple((i.tone, i.text) for i in fundamental_items),
+            news=tuple((h.title, h.published_at, h.sentiment) for h in (hits or [])),
+        ))
+        text = f"{answer_guard.strip_disclaimer_lines(text).rstrip()}\n\n{report}"
         text = answer_guard.ensure_disclaimer(text)
         # 미지원 축·확률 고지(I-12·I-17)가 비교 고지(I-18)보다 앞 — 전부 결정론 문두 삽입
         text = unsupported_note + compare_notice + text

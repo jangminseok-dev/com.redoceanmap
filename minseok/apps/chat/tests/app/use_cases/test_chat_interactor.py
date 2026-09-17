@@ -940,7 +940,7 @@ async def test_상권_컨텍스트에_상권_성격_해석이_주입된다(monke
     context = llm.calls[2][0]
     assert "- 상권 성격: 직장인 중심 오피스 상권입니다 / 건당 평균 결제액 1.2만원" in context
     # 업종을 함께 넘겨야 해당 업종 기준 객단가가 나온다
-    assert stubs["market"].insight_calls == [([1000001], "CS100010")]
+    assert stubs["market"].insight_calls[0] == ([1000001], "CS100010")  # 첫 호출 = phase2 컨텍스트 주입(뒤이은 호출은 1순위 상권 리포트 수집)
 
 
 async def test_상권_컨텍스트에_인허가_업소_교체가_주입된다(monkeypatch):
@@ -955,7 +955,7 @@ async def test_상권_컨텍스트에_인허가_업소_교체가_주입된다(mo
 
     context = llm.calls[2][0]
     assert "- 인허가 업소 교체(최근 12개월): 개업 18곳 · 폐업 7곳 · 현재 영업중 214곳" in context
-    assert stubs["market"].permit_calls == [[1000001]]
+    assert stubs["market"].permit_calls[0] == [1000001]  # 첫 호출 = phase2 컨텍스트 주입(뒤이은 호출은 1순위 상권 리포트 수집)
 
 
 async def test_인허가가_없는_상권은_라인을_생략한다(monkeypatch):
@@ -1008,7 +1008,7 @@ async def test_상권_컨텍스트에_관련_지역_기사가_주입된다(monke
     phase2_prompt = llm.calls[2][0]
     assert "[관련 지역 기사 — 의미 유사도 상위]" in phase2_prompt
     assert f"({_NOW:%Y-%m-%d} | 성수 | 패션비즈) 성수 상권 장기 정착형 리테일로 진화" in phase2_prompt
-    assert market_news.calls == [("역삼동 카페 어때?", 4)]
+    assert market_news.calls[0] == ("역삼동 카페 어때?", 4)  # 첫 호출 = phase2 컨텍스트 주입(뒤이은 호출은 1순위 상권 리포트 수집)
 
 
 async def test_지역_기사가_없으면_기사_블록을_생략한다(monkeypatch):  # 무손상
@@ -2202,7 +2202,7 @@ async def test_market_경로는_랭킹을_조회해_phase1_표에_잇는다(monk
     interactor, llm, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON],
                                 market=market)
     await interactor.ask("역삼동 카페 어때?")
-    assert market.ranking_calls == [None]
+    assert market.ranking_calls[0] is None  # 첫 호출 = phase2 컨텍스트 주입(뒤이은 호출은 1순위 상권 리포트 수집)
     phase1_prompt = llm.calls[1][0]
     assert "폐업률(%)" in phase1_prompt and "|1.5|2000|" in phase1_prompt
     assert "'폐업률(%)' 열이 작은 상권을 우선 선택" in phase1_prompt
@@ -2341,7 +2341,7 @@ async def test_창업비용_데이터가_있으면_예산_안_업종을_문두�
     result = await interactor.ask("1억으로 성수동에 카페 차릴 만해?")
     head = result.text.split("\n\n")[0]
     # 질문한 업종(카페→커피)을 먼저 판정하고, 같은 예산의 다른 업종은 70%(7,000만원) 컷 안에서만
-    assert head.startswith("※ 커피 업종 평균 창업비용 5,200만원은(는) 예산 1억원의 70%(7,000만원) 안에 들어와요.")
+    assert head.startswith("※ 커피 업종 평균 창업비용 5,200만원은 예산 1억원의 70%(7,000만원) 안에 들어와요.")
     assert "분식 2,800만원" in head and "치킨" not in head and "피자" not in head
     assert "임대료·인테리어는 별도" in head
 
@@ -3173,7 +3173,7 @@ async def test_비교표에_적합도·백테스트·그래프·창업비용·�
     assert "| 같은 동 상권 수(그래프) | 5곳 | 2곳 |" in t and "| 영업 업종 수(그래프, 100개 중) | 68개 | 40개 |" in t
     assert "| 같은 동 커피-음료 상권 수(그래프 경쟁) | 3곳 | 1곳 |" in t and "| 연결된 지역 기사 수(그래프) | 40건 | 3건 |" in t
     # 창업비용(업종 공통 블록) + 예산 70% 판정
-    assert "**업종 공통 — 창업비용(공정위 정보공개서 2025, 커피 브랜드 중앙값)** 합계 8,036만원 = 가맹금 1,000 · 교육비 300 · 보증금 500 · 기타 6,236만원." in t
+    assert "**업종 공통 — 창업비용(공정위 정보공개서 2025, 커피 브랜드 중앙값)** 합계 8,036만원 (항목별 중앙값: 가맹금 1,000 · 교육비 300 · 보증금 500 · 기타 6,236만원 — 브랜드마다 달라 더해도 합계와 같지 않아요)." in t
     assert "예산 10,000만원의 70%(7,000만원) 안에 안 들어와요." in t
     # 재무: 월세(지역명)·공실률
     assert "| 월세(추정) | 300만원 (권역 평균 뚝섬) | 300만원 (권역 평균 뚝섬) |" in t
@@ -3389,3 +3389,41 @@ async def test_성격_지표가_없으면_기존_조건_경로로_떨어진다(m
     result = await interactor.ask("유동인구 많고 폐업률 낮은 상권 3곳 추천해줘")
     assert market.trait_calls == [None]
     assert "최근 1년 폐업률 낮은 순" in result.text
+
+
+# --- 답의 깊이(2026-09-17 실사용 대화 313) ---
+
+async def test_쉼표로_여러_지역을_나열하고_분석을_청하면_비교_어휘가_없어도_전부_대조한다(monkeypatch):
+    # "수유,길음,홍대,성수,강남 커피상권분석해서 4000만원으로 진행할만한곳 추천해줘" → phase1이 3곳만 골라 묻지 않은 곳을 섞었다
+    market = _CompareMarket()
+    interactor, llm, _ = _build(monkeypatch, [], market=market)
+    result = await interactor.ask("성수동,뚝섬역상점가,길음역 카페 분석해서 진행할만한곳 추천해줘")
+    assert llm.calls == []
+    assert sorted(r.name for r in result.recommendations) == ["길음역 8번", "뚝섬역상점가", "성수동카페거리"]
+    assert "**상권별 특장점**" in result.text
+
+
+async def test_추천_카드_여러_장_뒤_특장점을_물으면_카드들을_곳마다_풀어_쓴다(monkeypatch):
+    # "각 지역마다 특장점을 이야기 해줘야지" → 같은 짧은 답이 반복됐다
+    history = _cmp_history((3110131, "성수동카페거리"))
+    history[-1] = Message(id=2, conversation_id=100, role="assistant", content="성수동카페거리 추천", created_at=_NOW,
+                          payload={"recommendations": [
+                              {"id": "3110131", "name": "성수동카페거리", "serviceCode": "CS100010", "category": "커피-음료"},
+                              {"id": "3130070", "name": "길음역 8번", "serviceCode": "CS100010", "category": "커피-음료"}]})
+    conversations = _StubConversations(history=history)
+    interactor, llm, _ = _build(monkeypatch, [], conversations=conversations, market=_CompareMarket())
+    result = await interactor.ask("각 지역마다 특장점을 이야기 해줘야지", conversation_id=100)
+    assert llm.calls == []
+    assert "**상권별 특장점**" in result.text and "**전체 지표**" not in result.text
+    assert sorted(r.name for r in result.recommendations) == ["길음역 8번", "성수동카페거리"]
+
+
+async def test_단일_상권_답은_결론_뒤에_상권_리포트를_붙이고_1년_폐업률로_결론을_쓴다(monkeypatch):
+    # "성수동 카페 상권 어때요?" → 결론 한 줄 + 1문장(168자), 결론은 "분기 폐업률 0%(0개)"
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET, PHASE1_JSON, PHASE2_JSON],
+                              market=_StubMarket(raw=_raw_stat(has_sales=True, monthly_sales_amount=50_000_000,
+                                                               has_store=True, store_count=10, franchise_store_count=2, closure_rate=0.0,
+                                                               closure_store_count=0, closure_rate_4q=2.4)))
+    result = await interactor.ask("성수동 카페 어때?")
+    assert "최근 1년 폐업률 2.4%" in result.text.split("\n", 1)[0]
+    assert "**상권 리포트 — 테스트상권**" in result.text and "- **수익성**:" in result.text
