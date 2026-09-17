@@ -751,6 +751,7 @@ _CONDITION_AXES = (
     ("sales", re.compile(r"매출\s*(?:이|가|은|는|도)?\s*(?:높|많|큰|잘)")),
 )
 _CONDITION_COUNT = re.compile(r"(\d+)\s*(?:곳|군데|개)")
+_NON_STOREFRONT_INDUSTRIES = frozenset({"운송", "이사", "인력 파견", "부동산 중개", "임대"})
 # 창업 의도 어휘 — phase0가 general로 흔들려도 상권 경로로 되돌린다(주식 어휘와 겹치지 않는 것만)
 _STARTUP_INTENT_RE = re.compile(r"창업|자영업|가게\s*(?:차|내|열|하)|장사\s*(?:하|시작|해볼)|개업|가맹점|프랜차이즈\s*(?:차|내|창업)")
 # 상권 성격 단서 — 지역·업종이 없어도 이런 단서가 있으면 phase1이 고를 근거가 있다(골든 MN01~09 형태)
@@ -1238,6 +1239,9 @@ class ChatInteractor(ChatUseCase):
         except Exception:
             logger.warning("[chat] 창업비용 조회 실패", exc_info=True)
             costs = []
+        # 점포 없이 하는 가맹(운송·이사·인력 파견·부동산 중개)은 "가게 차리기" 예산 목록에서 뺀다 — 서울 상권 데이터로
+        # 판단할 수 없는 업종이 "5천만원 안에 드는 업종" 맨 앞에 나왔다(2026-09-17 실측)
+        costs = [c for c in costs if c.industry_name not in _NON_STOREFRONT_INDUSTRIES]
         if not costs:
             return ("※ 예산에 맞는 자리인지는 판정하지 않았어요 — 창업비용·임대료·권리금 데이터가 없어요."
                     " 아래 점포당 월매출을 보증금·임대료 시세(부동산 중개 사이트)와 함께 보시면 감이 잡혀요.\n\n")

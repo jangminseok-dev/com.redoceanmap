@@ -3301,3 +3301,21 @@ async def test_창업_어휘가_있으면_general로_분류돼도_상권_경로�
     assert stubs["gemini"].prompts == []  # 일반 대화(외부 모델)로 가지 않는다
     assert stubs["market"].summary_calls == 1
     assert "어느 동네에서 어떤 가게를" in result.text
+
+
+
+async def test_예산_업종_목록에서_점포_없는_가맹업은_뺀다(monkeypatch):
+    from hub.app.dtos.franchise_cost_dto import StartupCostRow
+
+    class _CostMarket(_StubMarket):
+        async def get_startup_costs(self, year=None):
+            return [StartupCostRow(2025, "서비스", "운송", 790_000, 1, 1, 1, 1),
+                    StartupCostRow(2025, "서비스", "이사", 18_790_000, 1, 1, 1, 1),
+                    StartupCostRow(2025, "외식", "치킨", 52_360_000, 1, 1, 1, 1),
+                    StartupCostRow(2025, "도소매", "편의점", 54_700_000, 1, 1, 1, 1)]
+
+    interactor, _, _ = _build(monkeypatch, [INTENT_MARKET], market=_CostMarket())
+    result = await interactor.ask("자영업 처음인데 뭐부터 봐야 해? 돈은 1억 있어")
+    head = result.text.split("\n\n")[0]
+    assert "치킨 5,236만원" in head and "편의점" in head
+    assert "운송" not in head and "이사" not in head
