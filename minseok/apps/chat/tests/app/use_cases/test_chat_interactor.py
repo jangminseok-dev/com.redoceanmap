@@ -36,7 +36,7 @@ from hub.app.dtos.market_news_dto import MarketNewsHit
 from hub.app.dtos.news_dto import NewsHit, NewsKeyword
 from hub.app.dtos.stock_analysis_dto import StockAnalysisResult
 from hub.app.dtos.stock_forecast_dto import StockForecastSummary
-from hub.app.dtos.stock_signal_board_dto import StockSignalBoardInfo, StockSignalRow
+from hub.app.dtos.stock_signal_board_dto import RiskSignalStat, StockSignalBoardInfo, StockSignalRow
 from hub.app.dtos.user_profile_dto import UserProfileSummary
 from hub.app.dtos.forecast_refit_dto import (
     RefitCandidateRow,
@@ -236,12 +236,17 @@ class _StubSignals:
         self.rows = rows or []
         self.fail = fail
         self.calls: list[int] = []
+        self.stats = (
+            RiskSignalStat("vol_high", "변동성 확대 가능성 높음", "20거래일 안에 변동성이 평소보다 커짐", "high", 0.513, 0.326, 1.57, 1274.0, True),
+            RiskSignalStat("drop_low", "큰 낙폭 위험 낮음", "20거래일 안에 한 번이라도 -10% 이상 하락", "low", 0.154, 0.243, 0.63, 676.0, True),
+        )
 
     async def current_board(self, limit: int) -> StockSignalBoardInfo:
         self.calls.append(limit)
         if self.fail:
             raise RuntimeError("board down")
-        return StockSignalBoardInfo(horizon_days=5, rows=tuple(self.rows[:limit]))
+        return StockSignalBoardInfo(horizon_days=5, rows=tuple(self.rows[:limit]), risk_stats=self.stats,
+                                    risk_test_period="2021-01~2026-09")
 
 
 def _signal_row(**overrides) -> StockSignalRow:
@@ -2067,61 +2072,44 @@ def test_공백_결합_티커_혼재_질의를_분해한다():
 
 # --- 신호 보드 조회 결정론(4차 실측 S8 t4) ---
 
-async def test_상승_신호_종목_질문은_LLM_없이_보드를_읽어_답한다(monkeypatch):
+async def test_방향을_물으면_검증_미달을_밝히고_위험_신호로_답한다(monkeypatch):
+    # 2026-09-17 재설계 — 방향 신호는 겹침 보정 재검증 미달, 검증된 위험 신호(변동성·낙폭)로 답한다
     signals = _StubSignals(rows=[
-        _signal_row(ticker="005930.KS", name="삼성전자", direction="UP"),
-        _signal_row(ticker="TSLA", name="테슬라", direction="DOWN", price=250.5),
-        _signal_row(ticker="NVDA", name="엔비디아", direction="UP", price=120.25,
-                    up_rate=None, baseline_up_rate=None, ready=False),
+        _signal_row(ticker="TSLA", name="테슬라", price=250.5, rv20=0.72, rv_percentile=0.93, vol_state="HIGH",
+                    trend="DOWN", drawdown_risk="HIGH"),
+        _signal_row(ticker="005930.KS", name="삼성전자", rv20=0.18, rv_percentile=0.11, vol_state="LOW",
+                    trend="UP", drawdown_risk="LOW"),
     ])
     interactor, llm, _ = _build(monkeypatch, [], signals=signals)
     result = await interactor.ask("지금 상승 신호 뜬 종목 뭐야?")
 
-    assert llm.calls == []  # phase0조차 부르지 않는다
-    assert signals.calls == [50]
+    assert llm.calls == [] and signals.calls == [50]
     lines = result.text.split("\n")
-    assert "5거래일 지평 반등 후보(과매도 반등 신호)" in lines[0]
-    assert "떨어지는 중일 수 있어요" in lines[0]  # 역추세 신호라는 설명(2026-09-17 보드 감사)
-    assert lines[1].startswith("1. 삼성전자(005930.KS) — 71,000원 (+1.2%)")
-    assert "실제로 상승한 비율 62% · 평소 57% · 통계적으로 유의" in lines[1]
-    assert lines[1].endswith("· 오늘 새 신호")
-    assert lines[2].startswith("2. 엔비디아(NVDA) — 120.25달러") and "표본 없음" in lines[2]
-    assert "테슬라" not in result.text  # 하락 신호는 제외
-    assert "매매 지시가 아니에요" in result.text
-    assert "투자" in result.text[-160:]  # 책임 고지
-    assert result.recommendations == []
+    assert lines[0].startswith("오를지·내릴지(방향)를 가리키는 신호는 과거 10년 재검증에서")
+    assert "**변동성·낙폭 주의** 1종목 — 검증 실측: 20거래일 안에 변동성이 평소보다 커짐 51%(평소 33%)" in result.text
+    assert "1. 테슬라(TSLA) — 250.50달러 (+1.2%) · 낙폭 위험 높음 · 최근 20일 변동성 연 72%(이 종목 1년 중 93% 위치) · 200일선 아래" in result.text
+    assert "**안정 구간(변동성 낮음)** 1종목 — 검증 실측: 20거래일 안에 한 번이라도 -10% 이상 하락 15%(평소 24%)" in result.text
+    assert result.text.index("변동성·낙폭 주의") < result.text.index("안정 구간(변동성 낮음)")
+    assert "매수·매도 판단이 아니라" in result.text and "투자" in result.text[-160:]
+    for word in ("반등 후보", "적중"):
+        assert word not in result.text
 
 
-async def test_하락_신호_질문은_하락_행만_답한다(monkeypatch):
-    # 보드에 옛 DOWN 스냅샷이 남아 있는 동안은 그 행을 답한다
+async def test_안정적인_종목을_물으면_안정_구간을_먼저_보여_준다(monkeypatch):
     signals = _StubSignals(rows=[
-        _signal_row(ticker="005930.KS", name="삼성전자", direction="UP"),
-        _signal_row(ticker="TSLA", name="테슬라", direction="DOWN", price=250.5, up_rate=0.58),
+        _signal_row(ticker="TSLA", name="테슬라", rv20=0.72, rv_percentile=0.93, vol_state="HIGH", drawdown_risk="HIGH"),
+        _signal_row(ticker="005930.KS", name="삼성전자", rv20=0.18, rv_percentile=0.11, vol_state="LOW", drawdown_risk="LOW"),
     ])
     interactor, _, _ = _build(monkeypatch, [], signals=signals)
-    result = await interactor.ask("하락 신호 나온 주식 있어?")
-    assert "테슬라(TSLA)" in result.text and "삼성전자" not in result.text
-    assert "실제로 하락한 비율 58%" in result.text
+    result = await interactor.ask("안정적인 종목 뭐 있어?")
+    assert not result.text.startswith("오를지·내릴지")
+    assert result.text.index("안정 구간(변동성 낮음)") < result.text.index("변동성·낙폭 주의")
 
 
-async def test_하락_신호가_없으면_중단_사유를_답한다(monkeypatch):
-    signals = _StubSignals(rows=[_signal_row(direction="UP")])
-    interactor, _, _ = _build(monkeypatch, [], signals=signals)
-    result = await interactor.ask("하락 신호 나온 주식 있어?")
-    assert result.text.startswith("하락 방향 신호는 지금 내지 않아요")
-
-
-async def test_연속_신호는_일수와_첫_신호_뒤_등락을_붙인다(monkeypatch):
-    signals = _StubSignals(rows=[_signal_row(rsi=28.4, signal_days=4, since_signal_pct=-0.031)])
-    interactor, _, _ = _build(monkeypatch, [], signals=signals)
-    result = await interactor.ask("반등 후보 종목 알려줘")
-    assert "· RSI 28 · 신호 4일째(첫 신호 뒤 -3.1%)" in result.text
-
-
-async def test_신호_없으면_없다고_답한다(monkeypatch):
-    interactor, _, _ = _build(monkeypatch, [], signals=_StubSignals(rows=[]))
-    result = await interactor.ask("상승 신호 종목 알려줘")
-    assert "반등 후보(과매도 반등 신호)가 나온 종목이 없어요" in result.text
+async def test_해당_종목이_없으면_없다고_말한다(monkeypatch):
+    interactor, _, _ = _build(monkeypatch, [], signals=_StubSignals(rows=[_signal_row(vol_state="NORMAL")]))
+    result = await interactor.ask("변동성 큰 종목 알려줘")
+    assert "**변동성·낙폭 주의**: 지금 해당 종목이 없어요." in result.text
 
 
 async def test_보드_조회_실패는_안내로_열화한다(monkeypatch):
@@ -2140,7 +2128,8 @@ async def test_종목_하나의_신호_질문은_보드로_가로채지_않는�
     signals = _StubSignals(rows=[_signal_row()])
     interactor, _, deps = _build(monkeypatch, [INTENT_STOCK, "삼성전자 서술"], signals=signals)
     await interactor.ask("삼성전자 신호 어때?")
-    assert signals.calls == [] and deps["stocks"].queries == ["삼성전자"]
+    # 보드 응답(limit 50)으로 가로채지 않는다 — 종목 리포트의 위험 신호 조회(limit 200)만 있다
+    assert 50 not in signals.calls and deps["stocks"].queries == ["삼성전자"]
 
 
 # --- 뉴스 상세 후속(3차 P8 s08 t2) ---

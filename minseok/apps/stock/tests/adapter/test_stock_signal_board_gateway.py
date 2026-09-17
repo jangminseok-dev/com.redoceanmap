@@ -30,7 +30,7 @@ async def test_보드_정렬과_지평을_그대로_허브_DTO로_옮긴다():
     board = _StubBoard()
     info = await StockSignalBoardGateway(board=board).current_board(limit=7)
 
-    assert board.queries == [BoardQuery(horizon=5, limit=7)]
+    assert board.queries == [BoardQuery(horizon=5, limit=7, order="risk")]
     assert info.horizon_days == 5
     assert [(r.ticker, r.name, r.direction) for r in info.rows] == [
         ("AAA", "AAA명", "UP"), ("BBB", "BBB명", "DOWN"),

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from stock.adapter.outbound.orm.forecast_snapshot_orm import ForecastSnapshotOrm
 from stock.adapter.outbound.orm.price_bar_orm import PriceBarOrm
+from stock.adapter.outbound.orm.risk_signal_report_orm import RiskSignalReportOrm
 from stock.app.dtos.stock_board_dto import BoardSignalRow
 from stock.app.ports.output.stock_board_repository import StockBoardRepositoryPort
 
@@ -87,6 +88,13 @@ class StockBoardPgRepository(StockBoardRepositoryPort):
             )
             for s in snapshots
         ]
+
+    async def find_latest_risk_report(self) -> tuple[datetime, dict] | None:
+        row = (await self._session.execute(
+            select(RiskSignalReportOrm.ran_at, RiskSignalReportOrm.payload)
+            .order_by(RiskSignalReportOrm.ran_at.desc()).limit(1)
+        )).first()
+        return (row.ran_at, row.payload) if row else None
 
     async def _recent_closes(
         self, tickers: list[str], limit: int

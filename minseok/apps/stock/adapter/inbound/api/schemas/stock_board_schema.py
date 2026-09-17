@@ -25,6 +25,24 @@ class BoardRowSchema(BaseModel):
     bb_percent_b: float | None = None
     signal_days: int = 1            # 같은 방향 신호 연속 일수(오늘 포함)
     since_signal_pct: float | None = None  # 연속 신호 첫날 기준가 대비 최신가
+    rv20: float | None = None              # 최근 20일 실현 변동성(연율)
+    rv_percentile: float | None = None     # 자기 1년 분포 안 위치(0~1)
+    vol_state: str | None = None           # HIGH | NORMAL | LOW — 향후 20거래일 변동성 확대 가능성
+    trend: str | None = None               # UP | DOWN | MIXED(50·200일선)
+    drawdown_risk: str | None = None       # HIGH | NORMAL | LOW — 20거래일 안 -10% 하락 가능성
+
+
+class RiskStatSchema(BaseModel):
+    key: str
+    label: str
+    outcome_label: str
+    side: str
+    test_rate: float | None
+    base_rate: float | None
+    lift: float | None
+    n_eff: float
+    train_lift: float | None
+    validated: bool
 
 
 class StockBoardResponse(BaseModel):
@@ -35,3 +53,6 @@ class StockBoardResponse(BaseModel):
 
     horizon_days: int
     rows: list[BoardRowSchema]
+    risk_stats: list[RiskStatSchema] = []          # 위험 신호 상태별 검증 실측(최신 주간 리포트)
+    risk_report_ran_at: datetime | None = None
+    risk_test_period: str | None = None

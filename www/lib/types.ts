@@ -184,11 +184,34 @@ export type StockBoardRow = {
   bb_percent_b?: number | null;
   signal_days?: number; // 같은 방향 신호 연속 일수(오늘 포함)
   since_signal_pct?: number | null; // 연속 신호 첫날 기준가 대비 최신가
+  // 위험 신호(2026-09-17 재설계) — 봉이 모자라면 null
+  rv20?: number | null; // 최근 20일 실현 변동성(연율, 0.35 = 35%)
+  rv_percentile?: number | null; // 자기 1년 분포 안 위치(0~1)
+  vol_state?: "HIGH" | "NORMAL" | "LOW" | null; // 향후 20거래일 변동성 확대 가능성
+  trend?: "UP" | "DOWN" | "MIXED" | null;
+  drawdown_risk?: "HIGH" | "NORMAL" | "LOW" | null; // 20거래일 안 -10% 하락 가능성
+};
+
+// 위험 신호 상태 하나의 검증 실측(최신 주간 리포트의 검증 구간)
+export type RiskStat = {
+  key: "vol_high" | "vol_low" | "drop_high" | "drop_low";
+  label: string;
+  outcome_label: string;
+  side: "high" | "low";
+  test_rate: number | null;
+  base_rate: number | null;
+  lift: number | null;
+  n_eff: number;
+  train_lift: number | null;
+  validated: boolean;
 };
 
 export type StockBoard = {
   horizon_days: number;
   rows: StockBoardRow[];
+  risk_stats?: RiskStat[];
+  risk_report_ran_at?: string | null;
+  risk_test_period?: string | null;
 };
 
 // ── GET /stock/{symbol}/prices ──

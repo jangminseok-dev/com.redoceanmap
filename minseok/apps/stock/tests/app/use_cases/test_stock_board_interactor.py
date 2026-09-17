@@ -114,4 +114,46 @@ async def test_가격_기준일을_그대로_전달한다():
 async def test_horizon을_리포지토리에_그대로_넘긴다():
     interactor, repo = _interactor([])
     await interactor.board(BoardQuery(horizon=20, limit=5))
-    assert repo.calls == [(20, 30)]  # SPARKLINE_BARS
+    assert repo.calls == [(20, 300)]  # RISK_BARS — 스파크라인은 그중 최근 30봉
+
+
+# --- 위험 신호 순(2026-09-17 재설계) ---
+
+def _closes(n: int, calm_until: int, step: float = 0.004) -> tuple[float, ...]:
+    """앞은 잔잔하다가 calm_until부터 크게 흔들리는 종가 — 최신 변동성이 자기 분포 상위로 간다."""
+    import math
+    out, price = [], 100.0
+    for i in range(n):
+        amp = 0.05 if i >= calm_until else step
+        price *= math.exp(amp if i % 2 else -amp * 0.9)
+        out.append(price)
+    return tuple(out)
+
+
+class _ReportRepository(_StubRepository):
+    async def find_latest_risk_report(self):
+        payload = {"train_end_year": 2020, "last_date": "2026-09-16", "signals": [{
+            "key": "vol_high", "label": "변동성 확대 가능성 높음", "outcome_label": "20거래일 안에 변동성이 커짐",
+            "side": "high", "validated": True,
+            "train": {"lift": 1.77}, "test": {"rate": 0.513, "base": 0.326, "lift": 1.57, "n_eff": 1274.0},
+        }]}
+        return AS_OF, payload
+
+
+async def test_위험_순_정렬은_변동성이_튄_종목을_위로_올리고_검증_실측을_싣는다():
+    calm = _row("CALM", "UP", 0.9, closes=_closes(300, calm_until=300))
+    wild = _row("WILD", "NEUTRAL", 0.0, closes=_closes(300, calm_until=285))
+    repo = _ReportRepository([calm, wild])
+    view = await StockBoardInteractor(repository=repo, directory=_StubDirectory()).board(
+        BoardQuery(horizon=5, limit=10, order="risk"))
+    assert [r.ticker for r in view.rows] == ["WILD", "CALM"]
+    assert view.rows[0].vol_state == "HIGH" and len(view.rows[0].sparkline) == 30
+    stat = view.risk_stats[0]
+    assert stat.validated and stat.test_rate == 0.513 and stat.lift == 1.57
+    assert view.risk_test_period == "2021-01~2026-09"
+
+
+async def test_봉이_모자라면_위험_신호는_비운다():
+    interactor, _ = _interactor([_row("NEW", "UP", 0.3)])
+    view = await interactor.board(BoardQuery(horizon=5, limit=10, order="risk"))
+    assert view.rows[0].vol_state is None and view.risk_stats == ()

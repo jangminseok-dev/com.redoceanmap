@@ -37,6 +37,12 @@ class StockReportInput:
     baseline_up_rate: float | None = None
     sample_size: int = 0
     fundamentals: tuple[tuple[str, str], ...] = ()                 # (tone, 문장)
+    # 위험 신호(신호 보드와 같은 판정, 2026-09-17) — 보드에 없는 종목이면 None
+    vol_state: str | None = None
+    drawdown_risk: str | None = None
+    rv20: float | None = None
+    rv_percentile: float | None = None
+    risk_evidence: tuple[str, ...] = ()                            # 이 상태의 검증 실측 문장
     news: tuple[tuple[str, datetime | None, float | None], ...] = field(default_factory=tuple)  # (제목, 발행, 감성)
 
 
@@ -94,6 +100,15 @@ def render_stock_report(r: StockReportInput) -> str:
         side = "위" if r.price > r.poc_high else "아래" if r.price < r.poc_low else "안"
         lines.append(f"- **거래 밀집 구간**: {_p(r.poc_low, u)}~{_p(r.poc_high, u)}{share} — 현재가는 그 {side}"
                      " (과거 거래가 몰린 가격대일 뿐 지지·저항선이 아니에요)")
+
+    if r.vol_state is not None:
+        badge = ("큰 낙폭 위험 높음" if r.drawdown_risk == "HIGH" else "변동성 확대 가능성 높음" if r.vol_state == "HIGH"
+                 else "큰 낙폭 위험 낮음(안정 구간)" if r.drawdown_risk == "LOW" else "변동성 확대 가능성 낮음" if r.vol_state == "LOW"
+                 else "보통")
+        vol = (f" — 최근 20일 변동성 연 {r.rv20:.0%}, 이 종목 1년 중 {r.rv_percentile:.0%} 위치"
+               if r.rv20 is not None and r.rv_percentile is not None else "")
+        evidence = f" · 검증 실측: {' / '.join(r.risk_evidence)}" if r.risk_evidence else ""
+        lines.append(f"- **위험 신호(향후 20거래일)**: {badge}{vol}{evidence} (방향이 아니라 흔들림의 크기 — 검증 구간에서도 유지된 신호)")
 
     if r.sample_size:
         if r.forecast_ready and r.up_rate is not None and r.baseline_up_rate is not None:

@@ -8,6 +8,8 @@ from datetime import datetime
 class BoardQuery:
     horizon: int
     limit: int
+    # risk = 위험 신호 순(2026-09-17 재설계, 화면·채팅 기본) · signal = 방향 신호 세기 순(기존)
+    order: str = "signal"
 
 
 @dataclass(frozen=True)
@@ -56,9 +58,34 @@ class BoardRowView:
     bb_percent_b: float | None = None
     signal_days: int = 1
     since_signal_pct: float | None = None  # 연속 신호 첫날 기준가 대비 최신가(0.03 = +3%)
+    # 위험 신호(2026-09-17) — 봉이 모자라면 전부 None
+    rv20: float | None = None              # 최근 20일 실현 변동성(연율)
+    rv_percentile: float | None = None     # 자기 1년 분포 안 위치(0~1)
+    vol_state: str | None = None           # HIGH | NORMAL | LOW
+    trend: str | None = None               # UP | DOWN | MIXED
+    drawdown_risk: str | None = None       # HIGH | NORMAL | LOW
+
+
+@dataclass(frozen=True)
+class RiskStatView:
+    """위험 신호 한 상태의 검증 실측 — 최신 주간 리포트의 검증 구간(2021~) 값."""
+
+    key: str                    # vol_high | vol_low | drop_high | drop_low
+    label: str
+    outcome_label: str
+    side: str                   # high(기준보다 잦음) | low(드묾)
+    test_rate: float | None
+    base_rate: float | None
+    lift: float | None
+    n_eff: float
+    train_lift: float | None
+    validated: bool             # 학습·검증 두 구간 모두 95% 구간이 기준률과 갈라짐
 
 
 @dataclass(frozen=True)
 class BoardView:
     horizon_days: int
     rows: tuple[BoardRowView, ...]
+    risk_stats: tuple[RiskStatView, ...] = ()
+    risk_report_ran_at: datetime | None = None
+    risk_test_period: str | None = None    # "2021-01~2026-09"

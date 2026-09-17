@@ -627,8 +627,14 @@ _SIGNAL_BOARD_RE = re.compile(
     r"|(?:상승|하락|매수|매도|반등)\s*신호(?:가|이|는|은)?\s*(?:나온|뜬|난|있는|잡힌|보이는|켜진)?\s*(?:종목|주식)"
     r"|신호(?:가|이)?\s*(?:나온|뜬|난|잡힌|켜진)\s*(?:종목|주식)"
     r"|신호\s*보드"
+    # 위험 신호 질문(2026-09-17) — "변동성 큰 종목", "안정적인 종목 뭐 있어", "낙폭 위험 큰 주식"
+    r"|(?:변동성|낙폭\s*위험|위험)\s*(?:이|가)?\s*(?:큰|높은|낮은|작은|적은)\s*(?:종목|주식)"
+    r"|(?:안정적인|안전한|덜\s*흔들리는)\s*(?:종목|주식)"
 )
 _SIGNAL_BOARD_LIMIT = 5  # 답변에 싣는 종목 수 — 전체는 화면 보드로 안내
+# 위험 신호 보드(2026-09-17 재설계) — 방향을 물었는지(검증 미달 고지)·안정 쪽을 먼저 원하는지
+_DIRECTION_ASK_RE = re.compile(r"상승|하락|매수|매도|반등|오를|내릴|떨어질")
+_CALM_ASK_RE = re.compile(r"안정|안전|덜\s*흔들|변동성\s*(?:이|가)?\s*(?:낮|작)|조용")
 
 # 뉴스 상세 후속(3차 P8 s08 t2) — "그 뉴스가 뭔데?"에 지표 분석으로 답했다. 직전 카드의
 # 근거 뉴스(제목·날짜·라벨)를 코드가 그대로 보여준다. 지시어 동반 조건으로 새 질문
@@ -2934,66 +2940,91 @@ class ChatInteractor(ChatUseCase):
         종목 예측 화면의 보드와 같은 자료·정렬이다. 신호는 예측 확정이 아니라 과거 통계
         참고치이므로 지평·표본 유의성을 함께 적고, 매매 지시가 아님을 고지한다.
         """
-        self._notify(on_stage, "data", "신호 보드를 읽고 있어요")
-        want = "DOWN" if "하락" in prompt or "매도" in prompt else "UP"
-        word = "하락" if want == "DOWN" else "상승"
+        self._notify(on_stage, "data", "위험 신호 보드를 읽고 있어요")
         try:
             board = await self._signals.current_board(limit=50)
         except Exception:
             logger.warning("[chat] 신호 보드 조회 실패", exc_info=True)
             text = answer_guard.ensure_disclaimer(
-                "지금 신호 보드를 읽어오지 못했어요. 잠시 뒤 다시 물어보시거나 종목 예측"
-                " 화면의 보드를 확인해 주세요."
+                "지금 위험 신호 보드를 읽어오지 못했어요. 잠시 뒤 다시 물어보시거나 종목 화면의 보드를 확인해 주세요."
             )
             await self._conversations.add_message(conversation_id, "assistant", text)
             return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
 
-        rows = [r for r in board.rows if r.direction == want][:_SIGNAL_BOARD_LIMIT]
-        horizon = board.horizon_days
-        if want == "DOWN" and not rows:
-            # 2026-09-17 하락 무발화 — 81종목 10년 재검증의 최근 5년에서 기준선 미달(신호 뒤 5일 평균 +0.38%)
-            text = (
-                "하락 방향 신호는 지금 내지 않아요 — 과거 10년 데이터로 다시 검증했을 때 최근 5년 구간에서"
-                " 평소보다 잘 맞히지 못했고, 신호 뒤 5일 평균이 오히려 올랐어요(2026-09-17부터 중단)."
-                " 반등 후보(과매도) 종목은 \"반등 후보 종목 알려줘\"로 물어보시면 돼요."
-            )
-        elif not rows:
-            text = (
-                f"지금은 워치리스트에 {horizon}거래일 지평 반등 후보(과매도 반등 신호)가 나온 종목이 없어요."
-                " 신호는 하루 한 번 갱신되니 내일 다시 물어보셔도 돼요."
-            )
-        else:
-            as_of = max(r.as_of for r in rows)
-            lines = [
-                f"워치리스트에서 앞으로 {horizon}거래일 지평 반등 후보(과매도 반등 신호)가 나온 종목이에요"
-                f" (신호 {as_of:%m/%d} 기준, 신호가 뚜렷한 순). 최근 많이 내려 RSI·볼린저 기준 과매도인 종목이라"
-                " 지금은 떨어지는 중일 수 있어요 — 오르는 중이라는 뜻이 아니라 되돌림을 기대하는 역추세 신호예요."
-            ]
-            for i, r in enumerate(rows, 1):
-                unit = self._currency_unit(r.ticker)
-                price = self._price_text(r.price, unit)
-                change = f" ({r.change_pct * 100:+.1f}%)" if r.change_pct is not None else ""
-                if r.up_rate is None or r.baseline_up_rate is None:
-                    stat = "과거 통계 표본 없음"
-                else:
-                    stat = (
-                        f"같은 신호일 때 실제로 {word}한 비율 {r.up_rate * 100:.0f}%"
-                        f" · 평소 {r.baseline_up_rate * 100:.0f}%"
-                        f" · {'통계적으로 유의' if r.ready else '유의성 미달'}"
-                    )
-                basis = f" · RSI {r.rsi:.0f}" if r.rsi is not None else ""
-                since = f"(첫 신호 뒤 {r.since_signal_pct * 100:+.1f}%)" if r.since_signal_pct is not None and r.signal_days > 1 else ""
-                streak = f" · 신호 {r.signal_days}일째{since}" if r.signal_days > 1 else " · 오늘 새 신호"
-                lines.append(f"{i}. {r.name}({r.ticker}) — {price}{change} · {stat}{basis}{streak}")
-            lines.append(
-                f"신호는 오늘 등락이 아니라 앞으로 {horizon}거래일 전망이고, 매매 지시가"
-                " 아니에요. 전체 보드는 종목 예측 화면에서 볼 수 있고, 종목명을 말씀하시면"
-                " 지표·뉴스 근거를 읽어드릴게요."
-            )
-            text = "\n".join(lines)
+        # 2026-09-17 재설계 — 방향(오를/내릴) 신호는 겹침 보정 재검증에서 최근 5년 평소와 구별되지 않았다.
+        # 방향을 물어도 종목을 찍지 않고, 검증 구간에서도 유지된 위험 신호(변동성·낙폭)로 답한다.
+        lines: list[str] = []
+        if _DIRECTION_ASK_RE.search(prompt):
+            lines.append("오를지·내릴지(방향)를 가리키는 신호는 과거 10년 재검증에서 최근 5년 평소와 구별되지 않아,"
+                         " 종목을 골라 드리지 않아요. 대신 검증 구간에서도 맞았던 위험 신호로 워치리스트를 보여 드릴게요.")
+        calm_first = bool(_CALM_ASK_RE.search(prompt))
+        stats = {s.key: s for s in board.risk_stats if s.validated and s.test_rate is not None and s.base_rate is not None}
+        caution = [r for r in board.rows if r.drawdown_risk == "HIGH" or r.vol_state == "HIGH"]
+        calm = [r for r in board.rows if r.vol_state == "LOW"]
+        calm.sort(key=lambda r: (r.drawdown_risk != "LOW", r.rv_percentile or 0.0))
+
+        def stat_text(key: str) -> str:
+            st = stats.get(key)
+            if st is None:
+                return ""
+            return f"{st.outcome_label} {st.test_rate * 100:.0f}%(평소 {st.base_rate * 100:.0f}%)"
+
+        def row_line(i: int, r) -> str:
+            unit = self._currency_unit(r.ticker)
+            change = f" ({r.change_pct * 100:+.1f}%)" if r.change_pct is not None else ""
+            badge = ("낙폭 위험 높음" if r.drawdown_risk == "HIGH" else "변동성 확대 주의" if r.vol_state == "HIGH"
+                     else "안정 구간" if r.drawdown_risk == "LOW" else "변동성 낮음")
+            vol = (f" · 최근 20일 변동성 연 {r.rv20 * 100:.0f}%(이 종목 1년 중 {r.rv_percentile * 100:.0f}% 위치)"
+                   if r.rv20 is not None and r.rv_percentile is not None else "")
+            trend = {"UP": " · 50·200일선 위", "DOWN": " · 200일선 아래", "MIXED": ""}.get(r.trend or "", "")
+            return f"{i}. {r.name}({r.ticker}) — {self._price_text(r.price, unit)}{change} · {badge}{vol}{trend}"
+
+        groups = [("안정 구간(변동성 낮음)", calm, ("drop_low", "vol_low")),
+                  ("변동성·낙폭 주의", caution, ("drop_high", "vol_high"))]
+        if not calm_first:
+            groups.reverse()
+        as_of = max((r.as_of for r in board.rows), default=None)
+        lines.append("워치리스트 위험 신호 — 앞으로 20거래일 동안 얼마나 흔들릴 수 있는지예요"
+                     + (f" ({as_of:%m/%d} 기준)." if as_of else "."))
+        for title, rows, keys in groups:
+            if not rows:
+                lines.append(f"**{title}**: 지금 해당 종목이 없어요.")
+                continue
+            evidence = " / ".join(t for k in keys if (t := stat_text(k)))
+            lines.append(f"**{title}** {len(rows)}종목" + (f" — 검증 실측: {evidence}" if evidence else ""))
+            lines.extend(row_line(i, r) for i, r in enumerate(rows[:_SIGNAL_BOARD_LIMIT], 1))
+        lines.append("최근 크게 흔들린 종목이 한동안 계속 크게 흔들리는 성질(변동성 군집)을 쓴 신호라 방향과 달리 재현돼요."
+                     f" 실측은 검증 구간 {board.risk_test_period or '2021~'} 값이고 이번 결과를 보장하지 않아요."
+                     " 매수·매도 판단이 아니라 위험 크기를 가늠하는 참고예요. 종목명을 말씀하시면 지표·뉴스까지 풀어 드릴게요.")
+        text = "\n".join(lines)
         text = answer_guard.ensure_disclaimer(text)
         await self._conversations.add_message(conversation_id, "assistant", text)
         return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
+
+    async def _risk_signal_for(self, symbol: str) -> tuple[object | None, tuple[str, ...]]:
+        """종목 하나의 위험 신호(신호 보드와 같은 판정) + 그 상태의 검증 실측 — 보드 미주입·미수록·실패면 (None, ())."""
+        if self._signals is None:
+            return None, ()
+        try:
+            board = await self._signals.current_board(limit=200)
+        except Exception:
+            logger.warning("[chat] 위험 신호 조회 실패: %s", symbol, exc_info=True)
+            return None, ()
+        base = symbol.split(".")[0]
+        row = next((r for r in board.rows if r.ticker == symbol or r.ticker.split(".")[0] == base), None)
+        if row is None or row.vol_state is None:
+            return None, ()
+        keys = []
+        if row.drawdown_risk in ("HIGH", "LOW"):
+            keys.append("drop_high" if row.drawdown_risk == "HIGH" else "drop_low")
+        if row.vol_state in ("HIGH", "LOW"):
+            keys.append("vol_high" if row.vol_state == "HIGH" else "vol_low")
+        stats = {s.key: s for s in board.risk_stats}
+        evidence = tuple(
+            f"{s.outcome_label} {s.test_rate * 100:.0f}%(평소 {s.base_rate * 100:.0f}%)"
+            for k in keys if (s := stats.get(k)) and s.validated and s.test_rate is not None and s.base_rate is not None
+        )
+        return row, evidence
 
     @staticmethod
     def _news_detail_text(history: list[Message]) -> str | None:
@@ -3406,6 +3437,7 @@ class ChatInteractor(ChatUseCase):
         # 용어 결정론 풀이(I-19) — 질문에 없는 전문용어의 첫 등장에 괄호 설명을 붙인다
         text = answer_guard.attach_glossary(text, prompt)
         # 종목 리포트(2026-09-17 실사용: 300자대 지표 두세 문장) — 가진 수치를 코드가 판단 순서로 전부 푼다. 고지는 맨 끝.
+        risk_row, risk_evidence = await self._risk_signal_for(analysis.symbol)
         report = render_stock_report(StockReportInput(
             symbol=analysis.symbol, unit=self._currency_unit(analysis.symbol), price=analysis.price,
             ma20=analysis.ma20, ma50=analysis.ma50, support=analysis.support, resistance=analysis.resistance,
@@ -3417,6 +3449,11 @@ class ChatInteractor(ChatUseCase):
             sample_size=forecast.sample_size if forecast else 0,
             fundamentals=tuple((i.tone, i.text) for i in fundamental_items),
             news=tuple((h.title, h.published_at, h.sentiment) for h in (hits or [])),
+            vol_state=risk_row.vol_state if risk_row else None,
+            drawdown_risk=risk_row.drawdown_risk if risk_row else None,
+            rv20=risk_row.rv20 if risk_row else None,
+            rv_percentile=risk_row.rv_percentile if risk_row else None,
+            risk_evidence=risk_evidence,
         ))
         text = f"{answer_guard.strip_disclaimer_lines(text).rstrip()}\n\n{report}"
         text = answer_guard.ensure_disclaimer(text)

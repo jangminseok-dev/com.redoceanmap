@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from hub.app.dtos.stock_signal_board_dto import StockSignalBoardInfo, StockSignalRow
+from hub.app.dtos.stock_signal_board_dto import RiskSignalStat, StockSignalBoardInfo, StockSignalRow
 from hub.app.ports.output.stock_signal_board_port import StockSignalBoardPort
 from stock.app.dtos.stock_board_dto import BoardQuery
 from stock.app.ports.input.stock_board_use_case import StockBoardUseCase
@@ -19,7 +19,7 @@ class StockSignalBoardGateway(StockSignalBoardPort):
         self._board = board
 
     async def current_board(self, limit: int) -> StockSignalBoardInfo:
-        view = await self._board.board(BoardQuery(horizon=HORIZON_DAYS, limit=limit))
+        view = await self._board.board(BoardQuery(horizon=HORIZON_DAYS, limit=limit, order="risk"))
         return StockSignalBoardInfo(
             horizon_days=view.horizon_days,
             rows=tuple(
@@ -37,7 +37,16 @@ class StockSignalBoardGateway(StockSignalBoardPort):
                     bb_percent_b=r.bb_percent_b,
                     signal_days=r.signal_days,
                     since_signal_pct=r.since_signal_pct,
+                    rv20=r.rv20, rv_percentile=r.rv_percentile, vol_state=r.vol_state,
+                    trend=r.trend, drawdown_risk=r.drawdown_risk,
                 )
                 for r in view.rows
             ),
+            risk_stats=tuple(
+                RiskSignalStat(key=s.key, label=s.label, outcome_label=s.outcome_label, side=s.side,
+                               test_rate=s.test_rate, base_rate=s.base_rate, lift=s.lift, n_eff=s.n_eff,
+                               validated=s.validated)
+                for s in view.risk_stats
+            ),
+            risk_test_period=view.risk_test_period,
         )

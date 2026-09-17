@@ -12,3 +12,4 @@ resources:
   - collect-rone-rent.yaml
   - collect-ecos-rates.yaml
   - backtest-area-score.yaml
+  - backtest-risk-signal.yaml

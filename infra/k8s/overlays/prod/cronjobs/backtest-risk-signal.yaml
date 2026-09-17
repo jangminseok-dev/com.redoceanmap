@@ -1,0 +1,37 @@
+# 위험 신호 워크포워드 검증 — 매주 토 06:00(금요 세션 일봉 적재 뒤). 신호 보드의 상태별 검증 실측·검증 여부 원천(2026-09-17 재설계).
+# 검증 구간(2021~)이 최신 봉으로 늘어나며, 성질이 무너지면 validated=False로 떨어져 보드가 수치를 내린다. 8초·저비용.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backtest-risk-signal
+spec:
+  schedule: "0 6 * * 6"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          hostAliases:
+            - ip: 172.17.0.1
+              hostnames: ["host.docker.internal"]
+          containers:
+            - name: job
+              image: minseok97/redoceanmap-backend:latest
+              imagePullPolicy: Never
+              workingDir: /app
+              command: ["python", "scripts/backtest_risk_signal.py"]
+              envFrom:
+                - secretRef:
+                    name: redocean-env
+                - configMapRef:
+                    name: redocean-runtime
+              env:
+                - name: DATABASE_URL
+                  value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@pgvector:5432/$(POSTGRES_DB)
+                - name: MARKET_DATABASE_URL
+                  value: $(MARKET_DATABASE_URL_DOCKER)

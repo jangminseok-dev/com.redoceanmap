@@ -12,3 +12,20 @@ _DIRECTION_RANK = {"UP": 0, "DOWN": 0, "NEUTRAL": 1}
 def sort_key(direction: str, score: float, ticker: str) -> tuple[int, float, str]:
     """중립 후순위 → |score| 내림차순 → 티커 사전순(동점 안정화)."""
     return (_DIRECTION_RANK.get(direction, 1), -abs(score), ticker)
+
+
+# 위험 신호 순(2026-09-17 재설계) — 주의가 필요한 종목이 위로. 방향이 아니라 검증된 위험 상태로 줄 세운다.
+def risk_sort_key(drawdown_risk: str | None, vol_state: str | None, rv_percentile: float | None,
+                  ticker: str) -> tuple[int, float, str]:
+    """큰 낙폭 위험 높음 → 변동성 확대 높음 → 보통 → 안정(낮음) → 판정 불가, 같은 층은 변동성 백분위 높은 순."""
+    if drawdown_risk == "HIGH":
+        tier = 0
+    elif vol_state == "HIGH":
+        tier = 1
+    elif vol_state == "NORMAL":
+        tier = 2
+    elif vol_state == "LOW":
+        tier = 3
+    else:
+        tier = 4
+    return (tier, -(rv_percentile or 0.0), ticker)

@@ -25,9 +25,32 @@ class StockSignalRow:
     bb_percent_b: float | None = None
     signal_days: int = 1           # 같은 방향 신호 연속 일수
     since_signal_pct: float | None = None  # 연속 신호 첫날 대비 최신가 등락
+    # 위험 신호(2026-09-17 재설계) — 판정 불가면 None
+    rv20: float | None = None
+    rv_percentile: float | None = None
+    vol_state: str | None = None       # HIGH | NORMAL | LOW
+    trend: str | None = None           # UP | DOWN | MIXED
+    drawdown_risk: str | None = None   # HIGH | NORMAL | LOW
+
+
+@dataclass(frozen=True)
+class RiskSignalStat:
+    """위험 신호 상태 하나의 검증 실측(검증 구간) — 수치 인용은 validated일 때만."""
+
+    key: str
+    label: str
+    outcome_label: str
+    side: str
+    test_rate: float | None
+    base_rate: float | None
+    lift: float | None
+    n_eff: float
+    validated: bool
 
 
 @dataclass(frozen=True)
 class StockSignalBoardInfo:
     horizon_days: int
-    rows: tuple[StockSignalRow, ...]  # 보드 정렬(신호가 뚜렷한 순) 그대로
+    rows: tuple[StockSignalRow, ...]  # 보드 정렬 그대로(위험 신호 순)
+    risk_stats: tuple[RiskSignalStat, ...] = ()
+    risk_test_period: str | None = None

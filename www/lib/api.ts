@@ -88,9 +88,10 @@ export const fetchStockForecast = (symbol: string): Promise<StockForecast> =>
 export const fetchStockQuote = (symbol: string): Promise<StockQuote> =>
   getJson(`/stock/${encodeURIComponent(symbol)}/quote`);
 
-// 워치리스트 신호 보드 — 종목별 analyze/forecast를 N번 부르지 않고 축적 스냅샷을 한 번에 읽는다
-export const fetchStockBoard = (horizon = 5, limit = 40): Promise<StockBoard> =>
-  getJson(`/stock/board?horizon=${horizon}&limit=${limit}`);
+// 워치리스트 위험 신호 보드 — 종목별 analyze/forecast를 N번 부르지 않고 축적 스냅샷·일봉을 한 번에 읽는다.
+// 기본 정렬은 위험 신호 순(2026-09-17 재설계 — 방향 신호는 겹침 보정 재검증 미달)
+export const fetchStockBoard = (horizon = 5, limit = 40, order: "risk" | "signal" = "risk"): Promise<StockBoard> =>
+  getJson(`/stock/board?horizon=${horizon}&limit=${limit}&order=${order}`);
 
 // 업종을 넘기지 않으면 백엔드가 "매출 최대 업종"으로 폴백한다 — 사용자가 물은 업종과
 // 다른 업종의 수치가 화면 전체에 깔리므로 채팅이 고른 업종 코드를 반드시 함께 보낸다.

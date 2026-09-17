@@ -33,3 +33,11 @@ def test_권유_표현을_쓰지_않는다():
     assert "이번 결과의 확률이 아니에요" in text
     for word in ("매수하", "매도하", "사세요", "파세요", "목표가"):
         assert word not in text
+
+
+def test_위험_신호가_있으면_검증_실측과_함께_싣는다():
+    text = render_stock_report(_input(vol_state="HIGH", drawdown_risk="HIGH", rv20=0.72, rv_percentile=0.93,
+                                      risk_evidence=("20거래일 안에 한 번이라도 -10% 이상 하락 30%(평소 24%)",)))
+    assert ("- **위험 신호(향후 20거래일)**: 큰 낙폭 위험 높음 — 최근 20일 변동성 연 72%, 이 종목 1년 중 93% 위치"
+            " · 검증 실측: 20거래일 안에 한 번이라도 -10% 이상 하락 30%(평소 24%)") in text
+    assert text.index("**수급**") < text.index("**위험 신호") < text.index("**과거 같은 신호 통계**")

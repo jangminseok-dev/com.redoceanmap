@@ -2,33 +2,38 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Minus, TrendingDown, TrendingUp } from "lucide-react";
 import { fetchStockBoard } from "@/lib/api";
 import { formatPrice, formatTurnover } from "@/lib/currency";
 import SymbolMark from "@/components/common/SymbolMark";
-import type { StockBoardRow } from "@/lib/types";
+import type { RiskStat, StockBoardRow } from "@/lib/types";
 
-// 적중률 라벨의 방향어 — 중립은 방향이 없으므로 "신호"로 둔다(중립 행은 up_rate가 대개 없다).
-// 적중은 "신호 뒤 그 방향으로 갔는가"라 상승·하락으로 둔다 — 반등 후보가 실제로 올랐는지의 비율이다.
-const DIRECTION_HIT_WORD: Record<StockBoardRow["direction"], string> = {
-  UP: "상승",
-  DOWN: "하락",
-  NEUTRAL: "신호",
-};
-
-// 좌측 목록의 방향 필터. 신호는 역추세(과매도 반등)라 "상승"이 아니라 "반등 후보"로 부른다 —
-// 2026-09-17 사용자 신고: "상승 신호 종목은 대부분 떨어지는 중"으로 읽혔다. 하락 방향은 같은 날 발화 중단.
+// 좌측 목록의 위험 필터(2026-09-17 재설계). 방향(오를까·내릴까) 신호는 겹침 보정 재검증에서 최근 5년 평소와
+// 구별되지 않아 보드에서 내렸다. 같은 기준으로 검증 구간(2021~)에서도 유지된 변동성·낙폭 위험만 주 신호로 둔다.
 const FILTERS = [
   { key: "ALL", label: "전체" },
-  { key: "UP", label: "반등 후보" },
+  { key: "CAUTION", label: "변동성·낙폭 주의" },
+  { key: "CALM", label: "안정 구간" },
 ] as const;
 type FilterKey = (typeof FILTERS)[number]["key"];
 
-const DIRECTION_META = {
-  UP: { label: "반등", icon: TrendingUp, className: "text-up bg-up-weak border-up/20" },
-  DOWN: { label: "조정", icon: TrendingDown, className: "text-down bg-down-weak border-down/20" },
-  NEUTRAL: { label: "중립", icon: Minus, className: "text-foreground-muted bg-surface border-border" },
-} as const;
+const isCaution = (r: StockBoardRow) => r.drawdown_risk === "HIGH" || r.vol_state === "HIGH";
+const isCalm = (r: StockBoardRow) => r.vol_state === "LOW";
+
+// 행의 위험 배지 — 낙폭 위험이 변동성보다 먼저(더 구체적인 경고). 판정 불가는 봉이 모자란 종목.
+// 색은 가격 방향색(up 빨강·down 파랑)을 쓰지 않는다 — 위험 배지가 "상승/하락"으로 읽힌다.
+function riskMeta(r: StockBoardRow) {
+  if (r.drawdown_risk === "HIGH")
+    return { label: "낙폭 위험 높음", stat: "drop_high", className: "text-destructive bg-destructive/10 border-destructive/30" };
+  if (r.vol_state === "HIGH")
+    return { label: "변동성 확대 주의", stat: "vol_high", className: "text-destructive bg-surface border-destructive/20" };
+  if (r.drawdown_risk === "LOW")
+    return { label: "안정 구간", stat: "drop_low", className: "text-brand bg-surface border-brand/30" };
+  if (r.vol_state === "LOW")
+    return { label: "변동성 낮음", stat: "vol_low", className: "text-brand bg-surface border-brand/20" };
+  if (r.vol_state === "NORMAL")
+    return { label: "보통", stat: null, className: "text-foreground-muted bg-surface border-border" };
+  return { label: "판정 불가", stat: null, className: "text-foreground-muted bg-surface border-border" };
+}
 
 const signedPct = (v: number) => `${v >= 0 ? "+" : ""}${(v * 100).toFixed(2)}%`;
 
@@ -69,15 +74,17 @@ function BoardRow({
   compact,
   active,
   onSelect,
+  stats,
 }: {
   row: StockBoardRow;
+  stats: Partial<Record<RiskStat["key"], RiskStat>>;
   rank: number;
   compact: boolean; // 320px 좌측 컬럼 — 스파크라인·신호·평소대비를 접는다
   active: boolean;
   onSelect: (symbol: string) => void;
 }) {
-  const meta = DIRECTION_META[row.direction] ?? DIRECTION_META.NEUTRAL;
-  const DirectionIcon = meta.icon;
+  const risk = riskMeta(row);
+  const stat = risk.stat ? stats[risk.stat as RiskStat["key"]] : undefined;
   const rising =
     row.sparkline.length >= 2 && row.sparkline[row.sparkline.length - 1] >= row.sparkline[0];
 
@@ -142,49 +149,37 @@ function BoardRow({
               {row.turnover != null ? formatTurnover(row.turnover, row.ticker) : "—"}
             </span>
 
-            {/* 신호 배지 + 근거 한 줄 — RSI·연속 일수·첫 신호 뒤 등락. 같은 종목이 매일 뜨면 새 신호처럼 보였다 */}
+            {/* 위험 배지 + 현재 변동성 위치 — 방향이 아니라 앞으로 20거래일 얼마나 흔들릴지다 */}
             <span
-              className="hidden lg:flex w-[104px] shrink-0 flex-col items-center gap-0.5"
+              className="hidden lg:flex w-[128px] shrink-0 flex-col items-center gap-0.5"
               title={
-                row.direction === "NEUTRAL"
-                  ? undefined
-                  : `최근 하락으로 과매도(RSI ${row.rsi != null ? Math.round(row.rsi) : "—"}${row.bb_percent_b != null ? ` · 볼린저 %B ${row.bb_percent_b.toFixed(2)}` : ""})라 되돌림을 기대하는 역추세 신호예요. 오르는 중이라는 뜻이 아닙니다.`
+                row.rv20 != null && row.rv_percentile != null
+                  ? `최근 20일 변동성 연 ${Math.round(row.rv20 * 100)}% — 이 종목의 지난 1년 중 ${Math.round(row.rv_percentile * 100)}% 위치예요.`
+                    + (row.trend === "DOWN" ? " 가격이 200일 이동평균 아래예요." : row.trend === "UP" ? " 50·200일 이동평균 위 상승 흐름이에요." : "")
+                  : "위험 신호를 판정할 일봉(약 1년치)이 아직 모자라요."
               }
             >
-              <span
-                className={`inline-flex items-center justify-center gap-1 px-2 py-0.5 rounded-full border text-xs font-medium ${meta.className}`}
-              >
-                <DirectionIcon size={11} strokeWidth={2} />
-                {meta.label} {row.score >= 0 ? "+" : ""}
-                {row.score.toFixed(2)}
+              <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full border text-xs font-medium ${risk.className}`}>
+                {risk.label}
               </span>
-              {row.direction !== "NEUTRAL" && (
+              {row.rv20 != null && row.rv_percentile != null && (
                 <span className="text-[11px] tabular-nums text-foreground-muted">
-                  {(row.signal_days ?? 1) > 1 ? `${row.signal_days}일째` : "새 신호"}
-                  {(row.signal_days ?? 1) > 1 && row.since_signal_pct != null && ` · ${signedPct(row.since_signal_pct)}`}
+                  변동성 {Math.round(row.rv20 * 100)}% · 1년 중 {Math.round(row.rv_percentile * 100)}%
                 </span>
               )}
             </span>
 
-            {/* 적중률은 **그 방향**의 과거 비율이다(verdict.ts와 같은 규칙) — DOWN 행의 62%는
-                "실제로 내린 비율"이지 상승 확률이 아니다. 방향어를 라벨에 박아 오독을 막는다. */}
+            {/* 이 상태의 검증 실측 — 검증 구간(2021~)에서 평소와 갈라진 신호만 수치를 싣는다 */}
             <span
-              className="hidden lg:flex w-24 shrink-0 flex-col items-end text-xs tabular-nums text-foreground-muted"
-              title={
-                row.up_rate != null && row.baseline_up_rate != null
-                  ? `과거 같은 ${DIRECTION_HIT_WORD[row.direction]} 신호일 때 실제로 그 방향으로 간 비율 ${Math.round(row.up_rate * 100)}% · 평소 ${Math.round(row.baseline_up_rate * 100)}%${row.ready ? "" : " · 통계적 유의성 미달"}`
-                  : "과거 통계로 검증할 표본이 아직 없습니다"
-              }
+              className="hidden lg:flex w-28 shrink-0 flex-col items-end text-xs tabular-nums text-foreground-muted"
+              title={stat ? `${stat.label}일 때 ${stat.outcome_label}: ${Math.round((stat.test_rate ?? 0) * 100)}% (평소 ${Math.round((stat.base_rate ?? 0) * 100)}%) — 과거 검증 구간 실측이며 이번 결과를 보장하지 않아요.` : undefined}
             >
-              {row.up_rate != null && row.edge_pct != null ? (
+              {stat && stat.validated && stat.test_rate != null && stat.base_rate != null ? (
                 <>
                   <span>
-                    {DIRECTION_HIT_WORD[row.direction]} 적중 {Math.round(row.up_rate * 100)}%
+                    {stat.key.startsWith("vol") ? "변동성 확대" : "-10% 하락"} {Math.round(stat.test_rate * 100)}%
                   </span>
-                  <span className="text-[11px]">
-                    평소 {row.edge_pct >= 0 ? "+" : ""}
-                    {(row.edge_pct * 100).toFixed(0)}%p
-                  </span>
+                  <span className="text-[11px]">평소 {Math.round(stat.base_rate * 100)}%</span>
                 </>
               ) : (
                 "—"
@@ -235,11 +230,11 @@ export default function MarketBoard({
   const [filter, setFilter] = useState<FilterKey>("ALL"); // 상태는 이 하나뿐이다
 
   const rows = boardQ.data?.rows ?? [];
-  const filtered = filter === "ALL" ? rows : rows.filter((r) => r.direction === filter);
-  const counts = rows.reduce(
-    (acc, row) => ({ ...acc, [row.direction]: acc[row.direction] + 1 }),
-    { UP: 0, DOWN: 0, NEUTRAL: 0 } as Record<StockBoardRow["direction"], number>,
-  );
+  const filtered = filter === "ALL" ? rows : rows.filter(filter === "CAUTION" ? isCaution : isCalm);
+  const counts = { caution: rows.filter(isCaution).length, calm: rows.filter(isCalm).length };
+  const statList = boardQ.data?.risk_stats ?? [];
+  const stats = Object.fromEntries(statList.map((s) => [s.key, s])) as Partial<Record<RiskStat["key"], RiskStat>>;
+  const validated = statList.filter((s) => s.validated && s.test_rate != null && s.base_rate != null);
 
   // 신호는 스냅샷(일 1회)에서, 가격은 그 뒤 더 쌓인 최신 봉에서 온다 — 한 날짜로 뭉뚱그리면
   // "기준 7/21"인데 가격은 7/22인 화면이 된다. 두 날짜가 다르면 둘 다 적는다.
@@ -270,7 +265,7 @@ export default function MarketBoard({
             {f.label}
           </button>
         ))}
-        <span className="ml-auto text-xs text-foreground-muted">신호순</span>
+        <span className="ml-auto text-xs text-foreground-muted">위험 신호순</span>
       </div>
       {compact && asOf && (
         <p className="px-4 pb-1.5 text-xs text-foreground-muted">
@@ -283,24 +278,38 @@ export default function MarketBoard({
       {!compact && rows.length > 0 && (
         <>
           <div className="grid grid-cols-2 gap-2 px-4 pt-4 pb-1">
-            <SummaryTile label="반등 후보(과매도)" count={counts.UP} className="text-up" />
-            <SummaryTile label="중립" count={counts.NEUTRAL + counts.DOWN} className="text-foreground-muted" />
+            <SummaryTile label="변동성·낙폭 주의" count={counts.caution} className="text-destructive" />
+            <SummaryTile label="안정 구간(변동성 낮음)" count={counts.calm} className="text-brand" />
           </div>
-          {/* 신호의 뜻 — 역추세라 반등 후보는 대개 최근 떨어진 종목이다(9/17 신고). 하락 방향은 장기 검증 미달로 중단 */}
-          <p className="px-4 pb-1 text-xs text-foreground-muted">
-            반등 후보는 최근 많이 내려 RSI·볼린저 기준 과매도인 종목이에요. 지금 오르는 중이라는 뜻이 아니라 앞으로{" "}
-            {boardQ.data?.horizon_days ?? 5}거래일 안의 되돌림을 기대하는 참고 신호이고, 통계적으로 검증된 신호는 아니에요 —
-            10년 재검증에서 최근 5년은 평소와 구분되지 않았어요. 하락 방향 신호는 평소보다 못해 내지 않아요.
-          </p>
+          {/* 신호의 뜻과 검증 실측 — 방향이 아니라 앞으로 20거래일 얼마나 흔들릴지다. 수치는 주간 리포트의 검증 구간 값 */}
+          <div className="px-4 pb-1 text-xs text-foreground-muted leading-relaxed">
+            <p>
+              오를지·내릴지(방향)는 과거 검증에서 평소와 구별되지 않아 보여 드리지 않아요. 대신 검증 구간에서도 맞았던
+              위험 신호를 보여 줘요 — 최근 크게 흔들린 종목은 한동안 계속 크게 흔들리는 성질(변동성 군집)이에요.
+            </p>
+            {validated.length > 0 && (
+              <ul className="mt-1 space-y-0.5">
+                {validated.map((s) => (
+                  <li key={s.key}>
+                    · {s.label}: {s.outcome_label} {Math.round((s.test_rate ?? 0) * 100)}% (평소{" "}
+                    {Math.round((s.base_rate ?? 0) * 100)}%{s.lift != null && `, ${s.lift.toFixed(1)}배`})
+                  </li>
+                ))}
+                <li className="text-[11px]">
+                  검증 구간 {boardQ.data?.risk_test_period ?? "2021~"} · 겹치는 20일 창은 독립 표본으로 세지 않았어요 ·
+                  과거 실측이며 이번 결과를 보장하지 않아요
+                </li>
+              </ul>
+            )}
+          </div>
         </>
       )}
 
       <div className="flex flex-wrap items-baseline gap-x-2 px-4 pt-4 pb-2">
-        <h3 className="text-base font-semibold">오늘의 신호 보드</h3>
+        <h3 className="text-base font-semibold">오늘의 위험 신호 보드</h3>
         {!compact && (
           <span className="text-xs text-foreground-muted">
-            워치리스트 · 신호가 뚜렷한 순
-            {boardQ.data && ` · ${boardQ.data.horizon_days}일 예측`}
+            워치리스트 · 주의가 필요한 순 · 향후 20거래일
             {asOf && ` · 신호 ${day(asOf)} 기준`}
             {priceAsOf && !sameDay && ` · 가격 ${day(priceAsOf)} 종가`}
           </span>
@@ -340,8 +349,8 @@ export default function MarketBoard({
               <span className="hidden xl:block w-24 shrink-0 text-right">등락액</span>
               <span className="w-[72px] shrink-0 text-right">등락률</span>
               <span className="hidden xl:block w-24 shrink-0 text-right">거래대금</span>
-              <span className="w-[104px] shrink-0 text-center">신호({boardQ.data.horizon_days}일)</span>
-              <span className="w-24 shrink-0 text-right">방향 적중률</span>
+              <span className="w-[128px] shrink-0 text-center">위험 신호(20일)</span>
+              <span className="w-28 shrink-0 text-right">검증 실측</span>
             </div>
           )}
 
@@ -355,21 +364,21 @@ export default function MarketBoard({
                 compact={compact}
                 active={row.ticker === selected}
                 onSelect={onSelect}
+                stats={stats}
               />
             ))}
           </ul>
           {filtered.length === 0 && (
             <p className="px-4 py-6 text-center text-sm text-foreground-muted">
-              반등 후보 종목이 지금은 없어요. 전체를 눌러 다른
-              신호를 둘러보세요.
+              지금은 이 조건에 해당하는 종목이 없어요. 전체를 눌러 둘러보세요.
             </p>
           )}
 
           {!compact && (
             <p className="px-4 py-3 text-xs text-foreground-muted leading-relaxed">
-              매수 추천 순위가 아니라 지표 신호가 뚜렷한 순서입니다. 등락률은 오늘 하루 값이고 신호는
-              앞으로 {boardQ.data.horizon_days}거래일 전망이라, 서로의 성적표가 아닙니다. &lsquo;평소 대비&rsquo;는 과거 같은
-              신호에서의 상승 비율과 평소 상승률의 차이로, 과거 통계이며 미래를 보장하지 않습니다. 가격은
+              매수·매도 추천이 아니라 앞으로 20거래일 동안 가격이 얼마나 흔들릴 수 있는지의 위험 신호입니다.
+              &lsquo;변동성&rsquo;은 최근 20일 하루 등락폭을 1년 기준으로 환산한 값, &lsquo;1년 중&rsquo;은 이 종목 지난 1년
+              안에서의 위치입니다. 검증 실측은 매주 다시 계산하며, 검증 구간에서 성질이 사라지면 수치를 내립니다. 가격은
               최근 수집 종가라 실시간이 아닙니다.
             </p>
           )}
