@@ -19,7 +19,7 @@
 market의 모든 테이블(3NF 15 + market_news_articles + area_score_backtest_reports)은
 **전용 DB(market-pgvector, pg17+pgvector, 호스트 :5434)**에 산다. 접근은 market 프로바이더가
 `core.database.get_market_db`(엔진은 `MARKET_DATABASE_URL`, 미설정 시 메인 폴백)로만 한다 —
-앱별 DB 불가침. 스키마 진실은 `apps/market/alembic` 독립 체인(7c5cfbd1c35f → 8d6efce2a41b → 9a1b2c3d4e5f → f3e4d5c6b7a8 → f4e5d6c7b8a9 → b5c6d7e8f9a0 → c7d8e9f0a1b2 → d8e9f0a1b2c3 → d8f0a1b2c3d4 → e9a1b2c3d4e5 → f5a6b7c8d9e0),
+앱별 DB 불가침. 스키마 진실은 `apps/market/alembic` 독립 체인(7c5cfbd1c35f → 8d6efce2a41b → 9a1b2c3d4e5f → f3e4d5c6b7a8 → f4e5d6c7b8a9 → b5c6d7e8f9a0 → c7d8e9f0a1b2 → d8e9f0a1b2c3 → d8f0a1b2c3d4 → e9a1b2c3d4e5 → f5a6b7c8d9e0 → a6b7c8d9e0f1),
 루트 체인의 market 리비전들은 이력 동결(루트 env.py에서 ORM 제거 + include_name 필터).
 컨테이너 접속: 실운영 backend는 `host.docker.internal:5434`(네트워크 분리, extra_hosts).
 백업: `scripts/backup_db.sh`의 market 블록(market-*.dump 7세대). 배치(ingest·backtest)도
@@ -177,6 +177,15 @@ market의 모든 테이블(3NF 15 + market_news_articles + area_score_backtest_r
 - `rent_benchmarks` — R-ONE 상가 임대동향(소규모·중대형·집합) 서울 64 CLS × 분기(2024Q3~), 임대료 원/㎡·공실률.
   수집 `scripts/collect_rone_rent.py`(분기 첫 달 10일 cron). 상권 매칭은 `domain/services/rent_matcher.py`
   (R-ONE 상권 59개 별칭 → 자치구 권역 → 서울). **대부분 권역 평균**이라 서술이 "동북권 평균"임을 병기한다.
+  **수익률 3열(2026-09-17, 리비전 a6b7c8d9e0f1)**: 같은 표 계열의 임대동향 수익률(소득·자본·투자, 분기 %)을 (분기, CLS_ID)로 붙인다 —
+  512행 전부 키 일치 실측. chat 비교표에 "상가 수익률(분기, 소득·자본)" 행으로 노출(자본수익률 = 상권 자산가치 과열·침체 신호).
+- `key_money_benchmarks`(2026-09-17) — R-ONE `A_2024_00445` 시도별/업종별 상가권리금(연간 2022~) 중 서울 × 업종 대분류 6개.
+  같은 수집 스크립트가 적재. **재무 엔진의 권리금 기본값**: `domain/services/key_money.py` — 서울시 업종 코드 →
+  대분류(외식 CS1·숙박 → 숙박 및 음식점업, 소매 CS3 → 도매 및 소매, 오락·미용 등 일부 CS2 → 해당 대분류, 나머지 → 전체).
+  권리금 있는 점포 비율 50% 이상이면 **중위수를 가정**(2025 숙박·음식점업 79%·4,367만원), 미만이면 0으로 두되 비율·중위수를
+  가정 문구에 병기(도매·소매 32%). 이전 "권리금 0 가정"은 카페·음식점 부족 자금을 크게 과소평가했다. 사용자가 권리금을 말하면 입력이 이긴다.
+- ECOS 추가 후보 검토(2026-09-17, 미채택): 지역별 소비유형별 신용카드(601Y002)는 2023-08에서 갱신 중단,
+  은행 연체율(901Y054)은 기업·가계 구분뿐이라 자영업자 신호가 아니다.
 - `interest_rates` — ECOS 기준금리·대출평균·기업대출 월별. 수집 `scripts/collect_ecos_rates.py`(매월 15일).
 - 원가율·최저임금·기본 면적·보증금 개월·운전자금 개월은 `domain/services/cost_benchmarks.py` 상수(잠정, 출처 병기).
 - **잔여(2026-09-16)**: ① 골든셋 러너(`-m ollama`) 재박제·`finance_answer_rate` 실측은 백엔드 PC 전용이라 미실행

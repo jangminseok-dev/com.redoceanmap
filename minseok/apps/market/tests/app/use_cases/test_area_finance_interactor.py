@@ -2,7 +2,7 @@ from market.app.dtos.area_finance_dto import AreaFinanceQuery
 from market.app.dtos.area_stats_dto import AreaHeader, ServiceRef
 from market.app.use_cases.area_finance_interactor import AreaFinanceInteractor
 from market.domain.value_objects.area_profile_vo import ServiceRank, StartupCost
-from market.domain.value_objects.finance_vo import RentBenchmark, Source
+from market.domain.value_objects.finance_vo import KeyMoneyBenchmark, RentBenchmark, Source
 
 
 class _StubDetail:
@@ -25,11 +25,17 @@ class _StubDetail:
 
 
 class _StubFinance:
-    def __init__(self, rent=None, rate=(202608, 4.5)):
+    def __init__(self, rent=None, rate=(202608, 4.5), key_money=None):
         self.rent, self.rate = rent, rate
+        self.key_money = key_money or {}
+        self.key_money_calls: list[str] = []
 
     async def find_rent(self, trdar_code):
         return self.rent
+
+    async def find_key_money(self, industry_group):
+        self.key_money_calls.append(industry_group)
+        return self.key_money.get(industry_group)
 
     async def find_loan_rate(self):
         return self.rate
@@ -103,3 +109,32 @@ async def test_상권이나_업종이_없으면_None():
     assert await AreaFinanceInteractor(_StubFinance(RENT), _StubDetail(header=False)).calculate(Q) is None
     assert await AreaFinanceInteractor(_StubFinance(RENT), _StubDetail(rank=RANK)).calculate(
         AreaFinanceQuery(1001, "CS999999", 100_000_000)) is None
+
+
+
+FOOD_KM = KeyMoneyBenchmark(year=2025, industry_group="숙박 및 음식점업", key_money_ratio=79.1, median_krw=43_670_749)
+
+
+async def test_권리금을_안_말하면_서울_업종군_중위수를_가정한다():
+    finance = _StubFinance(RENT, key_money={"숙박 및 음식점업": FOOD_KM})
+    view = await AreaFinanceInteractor(finance, _StubDetail(rank=RANK, cost=COST)).calculate(Q)
+    km = view.plan.inputs.key_money
+    assert km.value == 43_670_749 and km.source == Source.ASSUMED
+    assert km.note == "권리금 4,367만원 가정(R-ONE 2025 서울 숙박 및 음식점업 권리금 있는 점포 중위수, 있는 비율 79%)"
+    assert finance.key_money_calls == ["숙박 및 음식점업"]  # 커피-음료(CS1) → 숙박·음식점업
+    assert "권리금 4,367만원 가정" in view.assumption_note
+    # 권리금이 CAPEX에 들어가 부족 자금이 커진다
+    zero = await AreaFinanceInteractor(_StubFinance(RENT), _StubDetail(rank=RANK, cost=COST)).calculate(Q)
+    assert view.plan.capex == zero.plan.capex + 43_670_749
+
+
+async def test_업종군_자료가_없으면_전체로_폴백하고_권리금을_말하면_입력이_이긴다():
+    all_km = KeyMoneyBenchmark(year=2025, industry_group="전체", key_money_ratio=54.3, median_krw=38_153_274)
+    finance = _StubFinance(RENT, key_money={"전체": all_km})
+    view = await AreaFinanceInteractor(finance, _StubDetail(rank=RANK, cost=COST)).calculate(Q)
+    assert finance.key_money_calls == ["숙박 및 음식점업", "전체"]
+    assert view.plan.inputs.key_money.value == 38_153_274
+
+    given = await AreaFinanceInteractor(_StubFinance(RENT, key_money={"전체": all_km}), _StubDetail(rank=RANK, cost=COST)).calculate(
+        AreaFinanceQuery(1001, "CS100010", 100_000_000, key_money=0))
+    assert given.plan.inputs.key_money.value == 0 and given.plan.inputs.key_money.source == Source.INPUT

@@ -38,4 +38,6 @@ class AreaFinanceGateway(AreaFinancePort):
             rent_level=view.rent.level if view.rent else None,
             vacancy_rate=view.rent.vacancy_rate if view.rent else None,
             rent_region=view.rent.region_name if view.rent else "",
+            income_return=view.rent.income_return if view.rent else None,
+            capital_return=view.rent.capital_return if view.rent else None,
         )

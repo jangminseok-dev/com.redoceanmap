@@ -5,12 +5,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from market.adapter.outbound.orm.interest_rate_orm import InterestRateOrm
+from market.adapter.outbound.orm.key_money_benchmark_orm import KeyMoneyBenchmarkOrm
 from market.adapter.outbound.orm.region_orm import RegionOrm
 from market.adapter.outbound.orm.rent_benchmark_orm import RentBenchmarkOrm
 from market.adapter.outbound.orm.trade_area_orm import TradeAreaOrm
 from market.app.ports.output.area_finance_repository import AreaFinanceRepositoryPort
 from market.domain.services.rent_matcher import match_area, zone_for
-from market.domain.value_objects.finance_vo import RentBenchmark
+from market.domain.value_objects.finance_vo import KeyMoneyBenchmark, RentBenchmark
 
 _BUILDING = "small"
 _CITY = "서울"
@@ -49,8 +50,21 @@ class AreaFinancePgRepository(AreaFinanceRepositoryPort):
             r = await self._latest(level, region)
             if r is not None:
                 return RentBenchmark(year_quarter=r.year_quarter, rent_per_sqm_krw=r.rent_per_sqm_krw,
-                                     vacancy_rate=r.vacancy_rate, region_name=r.region_name, level=tag)
+                                     vacancy_rate=r.vacancy_rate, region_name=r.region_name, level=tag,
+                                     income_return=r.income_return, capital_return=r.capital_return,
+                                     investment_return=r.investment_return)
         return None
+
+    async def find_key_money(self, industry_group: str) -> KeyMoneyBenchmark | None:
+        r = (await self._session.execute(
+            select(KeyMoneyBenchmarkOrm)
+            .where(KeyMoneyBenchmarkOrm.region_name == _CITY, KeyMoneyBenchmarkOrm.industry_group == industry_group)
+            .order_by(KeyMoneyBenchmarkOrm.year.desc()).limit(1)
+        )).scalar_one_or_none()
+        if r is None:
+            return None
+        return KeyMoneyBenchmark(year=r.year, industry_group=r.industry_group,
+                                 key_money_ratio=r.key_money_ratio, median_krw=r.median_krw)
 
     async def find_loan_rate(self) -> tuple[int, float] | None:
         r = (await self._session.execute(

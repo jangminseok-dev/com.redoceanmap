@@ -79,3 +79,17 @@ class RentBenchmark:
     vacancy_rate: float | None
     region_name: str
     level: str  # area | zone | city
+    # R-ONE 임대동향 수익률(분기 %) — 소득(임대료) + 자본(자산가치 변동) = 투자. 2024Q3 이전 빈티지·미적재면 None
+    income_return: float | None = None
+    capital_return: float | None = None
+    investment_return: float | None = None
+
+
+@dataclass(frozen=True)
+class KeyMoneyBenchmark:
+    """R-ONE 서울 업종 대분류별 상가권리금(연간) — 수준은 **권리금 있는 점포** 기준."""
+
+    year: int
+    industry_group: str          # "숙박 및 음식점업" · "전체"
+    key_money_ratio: float | None  # 권리금 있는 점포 비율(%)
+    median_krw: int | None

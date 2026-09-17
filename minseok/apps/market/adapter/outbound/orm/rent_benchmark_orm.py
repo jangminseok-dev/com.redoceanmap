@@ -27,4 +27,8 @@ class RentBenchmarkOrm(Base):
     region_name: Mapped[str] = mapped_column(String(40), index=True)  # 마지막 계층명
     rent_per_sqm_krw: Mapped[int] = mapped_column(Integer)
     vacancy_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # 임대동향 수익률(분기 %) — 소득(임대료)·자본(자산가치 변동)·투자(=합) — 2024Q3~ 빈티지
+    income_return: Mapped[float | None] = mapped_column(Float, nullable=True)
+    capital_return: Mapped[float | None] = mapped_column(Float, nullable=True)
+    investment_return: Mapped[float | None] = mapped_column(Float, nullable=True)
     collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

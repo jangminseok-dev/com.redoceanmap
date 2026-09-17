@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from market.domain.value_objects.finance_vo import RentBenchmark
+from market.domain.value_objects.finance_vo import KeyMoneyBenchmark, RentBenchmark
 
 
 class AreaFinanceRepositoryPort(ABC):
@@ -11,6 +11,11 @@ class AreaFinanceRepositoryPort(ABC):
     @abstractmethod
     async def find_rent(self, trdar_code: int) -> RentBenchmark | None:
         """소규모 상가 최신 분기 임대료 — 상권 직접 매칭 → 자치구 권역 → 서울 순. 미적재면 None."""
+        ...
+
+    @abstractmethod
+    async def find_key_money(self, industry_group: str) -> KeyMoneyBenchmark | None:
+        """서울 업종 대분류의 최신 연도 권리금 — 미적재면 None."""
         ...
 
     @abstractmethod

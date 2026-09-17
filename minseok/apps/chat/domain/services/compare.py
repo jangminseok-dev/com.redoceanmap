@@ -306,6 +306,11 @@ def render_area_compare(items: list[AreaCompareItem], v: AreaVerdict, *, service
         f = [i.finance or {} for i in items]
         row("월세(추정)", [f"{x['rent']:,}만원 ({x.get('rent_level', '')}{' ' + x['rent_region'] if x.get('rent_region') else ''})" if x.get("rent") is not None else "산출 불가" for x in f])
         row("공실률(R-ONE)", [f"{x['vacancy']:.1f}%" if x.get("vacancy") is not None else "산출 불가" for x in f], "vacancy_rate")
+        row("상가 수익률(분기, 소득·자본)", [
+            f"소득 {x['income_return']:.2f}% · 자본 {x['capital_return']:+.2f}%"
+            if x.get("income_return") is not None and x.get("capital_return") is not None else "산출 불가" for x in f
+        ])
+        row("권리금", [f"{x['key_money']:,}만원 ({x.get('key_money_note') or ''})" if x.get("key_money") is not None else "산출 불가" for x in f])
         row("손익분기 월매출", [f"{x['bep']:,}만원" if x.get("bep") is not None else "산출 불가" for x in f])
         row("손익분기 달성률", [f"{x['attainment']:.0%}" if x.get("attainment") is not None else "산출 불가" for x in f], "attainment")
         row("월 이익(추정)", [f"{x['profit']:,}만원" if x.get("profit") is not None else "산출 불가" for x in f])

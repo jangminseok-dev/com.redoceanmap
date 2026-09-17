@@ -53,3 +53,5 @@ class AreaFinancePlanInfo:
     rent_level: str | None  # area | zone | city
     vacancy_rate: float | None = None   # R-ONE 공실률(%) — 벤치마크가 없으면 None
     rent_region: str = ""                # 임대료 기준 지역명(예: 뚝섬)
+    income_return: float | None = None   # R-ONE 상가 소득수익률(분기 %) — 임대료 기준 지역과 같은 단위
+    capital_return: float | None = None  # 자본수익률(분기 %) — 자산가치 변동, 상권 과열·침체 신호

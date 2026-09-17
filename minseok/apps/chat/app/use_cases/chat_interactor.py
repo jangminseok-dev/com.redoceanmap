@@ -1448,12 +1448,16 @@ class ChatInteractor(ChatUseCase):
                     missing.append(f"{area_map[code].trdar_name} 임대료 — R-ONE 상권·권역 매칭이 없어 산출 불가")
                     continue
                 rent = next((i.value for i in info.inputs if i.key == "monthly_rent"), None)
+                key_money_input = next((i for i in info.inputs if i.key == "key_money"), None)
                 finance_by_code[code] = {
                     "rent": round(rent / 10000) if rent else None, "rent_level": {"area": "상권 실측", "zone": "권역 평균", "city": "서울 평균"}.get(info.rent_level or "", ""),
                     "bep": round(info.bep_monthly_sales / 10000), "attainment": info.attainment,
                     "profit": round(info.monthly_profit / 10000) if info.monthly_profit is not None else None,
                     "gap": round(info.funding_gap / 10000),
                     "vacancy": info.vacancy_rate, "rent_region": info.rent_region,
+                    "key_money": round(key_money_input.value / 10000) if key_money_input is not None else None,
+                    "key_money_note": key_money_input.note if key_money_input is not None and key_money_input.source == "assumed" else "입력",
+                    "income_return": info.income_return, "capital_return": info.capital_return,
                 }
         else:
             missing.append("임대료·손익분기 — 업종이 정해져야 계산돼요" if service_code == GENERIC_SERVICE_CODE else "임대료·손익분기 — 재무 엔진 미배선")

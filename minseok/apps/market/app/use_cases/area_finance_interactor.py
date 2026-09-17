@@ -5,7 +5,7 @@ from market.app.ports.input.area_finance_use_case import AreaFinanceUseCase
 from market.app.ports.output.area_detail_repository import AreaDetailRepositoryPort
 from market.app.ports.output.area_finance_repository import AreaFinanceRepositoryPort
 from market.domain.services import cost_benchmarks as cb
-from market.domain.services import finance_engine, finance_narrator
+from market.domain.services import finance_engine, finance_narrator, key_money as key_money_rules
 from market.domain.services.area_narrator import PAYBACK_MIN_STORES, franchise_industry_for
 from market.domain.value_objects.finance_vo import FinanceInputs, Source, Sourced
 
@@ -53,8 +53,14 @@ class AreaFinanceInteractor(AreaFinanceUseCase):
 
         deposit = (given("deposit", query.deposit) if query.deposit is not None
                    else Sourced(monthly_rent.value * cb.DEPOSIT_MONTHS, Source.ASSUMED, f"보증금은 월세 {cb.DEPOSIT_MONTHS}개월분 가정"))
-        key_money = (given("key_money", query.key_money) if query.key_money is not None
-                     else Sourced(0, Source.ASSUMED, "권리금 0 가정"))
+        if query.key_money is not None:
+            key_money = given("key_money", query.key_money)
+        else:
+            group = key_money_rules.industry_group_for(service.code)
+            bench = await self._finance.find_key_money(group)
+            if bench is None and group != key_money_rules.ALL:
+                bench = await self._finance.find_key_money(key_money_rules.ALL)
+            key_money = key_money_rules.default_key_money(bench)
 
         if query.startup_cost is not None:
             startup_cost = given("startup_cost", query.startup_cost)
