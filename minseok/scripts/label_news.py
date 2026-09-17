@@ -21,6 +21,7 @@ Gemma 80건 표본(2026-09-15): EXAONE 라벨과 감성 부호 일치 62/80·정
 
 import json
 import re
+import time
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -90,14 +91,31 @@ def fetch_pending(limit: int) -> list[dict]:
 def post_labels(items: list[dict]) -> int:
     saved = 0
     for start in range(0, len(items), POST_CHUNK):
-        res = requests.post(
-            f"{HUB_URL}/automation/news-labels",
-            json={"items": items[start:start + POST_CHUNK]},
-            headers=HEADERS, timeout=60,
-        )
-        res.raise_for_status()
+        res = _post_with_retry({"items": items[start:start + POST_CHUNK]})
         saved += res.json()["saved"]
     return saved
+
+
+def _post_with_retry(body: dict, attempts: int = 6):
+    """허브 저장 — 연결 거부·5xx면 지수 대기 후 재시도(최대 ~5분).
+
+    2026-09-17 02:30 실행이 1,900/25,000건째에서 연결 거부 한 번에 통째로 죽었다(배포·파드 재시작 창).
+    라벨은 (news_id, labeler) 유니크 upsert라 같은 묶음을 다시 보내도 중복이 생기지 않는다.
+    """
+    for attempt in range(attempts):
+        try:
+            res = requests.post(f"{HUB_URL}/automation/news-labels", json=body, headers=HEADERS, timeout=60)
+            if res.status_code < 500:
+                res.raise_for_status()
+                return res
+        except requests.ConnectionError:
+            if attempt == attempts - 1:
+                raise
+        wait = 10 * 2 ** attempt
+        print(f"  허브 저장 실패 — {wait}초 뒤 재시도({attempt + 1}/{attempts})", flush=True)
+        time.sleep(wait)
+    res.raise_for_status()
+    return res
 
 
 def parse_label(text: str) -> dict | None:

@@ -1,5 +1,6 @@
 "use client";
 
+import AnswerBody from "@/components/chat/AnswerBody";
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { ArrowUpRight, TrendingDown, TrendingUp, Minus, Sparkles } from "lucide-react";
@@ -142,9 +143,8 @@ export default function ChatPanel({
                   <StockSummaryCard stock={m.stock} onClick={() => onSelectStock?.(m.stock!)} />
                 )}
 
-                <p className="mt-3 text-sm text-foreground leading-relaxed whitespace-pre-wrap">
-                  {withCitations(m.content)}
-                </p>
+                {/* 마크다운(굵게·목록·표)으로 렌더하고 세부 근거·전체 표는 접는다 — 평문이면 기호와 표 파이프가 그대로 보였다 */}
+                <AnswerBody text={m.content} />
 
                 {m.stock && workspace !== "stock" && (
                   <Link
@@ -352,22 +352,6 @@ function StockSummaryCard({ stock, onClick }: { stock: StockAnalysis; onClick: (
 
 // 답변 본문의 인용 마커 [n]을 근거 배지로 렌더 — 번호는 아래 근거 뉴스 목록의 [n]과 대응한다
 // (백엔드가 컨텍스트에 '근거 [n]'으로 번호를 부여하고 모델이 문장 끝에 인용한다 — R4).
-function withCitations(text: string): React.ReactNode {
-  return text.split(/(\[\d+\])/g).map((part, i) => {
-    const marker = /^\[(\d+)\]$/.exec(part);
-    if (!marker) return part;
-    return (
-      <sup
-        key={i}
-        title={`근거 ${marker[1]}번`}
-        className="ml-0.5 text-[10px] font-semibold text-brand tabular-nums"
-      >
-        [{marker[1]}]
-      </sup>
-    );
-  });
-}
-
 function NewsEvidenceList({ items }: { items: NewsCardItem[] }) {
   return (
     <div className="mt-3 flex flex-col gap-1.5">

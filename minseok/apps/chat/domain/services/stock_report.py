@@ -55,9 +55,36 @@ def _gap(price: float, ref: float) -> str:
     return f"{abs(diff):.1f}% {'위' if diff >= 0 else '아래'}"
 
 
+DETAIL_HEADING = "**세부 근거**"   # 프론트가 접힌 상태로 렌더한다(compare.DETAIL_HEADING과 같은 표기)
+
+
+def _glance(r: StockReportInput) -> list[str]:
+    """한눈에 — 지금 어디쯤·얼마나 흔들릴지·싼지/튼튼한지·뉴스 결. 방향 판단은 하지 않는다."""
+    out = []
+    if r.support and r.resistance and r.resistance > r.support:
+        where = (r.price - r.support) / (r.resistance - r.support)
+        zone = "고점 부근" if where >= 0.8 else "저점 부근" if where <= 0.2 else "중간"
+        out.append(f"가격 위치 — 60일 범위의 {zone}({where:.0%})")
+    if r.vol_state is not None:
+        badge = ("큰 낙폭 위험 높음" if r.drawdown_risk == "HIGH" else "변동성 확대 가능성 높음" if r.vol_state == "HIGH"
+                 else "안정 구간" if r.drawdown_risk == "LOW" else "변동성 낮음" if r.vol_state == "LOW" else "보통")
+        out.append(f"위험 — 향후 20거래일 {badge}(검증된 위험 신호)")
+    if r.fundamentals:
+        warn = sum(1 for t, _ in r.fundamentals if t == "warning")
+        good = sum(1 for t, _ in r.fundamentals if t == "positive")
+        out.append(f"가치·체력 — 긍정 {good} · 경고 {warn}")
+    tones = [s for _, _, s in r.news if s is not None]
+    if tones:
+        pos = sum(1 for s in tones if s > 0.2)
+        neg = sum(1 for s in tones if s < -0.2)
+        out.append(f"최근 뉴스 결 — 호재 성격 {pos} · 악재 성격 {neg} · 중립 {len(tones) - pos - neg}")
+    return ["**한눈에**", *[f"- {line}" for line in out]] if out else []
+
+
 def render_stock_report(r: StockReportInput) -> str:
     u = r.unit
-    lines = [f"{STOCK_REPORT_HEADING}{r.symbol}** (코드가 수치로 정리한 근거 — 매수·매도 판단이 아니에요)"]
+    head = [f"{STOCK_REPORT_HEADING}{r.symbol}** (코드가 수치로 정리한 근거 — 매수·매도 판단이 아니에요)", *_glance(r)]
+    lines = [DETAIL_HEADING]
 
     pos = [f"현재가 {_p(r.price, u)}"]
     if r.ma20:
@@ -130,4 +157,4 @@ def render_stock_report(r: StockReportInput) -> str:
             date = f"{published:%m/%d}" if published else "날짜 미상"
             items.append(f"{title}({date}{tone})")
         lines.append("- **최근 뉴스**: " + " / ".join(items))
-    return "\n".join(lines)
+    return "\n".join(head) + "\n\n" + "\n".join(lines)

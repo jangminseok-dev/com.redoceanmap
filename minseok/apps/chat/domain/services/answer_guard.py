@@ -326,6 +326,55 @@ def grade_caution_notice(name: str, grade: str, total: float) -> str:
     )
 
 
+_SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+|\n+")
+
+
+def _stem(name: str) -> str:
+    return re.sub(r"\(.*?\)", "", name).strip()
+
+
+def strip_conflicting_recommendations(text: str, top_name: str, other_names: list[str]) -> str:
+    """결론(코드가 정한 1순위)과 다른 상권을 추천하는 서술 문장을 지운다(2026-09-17 결론 오라클 회귀: 결론 망원역·본문 "망리단길을 추천").
+
+    추천 어휘가 있고 다른 후보 이름은 있는데 1순위 이름이 없는 문장만 뺀다 — 비교 설명("망원역은 망리단길보다…")은 남는다.
+    """
+    top = _stem(top_name)
+    others = [o for o in (_stem(n) for n in other_names) if len(o) >= 2 and o not in top and top not in o]
+    if not others:
+        return text
+    parts = re.split(r"((?<=[.!?])\s+|\n+)", text)
+    kept: list[str] = []
+    skip_sep = False
+    for idx, part in enumerate(parts):
+        if idx % 2:                      # 구분자 — 지운 문장 뒤의 구분자도 함께 뺀다(이중 공백 방지)
+            if not skip_sep:
+                kept.append(part)
+            continue
+        skip_sep = bool(_RECOMMEND_WORD.search(part) and top not in part and any(o in part for o in others))
+        if not skip_sep:
+            kept.append(part)
+    return re.sub(r"\n{3,}", "\n\n", "".join(kept)).strip()
+
+
+_RECOMMEND_WORD = re.compile(r"추천|가장\s*(?:유망|적합|좋)|최선의\s*선택|1순위")
+_AREA_CODE_PAREN = re.compile(r"\s*\(\d{7}\)")
+
+
+def strip_area_codes(text: str) -> str:
+    """서술에 새어 나온 상권 코드 괄호("성수동카페거리(3110131)")를 지운다 — 컨텍스트 표의 식별자일 뿐 사용자 정보가 아니다."""
+    return _AREA_CODE_PAREN.sub("", text)
+
+
+def grade_caution_notice_group(entries: list[tuple[str, str, float]]) -> str:
+    """여러 상권 등급 고지를 한 문장으로 — 비교 답에서 곳마다 한 문단씩 반복돼 결론을 밀어냈다(2026-09-17 실사용).
+    entries: (상권명, 등급, 점수). 한 곳이면 기존 grade_caution_notice와 같다."""
+    if len(entries) == 1:
+        return grade_caution_notice(*entries[0])
+    listing = "·".join(f"{name}({total:.1f}점 '{grade}')" for name, grade, total in entries)
+    return (f"※ {listing}은 상권 전체 건강 점수 주의·위험 등급으로 서울 중앙 상권(50점)에 못 미칩니다"
+            "(업종 적합도와는 다른 지표예요). 아래 유의점을 먼저 확인하세요.")
+
+
 GRADE_NOTICE_REPEAT = "※ 앞서 안내한 상권 등급 유의점이 이 답에도 그대로 적용돼요."
 
 # 서술-숫자 근거 가드(2026-09-08 QA P02·P03) — 요약문 "37개"·"폐업 4곳"이 카드("60개"·"데이터 없음")와

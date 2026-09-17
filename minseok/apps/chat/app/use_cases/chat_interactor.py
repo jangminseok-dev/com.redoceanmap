@@ -1672,13 +1672,13 @@ class ChatInteractor(ChatUseCase):
             missing_notes=missing, startup_cost=startup_cost, predictiveness=predictiveness, focus=focus,
         )
         # 등급 고지는 결론 바로 뒤(둘째 문단) — 결론은 항상 맨 앞이다
-        notices = [
-            answer_guard.grade_caution_notice(area_map[c].trdar_name, area_scores[c].grade, area_scores[c].total)
+        cautions = [
+            (area_map[c].trdar_name, area_scores[c].grade, area_scores[c].total)
             for c in codes if (sc := area_scores.get(c)) is not None and getattr(sc, "grade", None) in answer_guard.CAUTION_GRADES
         ]
-        if notices:
+        if cautions:
             first, _, rest = text.partition("\n\n")
-            text = f"{first}\n\n{' '.join(notices)}\n\n{rest}"
+            text = f"{first}\n\n{answer_guard.grade_caution_notice_group(cautions)}\n\n{rest}"
         recommendations = [
             self._area_card(area_map[c], real_stats.get(c, {}), service_code, service_name, "", quarter_label)
             for c in codes
@@ -2555,7 +2555,7 @@ class ChatInteractor(ChatUseCase):
         # C2 리스크 의무의 결정론 보강 — 모델이 "유의할 점"을 빼먹으면(첫 재측정 준수율 31%)
         # 이미 컨텍스트에 주입된 수치를 재인용해 붙인다. 창작이 아니라 팩트의 재사용이다.
         reason_map = {
-            code: self._ensure_risk_note(reason, real_stats.get(code, {}))
+            code: answer_guard.strip_area_codes(self._ensure_risk_note(reason, real_stats.get(code, {})))
             for code, reason in reason_map.items()
         }
         # 이유 없는 추천은 내보내지 않는다 — 프롬프트로 "모든 상권 서술"을 의무화해도
@@ -2564,9 +2564,9 @@ class ChatInteractor(ChatUseCase):
         reasoned = [c for c in valid_codes if reason_map.get(c, "").strip()]
         if reasoned:
             valid_codes = reasoned
-        text = answer_guard.strip_forecast_claims(
+        text = answer_guard.strip_area_codes(answer_guard.strip_forecast_claims(
             answer_guard.strip_ungrounded_numbers(str(p2.get("text", "") or ""), grounded)
-        )
+        ))
         # 본문이 먼저 지목한 상권 = 카드 1번(2026-09-08 QA P01) — 본문은 카페거리, 카드 1번은 성수역이라
         # 어디를 믿을지 몰랐다. 비교 축이 있으면 그 결론이 우선이라 재정렬하지 않는다.
         if superlative is None and inherited_order:
@@ -2584,6 +2584,13 @@ class ChatInteractor(ChatUseCase):
         # 커피 매출이 없는 길음시장이었다) — 결론·리포트는 판단할 데이터가 있는 곳이 앞이어야 한다
         if len({_tier(c) for c in valid_codes}) > 1:
             valid_codes = sorted(valid_codes, key=_tier)
+
+        # 결론-본문 모순 가드 — 코드가 정한 1순위와 다른 상권을 추천하는 서술 문장은 뺀다(결론 오라클 회귀 2026-09-17)
+        if superlative is None and valid_codes and text:
+            text = answer_guard.strip_conflicting_recommendations(
+                text, area_map[valid_codes[0]].trdar_name,
+                [a.trdar_name for c, a in area_map.items() if c != valid_codes[0]],
+            )
 
         # 등급 결정론 가드(2026-08-31 실측 p04) — '주의'/'위험' 상권은 모델이 무엇을 썼든
         # 추천 어휘를 차단하고, 등급 고지를 답변 첫 문단에 코드로 삽입한다(아래 text 조립).
@@ -2942,7 +2949,8 @@ class ChatInteractor(ChatUseCase):
         """
         self._notify(on_stage, "data", "위험 신호 보드를 읽고 있어요")
         try:
-            board = await self._signals.current_board(limit=50)
+            # 워치리스트 전체 — 위험 순 정렬이라 안정 구간 종목은 뒤쪽에 있다(50행으로 자르면 안정 쪽이 비었다)
+            board = await self._signals.current_board(limit=200)
         except Exception:
             logger.warning("[chat] 신호 보드 조회 실패", exc_info=True)
             text = answer_guard.ensure_disclaimer(

@@ -2083,7 +2083,7 @@ async def test_방향을_물으면_검증_미달을_밝히고_위험_신호로_�
     interactor, llm, _ = _build(monkeypatch, [], signals=signals)
     result = await interactor.ask("지금 상승 신호 뜬 종목 뭐야?")
 
-    assert llm.calls == [] and signals.calls == [50]
+    assert llm.calls == [] and signals.calls == [200]
     lines = result.text.split("\n")
     assert lines[0].startswith("오를지·내릴지(방향)를 가리키는 신호는 과거 10년 재검증에서")
     assert "**변동성·낙폭 주의** 1종목 — 검증 실측: 20거래일 안에 변동성이 평소보다 커짐 51%(평소 33%)" in result.text
@@ -2128,8 +2128,8 @@ async def test_종목_하나의_신호_질문은_보드로_가로채지_않는�
     signals = _StubSignals(rows=[_signal_row()])
     interactor, _, deps = _build(monkeypatch, [INTENT_STOCK, "삼성전자 서술"], signals=signals)
     await interactor.ask("삼성전자 신호 어때?")
-    # 보드 응답(limit 50)으로 가로채지 않는다 — 종목 리포트의 위험 신호 조회(limit 200)만 있다
-    assert 50 not in signals.calls and deps["stocks"].queries == ["삼성전자"]
+    # 보드 응답으로 가로채지 않는다 — 종목 경로로 분석했다(리포트의 위험 신호 조회만 보드를 읽는다)
+    assert deps["stocks"].queries == ["삼성전자"]
 
 
 # --- 뉴스 상세 후속(3차 P8 s08 t2) ---

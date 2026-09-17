@@ -205,3 +205,15 @@ def test_짧은_고지_줄만_빼고_서술은_남긴다():
     from chat.domain.services.answer_guard import strip_disclaimer_lines
     text = "추세는 중립입니다 [1].\n\n투자 판단은 본인의 책임입니다.\n\n지금은 방향 신호가 중립이에요."
     assert strip_disclaimer_lines(text) == "추세는 중립입니다 [1].\n\n지금은 방향 신호가 중립이에요."
+
+
+def test_상권_코드_괄호는_지운다():
+    from chat.domain.services.answer_guard import strip_area_codes
+    assert strip_area_codes("성수동카페거리(3110131)를 추천합니다. 월 981만원(2026)") == "성수동카페거리를 추천합니다. 월 981만원(2026)"
+
+
+def test_결론과_다른_상권을_추천하는_문장만_지운다():
+    from chat.domain.services.answer_guard import strip_conflicting_recommendations
+    text = "망원역은 주거 수요가 탄탄합니다. 망리단길을 가장 추천합니다. 망원역이 망리단길보다 폐업률이 낮아 추천할 만합니다."
+    got = strip_conflicting_recommendations(text, "망원역", ["망리단길", "합정역"])
+    assert got == "망원역은 주거 수요가 탄탄합니다. 망원역이 망리단길보다 폐업률이 낮아 추천할 만합니다."

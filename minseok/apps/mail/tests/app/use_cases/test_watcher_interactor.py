@@ -86,3 +86,11 @@ async def test_정상_메일은_기존_파이프라인으로_전달되어_저장
     assert decision.blocked is False and decision.saved is True
     assert len(mails.received) == 1  # 임베딩→pgvector 경로로 전달됨
     assert record.records[0][0] == "passed"
+
+
+async def test_검열_점수가_비면_저장하고_미검사_통과로_기록한다():
+    # 2026-09-17: 모델 산출물이 없는 운영에서 메일 수신이 500으로 죽었다 — 어댑터가 빈 점수를 주면 저장은 하고 기록에 남긴다
+    record, mails = _StubRecord(), _StubMails()
+    decision = await _interactor({}, record=record, mails=mails).screen_and_receive(_mail())
+    assert not decision.blocked and decision.saved and len(mails.received) == 1
+    assert record.records[-1][1].startswith("미검사 통과(검열 모델 없음)(신규 저장)")

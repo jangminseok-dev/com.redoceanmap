@@ -228,6 +228,10 @@ def strengths_block(items: list[AreaCompareItem], results: list[AxisResult]) -> 
     판정(1순위)과 별개로, 사용자가 곳마다 무엇을 얻고 무엇을 감수하는지 한 줄씩 보게 한다.
     """
     lines = []
+    # 모든 곳에 같은 꼴로 붙는 진단("커피-음료 매출의 29%는 30대에서 나오는데…")은 곳마다 되풀이하지 않고 한 줄로 모은다
+    bads = [next((m for t, m in (i.fitness or {}).get("diagnoses", ()) if t == "bad"), None) for i in items]
+    stems = {b.split("는데")[0] for b in bads if b and "는데" in b}
+    common = stems.pop() if len(items) >= 2 and all(bads) and len(stems) == 1 and all("는데" in b for b in bads) else None
     for i in items:
         strong, weak = [], []
         for r in results:
@@ -251,9 +255,11 @@ def strengths_block(items: list[AreaCompareItem], results: list[AxisResult]) -> 
             parts.append(f"성격 — {i.insights[0]}")
         if i.fitness and i.fitness.get("diagnoses"):
             bad = next((m for t, m in i.fitness["diagnoses"] if t == "bad"), None)
-            if bad:
+            if bad and common is None:
                 parts.append(f"주의 — {bad}")
         lines.append(f"- **{i.name}**{grade}: " + " / ".join(parts))
+    if common is not None:
+        lines.append(f"- 공통 주의 — {common}는데, 비교한 {len(items)}곳 모두 유동인구 최다 연령이 달라요(곳별 수치는 세부 진단).")
     return "**상권별 특장점**\n" + "\n".join(lines)
 
 
@@ -319,6 +325,44 @@ def _area_detail_blocks(items: list[AreaCompareItem]) -> list[str]:
 
 # 단일 상권 리포트 머리 — 채점기가 이 뒤(코드가 데이터로 쓴 근거 블록)를 모델 서술의 환각 숫자 판정에서 뺀다
 REPORT_HEADING = "**상권 리포트 — "
+# 세부 근거 머리 — 프론트가 이 단락을 접힌 상태로 렌더한다(한눈에 판단·결론·고지는 항상 보인다)
+DETAIL_HEADING = "**세부 근거**"
+
+
+def _mark3(good: bool, bad: bool) -> str:
+    return "○" if good else "✕" if bad else "△"
+
+
+def glance_lines(item: AreaCompareItem) -> list[str]:
+    """한눈에 판단 — 서울 기준으로 좋은 편(○)·보통(△)·나쁜 편(✕)을 한 줄씩. 수치 근거는 세부 근거에 있다.
+
+    2026-09-17 실사용 "정보량과 깊이감": 수치를 늘어놓기만 하면 "그래서 좋은 편이냐"를 사용자가 계산해야 했다.
+    경계는 서울 순위 상·하위 30%, 입지 적합도 구성요소 60/35점, 손익분기 달성률 120%/100% — 판정용 가정치다.
+    """
+    out = []
+    if item.rank_sales:
+        top = item.rank_sales[0] / item.rank_sales[1]
+        out.append(f"{_mark3(top <= 0.3, top >= 0.7)} 수익성 — 점포당 매출 서울 상위 {top:.0%}")
+    if item.rank_closure and item.closure_rate is not None:
+        top = item.rank_closure[0] / item.rank_closure[1]
+        out.append(f"{_mark3(top <= 0.3, top >= 0.7)} 안정성 — 1년 폐업률 {item.closure_rate:.1f}%, 서울에서 낮은 쪽 상위 {top:.0%}")
+    if item.grade and item.score_total is not None:
+        out.append(f"{_mark3(item.grade in ('우수', '양호'), item.grade in ('주의', '위험'))} 상권 건강 — {item.score_total:.1f}점 '{item.grade}'(50점 = 서울 중앙)")
+    comps = {label: score for label, score, _w in (item.fitness or {}).get("components", ())}
+    if "수요 정합" in comps:
+        s = comps["수요 정합"] * 100
+        out.append(f"{_mark3(s >= 60, s <= 35)} 수요 궁합 — 이 업종 고객층과 상권 유동인구 정합 {s:.0f}점")
+    if "경쟁 여유" in comps:
+        s = comps["경쟁 여유"] * 100
+        out.append(f"{_mark3(s >= 60, s <= 35)} 경쟁 — 유동인구 대비 같은 업종 밀도 여유 {s:.0f}점")
+    fin = item.finance or {}
+    if fin.get("attainment") is not None:
+        a = fin["attainment"]
+        gap = f", 부족 자금 {fin['gap']:,}만원" if fin.get("gap") else ""
+        out.append(f"{_mark3(a >= 1.2, a < 1.0)} 재무 — 지금 점포당 매출이면 손익분기 {a:.0%} 달성{gap}")
+    if item.small_sample:
+        out.append("△ 표본 — 점포 5개 미만이라 매출·폐업률이 튈 수 있어요")
+    return (["**한눈에**(서울 기준 ○ 좋은 편 · △ 보통 · ✕ 나쁜 편)", *[f"- {line}" for line in out]] if out else [])
 
 
 def render_area_report(item: AreaCompareItem, *, service_name: str, quarter_label: str, missing_notes: list[str],
@@ -330,7 +374,8 @@ def render_area_report(item: AreaCompareItem, *, service_name: str, quarter_labe
     (LLM 서술은 앞 단락의 해석, 이 블록은 근거표). 서울 순위·등급 구성요소·백테스트 실측으로 "그래서 좋은 편인가"를 붙인다.
     """
     t = item.texts
-    lines = [f"{REPORT_HEADING}{item.name}** ({item.district} · {service_name} · {quarter_label})"]
+    summary = [f"{REPORT_HEADING}{item.name}** ({item.district} · {service_name} · {quarter_label})", *glance_lines(item)]
+    lines = [DETAIL_HEADING]
     rev = [_cell(t.get("revenue_text"), "")]
     if item.rank_sales:
         rev.append(f"서울 {item.rank_sales[1]:,}곳 중 {item.rank_sales[0]:,}위")
@@ -390,7 +435,7 @@ def render_area_report(item: AreaCompareItem, *, service_name: str, quarter_labe
         lines.append(f"- **추이**: {_quarters(item.trend)}")
     if item.news:
         lines.append("- **최근 기사**: " + " / ".join(item.news))
-    out = ["\n".join(lines)]
+    out = ["\n".join(summary), "\n".join(lines)]
     if startup_cost:
         out.append(_startup_cost_line(startup_cost))
     notes = [m for m in missing_notes if not m.startswith("(참고)")]

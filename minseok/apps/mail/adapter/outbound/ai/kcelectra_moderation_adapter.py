@@ -44,5 +44,10 @@ class KcElectraModerationAdapter(ModerationPort):
     """
 
     async def moderate(self, text: str) -> dict[str, float]:
+        # 모델 산출물이 없으면(학습 전·이미지 미포함) 검열을 건너뛰고 빈 점수 — 메일 수신 자체가 500으로 죽었다
+        # (2026-09-17 운영 로그: /automation/mail 매 호출 OSError). 빈 점수는 watcher가 "미검사 통과"로 기록한다.
+        if not (_MODEL_DIR / "labels.json").exists():
+            logger.warning("[moderation] 모델 없음 — 검열 생략: %s (scripts/train_moderation_v1.py로 학습)", _MODEL_DIR)
+            return {}
         predict = await asyncio.to_thread(_load)
         return await asyncio.to_thread(predict, text)

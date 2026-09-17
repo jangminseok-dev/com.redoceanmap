@@ -75,8 +75,10 @@ class WatcherInteractor(WatcherUseCase):
             return WatcherMailDecision(blocked=True, saved=False, categories=verdict.categories)
 
         saved = await self._mails.receive(mail)  # 기존 파이프라인: 임베딩 → pgvector
+        # 점수가 비면 검열 모델이 없어 검사하지 않은 것 — "정상"으로 기록하면 검열이 된 줄 안다
+        passed = "정상 통과" if scores else "미검사 통과(검열 모델 없음)"
         await self._record.record(
             subject="passed",
-            note=f"정상 통과({'신규 저장' if saved else '중복'}) | {mail.message_id} | {mail.subject[:40]}",
+            note=f"{passed}({'신규 저장' if saved else '중복'}) | {mail.message_id} | {mail.subject[:40]}",
         )
         return WatcherMailDecision(blocked=False, saved=saved, categories=())
