@@ -26,6 +26,7 @@ import yfinance as yf
 ROOT = Path(__file__).resolve().parents[1]  # minseok
 sys.path.insert(0, str(ROOT))
 
+from schedule_stamp import done_recently, mark_done
 from core.key.secret_manager import get_secret_manager  # noqa: E402
 
 _secrets = get_secret_manager()
@@ -232,6 +233,8 @@ def rewrite(lines: list[str], screened: list[str], demand: list[str] | None) -> 
 
 def main() -> None:
     dry_run = "--dry-run" in sys.argv
+    if "--catch-up" in sys.argv and done_recently("screen_us", days=6):
+        return
     print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] 스크리닝 시작", flush=True)
 
     text = WATCHLIST.read_text(encoding="utf-8")
@@ -283,6 +286,7 @@ def main() -> None:
         raise
     print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] 워치리스트 갱신 완료 "
           f"(screened {len(screened_lines)} · demand {'유지' if demand_lines is None else len(demand_lines)})")
+    mark_done("screen_us")
 
 
 if __name__ == "__main__":

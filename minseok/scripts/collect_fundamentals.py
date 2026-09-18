@@ -33,6 +33,7 @@ import requests
 import yfinance as yf
 
 from collect_news import load_watchlist
+from schedule_stamp import done_recently, mark_done
 
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 
@@ -172,6 +173,9 @@ def post_to_hub(items: list[dict]) -> dict:
 
 def main() -> int:
     dry_run = "--dry-run" in sys.argv
+    # 매일 시도하되 최근 6일 안에 성공했으면 건너뛴다 — 지정 시각에 PC가 꺼져 있으면 주간 배치가 통째로 밀렸다(2026-09-18)
+    if "--catch-up" in sys.argv and done_recently("fundamentals", days=6):
+        return 0
     print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] 펀더멘털 수집 시작", flush=True)
     failures = 0
     corp_codes: dict[str, str] = {}
@@ -228,6 +232,8 @@ def main() -> int:
     except Exception as e:
         print(f"허브 POST 실패 — {e}", flush=True)
         failures += 1
+    if not failures:
+        mark_done("fundamentals")   # 성공한 실행만 도장 — 실패하면 다음 날 다시 시도한다
     return 1 if failures else 0
 
 

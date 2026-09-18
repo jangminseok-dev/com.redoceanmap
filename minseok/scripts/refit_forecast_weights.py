@@ -29,6 +29,9 @@ sys.path.insert(0, str(ROOT))
 
 from core.key.secret_manager import get_secret_manager  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # 같은 폴더 헬퍼
+from schedule_stamp import done_recently, mark_done  # noqa: E402
+
 _secrets = get_secret_manager()
 
 HUB_URL = _secrets.get("HUB_URL", "http://localhost:8000")
@@ -39,6 +42,8 @@ TIMEOUT = 600
 
 def main() -> int:
     promote = "--dry-run" not in sys.argv
+    if "--catch-up" in sys.argv and done_recently("refit_forecast", days=6):
+        return 0
     print(f"[{datetime.now():%Y-%m-%d %H:%M}] 재적합 시작 (promote={promote})")
     try:
         res = requests.post(
@@ -54,6 +59,7 @@ def main() -> int:
           + (f" → 활성 조합 {body['activated_key']}" if body.get("activated_key") else ""))
     for reason in body.get("reasons", []):
         print(f"  - {reason}")
+    mark_done("refit_forecast")
     return 0
 
 

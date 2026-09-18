@@ -23,6 +23,7 @@ DB에 동결하고, horizon(5·20거래일)이 도래한 과거 스냅샷을 실
 
 import sys
 from datetime import UTC, datetime, time
+from time import sleep   # datetime.time과 이름이 겹쳐 모듈을 통째로 들이지 않는다
 from pathlib import Path
 
 import requests
@@ -49,18 +50,35 @@ BATCH_SIZE = 20      # 요청당 티커 수 — 서버 계산 시간 상한(배�
 TIMEOUT = 1800
 
 
+def _post(path: str, body: dict, attempts: int = 6):
+    """허브 호출 — 연결 거부·5xx면 지수 대기 후 재시도(최대 ~5분).
+
+    호스트 cron이 k3s 백엔드를 localhost로 부르는데, 매일 00:10 자동 재부팅·배포 창에 연결이 거부되면
+    실행이 통째로 죽었다(2026-09-17 스냅샷·모의투자 세션 누락). 캡처·채점·step 모두 멱등이라 재시도가 안전하다.
+    """
+    for attempt in range(attempts):
+        try:
+            res = requests.post(f"{HUB_URL}{path}", json=body, headers=HEADERS, timeout=TIMEOUT)
+            if res.status_code < 500:
+                res.raise_for_status()
+                return res
+        except requests.ConnectionError:
+            if attempt == attempts - 1:
+                raise
+        wait = 10 * 2 ** attempt
+        print(f"  허브 연결 실패 — {wait}초 뒤 재시도({attempt + 1}/{attempts}) {path}", flush=True)
+        sleep(wait)
+    res.raise_for_status()
+    return res
+
+
 def capture(tickers: list[str]) -> tuple[int, list[str], int, datetime | None]:
     captured, skipped, failed_batches = 0, [], 0
     bar_as_of: datetime | None = None  # 배치들이 본 최신 봉 기준일 — step의 날짜 축
     for i in range(0, len(tickers), BATCH_SIZE):
         batch = tickers[i:i + BATCH_SIZE]
         try:
-            res = requests.post(
-                f"{HUB_URL}/automation/forecast-snapshots",
-                json={"tickers": batch, "horizons": HORIZONS},
-                headers=HEADERS, timeout=TIMEOUT,
-            )
-            res.raise_for_status()
+            res = _post("/automation/forecast-snapshots", {"tickers": batch, "horizons": HORIZONS})
             body = res.json()
             captured += body["captured"]
             skipped.extend(body["skipped"])
@@ -74,10 +92,7 @@ def capture(tickers: list[str]) -> tuple[int, list[str], int, datetime | None]:
 
 
 def score() -> tuple[int, int]:
-    res = requests.post(
-        f"{HUB_URL}/automation/forecast-snapshots/score", headers=HEADERS, timeout=TIMEOUT,
-    )
-    res.raise_for_status()
+    res = _post("/automation/forecast-snapshots/score", {})
     body = res.json()
     return body["scored"], body["pending"]
 
@@ -90,9 +105,7 @@ def paper_step(bar_as_of: datetime) -> dict:
     유니크로 멱등하다.
     """
     as_of = datetime.combine(bar_as_of.date(), STEP_AS_OF_UTC, tzinfo=UTC)
-    res = requests.post(f"{HUB_URL}/automation/paper/step", json={"as_of": as_of.isoformat()},
-                        headers=HEADERS, timeout=TIMEOUT)
-    res.raise_for_status()
+    res = _post("/automation/paper/step", {"as_of": as_of.isoformat()})
     return res.json()
 
 

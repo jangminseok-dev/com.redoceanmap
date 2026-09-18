@@ -309,5 +309,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    # 이상이 있으면 종료코드 1 — 수집 스크립트와 같은 규약이다.
-    sys.exit(main())
+    # 이상이 있으면 종료코드 1 — 수집 스크립트와 같은 규약이다(호스트 cron 로그에서 실패로 보이게).
+    # k8s CronJob은 --exit-zero로 돈다: 이상은 메일로 알리는 정상 동작인데, 종료코드 1이면 잡이 Failed가 되고
+    # 재시도(backoffLimit)로 같은 알림이 세 번 나갔다(2026-09-18 09:00 실측 3회).
+    code = main()
+    sys.exit(0 if "--exit-zero" in sys.argv else code)

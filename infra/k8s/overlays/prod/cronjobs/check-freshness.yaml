@@ -12,7 +12,7 @@ spec:
   failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
-      backoffLimit: 2
+      backoffLimit: 0   # 이상 감지는 메일로 알리는 정상 동작 — 재시도하면 같은 알림이 세 번 나간다(2026-09-18)
       template:
         spec:
           restartPolicy: Never
@@ -35,7 +35,7 @@ spec:
                            commit=$(cat "/work/.git/$ref" 2>/dev/null || grep " $ref\$" /work/.git/packed-refs | cut -c1-40) ;;
                     *)     commit=$head ;;
                   esac
-                  exec python scripts/check_freshness.py --expect-commit "$(printf %s "$commit" | cut -c1-7)"
+                  exec python scripts/check_freshness.py --exit-zero --expect-commit "$(printf %s "$commit" | cut -c1-7)"
               envFrom:
                 - secretRef:
                     name: redocean-env
