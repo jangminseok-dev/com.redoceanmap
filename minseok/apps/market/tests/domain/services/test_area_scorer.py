@@ -84,12 +84,12 @@ def test_점포당_매출은_로그_비로_채점한다():
 
 
 def test_총점은_가용_컴포넌트의_가중_평균이다():
-    # 폐업 안정성 100(가중 0.45) + 점포당 매출 50(가중 0.22) → (45 + 11) / 0.67 = 83.6
+    # 폐업 안정성 100(가중 0.55) + 점포당 매출 50(가중 0.10) → (55 + 5) / 0.65 = 92.3
     result = _score(
         closure=MetricComparison(value=0.0, benchmark=3.0),
         sales=MetricComparison(value=1000.0, benchmark=1000.0),
     )
-    assert result.total == 83.6
+    assert result.total == 92.3
     assert [c.key for c in result.components] == ["closure_stability", "sales_level"]
 
 

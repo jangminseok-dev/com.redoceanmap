@@ -33,6 +33,14 @@ _secrets = get_secret_manager()
 
 DATA = ROOT / "data" / "raw" / "seoul"
 ENC = "cp949"
+# 내려받은 CSV의 가운뎃점이 물음표로 깨져 온다 — 파일 안에 실제 '?'(0x3F)가 들어 있고 인코딩 문제가 아니다.
+# 열린데이터 API 원본은 정상이다(2026-09-18 대조: 종로·청계 관광특구 · 금호2·3가동 · 종로1·2·3·4가동).
+# 한글/숫자 사이의 '?'만 가운뎃점으로 되돌린다 — "어디?" 같은 실제 물음표는 앞뒤 조건에 걸리지 않는다.
+_BROKEN_DOT = re.compile(r"(?<=[가-힣0-9])\?(?=[가-힣0-9])")
+
+
+def clean_name(value):
+    return _BROKEN_DOT.sub("·", value) if isinstance(value, str) else value
 SIDO_SEOUL = "11"  # 행정표준코드 — 서울특별시
 
 from core.database import Base  # noqa: E402
@@ -176,7 +184,7 @@ def main(
         "x_coord": None, "y_coord": None, "area_size": None,
     }])
     gu_recs = [{
-        "code": _code(r["자치구_코드"]), "name": r["자치구_명"], "level": 1,
+        "code": _code(r["자치구_코드"]), "name": clean_name(r["자치구_명"]), "level": 1,
         "parent_code": SIDO_SEOUL,
         "x_coord": int(r["엑스좌표_값"]) if pd.notna(r["엑스좌표_값"]) else None,
         "y_coord": int(r["와이좌표_값"]) if pd.notna(r["와이좌표_값"]) else None,
@@ -192,7 +200,7 @@ def main(
     for _, r in dong.iterrows():
         parent = _code(r["자치구_코드"])
         dong_recs.append({
-            "code": _code(r["행정동_코드"]), "name": r["행정동_코드_명"], "level": 2,
+            "code": _code(r["행정동_코드"]), "name": clean_name(r["행정동_코드_명"]), "level": 2,
             "parent_code": parent if parent in gu_codes else None,
             "x_coord": None, "y_coord": None, "area_size": None,
         })
@@ -210,7 +218,7 @@ def main(
     svc_codes = set(svc["서비스_업종_코드"])
     if not dry_run:
         print("service_category:", bulk(T["service_category"],
-              [{"code": c, "name": n} for c, n in svc.values]))
+              [{"code": c, "name": clean_name(n)} for c, n in svc.values]))
 
     # 5) change_indicator
     chg = csv("상권변화지표-상권")[["상권_변화_지표", "상권_변화_지표_명"]].drop_duplicates(
@@ -225,7 +233,7 @@ def main(
     for _, r in ta.iterrows():
         rc = _code(r["행정동_코드"])
         ta_recs.append({
-            "code": int(r["상권_코드"]), "name": r["상권_코드_명"],
+            "code": int(r["상권_코드"]), "name": clean_name(r["상권_코드_명"]),
             "division_code": r["상권_구분_코드"],
             "region_code": rc if rc in dong_codes else None,
             "x_coord": int(r["엑스좌표_값"]), "y_coord": int(r["와이좌표_값"]),

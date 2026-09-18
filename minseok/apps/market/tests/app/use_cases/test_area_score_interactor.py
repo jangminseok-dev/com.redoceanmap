@@ -57,8 +57,8 @@ async def test_3개_컴포넌트를_서울_중앙값과_비교해_채점한다()
     assert by_key["persistence"].score == 75.0       # 상대비 +25% / 캡 50%
     assert by_key["sales_level"].score == 100.0      # 중앙값의 2배
     assert by_key["closure_stability"].value == 1.5 and by_key["closure_stability"].benchmark == 3.0
-    assert view.score.total == 80.5  # 0.45·75 + 0.33·75 + 0.22·100
-    assert view.score.grade == "우수"
+    assert view.score.total == 77.5  # 0.55·75 + 0.35·75 + 0.10·100 (2026-09-18 재적합 가중치)
+    assert view.score.grade == "양호"   # 80점 미만 — 매출 축 비중이 줄어 같은 입력의 총점이 80.5 → 77.5
     assert repo.medians_requested == "11"
 
 

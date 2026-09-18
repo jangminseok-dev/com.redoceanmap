@@ -24,7 +24,10 @@ from market.domain.value_objects.sales_unit import QUARTER_MONTHS
 CLOSURE_DIFF_CAP = 3.0  # 4분기 폐업률 차이(%p) — ±3에서 0/100 포화(서울 5~95% 분위 ±2%p)
 PERSISTENCE_RATIO_CAP = 0.5  # 영업 개월 상대비 — 중앙값 대비 ±50%에서 포화
 SALES_LEVEL_LOG_CAP = math.log(2)  # 점포당 매출 — 중앙값의 2배/절반에서 포화
-WEIGHTS = {"closure_stability": 0.45, "persistence": 0.33, "sales_level": 0.22}
+# 2026-09-18 재적합 — 점포 수 모수 교정(9/17) 뒤 데이터로 격자 탐색(0.05 간격, 학습 2021~2023 / 검증 2024~).
+# 학습 최적 0.55/0.35/0.10이 검증에서도 유지(학습 IC 0.391 · 검증 0.388, 주변 조합도 0.386~0.391로 평평).
+# 이전 0.45/0.33/0.22는 교정 전 데이터로 정한 값이라 같은 기준에서 0.369였다 — 매출 수준 축의 비중을 낮추는 게 낫다.
+WEIGHTS = {"closure_stability": 0.55, "persistence": 0.35, "sales_level": 0.10}
 SMALL_SAMPLE_STORES = 5  # 최신 분기 점포가 이보다 적으면 폐업률·점포당 매출·증감률 축을 비운다(표본 튐)
 
 
