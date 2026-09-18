@@ -20,6 +20,7 @@ type SeriesMap = Record<string, PaperEquityPoint[]>; // key → 곡선(as_of 오
 const LINE_STYLE: Record<string, { stroke: string; dash?: string; label: string }> = {
   exaone: { stroke: "var(--brand)", label: "AI 판단" },
   signal: { stroke: "var(--foreground-muted)", dash: "4 3", label: "지표 규칙(대조군)" },
+  risk: { stroke: "var(--brand-deep)", dash: "6 3", label: "위험 규칙(검증 신호)" },
   me: { stroke: "var(--up)", label: "나" },
   spy: { stroke: "var(--foreground)", dash: "1 3", label: "SPY 보유" },
 };

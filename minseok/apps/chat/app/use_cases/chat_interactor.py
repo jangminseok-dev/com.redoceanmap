@@ -1752,13 +1752,14 @@ class ChatInteractor(ChatUseCase):
         """AI 모의투자 기록 — 허브 PaperDecisionPort를 코드가 읽어 '어느 계정이 무엇을 샀다'까지만 말한다."""
         self._notify(on_stage, "data", "AI 모의투자 기록을 읽고 있어요")
         try:
-            infos = await self._paper.latest(["exaone", "signal"])
+            infos = await self._paper.latest(["exaone", "signal", "risk"])
         except Exception:
             logger.warning("[chat] 모의투자 기록 조회 실패", exc_info=True)
             infos = []
         act = {"BUY": "매수", "SELL": "매도", "SHORT": "숏 진입", "COVER": "숏 청산"}
         label = {"exaone": "AI 계정(AI가 직접 판단)",
-                 "signal": "지표 규칙 대조군(검증되지 않은 방향 신호를 그대로 따름)"}
+                 "signal": "지표 규칙 대조군(검증되지 않은 방향 신호를 그대로 따름)",
+                 "risk": "위험 규칙 계정(검증된 낙폭 위험 낮음 종목만 롱)"}
         lines = []
         for info in infos:
             orders = ", ".join(f"{act.get(o.action, o.action)} {o.ticker}" for o in info.orders) or "주문 없음(관망)"
@@ -3225,8 +3226,8 @@ class ChatInteractor(ChatUseCase):
         paper_rows: dict[str, str] = {}
         if self._paper is not None:
             try:
-                for info in await self._paper.latest(["exaone", "signal"]):
-                    who = "EXAONE" if info.account == "exaone" else "지표 규칙(대조군)"
+                for info in await self._paper.latest(["exaone", "signal", "risk"]):
+                    who = {"exaone": "EXAONE", "signal": "지표 규칙(대조군)"}.get(info.account, "위험 규칙")
                     for o in info.orders:
                         act = {"BUY": "매수", "SELL": "매도", "SHORT": "숏 진입", "COVER": "숏 청산"}.get(o.action, o.action)
                         paper_rows[o.ticker] = f"{who} 계정 {info.as_of:%m/%d} {act} 판단"

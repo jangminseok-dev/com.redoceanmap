@@ -201,7 +201,7 @@ async def test_스냅샷_없는_날은_아무것도_하지_않는다():
 async def test_판단은_다음_세션_시가에_체결되고_재실행은_멱등():
     it, repo, feed = _make(StubPolicy([BUY_AAPL]))
     r0 = await it.step(StepCommand(_day(0), replay=True))
-    assert r0.decisions == 2 and r0.filled == 0
+    assert r0.decisions == 3 and r0.filled == 0   # exaone · signal · risk(2026-09-18 추가)
     exaone = next(d for d in repo.decisions.values() if d.model == "stub")
     assert [o["ticker"] for o in exaone.orders] == ["AAPL"]  # NVDA는 후보 밖 → 거부
     assert exaone.rejected[0]["ticker"] == "NVDA"
@@ -209,7 +209,7 @@ async def test_판단은_다음_세션_시가에_체결되고_재실행은_멱�
     assert exaone.orders[0]["reason_kind"] == "mixed"
 
     again = await it.step(StepCommand(_day(0), replay=True))
-    assert again.decisions == 0 and len(repo.decisions) == 2  # (account, as_of) 유니크
+    assert again.decisions == 0 and len(repo.decisions) == 3  # (account, as_of) 유니크 — 계정 3개(exaone·signal·risk)
 
     r1 = await it.step(StepCommand(_day(1)))
     aapl_fills = [t for t in repo._trades if t.ticker == "AAPL" and t.action == "BUY"]
@@ -219,7 +219,7 @@ async def test_판단은_다음_세션_시가에_체결되고_재실행은_멱�
     assert aapl_fills[0].replayed is False and aapl_fills[0].decision_id == exaone.id
     assert repo.decisions[exaone.id].filled_at is not None
     # 체결 후 평가 행이 계정마다 하루 1건
-    assert sum(1 for (aid, d) in repo.equity if d == _day(1).date()) == 2
+    assert sum(1 for (aid, d) in repo.equity if d == _day(1).date()) == 3   # 계정 3개
 
 
 async def test_피드는_as_of_이후_봉을_주지_않는다():

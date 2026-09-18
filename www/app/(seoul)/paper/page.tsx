@@ -42,6 +42,8 @@ export default function PaperPage() {
   const boardQ = useQuery({ queryKey: ["paper-board"], queryFn: fetchPaperBoard, staleTime: DAY_STALE });
   const exaoneQ = useQuery({ queryKey: ["paper-account", "exaone"], queryFn: () => fetchPaperAccount("exaone"), staleTime: DAY_STALE, retry: false });
   const signalQ = useQuery({ queryKey: ["paper-account", "signal"], queryFn: () => fetchPaperAccount("signal"), staleTime: DAY_STALE, retry: false });
+  // 위험 규칙 계정(2026-09-18) — 검증된 낙폭 위험 신호만 쓰는 계정. 자산 곡선에 한 줄 더 얹는다
+  const riskQ = useQuery({ queryKey: ["paper-account", "risk"], queryFn: () => fetchPaperAccount("risk"), staleTime: DAY_STALE, retry: false });
   const decisionsQ = useQuery({ queryKey: ["paper-decisions", "exaone"], queryFn: () => fetchPaperDecisions("exaone"), staleTime: DAY_STALE });
   const scorecardQ = useQuery({ queryKey: ["paper-scorecard", "exaone"], queryFn: () => fetchPaperScorecard("exaone"), staleTime: DAY_STALE, retry: false, enabled: view.details });
 
@@ -59,6 +61,7 @@ export default function PaperPage() {
   const series: Record<string, PaperEquityPoint[]> = {};
   if (exaoneQ.data) series.exaone = exaoneQ.data.equity;
   if (signalQ.data) series.signal = signalQ.data.equity;
+  if (riskQ.data) series.risk = riskQ.data.equity;
 
   return (
     <div className="h-full overflow-y-auto">
@@ -66,7 +69,7 @@ export default function PaperPage() {
         <div>
           <h1 className="text-xl font-bold tracking-tight flex items-center gap-2"><Bot size={20} /> AI 모의투자</h1>
           <p className="mt-1 text-sm text-foreground-muted">
-            로컬 AI가 매일 우리 뉴스·신호를 읽고 1억원으로 사고팝니다. 검증되지 않은 방향 신호를 그대로 따르는 지표 규칙 대조군, SPY 보유와 나란히 봅니다.
+            로컬 AI가 매일 우리 뉴스·신호를 읽고 1억원으로 사고팝니다. 검증되지 않은 방향 신호를 따르는 지표 규칙 대조군, 검증된 위험 신호만 쓰는 위험 규칙 계정, SPY 보유와 나란히 봅니다.
           </p>
         </div>
 

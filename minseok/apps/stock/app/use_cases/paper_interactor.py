@@ -36,7 +36,7 @@ from stock.app.ports.output.paper_account_repository import PaperAccountReposito
 from stock.app.ports.output.paper_feed_port import PaperFeedPort
 from stock.app.ports.output.symbol_directory_port import SymbolDirectoryPort
 from stock.domain.services import decision_parser, paper_ledger, paper_rules as rules
-from stock.domain.services import signal_rule_policy
+from stock.domain.services import risk_rule_policy, risk_signal, signal_rule_policy
 from stock.domain.services.decision_context import (
     SYSTEM_PROMPT,
     Candidate,
@@ -56,7 +56,9 @@ NEWS_WINDOW_DAYS = 3
 PENDING_EXPIRY_DAYS = 7  # 캘린더일 — 이 안에 체결 봉이 없으면 주문 폐기(휴장 연속 대비)
 SCORE_MIN_SAMPLES = 30
 MAX_CANDIDATES = 25
-LABELS = {"exaone": "AI 판단", "signal": "지표 규칙(대조군)"}  # 계정 키는 유지 — 판단 모델이 9/15부터 Gemma라 표시명만 일반화
+LABELS = {"exaone": "AI 판단", "signal": "지표 규칙(대조군)", "risk": "위험 규칙(검증 신호)"}
+# 위험 상태 판정에 필요한 일봉 수 — 20일 변동성 × 1년 분포 + 200일선(보드와 같은 값)
+RISK_BARS = 300  # 계정 키는 유지 — 판단 모델이 9/15부터 Gemma라 표시명만 일반화
 
 
 def _positions_list(account: AccountRecord) -> list[paper_ledger.Position]:
@@ -94,19 +96,22 @@ class PaperInteractor(PaperUseCase):
 
         exaone = await self._accounts.get_or_create("exaone", None, rules.assumed_initial_cash_krw, day)
         signal = await self._accounts.get_or_create("signal", None, rules.assumed_initial_cash_krw, day)
+        risk = await self._accounts.get_or_create("risk", None, rules.assumed_initial_cash_krw, day)
 
         filled = await self._fill_pending(as_of, cmd.replay)
         scored = await self._score_due(as_of)
         equity_rows = await self._record_equity(as_of, cmd.replay)
 
         decisions = 0
-        for account, kind in ((exaone, "exaone"), (signal, "signal")):
+        for account, kind in ((exaone, "exaone"), (signal, "signal"), (risk, "risk")):
             account = await self._accounts.find_by_id(account.id) or account  # 체결 반영분 재조회
             ctx = await self._context(account, snapshots, as_of)
             if kind == "exaone":
                 draft = await self._decide_exaone(account, ctx, as_of, cmd.replay)
-            else:
+            elif kind == "signal":
                 draft = self._decide_signal(account, ctx, as_of, cmd.replay)
+            else:
+                draft = await self._decide_risk(account, ctx, as_of, cmd.replay)
             if await self._accounts.save_decision(draft) is not None:
                 decisions += 1
         return StepResult(as_of, None, filled, decisions, scored, equity_rows)
@@ -293,6 +298,31 @@ class PaperInteractor(PaperUseCase):
             rejected=[], candidates=self._candidates_payload(ctx), latency_ms=0, replayed=replay,
         )
 
+    async def _risk_states(self, tickers: list[str], as_of: datetime) -> dict[str, risk_rule_policy.RiskView]:
+        """판단 시점까지의 일봉만으로 위험 상태를 낸다 — 보드·주간 검증과 같은 도메인 함수(리플레이 정직성)."""
+        out: dict[str, risk_rule_policy.RiskView] = {}
+        for ticker in tickers:
+            bars = await self._feed.bars_until(ticker, as_of, RISK_BARS)
+            state = risk_signal.state_at([b.close for b in bars])
+            if state is not None:
+                out[ticker] = risk_rule_policy.RiskView(
+                    ticker=ticker, vol_state=state.vol_state, drawdown_risk=state.drawdown_risk,
+                    rv_percentile=state.rv_percentile,
+                )
+        return out
+
+    async def _decide_risk(self, account: AccountRecord, ctx: DecisionContext, as_of: datetime,
+                           replay: bool) -> DecisionDraft:
+        tickers = sorted({c.ticker for c in ctx.candidates} | {h.ticker for h in ctx.held})
+        risk = await self._risk_states(tickers, as_of)
+        orders = risk_rule_policy.decide(ctx.candidates, ctx.held, risk)
+        return DecisionDraft(
+            account_id=account.id, as_of=as_of, model="risk-rule", prompt="", response_raw="",
+            market_view="검증된 위험 신호(낙폭 위험 낮음)만 롱 — 방향이 아니라 위험을 피하는 규칙",
+            orders=[_order_dict(o) for o in orders],
+            rejected=[], candidates=self._candidates_payload(ctx), latency_ms=0, replayed=replay,
+        )
+
     # ----------------------------------------------------------------- views
     async def board(self) -> BoardView:
         rows: list[BoardRow] = []
@@ -399,7 +429,7 @@ class PaperInteractor(PaperUseCase):
     # ---------------------------------------------------------------- helpers
     @staticmethod
     def _parse_key(key: str) -> tuple[str | None, int | None]:
-        return (key, None) if key in ("exaone", "signal") else (None, None)
+        return (key, None) if key in ("exaone", "signal", "risk") else (None, None)
 
     @staticmethod
     def _label(a: AccountRecord) -> str:
