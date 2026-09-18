@@ -27,7 +27,7 @@ export default function ScoreBoard({ board }: { board: PaperBoard }) {
     <div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {tile("AI 판단", "AI가 직접 판단", exaone?.return_pct, exaone?.equity_krw)}
-        {tile("지표 규칙", "활성 지표 신호를 따라감", signal?.return_pct, signal?.equity_krw)}
+        {tile("지표 규칙(대조군)", "검증 안 된 방향 신호를 그대로", signal?.return_pct, signal?.equity_krw)}
         {tile("SPY 보유", "사서 들고만 있었다면", spyReturn, spy?.equity_krw)}
       </div>
       <p className="mt-2 text-xs text-foreground-muted tabular-nums">

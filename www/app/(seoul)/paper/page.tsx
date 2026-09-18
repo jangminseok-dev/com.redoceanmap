@@ -66,7 +66,7 @@ export default function PaperPage() {
         <div>
           <h1 className="text-xl font-bold tracking-tight flex items-center gap-2"><Bot size={20} /> AI 모의투자</h1>
           <p className="mt-1 text-sm text-foreground-muted">
-            로컬 AI가 매일 우리 뉴스·신호를 읽고 1억원으로 사고팝니다. 지표 규칙 계정, SPY 보유와 나란히 봅니다.
+            로컬 AI가 매일 우리 뉴스·신호를 읽고 1억원으로 사고팝니다. 검증되지 않은 방향 신호를 그대로 따르는 지표 규칙 대조군, SPY 보유와 나란히 봅니다.
           </p>
         </div>
 
@@ -99,7 +99,7 @@ export default function PaperPage() {
               className="w-full flex items-center justify-center gap-1.5 py-3 text-sm text-foreground-muted hover:text-foreground transition-colors"
             >
               <ChevronDown size={15} className={`transition-transform ${view.details ? "rotate-180" : ""}`} />
-              자세히 보기 — 자산 곡선 · 판단 원문 · 채점 · 지표 규칙 계정
+              자세히 보기 — 자산 곡선 · 판단 원문 · 채점 · 지표 규칙 대조군
             </button>
 
             {view.details && (

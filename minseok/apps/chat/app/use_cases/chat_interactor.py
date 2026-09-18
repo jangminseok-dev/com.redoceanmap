@@ -1757,7 +1757,8 @@ class ChatInteractor(ChatUseCase):
             logger.warning("[chat] 모의투자 기록 조회 실패", exc_info=True)
             infos = []
         act = {"BUY": "매수", "SELL": "매도", "SHORT": "숏 진입", "COVER": "숏 청산"}
-        label = {"exaone": "AI 계정(AI가 직접 판단)", "signal": "지표 규칙 계정(활성 지표 신호를 따름)"}
+        label = {"exaone": "AI 계정(AI가 직접 판단)",
+                 "signal": "지표 규칙 대조군(검증되지 않은 방향 신호를 그대로 따름)"}
         lines = []
         for info in infos:
             orders = ", ".join(f"{act.get(o.action, o.action)} {o.ticker}" for o in info.orders) or "주문 없음(관망)"
@@ -3225,7 +3226,7 @@ class ChatInteractor(ChatUseCase):
         if self._paper is not None:
             try:
                 for info in await self._paper.latest(["exaone", "signal"]):
-                    who = "EXAONE" if info.account == "exaone" else "지표 규칙"
+                    who = "EXAONE" if info.account == "exaone" else "지표 규칙(대조군)"
                     for o in info.orders:
                         act = {"BUY": "매수", "SELL": "매도", "SHORT": "숏 진입", "COVER": "숏 청산"}.get(o.action, o.action)
                         paper_rows[o.ticker] = f"{who} 계정 {info.as_of:%m/%d} {act} 판단"

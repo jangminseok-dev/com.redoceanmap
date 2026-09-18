@@ -56,7 +56,7 @@ NEWS_WINDOW_DAYS = 3
 PENDING_EXPIRY_DAYS = 7  # 캘린더일 — 이 안에 체결 봉이 없으면 주문 폐기(휴장 연속 대비)
 SCORE_MIN_SAMPLES = 30
 MAX_CANDIDATES = 25
-LABELS = {"exaone": "AI 판단", "signal": "지표 규칙"}  # 계정 키는 유지 — 판단 모델이 9/15부터 Gemma라 표시명만 일반화
+LABELS = {"exaone": "AI 판단", "signal": "지표 규칙(대조군)"}  # 계정 키는 유지 — 판단 모델이 9/15부터 Gemma라 표시명만 일반화
 
 
 def _positions_list(account: AccountRecord) -> list[paper_ledger.Position]:
@@ -288,7 +288,8 @@ class PaperInteractor(PaperUseCase):
         orders = signal_rule_policy.decide(ctx.candidates, ctx.held)
         return DecisionDraft(
             account_id=account.id, as_of=as_of, model="signal-rule", prompt="", response_raw="",
-            market_view="검증된 지표 규칙 — 스냅샷 방향 그대로", orders=[_order_dict(o) for o in orders],
+            # 2026-09-18: "검증된"은 사실과 다르다 — 이 방향 신호는 최근 5년 평소와 구별되지 않았다(대조군으로 유지)
+            market_view="검증되지 않은 방향 신호를 그대로 따르는 대조군", orders=[_order_dict(o) for o in orders],
             rejected=[], candidates=self._candidates_payload(ctx), latency_ms=0, replayed=replay,
         )
 

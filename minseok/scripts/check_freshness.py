@@ -24,6 +24,7 @@ infra/k8s/overlays/prod/cronjobs/check-freshness.yaml(매일 09:00, .git에서 H
         --expect-commit "$(git -C /home/host/projects/com.redoceanmap rev-parse --short HEAD)"
 """
 
+import math
 import sys
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
@@ -159,16 +160,34 @@ def paper_lag(engine, now: datetime) -> str | None:
 # 2주 넘게 아무도 몰랐다. 매일 최근 SIGNAL_WINDOW_DAYS일 채점분을 실효 표본(종목×ISO 주 군집)으로 세어
 # 종목 기준선 아래면 알린다. 적중 정의는 백테스트·재적합·스냅샷 채점과 같은 is_up_hit(변동성 초과).
 SIGNAL_WINDOW_DAYS = 14
-SIGNAL_MIN_EFFECTIVE = 15  # 군집이 이보다 적으면 판단하지 않는다(잡음)
+# 2026-09-18 개정: ① 활성 조합만 경보(내린 조합의 성적은 연구 기록이지 장애가 아니다)
+# ② "적중률 ≤ 기준선"이 아니라 **95% 신뢰구간 상한이 기준선 아래**일 때만 — 9/18 헛경보는 1/19군집(구간 1~26%)으로
+# 기준선 25.6%와 구별되지 않는데 매일 메일을 보냈다. 군집 하한도 15 → 30으로 올린다.
+SIGNAL_MIN_EFFECTIVE = 30  # 군집이 이보다 적으면 판단하지 않는다(잡음)
 
 
-def signal_decay_verdict(recent: list[tuple], history: list[tuple]) -> str | None:
+def _wilson_upper(rate: float, n: int, z: float = 1.96) -> float:
+    """실효 표본 n에서 관측 비율의 95% Wilson 상한 — 표본이 작으면 1에 가까워 경보가 울리지 않는다."""
+    if n <= 0:
+        return 1.0
+    den = 1 + z * z / n
+    ctr = (rate + z * z / (2 * n)) / den
+    return ctr + z * math.sqrt(rate * (1 - rate) / n + z * z / (4 * n * n)) / den
+
+
+def signal_decay_verdict(recent: list[tuple], history: list[tuple], active_config: str | None = None) -> str | None:
     """recent·history: (ticker, as_of, direction, realized_return_pct, atr_pct, signal_config). 순수 함수.
 
     history(전 기간 채점분)로 종목 기준선(변동성 초과 상승 비율)을 만들고, recent의 UP 신호를 **판정 조합별로**
     군집 평균해 그 군집들의 기준선 평균과 비교한다 — 창에 옛 조합의 잘 맞은 신호가 섞이면 새 조합의 부진이
-    평균에 묻힌다(9/17 실측: 8/27~31 옛 조합 49건이 9월 부진 45건을 가렸다). 기준선 이하인 조합이 있으면 사유.
+    평균에 묻힌다(9/17 실측: 8/27~31 옛 조합 49건이 9월 부진 45건을 가렸다).
+
+    2026-09-18 개정: **활성 조합만** 판정하고(내린 조합은 이미 쓰지 않는다), 적중률의 95% 상한이 기준선 아래일
+    때만 사유를 낸다 — 9/18 헛경보(1/19군집)는 통계적으로 기준선과 구별되지 않았다. active_config가 None이면
+    (조회 실패·미설정) 아무것도 판정하지 않는다.
     """
+    if active_config is None:
+        return None
     base: dict[str, list[bool]] = {}
     for ticker, _as_of, _d, ret, atr, _cfg in history:
         base.setdefault(ticker, []).append(is_up_hit(ret, hit_unit(atr, 5)))
@@ -181,21 +200,67 @@ def signal_decay_verdict(recent: list[tuple], history: list[tuple]) -> str | Non
             is_up_hit(ret, hit_unit(atr, 5)))
     reasons = []
     for cfg, clusters in sorted(by_config.items()):
+        if cfg != active_config:
+            continue
         n = len(clusters)
         if n < SIGNAL_MIN_EFFECTIVE:
             continue
         rate = sum(sum(h) / len(h) for h in clusters.values()) / n
         baseline = sum(sum(base[k[0]]) / len(base[k[0]]) for k in clusters) / n
-        if rate <= baseline:
-            reasons.append(f"{cfg} 반등 신호 적중 {rate:.1%} ≤ 종목 기준선 {baseline:.1%} (실효 표본 {n}군집)")
+        upper = _wilson_upper(rate, n)
+        if upper < baseline:
+            reasons.append(f"{cfg} 반등 신호 적중 {rate:.1%}(95% 상한 {upper:.1%}) < 종목 기준선 {baseline:.1%}"
+                           f" (실효 표본 {n}군집)")
     if not reasons:
         return None
     return f"최근 {SIGNAL_WINDOW_DAYS}일 채점분에서 " + "; ".join(reasons) + " — 신호가 평소보다 못 맞히고 있습니다"
 
 
+RISK_REPORT_MAX_AGE_DAYS = 10   # 주 1회 배치(토 06:00) — 이보다 오래되면 보드 수치가 낡은 것이다
+
+
+def risk_signal_verdict(latest: tuple[datetime, dict] | None, previous: dict | None, now: datetime) -> str | None:
+    """위험 신호 보드가 보여 주는 신호가 아직 검증되는가 — 화면이 조용히 수치를 내리는 것만으로는 아무도 모른다.
+
+    ① 검증되던 신호가 이번 주 검증에서 떨어졌으면 사유(보드는 자동으로 수치를 내리지만 사람은 알아야 한다)
+    ② 리포트 자체가 낡았으면(주간 배치 미실행) 사유
+    2026-09-18 신설 — 방향 신호 경보를 활성 조합으로 좁힌 자리에, 실제로 사용자에게 보이는 신호를 감시한다.
+    """
+    if latest is None:
+        return "위험 신호 검증 리포트가 없습니다 — scripts/backtest_risk_signal.py 실행 필요"
+    ran_at, payload = latest
+    age_days = (now - ran_at).total_seconds() / 86400
+    if age_days > RISK_REPORT_MAX_AGE_DAYS:
+        return (f"위험 신호 검증 리포트가 {age_days:.0f}일 지났습니다(주 1회 기대)"
+                " — CronJob backtest-risk-signal 확인 필요")
+    dropped = []
+    prev_valid = {s["key"] for s in (previous or {}).get("signals", ()) if s.get("validated")}
+    for s in payload.get("signals", ()):
+        if s["key"] in prev_valid and not s.get("validated"):
+            test = s.get("test", {})
+            dropped.append(f"{s['label']} — 검증 구간 {test.get('rate', 0):.1%} vs 기준 {test.get('base', 0):.1%}"
+                           f"(전주까지 검증됨, 실효 표본 {test.get('n_eff', 0):,.0f})")
+    if dropped:
+        return "위험 신호가 검증에서 떨어졌습니다: " + "; ".join(dropped)
+    return None
+
+
+def risk_signal_decay(engine, now: datetime) -> str | None:
+    with engine.connect() as conn:
+        rows = conn.execute(text(
+            "SELECT ran_at, payload FROM risk_signal_reports ORDER BY ran_at DESC LIMIT 2"
+        )).all()
+    latest = (rows[0][0], rows[0][1]) if rows else None
+    previous = rows[1][1] if len(rows) > 1 else None
+    return risk_signal_verdict(latest, previous, now)
+
+
 def signal_decay(engine, now: datetime) -> str | None:
     cols = "ticker, as_of, direction, realized_return_pct, atr_pct, signal_config"
     with engine.connect() as conn:
+        active = conn.execute(text(
+            "SELECT config_key FROM forecast_signal_configs WHERE is_active LIMIT 1"
+        )).scalar()
         recent = conn.execute(text(
             f"SELECT {cols} FROM forecast_snapshots WHERE horizon_days = 5 AND realized_return_pct IS NOT NULL"
             " AND NOT earnings_veto AND as_of >= :since"
@@ -204,7 +269,7 @@ def signal_decay(engine, now: datetime) -> str | None:
             f"SELECT {cols} FROM forecast_snapshots WHERE horizon_days = 5 AND realized_return_pct IS NOT NULL"
             " AND NOT earnings_veto"
         )).all()
-    return signal_decay_verdict([tuple(r) for r in recent], [tuple(r) for r in history])
+    return signal_decay_verdict([tuple(r) for r in recent], [tuple(r) for r in history], active)
 
 
 def collect_verdicts() -> list[tuple[str, str, object]]:
@@ -225,7 +290,7 @@ def collect_verdicts() -> list[tuple[str, str, object]]:
 
 
 def build_body(problems: list[tuple[str, str, object]], drift: str | None = None,
-               paper: str | None = None, signal: str | None = None) -> str:
+               paper: str | None = None, signal: str | None = None, risk: str | None = None) -> str:
     lines = []
     if problems:
         lines += ["다음 수집이 기대 주기를 넘겼습니다.", ""]
@@ -238,6 +303,9 @@ def build_body(problems: list[tuple[str, str, object]], drift: str | None = None
     if signal:
         lines += ["", "주식 신호 성적이 기준선 아래입니다.", "", f"  · {signal}",
                   "    조치: 어드민 → 예측 재적합에서 조합별 최근 성적 확인 · 활성 조합 교체 여부 판단(자동 승격은 꺼져 있음)"]
+    if risk:
+        lines += ["", "위험 신호 보드의 검증 상태가 바뀌었습니다.", "", f"  · {risk}",
+                  "    조치: 보드는 검증 미달 신호의 수치를 자동으로 내립니다 — 어떤 신호를 계속 보여줄지 판단 필요"]
     if drift:
         lines += ["", "배포가 저장소보다 뒤처져 있습니다.", "", f"  · {drift}",
                   "    조치: 백엔드 PC에서 infra/deploy.sh"]
@@ -285,20 +353,23 @@ def main() -> int:
     try:
         paper = paper_lag(engine, datetime.now(UTC))
         signal = signal_decay(engine, datetime.now(UTC))
+        risk = risk_signal_decay(engine, datetime.now(UTC))
     finally:
         engine.dispose()
     print(f"  모의투자: {paper or '누락 세션 없음'}")
     print(f"  신호 성적: {signal or '기준선 이상(또는 표본 부족)'}")
+    print(f"  위험 신호: {risk or '검증 유지'}")
 
     problems = [r for r in rows if r[1] in ALERT_STATES]
-    if not problems and not drift and not paper and not signal:
+    if not problems and not drift and not paper and not signal and not risk:
         print(f"{stamp} 전 데이터셋·배포·모의투자·신호 성적 정상 — 알림 없음", flush=True)
         return 0
 
     parts = (([f"수집 지연·정지 {len(problems)}건"] if problems else []) + (["배포 드리프트"] if drift else [])
-             + (["모의투자 step 누락"] if paper else []) + (["신호 성적 저하"] if signal else []))
+             + (["모의투자 step 누락"] if paper else []) + (["신호 성적 저하"] if signal else [])
+             + (["위험 신호 검증 이탈"] if risk else []))
     subject = f"[redoceanmap] {' / '.join(parts)}"
-    body = build_body(problems, drift, paper, signal)
+    body = build_body(problems, drift, paper, signal, risk)
     print(f"{stamp} 이상 감지\n{body}", flush=True)
     if dry_run:
         print("[dry-run] 메일 발송 생략", flush=True)
