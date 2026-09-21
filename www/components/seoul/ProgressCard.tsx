@@ -22,6 +22,9 @@ const STEPS = ["의도 분류", "데이터 조회", "근거 생성", "서술"] a
 // 평균 응답 시간 안내 — 백엔드 phase 왕복 p95 ~1.5분에서 온 값
 const TYPICAL_LABEL = "보통 1분 30초 안에 끝나요";
 
+// 백엔드 chat_router의 대기열 stage 키 — 앞선 질문이 끝나길 기다리는 중이라 아직 어느 스텝도 시작하지 않았다
+const QUEUED_STAGE = "queued";
+
 /**
  * 홈 진행 카드 — 전송 시 입력창이 그 자리에서 이 카드로 바뀐다(핸드오프 §홈 (b)).
  * AI가 최대 1.5분까지 걸리는 동안 화면이 죽지 않게, 서버 SSE 단계를 4스텝으로 보여준다.
@@ -41,7 +44,8 @@ export default function ProgressCard() {
   }, []);
 
   const prompt = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
-  const current = loadingStageKey != null ? (STEP_OF_STAGE[loadingStageKey] ?? 0) : 0;
+  const queued = loadingStageKey === QUEUED_STAGE;
+  const current = queued ? -1 : loadingStageKey != null ? (STEP_OF_STAGE[loadingStageKey] ?? 0) : 0;
   const elapsed = askStartedAt ? Math.max(0, Math.floor((now - askStartedAt) / 1000)) : 0;
   const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
   const ss = String(elapsed % 60).padStart(2, "0");
@@ -91,7 +95,7 @@ export default function ProgressCard() {
 
       <div className="mt-4 pt-3 border-t border-border flex items-center justify-between text-xs">
         <span className="text-foreground-muted tabular-nums">
-          {mm}:{ss} 경과 · {TYPICAL_LABEL}
+          {mm}:{ss} {queued && loadingStage ? `· ${loadingStage}` : `경과 · ${TYPICAL_LABEL}`}
         </span>
         <button
           type="button"

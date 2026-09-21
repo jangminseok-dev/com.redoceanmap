@@ -32,10 +32,6 @@ _STATUS_BY_ERROR: dict[type[ChatError], int] = {
     ConversationNotFoundError: 404,
 }
 
-# 클라이언트가 떠난 뒤에도 도는 ask 태스크의 강한 참조 — 루프는 약한 참조만 쥐어서, 수거되면
-# 대기열 자리가 반납되지 않는다.
-_ask_tasks: set[asyncio.Task] = set()
-
 
 @chat_router.post("/ask", response_model=AskResponse)
 async def ask(
@@ -65,24 +61,19 @@ async def ask_progress(
     """
     async def event_gen():
         queue: asyncio.Queue = asyncio.Queue()
-        started = False
 
         def on_stage(stage: str, label: str) -> None:
             queue.put_nowait({"type": "stage", "stage": stage, "label": label})
 
         async def run() -> AskResponse:
-            nonlocal started
             async with chat_queue.slot(on_wait=lambda position: on_stage(
-                "queued", f"앞선 질문을 처리하고 있어요 · 대기 {position}번째"
+                "queued", f"앞선 질문 처리 중 · 대기 {position}번째"
             )):
-                started = True
                 return await use_case.ask(
                     body.prompt, body.conversationId, user_id=user_id, on_stage=on_stage,
                 )
 
         task = asyncio.create_task(run())
-        _ask_tasks.add(task)
-        task.add_done_callback(_ask_tasks.discard)
         try:
             while not (task.done() and queue.empty()):
                 try:
@@ -91,10 +82,10 @@ async def ask_progress(
                     continue
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         finally:
-            # 줄 선 채로 떠난 질문(중단·새로고침)은 뺀다 — 남겨두면 본인의 다음 질문이 그 뒤에 선다.
-            # 이미 시작한 질문은 끝까지 돌아 대화에 저장된다(기존 동작).
-            if not started:
-                task.cancel()
+            # 떠난 질문("질문 고치기"·새로고침·연결 끊김)은 줄에 섰든 처리 중이든 멈춘다 — 남겨두면 아무도 안 보는
+            # 답을 만드느라 자리를 쥐고, 고쳐 보낸 본인의 다음 질문이 그 뒤에 선다(2026-09-21 라이브 재현).
+            # 정상 종료면 이미 끝난 태스크라 아무 일도 없다.
+            task.cancel()
         try:
             result = task.result()
             payload = {"type": "result", "data": result.model_dump()}

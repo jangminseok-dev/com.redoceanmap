@@ -182,7 +182,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       if (!res.body) throw new Error("AI 응답 오류");
       const outcome = await consumeAskProgress(res, (stage, label) =>
-        set({ loadingStage: label, loadingStageKey: stage }),
+        set((s) => ({
+          loadingStage: label,
+          loadingStageKey: stage,
+          // 대기열에서 풀려난 순간부터 다시 센다 — 진행 카드의 "보통 1분 30초"는 처리 시간 기준이다
+          askStartedAt:
+            s.loadingStageKey === "queued" && stage !== "queued" ? Date.now() : s.askStartedAt,
+        })),
       );
       if (!outcome.ok) {
         // 백엔드가 사람이 읽는 사유를 준다(서울 외 준비중·상권 미발견 등) — 그대로 보여준다

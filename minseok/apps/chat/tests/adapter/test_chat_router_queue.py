@@ -9,7 +9,8 @@ import pytest
 from fastapi import FastAPI
 
 from chat.adapter.inbound.api.v1 import chat_router as chat_router_module
-from chat.adapter.inbound.api.v1.chat_router import chat_router
+from chat.adapter.inbound.api.schemas.chat_schema import AskRequest
+from chat.adapter.inbound.api.v1.chat_router import ask_progress, chat_router
 from chat.app.dtos.chat_dto import AskResponse
 from chat.dependencies.chat_provider import get_chat_use_case
 from core.llm import request_queue as request_queue_module
@@ -23,6 +24,7 @@ class _StubChatUseCase:
     def __init__(self) -> None:
         self.gate = asyncio.Event()
         self.started: list[str] = []
+        self.cancelled: list[str] = []
         self.peak = 0
         self._running = 0
 
@@ -31,7 +33,12 @@ class _StubChatUseCase:
         self.peak = max(self.peak, self._running)
         self.started.append(prompt)
         on_stage("intent", "질문을 읽고 있어요")
-        await self.gate.wait()
+        try:
+            await self.gate.wait()
+        except asyncio.CancelledError:
+            self.cancelled.append(prompt)
+            self._running -= 1
+            raise
         self._running -= 1
         return AskResponse(text=f"답:{prompt}", recommendations=[], conversationId=1)
 
@@ -87,3 +94,22 @@ async def test_혼자_온_질문은_대기_이벤트_없이_바로_처리된다(
     events = _events(res.text)
     assert [e["stage"] for e in events if e["type"] == "stage"] == ["intent"]
     assert events[-1]["type"] == "result"
+
+
+async def test_처리_중에_떠난_질문은_멈추고_고쳐_보낸_질문이_기다리지_않는다(stub):
+    """"질문 고치기" — 시작된 질문을 끊고 다시 보낸다. 끊긴 질문이 자리를 쥐고 끝까지 돌면
+    고친 질문이 본인의 유령 질문 뒤에 선다(2026-09-21 라이브 재현: 10초 대기)."""
+    response = await ask_progress(AskRequest(prompt="끊길 질문"), user_id=1, use_case=stub)
+    stream = response.body_iterator
+    first = json.loads((await anext(stream))[6:])
+    assert first["stage"] == "intent"  # 이미 처리 중
+
+    await stream.aclose()  # 클라이언트가 떠났다
+    await asyncio.sleep(0.05)
+    assert stub.cancelled == ["끊길 질문"]
+
+    stub.gate.set()
+    retry = await ask_progress(AskRequest(prompt="고친 질문"), user_id=1, use_case=stub)
+    events = [json.loads(chunk[6:]) async for chunk in retry.body_iterator]
+    assert [e["stage"] for e in events if e["type"] == "stage"] == ["intent"]  # queued 없음
+    assert events[-1]["data"]["text"] == "답:고친 질문"
