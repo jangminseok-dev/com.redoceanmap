@@ -89,6 +89,8 @@ N8N_EMAIL_WEBHOOK_URL = _secrets.get(
     "N8N_EMAIL_WEBHOOK_URL", "http://localhost:5678/webhook/redocean-email"
 )
 N8N_OUTBOUND_TOKEN = _secrets.get("N8N_OUTBOUND_TOKEN")
+# 사용자에게 보내는 링크의 기준 주소(이메일 인증 링크 등) — 프론트 도메인. 로컬 개발은 http://localhost:3000.
+SITE_URL = _secrets.get("SITE_URL", "https://redoceanmap.com")
 
 # 운영 알림 수신 주소 (scripts/check_freshness.py — 수집 지연·정지 통보).
 # 비어 있으면 감시는 판정만 하고 발송에서 실패한다 — 조용히 넘어가지 않는다.

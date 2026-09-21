@@ -30,3 +30,8 @@ class UserRepository(ABC):
 
     @abstractmethod
     async def touch_last_login(self, user_id: int) -> None: ...
+
+    @abstractmethod
+    async def mark_email_verified(self, user_id: int) -> None:
+        """이메일 인증 완료 기록(멱등 — 이미 인증됐으면 시각을 덮어쓰지 않는다)."""
+        ...

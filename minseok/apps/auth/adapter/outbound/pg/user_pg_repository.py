@@ -60,3 +60,11 @@ class UserPgRepository(UserRepository):
             .values(last_login_at=datetime.now(timezone.utc))
         )
         await self._session.commit()
+
+    async def mark_email_verified(self, user_id: int) -> None:
+        await self._session.execute(
+            update(UserOrm)
+            .where(UserOrm.id == user_id, UserOrm.email_verified_at.is_(None))
+            .values(email_verified_at=datetime.now(timezone.utc))
+        )
+        await self._session.commit()

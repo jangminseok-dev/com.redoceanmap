@@ -35,6 +35,12 @@ class LoginRequest(BaseModel):
     _check_password = field_validator("password")(_within_bcrypt_limit)
 
 
+class EmailVerifyRequest(BaseModel):
+    """메일 링크의 토큰 — 로그인 없이도 확인할 수 있다(토큰이 주소 소유를 증명한다)."""
+
+    token: str = Field(min_length=1, max_length=200)
+
+
 class SessionResponse(BaseModel):
     """인증 성공 응답 — 토큰은 본문이 아니라 httpOnly Set-Cookie로만 내려간다(BFF 규칙 2)."""
 

@@ -68,10 +68,23 @@ export async function apiLogout(): Promise<void> {
 }
 
 /** 로그인 상태 판정의 단일 소스 — 쿠키가 유효하면 사용자 정보를 준다. */
-export async function apiMe(): Promise<{ id: number; email: string; name: string }> {
+// emailVerified — 알림 메일은 인증된 주소로만 나간다(가입·로그인과는 무관). 구버전 응답 호환을 위해 옵셔널
+export async function apiMe(): Promise<{ id: number; email: string; name: string; emailVerified?: boolean }> {
   const res = await authFetch("/me");
   if (!res.ok) throw new Error("인증이 만료되었습니다.");
   return res.json();
+}
+
+/** 로그인한 본인 주소로 인증 메일을 보낸다. 실패 사유(하루 한도·발송 불가 주소 등)는 서버 문구를 그대로 던진다. */
+export async function apiRequestEmailVerification(): Promise<{ outcome: string; message: string }> {
+  const res = await authFetch("/email/verify-request", { method: "POST" });
+  return jsonOrThrow(res, "인증 메일을 보내지 못했어요.");
+}
+
+/** 메일 링크의 토큰 확인 — 로그인 없이도 된다(토큰이 주소 소유를 증명한다). */
+export async function apiVerifyEmail(token: string): Promise<{ verified: boolean }> {
+  const res = await authFetch("/email/verify", { method: "POST", body: JSON.stringify({ token }) });
+  return jsonOrThrow(res, "링크를 확인하지 못했어요.");
 }
 
 /** 보이는 탭 키 목록 — 등급(역할) 합집합. 비로그인은 기본 등급 구성. */

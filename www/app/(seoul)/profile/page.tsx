@@ -15,6 +15,7 @@ import {
 } from "@/lib/api";
 import type { InvestorProfile } from "@/lib/types";
 import { useUIStore } from "@/lib/uiStore";
+import { apiMe, apiRequestEmailVerification } from "@/lib/authApi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -105,6 +106,11 @@ function AlertSettingSection() {
   const enabled = data?.email_alerts ?? true;
   const chatId = data?.telegram_chat_id ?? null;
 
+  // 이메일 인증 — 메일 알림은 인증된 주소로만 나간다(텔레그램은 무관). 로그인 직후에는 스토어에 값이 없어 /auth/me로 확인한다
+  const me = useQuery({ queryKey: ["auth-me"], queryFn: apiMe, staleTime: 60_000 });
+  const verification = useMutation({ mutationFn: apiRequestEmailVerification });
+  const needsVerification = me.data !== undefined && me.data.emailVerified === false;
+
   // 텔레그램 등록/해제 — 폼 제출 흐름이라 FormData 패턴(REACT_RULES 패턴 A)
   const handleTelegramSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -143,6 +149,33 @@ function AlertSettingSection() {
               </Button>
             ))}
           </div>
+          {needsVerification && (
+            <div className="mt-3 rounded-xl border border-border bg-background p-3">
+              <p className="text-xs leading-relaxed">
+                <span className="font-medium">메일 알림을 받으려면 이메일 인증이 필요해요.</span>{" "}
+                <span className="text-foreground-muted">
+                  {me.data?.email}로 보낸 링크를 누르면 끝나요. 인증 전에도 서비스는 그대로 쓸 수 있고,
+                  텔레그램 알림은 인증 없이 받습니다.
+                </span>
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="weak"
+                  loading={verification.isPending}
+                  disabled={verification.isSuccess}
+                  onClick={() => verification.mutate()}
+                >
+                  {verification.isSuccess ? "메일을 보냈어요" : "인증 메일 보내기"}
+                </Button>
+                {(verification.data || verification.error) && (
+                  <span className="text-xs text-foreground-muted" role="status">
+                    {verification.data?.message ?? (verification.error as Error).message}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
           <form onSubmit={handleTelegramSubmit} className="mt-4 space-y-2">
             <Label htmlFor="telegram_chat_id" className="text-xs font-medium">
               텔레그램으로도 받기 (선택)

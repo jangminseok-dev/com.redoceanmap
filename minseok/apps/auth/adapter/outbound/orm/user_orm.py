@@ -23,3 +23,5 @@ class UserOrm(Base):
     suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     suspended_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # 이메일 인증 시각 — NULL = 미인증. 알림 메일은 인증된 주소로만 나간다(가입·로그인은 막지 않는다).
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

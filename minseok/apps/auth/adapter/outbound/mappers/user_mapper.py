@@ -19,4 +19,5 @@ class UserMapper:
             suspended_at=orm.suspended_at,
             suspended_reason=orm.suspended_reason,
             deleted_at=orm.deleted_at,
+            email_verified_at=orm.email_verified_at,
         )

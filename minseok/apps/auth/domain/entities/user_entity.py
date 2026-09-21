@@ -19,6 +19,7 @@ class User:
     suspended_at: datetime | None = None  # 운영자 정지 시각 (None = 정상, 해제 가능)
     suspended_reason: str | None = None
     deleted_at: datetime | None = None  # 탈퇴 처리 시각 — 개인정보 익명화 동반, 비가역
+    email_verified_at: datetime | None = None  # 이메일 인증 시각 (None = 미인증 — 알림 메일 미발송)
 
     def ensure_active(self) -> None:
         """정지/탈퇴 계정이면 ValueError — 로그인·소셜·리프레시 공통 관문."""

@@ -7,6 +7,7 @@ export type User = {
   id: number;
   name: string;
   email: string;
+  emailVerified?: boolean; // 알림 메일 수신 조건 — 로그인 직후(세션 응답)에는 없고 /auth/me 복원 때 채워진다
 };
 
 type UIState = {
