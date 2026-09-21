@@ -190,6 +190,9 @@ apps/hub/dependencies/user_profile_provider.py  # get_user_profile_port (NotImpl
   구현: `recommendation`의 `AlertDeliveryGateway`(`user_alert_deliveries`).
 - **MemberContactPort** — `emails_by_ids(user_ids)` → user_id→이메일. 구현: `auth`의
   `MemberContactGateway`. 정지·탈퇴·이메일 없는 계정은 키 자체가 없다(발송 대상 아님).
+  **받을 수 없는 주소도 뺀다**(2026-09-21 — auth `domain/value_objects/deliverable_email.py`: 서비스 자체 도메인 `redoceanmap.com`·예약 도메인
+  `example.com`·`.test`·`.local`·`.invalid`). QA 계정(qa.persona05·07)이 NVDA·TSLA·AAPL을 북마크한 채 기본값 '수신'이라 매시간 뉴스 알림이 나갔고,
+  메일함 없는 주소라 Gmail의 "전송이 완료되지 않음" 안내가 발신 계정 받은편지함을 수백 통 채웠다. 세 알림 스캔이 전부 이 포트로 주소를 받으므로 여기서 막는다.
   MemberDirectoryPort(회원 관리·RBAC)와 별개인 발송 목적 전용(Record↔Directory 분리 선례).
 - **소비**: 허브 자신의 `BookmarkAlertInteractor`(아래 자동화 창구) — StockStatusPort 재사용.
 - **배선**: `main.py` overrides — recommendation·auth 게이트웨이 주입.

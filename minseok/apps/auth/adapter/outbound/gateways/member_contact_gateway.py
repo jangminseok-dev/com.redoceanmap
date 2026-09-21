@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth.adapter.outbound.orm.user_orm import UserOrm
+from auth.domain.value_objects.deliverable_email import is_deliverable
 from hub.app.ports.output.member_contact_port import MemberContactPort
 
 
@@ -11,6 +12,7 @@ class MemberContactGateway(MemberContactPort):
     """허브의 MemberContactPort를 auth(스포크)가 구현한다.
 
     발송 목적 전용 조회 — 정지·탈퇴 회원과 이메일 없는 계정(일부 소셜)은 결과에서 뺀다.
+    받을 수 없는 주소(QA 계정의 자체 도메인·예약 도메인)도 뺀다 — 반송 안내가 발신 계정 받은편지함을 채웠다(2026-09-21).
     """
 
     def __init__(self, session: AsyncSession) -> None:
@@ -27,4 +29,4 @@ class MemberContactGateway(MemberContactPort):
                 UserOrm.deleted_at.is_(None),
             )
         )).all()
-        return {user_id: email for user_id, email in rows}
+        return {user_id: email for user_id, email in rows if is_deliverable(email)}
