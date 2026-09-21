@@ -91,5 +91,4 @@ Fidelity National Information Services, Inc.|FIS|Fidelity National Information S
 
 # === auto:demand — 질문 수요 편입(상한 5), screen_us_undervalued.py가 갱신. 직접 수정 금지 ===
 SNDK|SNDK
-KT|KT
 # === /auto:demand ===
