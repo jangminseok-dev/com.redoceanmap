@@ -1,7 +1,9 @@
 import ast
+import dataclasses
 import json
 import logging
 import re
+from datetime import UTC, datetime, timedelta
 
 from chat.app.dtos.chat_dto import (
     AreaRecommendation,
@@ -493,6 +495,8 @@ _REPICK_RE = re.compile(r"골라|추천|찾아|분석|비교")
 _COMPARE_PAIR_RE = re.compile(
     r"([A-Za-z가-힣0-9&.\-]+?)(?:이랑|랑|와|과|하고|,|\s+vs\.?\s+)\s*([A-Za-z가-힣0-9&.\-]+)"
 )
+# 종목 비교 값 스냅샷의 수명 — 같은 대화의 후속 질문은 이 안에서 첫 답의 값을 재사용한다(지연 시세라 30분이면 충분히 신선하다)
+_COMPARE_SNAPSHOT_TTL = timedelta(minutes=30)
 _COMPARE_STOPWORDS = {
     "뭐", "어디", "둘", "셋", "주가", "거래량", "지금", "오늘", "비교", "중에", "어느",
     "배당", "확률", "뉴스", "실적", "전망", "신호", "차트", "모멘텀", "매물대", "리스크",
@@ -515,6 +519,24 @@ def _split_compare_queries(prompt: str, known: str) -> list[str]:
                 continue
             found.append(token)
     return found[:3]
+
+
+# 비교 대상으로 세지 않는 어절 — 지시어·순번·직전 카드를 가리키는 말(이런 질문은 직전 카드를 비교하는 게 맞다)
+_OPERAND_POINTER_RE = re.compile(r"^(?:거기|여기|저기|그곳|이곳|그거|이거|저거|그것|이것|아까|방금|위|앞|첫|두|세|네|\d+\s*(?:번|위|순위)|[일이삼사]\s*순위)")
+
+
+def _named_compare_operands(prompt: str) -> list[str]:
+    """질문이 직접 이름 붙여 말한 비교 대상("샌디스크랑 테슬라 비교해줘" → [샌디스크, 테슬라]).
+    지시어·순번·비교 어휘·불용어는 뺀다 — "둘이 비교해줘"·"1번이랑 2번 비교"는 빈 리스트다."""
+    found: list[str] = []
+    for m in _COMPARE_PAIR_RE.finditer(prompt):
+        for raw in m.groups():
+            token = re.sub(r"(?:은|는|이|가|을|를|도)$", "", raw)
+            if (len(token) < 2 or token in _COMPARE_STOPWORDS or token.startswith("비교")
+                    or _OPERAND_POINTER_RE.match(token) or token in found):
+                continue
+            found.append(token)
+    return found
 
 
 def _ordinal_index(prompt: str) -> int | None:
@@ -2148,7 +2170,13 @@ class ChatInteractor(ChatUseCase):
         if multi_ask and not strong_compare:
             summary_for_groups = await self._market.get_area_summary()
             multi_ask = len(self._explicit_place_groups(summary_for_groups, prompt)) >= 2
-        if strong_compare or multi_ask or detail_followup or (history and (_WHICH_ONE_RE.search(prompt) or area_basket)):
+        area_compare = strong_compare or multi_ask or detail_followup or bool(history and (_WHICH_ONE_RE.search(prompt) or area_basket))
+        # 질문이 비교 대상을 둘 이상 직접 말했는데 그중 지역이 하나도 없으면 상권 비교가 아니다 — 직전 추천 카드로 대신 비교하지 않고
+        # 의도 분류로 넘긴다(2026-09-21 실대화 344: 햄버거집 질문 뒤 "샌디스크랑 테슬라 비교해줘"에 직전 상권 3곳을 비교했다).
+        if area_compare and history and len(_named_compare_operands(prompt)) >= 2:
+            if not self._mentioned_codes(await self._market.get_area_summary(), prompt):
+                area_compare = False
+        if area_compare:
             # 첫 턴("성수동카페거리, 길음역, 뚝섬역 카페 비교해줘")도 지역 2곳 이상이면 코드가 대조한다 —
             # phase1이 미아사거리를 고르고 "길음 빼고"에 동서시장을 내던 실측(2026-09-17)
             compare = await self._answer_area_compare(
@@ -3215,7 +3243,7 @@ class ChatInteractor(ChatUseCase):
         history: list[Message] = (),
     ) -> AskResponse:
         """종목 2~4개 상세 비교 — 가진 데이터(지표·과거 통계·펀더멘털·키워드·기사·워치리스트·AI 모의투자)를
-        전부 표로 대조하고 결론(축별 다수결)을 맨 앞에 쓴다. 코드가 만든다 — LLM이 수치 우열을 지어내지 않게."""
+        전부 표로 대조한다. 결론은 우열이 아니라 확인된 차이(흔들림)와 기준별 사실이다(2026-09-21 — 축별 다수결 폐지). 코드가 만든다 — LLM이 수치 우열을 지어내지 않게."""
         self._notify(on_stage, "analyze", f"{len(queries)}개 종목의 데이터를 전부 모으고 있어요")
         board_rows: dict[str, str] = {}
         if self._signals is not None:
@@ -3241,7 +3269,16 @@ class ChatInteractor(ChatUseCase):
         basket_items: list[dict] = []
         failed: list[str] = []
         missing: list[str] = []
+        # 같은 대화의 후속("그래서 뭐가 나아")은 첫 답의 값을 그대로 쓴다 — 다시 분석하면 시세·뉴스가 조금씩 달라
+        # 같은 대화 안에서 결론이 바뀐다(2026-09-21 실대화 340: 1분 사이 테슬라 우위 → 샌디스크 우위). 분석 호출도 준다.
+        snapshot = self._stock_compare_snapshot(history)
         for q in queries:
+            cached = snapshot.get(q)
+            if cached is not None:
+                items.append(compare_svc.StockCompareItem(**cached["item"]))
+                basket_items.append({"query": q, "symbol": cached["item"]["symbol"]})
+                missing.extend(cached["missing"])
+                continue
             try:
                 a = await self._stocks.analyze(q)
             except StockAnalysisUnavailable as e:
@@ -3315,10 +3352,41 @@ class ChatInteractor(ChatUseCase):
         text = compare_svc.render_stock_compare(items, verdict, brief=brief, missing_notes=missing)
         text = answer_guard.ensure_disclaimer(text)
         # 카드는 싣지 않는다 — 비교 답에 한 종목 카드만 붙으면 그 종목을 고른 것처럼 읽힌다. 바구니만 남긴다.
+        by_label = {i.label: i for i in items}
+        snap = [
+            {"query": b["query"], "item": dataclasses.asdict(by_label[label]),
+             "missing": [m for m in missing if m.startswith(label)]}
+            for b in basket_items if (label := f"{b['query']}({b['symbol']})") in by_label
+        ]
         await self._conversations.add_message(
-            conversation_id, "assistant", text, payload={"compareSet": {"kind": "stock", "items": basket_items}},
+            conversation_id, "assistant", text,
+            payload={"compareSet": {"kind": "stock", "items": basket_items,
+                                    "snapshot": {"at": datetime.now(UTC).isoformat(), "items": snap}}},
         )
         return AskResponse(text=text, recommendations=[], conversationId=conversation_id)
+
+    @classmethod
+    def _stock_compare_snapshot(cls, history: list[Message]) -> dict[str, dict]:
+        """직전 종목 비교의 값 스냅샷(질의 → {item, missing}) — 없거나 오래됐으면 빈 dict(새로 분석한다)."""
+        basket = cls._compare_basket(history) or {}
+        snap = basket.get("snapshot") or {}
+        try:
+            fresh = datetime.now(UTC) - datetime.fromisoformat(snap["at"]) <= _COMPARE_SNAPSHOT_TTL
+        except (KeyError, TypeError, ValueError):
+            return {}
+        if basket.get("kind") != "stock" or not fresh:
+            return {}
+        fields = {f.name for f in dataclasses.fields(compare_svc.StockCompareItem)}
+        out: dict[str, dict] = {}
+        for entry in snap.get("items", ()):
+            item = entry.get("item") or {}
+            if set(item) != fields:   # 필드가 바뀐 옛 스냅샷은 버린다
+                continue
+            # JSON 왕복으로 튜플이 리스트가 됐다 — 렌더러가 기대하는 꼴로 되돌린다
+            item = {**item, "fundamentals": tuple(tuple(x) for x in item["fundamentals"]),
+                    "keywords": tuple(item["keywords"]), "news": tuple(item["news"])}
+            out[entry["query"]] = {"item": item, "missing": list(entry.get("missing", ()))}
+        return out
 
     async def _answer_stock(
         self, conversation_id: int, prompt: str, stock_queries: list[str], on_stage=None,

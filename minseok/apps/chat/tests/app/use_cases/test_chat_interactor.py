@@ -374,8 +374,9 @@ async def test_비교_질문은_종목마다_분석해_비교표와_결정론_�
     assert result.text.startswith("**결론**") and "| 항목 | 테슬라(005930) | 애플(005930) |" in result.text
     # 거래량 판정 열 — 골든셋 volume_verdict_rate가 비교표 경로에서도 성립해야 한다(2026-09-08 게이트 실측)
     assert "| 거래량(20일 대비) |" in result.text and "1.8배 · 신뢰" in result.text
-    # 같은 스텁 결과라 전 축 동률 — 우열을 짓지 않는다. 가진 데이터 전부가 표에 있다
-    assert "우위가 갈리지 않아요" in result.text
+    # 종목 비교는 우열을 말하지 않는다(2026-09-21) — 결론은 확인된 차이(흔들림)뿐, ★도 없다. 가진 데이터 전부가 표에 있다
+    assert "우열은 말하지 않아요" in result.text and "우위" not in result.text and "★" not in result.text
+    assert "매수·매도 권유가 아니에요" in result.text
     for row in ("| RSI(14) |", "| 볼린저 %B |", "| 이동평균 위치 |", "| 60일 저점~고점 |", "| 12-1 모멘텀 |",
                 "| 뉴스 감성 |", "| 펀더멘털 |", "| 워치리스트 신호 |", "| AI 모의투자 |", "| 과거 같은 신호 상승 비율 |"):
         assert row in result.text, row
@@ -3422,3 +3423,81 @@ async def test_단일_상권_답은_결론_뒤에_상권_리포트를_붙이고_
     result = await interactor.ask("성수동 카페 어때?")
     assert "최근 1년 폐업률 2.4%" in result.text.split("\n", 1)[0]
     assert "**상권 리포트 — 테스트상권**" in result.text and "- **수익성**\n  - " in result.text
+
+
+# --- 2026-09-21 실대화 344·340: 종목 비교가 상권 비교로 빠짐 / 같은 대화에서 결론이 뒤집힘 ---
+
+def _turns(*pairs):
+    """(본문, payload) 쌍을 user/assistant 교대 히스토리로 — 대화 스텁은 추가된 메시지를 돌려주지 않아 직접 만든다."""
+    return [Message(id=i + 1, conversation_id=1, role="user" if i % 2 == 0 else "assistant", content=text,
+                    created_at=_NOW, payload=payload) for i, (text, payload) in enumerate(pairs)]
+
+
+async def test_상권_대화_뒤의_종목_비교는_직전_상권_카드를_비교하지_않는다(monkeypatch):
+    """햄버거집 질문 뒤 "샌디스크랑 테슬라 비교해줘"에 직전 추천 상권 3곳을 비교했다 — 비교 게이트가 의도 분류보다 앞에 있고,
+    '비교' + 이전 대화면 질문의 대상이 지역인지 보지 않고 직전 카드를 썼다."""
+    stock_intent = '{"intent": "stock", "stock_query": ["샌디스크", "테슬라"]}'
+    # 직전 답에 상권 카드가 3장 — 실사고와 같은 조건(카드가 2장 이상이어야 상권 비교가 성립한다)
+    recs = [{"id": str(c), "name": n, "serviceCode": "CS100010", "category": "커피-음료"}
+            for c, n in ((3110131, "성수동카페거리"), (3130070, "길음역 8번"), (3120052, "뚝섬역상점가"))]
+    history = _turns(("3000만원으로 수제 햄버거집 하고싶어", None), ("**결론** …", {"recommendations": recs}))
+
+    def build():
+        return _build(monkeypatch, [stock_intent], conversations=_StubConversations(history=history), market=_CompareMarket())
+
+    # 대조군 — 대상을 생략한 "둘이 비교해줘"는 직전 카드들을 비교하는 게 맞다(이 히스토리로 상권 비교가 성립함을 확인)
+    interactor, llm, stubs = build()
+    control = await interactor.ask("셋 다 비교해줘", 1)
+    assert "**상권별 특장점**" in control.text and llm.calls == []
+
+    interactor, llm, stubs = build()
+    result = await interactor.ask("샌디스크랑 테슬라 비교해줘", 1)
+    assert stubs["stocks"].queries == ["샌디스크", "테슬라"]
+    assert "| 항목 | 샌디스크(005930) | 테슬라(005930) |" in result.text
+    assert "상권별 특장점" not in result.text and "성수동카페거리" not in result.text
+
+
+async def test_대상을_생략한_비교는_여전히_직전_상권_카드를_쓴다(monkeypatch):
+    from chat.app.use_cases.chat_interactor import _named_compare_operands
+
+    assert _named_compare_operands("샌디스크랑 테슬라 비교해줘") == ["샌디스크", "테슬라"]
+    assert _named_compare_operands("샌디스크와 테슬라를 비교해줘") == ["샌디스크", "테슬라"]
+    # 직전 카드를 가리키는 말·비교 어휘·불용어는 대상이 아니다 — 이런 질문은 직전 카드 비교가 맞다
+    for prompt in ("둘이 비교해줘", "1번이랑 2번 비교해줘", "거기랑 여기 중에 어디가 나아?", "첫번째랑 두번째 비교", "그래서 어디야"):
+        assert _named_compare_operands(prompt) == [], prompt
+    assert _named_compare_operands("성수동이랑 비교해줘") == ["성수동"]   # 하나만 말한 경우는 가드 대상이 아니다(2개 이상일 때만)
+
+
+async def test_같은_대화의_후속_비교는_첫_답의_값을_그대로_쓴다(monkeypatch):
+    """1분 사이 "테슬라 우위" → "샌디스크 우위" — 후속 질문이 전부 새로 분석해서였다. 값 스냅샷을 바구니에 싣는다."""
+    intent = '{"intent": "stock", "stock_query": ["테슬라", "애플"]}'
+    interactor, _, stubs = _build(monkeypatch, [intent])
+    first = await interactor.ask("테슬라랑 애플 비교해줘")
+    assert stubs["stocks"].queries == ["테슬라", "애플"]
+    payload = stubs["conversations"].payloads[-1]
+    assert [e["query"] for e in payload["compareSet"]["snapshot"]["items"]] == ["테슬라", "애플"]
+    import json as _json
+    history = _turns(("테슬라랑 애플 비교해줘", None), (first.text, _json.loads(_json.dumps(payload))))   # DB(JSONB) 왕복
+
+    interactor, _, stubs = _build(monkeypatch, [intent], conversations=_StubConversations(history=history))
+    follow = await interactor.ask("그래서 뭐가 나아", 1)
+    assert stubs["stocks"].queries == []                               # 다시 분석하지 않았다
+    assert follow.text.split("\n", 1)[0] == first.text.split("\n", 1)[0]   # 결론 줄이 같다
+    assert "**전체 지표**" not in follow.text                           # "그래서 뭐가 나아"는 결론만
+
+
+async def test_오래된_스냅샷은_버리고_새로_분석한다(monkeypatch):
+    from datetime import UTC, datetime, timedelta
+
+    from chat.app.use_cases.chat_interactor import ChatInteractor
+    from chat.domain.entities.conversation_entity import Message
+
+    def history(age: timedelta, item: dict | None = None):
+        payload = {"compareSet": {"kind": "stock", "items": [{"query": "테슬라", "symbol": "TSLA"}],
+                                  "snapshot": {"at": (datetime.now(UTC) - age).isoformat(),
+                                               "items": [{"query": "테슬라", "item": item or {"symbol": "TSLA"}, "missing": []}]}}}
+        return [Message(id=1, conversation_id=1, role="assistant", content="", created_at=datetime.now(UTC), payload=payload)]
+
+    assert ChatInteractor._stock_compare_snapshot(history(timedelta(minutes=31))) == {}   # 30분 초과
+    assert ChatInteractor._stock_compare_snapshot(history(timedelta(minutes=1))) == {}    # 필드가 안 맞는 옛 스냅샷
+    assert ChatInteractor._stock_compare_snapshot([]) == {}

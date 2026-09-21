@@ -59,3 +59,61 @@ def test_지표별_비교는_표이고_값이_없는_지표는_표_밖_한_줄�
     assert "| 최근 1년 폐업률 | 2.6% | ★ 1.7% |" in blocks[0]
     assert "값 없음" not in blocks[0] and "비교 안 함" not in blocks[0]
     assert blocks[1].startswith("_값이 없어 비교하지 않은 지표: ") and "공실률" in blocks[1]
+
+
+# --- 종목 비교 판정(2026-09-21 실대화 340) ---
+
+def _stock(label, **kw):
+    base = dict(label=label, symbol=label, unit="달러", price=100.0, direction="NEUTRAL", strength="약", score=0.0, rsi=50.0,
+                ma20=100.0, ma50=100.0, support=90.0, resistance=110.0, atr_pct=0.03, bb_percent_b=0.5, volume_ratio=1.0,
+                volume_cell="1.0배", obv_slope=0.0, momentum_12_1=0.0, reference_up_signal=False, sentiment=0.0, sentiment_label="중립")
+    base.update(kw)
+    return cs.StockCompareItem(**base)
+
+
+def test_종목_비교는_우열을_말하지_않고_확인된_차이와_기준별_사실만_쓴다():
+    """축별 다수결로 "데이터상 X 우위"라 했는데 채점 기록에서 그 축들은 동전 던지기였고(짝 비교 50%), 사용자는 그걸 추천으로 읽었다.
+    3:3 동률을 방향 점수 0.05 차이로 "테슬라 우위"라 했다가 1분 뒤 "샌디스크 우위"로 뒤집힌 실대화 340의 값."""
+    a = _stock("샌디스크", score=-0.22, atr_pct=0.057, momentum_12_1=15.695, support=998.19, resistance=2348.0, price=1791.82,
+               fundamentals=(("warning", "PBR 16.5배"), ("positive", "ROE 91.6%")))
+    b = _stock("테슬라", score=-0.17, atr_pct=0.039, momentum_12_1=-0.176, support=297.38, resistance=432.86, price=364.27,
+               fundamentals=(("warning", "PER 343배"), ("warning", "PBR 16.5배"), ("warning", "ROE 4.7%")))
+    v = cs.stock_verdict([a, b])
+    assert v.line == ("**결론** 샌디스크 vs 테슬라 — 우열은 말하지 않아요. 확인된 차이는 흔들림이에요: 샌디스크 쪽이 더 크게 움직일 "
+                      "가능성이 높아요(하루 평균 변동폭 샌디스크 5.7% vs 테슬라 3.9%).")
+    assert v.note.startswith("_과거 채점에서") and "권유가 아니에요" in v.note
+    assert v.criteria == [
+        "덜 흔들리는 쪽 — **테슬라** (샌디스크 5.7% vs 테슬라 3.9%)",
+        "최근 1년(한 달 전까지) 더 오른 쪽 — **샌디스크** (샌디스크 +1569.5% vs 테슬라 -17.6%)",
+        "60일 범위에서 더 낮은 위치 — **테슬라** (샌디스크 59% 지점 vs 테슬라 49% 지점)",
+        "재무 경고가 적은 쪽 — **샌디스크** (샌디스크 경고 1개 vs 테슬라 경고 3개)",
+    ]
+    # 방향 점수·감성이 흔들려도(1분 뒤 재분석) 결론 줄은 그대로다 — 결론이 그 값들에 기대지 않는다
+    import dataclasses
+    later = cs.stock_verdict([dataclasses.replace(a, score=-0.16, sentiment=0.10), dataclasses.replace(b, score=-0.19, sentiment=-0.20)])
+    assert later.line == v.line and later.criteria == v.criteria
+    for text in (v.line, v.note, *v.criteria):
+        assert "우위" not in text and "추천" not in text
+
+    text = cs.render_stock_compare([a, b], v, brief=False, missing_notes=[])
+    assert "★" not in text and "**전체 지표** (우열 표시는 하지 않아요)" in text
+    assert text.split("\n\n")[:2] == [v.line, v.note]   # 결론이 첫 줄, 근거·고지는 바로 뒤 보조 문단
+
+
+def test_값이_비슷하거나_없으면_기준에서_그렇게_말한다():
+    a, b = _stock("A", atr_pct=0.0391), _stock("B", atr_pct=0.0394)
+    v = cs.stock_verdict([a, b])
+    assert "흔들림도 비슷해요(하루 평균 변동폭 A 3.9% vs B 3.9%)" in v.line
+    assert "덜 흔들리는 쪽 — 비슷해요 (A 3.9% vs B 3.9%)" in v.criteria
+    assert not any(c.startswith("재무 경고") for c in v.criteria)   # 재무 지표가 없는 종목이면 그 기준은 내지 않는다
+
+
+def test_화면에_같은_값으로_보이면_동률이다():
+    """"거래량 0.9배 vs 0.9배"를 소수점 아래 차이(0.93 vs 0.88)로 한쪽 우위라 했다."""
+    results = cs.judge_axes(cs.STOCK_AXES, {"A": _stock("A", volume_ratio=0.93).axis_values(),
+                                            "B": _stock("B", volume_ratio=0.88).axis_values()})
+    volume = next(r for r in results if r.axis.key == "volume")
+    assert volume.winner is None and set(volume.tied) == {"A", "B"}
+    apart = cs.judge_axes(cs.STOCK_AXES, {"A": _stock("A", volume_ratio=1.26).axis_values(),
+                                          "B": _stock("B", volume_ratio=0.88).axis_values()})
+    assert next(r for r in apart if r.axis.key == "volume").winner == "A"   # 보이는 값이 다르면 기존대로

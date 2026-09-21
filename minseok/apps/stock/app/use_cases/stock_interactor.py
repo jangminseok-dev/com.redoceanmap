@@ -19,6 +19,10 @@ from stock.domain.value_objects.sentiment_score import SentimentScore
 logger = logging.getLogger(__name__)
 
 MIN_BASELINE_SAMPLES = 5  # 이 미만이면 서프라이즈 대신 당일 절대값(기존 동작) 사용
+# 현재 감성 = 최근 N일 저장 라벨 평균(2026-09-21). 질문마다 LLM에 헤드라인 묶음을 물으면 같은 종목이 1분 사이에
+# -0.20 → +0.10으로 바뀌었다(샘플링 + 모델이 헤드라인별 숫자 목록을 돌려줘 파서가 첫 줄만 읽음) — 종목 비교 결론이 뒤집혔다.
+RECENT_SENTIMENT_DAYS = 7
+MIN_RECENT_SAMPLES = 3    # 이 미만이면 LLM 폴백(라벨이 없는 미수집 종목)
 
 
 REFERENCE_SIGNAL_ENABLED = False  # 재검증에서 두 구간 모두 통과하면 켠다
@@ -60,13 +64,17 @@ class StockInteractor(StockUseCase):
         indicators = await self._market_data.indicators(symbol)
         headlines = await self._merge_headlines(symbol, name)
 
-        sentiment = await self._sentiment.analyze(headlines)                    # LLM(EXAONE)
+        # 현재 감성은 저장된 기사 라벨(최근 7일 평균)이 먼저다 — 같은 시점이면 같은 값이고 질문당 LLM 호출이 하나 준다.
+        # 라벨이 모자란 종목(미수집)만 헤드라인 묶음을 LLM에 묻는다(폴백).
+        recent, recent_n = await self._sentiment_baseline(symbol, days=RECENT_SENTIMENT_DAYS)
+        if recent is not None and recent_n >= MIN_RECENT_SAMPLES:
+            sentiment = SentimentScore(value=max(-1.0, min(1.0, recent)))
+        else:
+            sentiment = await self._sentiment.analyze(headlines)                # LLM 폴백
 
-        # 감성 서프라이즈: 당일 값 − 최근 30일 라벨 평균. 항상 긍정적인 종목의 상시 +를
-        # 걸러내고 "평소보다 좋아졌는가"만 신호로 쓴다. 당일 값(헤드라인 묶음 1회 프롬프트)과
-        # 기준선(기사별 라벨 평균)은 프롬프트가 다르지만 같은 EXAONE·같은 -1~1 척도라 근사
-        # 정합 — 편차 사용이 절대치보다 프롬프트 바이어스를 상쇄한다. 표본 부족·조회 실패는
-        # 기존 절대값 폴백(라벨 축적 초기의 자연 열화).
+        # 감성 서프라이즈: 현재 값 − 최근 30일 라벨 평균. 항상 긍정적인 종목의 상시 +를
+        # 걸러내고 "평소보다 좋아졌는가"만 신호로 쓴다. 현재 값이 저장 라벨이면 기준선과 같은 라벨러·같은 척도다.
+        # 표본 부족·조회 실패는 절대값 폴백(라벨 축적 초기의 자연 열화).
         baseline, baseline_n = await self._sentiment_baseline(symbol)
         surprise: float | None = None
         signal_sentiment = sentiment
@@ -138,12 +146,12 @@ class StockInteractor(StockUseCase):
             volume_price_position=profile.price_position if profile else None,
         )
 
-    async def _sentiment_baseline(self, symbol: Symbol) -> tuple[float | None, int]:
-        """최근 30일 라벨 감성 기준선 — 조회 실패는 (None, 0)로 열화(베스트 에포트)."""
+    async def _sentiment_baseline(self, symbol: Symbol, days: int = 30) -> tuple[float | None, int]:
+        """최근 N일 라벨 감성 평균(기본 30일 = 기준선) — 조회 실패는 (None, 0)로 열화(베스트 에포트)."""
         if self._news is None:
             return None, 0
         try:
-            return await self._news.sentiment_baseline(symbol.code)
+            return await self._news.sentiment_baseline(symbol.code, days=days)
         except Exception:
             logger.warning("[stock] 감성 기준선 조회 실패: %s", symbol.code, exc_info=True)
             return None, 0

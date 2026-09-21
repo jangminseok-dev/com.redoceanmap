@@ -19,6 +19,11 @@ class Diagnosis:
     message: str
 
 
+def _top_pct(percentile: float) -> str:
+    """백분위 → "상위 N%" — 가장 끝(백분위 0.996 등)이 "상위 0%"로 반올림되지 않게 1%가 하한이다(2026-09-21 실답변)."""
+    return f"{max(1, round((1 - percentile) * 100))}%"
+
+
 def josa(word: str, with_final: str, without_final: str) -> str:
     """받침 유무로 조사를 고른다.
 
@@ -112,7 +117,7 @@ def diagnose(
             Diagnosis(
                 "bad",
                 f"같은 업종 {similar_store_count}곳 — 유동인구 대비 경쟁 밀도가 "
-                f"서울 상위 {(1 - saturation_percentile):.0%} 안에 듭니다.",
+                f"서울 상위 {_top_pct(saturation_percentile)} 안에 듭니다.",
             )
         )
     elif has_store and saturation_percentile <= 0.3:
@@ -128,7 +133,7 @@ def diagnose(
         out.append(
             Diagnosis(
                 "bad",
-                f"이 상권·업종 조합의 폐업률이 서울 상위 {(1 - closure_rate_percentile):.0%}입니다.",
+                f"이 상권·업종 조합의 폐업률이 서울 상위 {_top_pct(closure_rate_percentile)}입니다.",
             )
         )
     if operating_months_avg > 0:

@@ -16,10 +16,10 @@ _PROMPT = (
 
 
 def _parse_score(raw: str) -> float:
-    match = re.search(r"-?\d+(?:\.\d+)?", raw)
-    if not match:
-        return 0.0
-    return max(-1.0, min(1.0, float(match.group())))
+    """응답의 -1~1 숫자 전부의 평균. 모델이 "소수 하나" 대신 헤드라인마다 한 줄씩 돌려주는 일이 잦은데
+    (2026-09-21 로그 3건 중 2건), 첫 숫자만 읽으면 첫 헤드라인 하나의 점수가 종목 감성이 된다."""
+    values = [v for v in (float(m) for m in re.findall(r"-?\d+(?:\.\d+)?", raw)) if -1.0 <= v <= 1.0]
+    return sum(values) / len(values) if values else 0.0
 
 
 class ExaoneSentimentAdapter(SentimentPort):
@@ -33,7 +33,8 @@ class ExaoneSentimentAdapter(SentimentPort):
             # 뉴스가 없으면(한국 종목 등) LLM을 부르지 않고 중립으로 둔다.
             return SentimentScore(value=0.0)
         prompt = _PROMPT.format(headlines="\n".join(f"- {h}" for h in headlines))
-        raw = await llm_orchestrator.orchestrate(prompt)
+        # temperature 0 — 같은 헤드라인이면 같은 점수(샘플링 때문에 같은 종목이 1분 사이에 부호까지 바뀌었다)
+        raw = await llm_orchestrator.orchestrate(prompt, options={"temperature": 0})
         score = _parse_score(raw)
         logger.info("[exaone-sentiment] raw=%r → %.2f", raw.strip()[:40], score)
         return SentimentScore(value=score)

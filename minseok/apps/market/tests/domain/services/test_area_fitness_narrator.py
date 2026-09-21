@@ -92,3 +92,12 @@ def test_분포가_비어도_터지지_않는다():
         has_store=False,
     )
     assert isinstance(results, tuple)
+
+
+def test_백분위_끝값은_상위_0퍼센트가_아니라_1퍼센트로_말한다():
+    """2026-09-21 실답변: "경쟁 밀도가 서울 상위 0% 안에 듭니다" — 백분위 0.996이 반올림돼 0%가 됐다."""
+    texts = [d.message for d in _diagnose(saturation_percentile=0.996, closure_rate_percentile=0.999, has_store=True)]
+    assert any("서울 상위 1% 안에 듭니다" in t for t in texts)
+    assert any("폐업률이 서울 상위 1%입니다" in t for t in texts)
+    assert not any("상위 0%" in t for t in texts)
+    assert any("서울 상위 8% 안" in d.message for d in _diagnose(saturation_percentile=0.92, has_store=True))   # 평범한 값은 그대로

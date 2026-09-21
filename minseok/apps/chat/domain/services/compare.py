@@ -64,7 +64,9 @@ def judge_axes(axes: list[Axis], values_by_item: dict[str, dict[str, float | Non
             results.append(AxisResult(axis, vals, None, skipped=f"{'·'.join(missing)} {axis.missing_label}"))
             continue
         best_v = max(vals.values()) if axis.higher_is_better else min(vals.values())
-        tied = [n for n, v in vals.items() if v == best_v]
+        # 화면에 같은 값으로 보이면 동률이다 — "0.9배 vs 0.9배"를 소수점 아래 차이(0.93 vs 0.88)로 한쪽 우위라 했다(2026-09-21)
+        shown_best = axis.fmt.format(best_v)
+        tied = [n for n, v in vals.items() if axis.fmt.format(v) == shown_best]
         results.append(AxisResult(axis, vals, tied[0] if len(tied) == 1 else None, tied=tuple(tied)))
     return results
 
@@ -442,7 +444,7 @@ def render_area_report(item: AreaCompareItem, *, service_name: str, quarter_labe
     return "\n\n".join(out)
 
 
-def _axis_table(head: str, names: list[str], results: list[AxisResult]) -> list[str]:
+def _axis_table(head: str, names: list[str], results: list[AxisResult], *, mark: bool = True) -> list[str]:
     """축별 비교 — "지표 | A | B" 표(★ = 그 지표 우위). 예전 문장 불릿("A 우위 (A 1,655만원 vs B 196만원)")은
     좁은 패널에서 지표마다 두 줄을 먹었다. 값이 없어 비교하지 못한 지표는 표 밖 한 줄로 모은다. 상권·종목 공용."""
     rows = []
@@ -450,7 +452,7 @@ def _axis_table(head: str, names: list[str], results: list[AxisResult]) -> list[
         if r.skipped:
             continue
         best = {r.winner} if r.winner is not None else set(r.tied) if len(r.tied) < len(r.values) else set()  # 전원 동률은 무표시
-        cells = [(f"{'★ ' if n in best else ''}{r.axis.fmt.format(r.values[n])}{r.axis.unit}" if n in r.values else "-") for n in names]
+        cells = [(f"{'★ ' if mark and n in best else ''}{r.axis.fmt.format(r.values[n])}{r.axis.unit}" if n in r.values else "-") for n in names]
         rows.append(f"| {r.axis.label} | " + " | ".join(cells) + " |")
     table = "| 지표 | " + " | ".join(names) + " |\n|---|" + "---|" * len(names)
     out = [head + "\n" + table + "\n" + "\n".join(rows)] if rows else [head]
@@ -666,38 +668,69 @@ class StockCompareItem:
 
 @dataclass
 class StockVerdict:
-    first: str | None
-    wins: dict[str, list[str]]
-    results: list[AxisResult]
-    compared: int
-    line: str
+    results: list[AxisResult]   # 지표별 값 — 우열 판정에는 쓰지 않는다(표·"값 없는 지표" 안내용)
+    criteria: list[str]         # 기준별 사실 문장("덜 흔들리는 쪽 — …")
+    line: str                   # 결론 줄(짧게 — 우열 없음 + 확인된 차이)
+    note: str                   # 왜 우열을 말하지 않는지·근거·권유 아님(보조 문단)
 
 
 _DIR = {"UP": "반등 신호(과매도)", "DOWN": "조정 신호(과열)", "NEUTRAL": "중립"}
 
+# 종목 비교는 우열을 말하지 않는다(2026-09-21 결정). 축별 다수결로 "데이터상 X 우위"라 했는데, 채점 기록(4,104건·기준일 73일·80종목)에서
+# 같은 날 두 종목을 짝지어 값이 높은 쪽이 이후 수익률도 높았던 비율이 방향 종합 점수 50.4%(5일)·51.9%(20일), 12-1 모멘텀 50.5%·48.2%였다 —
+# 동전 던지기. 뉴스 감성은 8/20 이벤트 연구에서 오히려 역방향(강한 부정 뒤 초과수익 +2.3%, 강한 긍정 뒤 -0.46%), OBV·거래량·펀더멘털 개수는
+# 검증할 기록이 없다. 사용자는 이 결론을 "추천"으로 읽었고(권유 금지 원칙), 1분 사이 결론이 뒤집혔다(실대화 340).
+# 유일하게 갈린 축은 변동성: ATR이 큰 쪽이 이후 낙폭도 더 깊었던 비율 61.8%(5일)·58.0%(20일), 날짜별 순위상관이 93%·87%의 날에서 같은 방향.
+_NO_RANKING_NOTE = ("과거 채점에서 이 지표들은 어느 종목이 더 오를지 가르지 못했어요(같은 날 두 종목을 견주면 절반만 맞았어요). "
+                    "변동폭이 큰 쪽이 이후 낙폭도 더 깊었던 경우는 10번 중 6번이었어요. 매수·매도 권유가 아니에요.")
+
+
+def _extreme(items: list[StockCompareItem], value, fmt: str, *, lowest: bool) -> tuple[str | None, str]:
+    """(가장 낮은/높은 항목의 이름, "A 3.9% vs B 5.7%" 나열) — 화면에 같은 값으로 보이면 이름은 None(비슷하다)."""
+    vals = [(i.label, value(i)) for i in items if value(i) is not None]
+    if len(vals) < 2:
+        return None, ""
+    listing = " vs ".join(f"{n} {fmt.format(v)}" for n, v in vals)
+    pick = min(vals, key=lambda x: x[1]) if lowest else max(vals, key=lambda x: x[1])
+    same = [n for n, v in vals if fmt.format(v) == fmt.format(pick[1])]
+    return (pick[0] if len(same) == 1 else None), listing
+
+
+def _band_position(i: StockCompareItem) -> float | None:
+    if not i.resistance > i.support:
+        return None
+    return max(0.0, min(1.0, (i.price - i.support) / (i.resistance - i.support)))
+
+
+def _warning_count(i: StockCompareItem) -> int | None:
+    return sum(1 for tone, _ in i.fundamentals if tone == "warning") if i.fundamentals else None
+
 
 def stock_verdict(items: list[StockCompareItem]) -> StockVerdict:
+    """우열 없이 — 결론 줄은 확인된 차이(흔들림)만 방향성 있게 말하고, 나머지는 기준별 사실로 늘어놓는다(고르는 건 사용자)."""
     names = [i.label for i in items]
     results = judge_axes(STOCK_AXES, {i.label: i.axis_values() for i in items})
-    wins = tally(results, names)
-    compared = sum(1 for r in results if not r.skipped)
-    by = {i.label: i for i in items}
-    ordered = sorted(names, key=lambda n: (-len(wins[n]), -by[n].score))
-    first = ordered[0] if compared and len(wins[ordered[0]]) > 0 else None
 
-    def wins_text(n: str) -> str:
-        return " · ".join((f"{r.axis.label} {r.listing()}" if len(names) <= 2 else r.axis.label)
-                          for r in results if r.winner == n) or "우위 축 없음"
-
-    if first is None:
-        line = f"**결론** {' vs '.join(names)} — 비교한 {compared}축에서 우위가 갈리지 않아요. 우열을 짓지 않습니다."
+    swing, swing_list = _extreme(items, lambda i: i.atr_pct * 100, "{:.1f}%", lowest=False)
+    if swing is not None:
+        diff = f"확인된 차이는 흔들림이에요: {swing} 쪽이 더 크게 움직일 가능성이 높아요(하루 평균 변동폭 {swing_list})"
+    elif swing_list:
+        diff = f"흔들림도 비슷해요(하루 평균 변동폭 {swing_list})"
     else:
-        others = [n for n in ordered if n != first]
-        rest = "; ".join(f"{josa(n, '은', '는')} {len(wins[n])}축({', '.join(wins[n]) or '없음'})" for n in others)
-        dirs = ", ".join(f"{n} {_DIR.get(by[n].direction, by[n].direction)}({by[n].strength})" for n in names)
-        line = (f"**결론** 데이터상 {first} 우위 — 비교한 {compared}축 중 {len(wins[first])}축({wins_text(first)})."
-                f" {rest}. 지금 신호는 {dirs}. 과거·현재 지표의 대조일 뿐 매수·매도 권유가 아니에요.")
-    return StockVerdict(first, wins, results, compared, line)
+        diff = "아래 지표별 값을 기준에 맞춰 보세요"
+    line = f"**결론** {' vs '.join(names)} — 우열은 말하지 않아요. {diff}."
+
+    criteria: list[str] = []
+    for label, value, fmt, lowest in (
+        ("덜 흔들리는 쪽", lambda i: i.atr_pct * 100, "{:.1f}%", True),
+        ("최근 1년(한 달 전까지) 더 오른 쪽", lambda i: i.momentum_12_1 * 100, "{:+.1f}%", False),
+        ("60일 범위에서 더 낮은 위치", lambda i: (_band_position(i) or 0) * 100 if _band_position(i) is not None else None, "{:.0f}% 지점", True),
+        ("재무 경고가 적은 쪽", _warning_count, "경고 {}개", True),
+    ):
+        name, listing = _extreme(items, value, fmt, lowest=lowest)
+        if listing:
+            criteria.append(f"{label} — {f'**{name}**' if name else '비슷해요'} ({listing})")
+    return StockVerdict(results, criteria, line, aside(_NO_RANKING_NOTE))
 
 
 def _price(v: float, unit: str) -> str:
@@ -707,10 +740,11 @@ def _price(v: float, unit: str) -> str:
 def render_stock_compare(items: list[StockCompareItem], v: StockVerdict, *, brief: bool,
                          missing_notes: list[str]) -> str:
     names = [i.label for i in items]
-    win_of = {r.axis.key: r.winner for r in v.results}
-    out: list[str] = [v.line]
-    out.extend(_axis_table("**축별 판정** (★ = 그 축 우위)", names, v.results))
+    out: list[str] = [v.line, v.note]
+    if v.criteria:
+        out.append("**기준별로 보면** (어느 기준이 중요한지는 직접 고르세요)\n" + "\n".join(f"- {c}" for c in v.criteria))
     if brief:
+        out.extend(_axis_table("**지표별 값** (우열 표시는 하지 않아요)", names, v.results, mark=False))
         # 거래량 신뢰/의심 판정(C1 골격)은 표를 생략해도 남긴다 — 골든셋 volume_verdict_rate가 결론만 답할 때 떨어졌다
         out.append("**거래량 판정** " + " / ".join(f"{i.label} {i.volume_cell}" for i in items))
         out.append("'자세히 비교해줘'라고 하면 전체 지표 표를 드려요.")
@@ -719,9 +753,8 @@ def render_stock_compare(items: list[StockCompareItem], v: StockVerdict, *, brie
     head = "| 항목 | " + " | ".join(names) + " |\n|---|" + "---|" * len(names)
     rows: list[tuple[str, list[str]]] = []
 
-    def row(label: str, cells: list[str], axis_key: str | None = None):
-        w = win_of.get(axis_key) if axis_key else None
-        rows.append((label, [f"{_mark(n, w)}{c}" for n, c in zip(names, cells)]))
+    def row(label: str, cells: list[str]):
+        rows.append((label, cells))
 
     def ma_pos(i: StockCompareItem) -> str:
         a = "위" if i.price > i.ma20 else "아래"
@@ -749,8 +782,8 @@ def render_stock_compare(items: list[StockCompareItem], v: StockVerdict, *, brie
 
     row("현재가(지연)", [_price(i.price, i.unit) for i in items])
     row("지금 신호", [f"{_DIR.get(i.direction, i.direction)} ({i.strength})" for i in items])
-    row("방향 종합 점수(-1~1)", [f"{i.score:+.2f}" for i in items], "score")
-    row("과거 같은 신호 상승 비율", [fc(i) for i in items], "edge")
+    row("방향 종합 점수(-1~1)", [f"{i.score:+.2f}" for i in items])
+    row("과거 같은 신호 상승 비율", [fc(i) for i in items])
     row("95% 구간", [ci(i) for i in items])
     row("검증 참고 신호", ["있음" if i.reference_up_signal else "없음" for i in items])
     row("RSI(14)", [f"{i.rsi:.0f}" for i in items])
@@ -759,16 +792,16 @@ def render_stock_compare(items: list[StockCompareItem], v: StockVerdict, *, brie
     row("60일 저점~고점", [band(i) for i in items])
     row("거래 밀집 구간", [i.poc_text or "산출 불가" for i in items])
     row("ATR 변동성", [f"{i.atr_pct * 100:.1f}%" for i in items])
-    row("거래량(20일 대비)", [i.volume_cell for i in items], "volume")
-    row("OBV 수급 기울기", [f"{i.obv_slope:+.2f}" for i in items], "obv")
-    row("12-1 모멘텀", [f"{i.momentum_12_1:+.1%}" for i in items], "momentum")
-    row("뉴스 감성", [f"{i.sentiment_label} ({i.sentiment:+.2f})" for i in items], "sentiment")
+    row("거래량(20일 대비)", [i.volume_cell for i in items])
+    row("OBV 수급 기울기", [f"{i.obv_slope:+.2f}" for i in items])
+    row("12-1 모멘텀", [f"{i.momentum_12_1:+.1%}" for i in items])
+    row("뉴스 감성", [f"{i.sentiment_label} ({i.sentiment:+.2f})" for i in items])
     row("영향 키워드", [", ".join(i.keywords) or "표본 미달" for i in items])
-    row("펀더멘털", [" / ".join(t for _, t in i.fundamentals) or "미수집" for i in items], "fundamental")
+    row("펀더멘털", [" / ".join(t for _, t in i.fundamentals) or "미수집" for i in items])
     row("워치리스트 신호", [i.board or "워치리스트 밖" for i in items])
     row("AI 모의투자", [i.paper or "판단 없음" for i in items])
     table = head + "\n" + "\n".join(f"| {label} | " + " | ".join(cells) + " |" for label, cells in rows)
-    out.append(f"**전체 지표** (★ = 그 축 우위)\n{table}")
+    out.append(f"**전체 지표** (우열 표시는 하지 않아요)\n{table}")
 
     extras = []
     for i in items:
@@ -777,5 +810,5 @@ def render_stock_compare(items: list[StockCompareItem], v: StockVerdict, *, brie
         out.append("**지켜볼 포인트·기사**\n" + "\n".join(extras))
     if missing_notes:
         out.append("**이번 비교에 못 쓴 데이터**\n" + "\n".join(f"- {m}" for m in missing_notes))
-    out.append("다른 종목을 말하면 이 표에 열을 더하고, \"하이닉스 빼고\"처럼 말하면 뺍니다. 결론만 다시 보려면 \"그래서 뭐가 나아\".")
+    out.append("다른 종목을 말하면 이 표에 열을 더하고, \"하이닉스 빼고\"처럼 말하면 뺍니다. 기준별 요약만 다시 보려면 \"그래서 뭐가 나아\".")
     return "\n\n".join(out)

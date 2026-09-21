@@ -743,3 +743,13 @@ def test_미정의_지표명은_침묵():  # 원천 개편 방어 — 틀린 해
 def test_영업개월_결측이면_괄호를_생략한다():
     got = _by_key(narrate(None, None, None, None, change=_change(op=None)))["change_indicator"]
     assert "개월" not in got.text
+
+
+def test_상주인구가_거의_없는_특구는_배율_대신_거의_없다고_말한다():
+    """2026-09-21 실답변(강남 마이스 관광특구): "직장인구 10.2만명이 상주인구의 3000.9배" — 의미 없는 수다."""
+    got = _by_key(narrate(None, _resident(total=34), _working(total=102000), None))
+    text = got["demand_type"].text
+    assert "배" not in text.split("—")[0]
+    assert "상주인구(34명)는 거의 없는 곳" in text and "오피스 상권" in text
+    # 평범한 배율은 그대로 숫자로 말한다
+    assert "상주인구의 2.0배" in _by_key(narrate(None, _resident(total=10000), _working(total=20000), None))["demand_type"].text

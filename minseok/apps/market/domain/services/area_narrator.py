@@ -26,6 +26,9 @@ GENDER_MIN = 0.60     # 우세 성별 언급 기준
 AGE_MIN = 0.30        # 핵심 연령대 언급 기준
 OFFICE_RATIO = 2.0    # 직장/상주 비 이 이상이면 오피스형
 RESIDENT_RATIO = 0.5  # 직장/상주 비 이 이하면 주거형
+# 배율을 숫자로 말하는 상한 — 상주인구가 거의 없는 특구·업무지구는 "3000.9배"처럼 의미 없는 수가 나온다(2026-09-21 실답변:
+# 강남 마이스 관광특구). 이 이상이면 배율 대신 "상주인구가 거의 없다"고 말한다.
+RATIO_SAY_MAX = 50.0
 APT_SHARE_MIN = 0.5   # 아파트 가구 비중 언급 기준
 TICKET_GAP_MIN = 0.20         # 주중/주말 객단가 차이 이 이상일 때만 언급
 AGE_TICKET_MIN_SHARE = 0.05   # 건수 비중이 이 미만인 연령대는 객단가 후보에서 제외(허위 최고가 방지)
@@ -265,15 +268,19 @@ def _demand_insights(
     if resident is not None and working is not None and resident.total > 0 and working.total > 0:
         ratio = working.total / resident.total
         if ratio >= OFFICE_RATIO:
+            scale = (f"상주인구의 {ratio:.1f}배" if ratio < RATIO_SAY_MAX
+                     else f"상주인구({_pop(resident.total)}명)는 거의 없는 곳")
             out.append(Insight(
                 key="demand_type", tone="positive",
-                text=f"직장인구 {_pop(working.total)}명이 상주인구의 {ratio:.1f}배 — "
+                text=f"직장인구 {_pop(working.total)}명이 {scale} — "
                      "평일 점심·저녁 장사에 유리한 오피스 상권입니다.",
             ))
         elif ratio <= RESIDENT_RATIO:
+            scale = (f"직장인구의 {1 / ratio:.1f}배" if 1 / ratio < RATIO_SAY_MAX
+                     else f"직장인구({_pop(working.total)}명)는 거의 없는 곳")
             out.append(Insight(
                 key="demand_type", tone="neutral",
-                text=f"상주인구 {_pop(resident.total)}명이 직장인구의 {1 / ratio:.1f}배 — "
+                text=f"상주인구 {_pop(resident.total)}명이 {scale} — "
                      "저녁·주말 동네 수요 중심의 주거 상권입니다.",
             ))
         else:

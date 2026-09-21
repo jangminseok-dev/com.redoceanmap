@@ -373,3 +373,14 @@ apps/stock/
 - 포트: `RiskReportReadPort`(좁은 조회 포트)를 새로 두고 `StockBoardRepositoryPort`가 이를 상속한다 —
   forecast가 보드 저장소 전체를 알지 않게(ISP). 구현은 기존 `StockBoardPgRepository` 그대로.
 - 허브 계약 `StockForecastSummary.risk`(`StockRiskSummary`)로 chat에도 같은 재료가 간다 — 채팅 카드와 페이지 결론이 같은 문장을 쓴다.
+
+## 현재 감성은 저장 라벨 — 2026-09-21
+
+종목 분석(`StockInteractor.analyze`)의 "뉴스 감성"이 질문마다 달랐다 — 같은 종목이 1분 사이 -0.20 → +0.10, 그 값이 방향 종합 점수에도
+들어가 chat의 종목 비교 결론이 뒤집혔다(실대화 340). 원인 둘: ① 질문마다 헤드라인 묶음을 LLM에 새로 물었고(샘플링, 고정·재사용 없음)
+② 프롬프트는 "소수 하나"인데 Gemma가 헤드라인마다 한 줄씩 숫자 목록을 돌려주는 일이 잦았고(배포 후 로그 3건 중 2건) 파서가 **첫 숫자만** 읽었다.
+
+- 현재 감성 = 최근 `RECENT_SENTIMENT_DAYS`(7)일 **저장된 기사 라벨 평균**(`NewsRepositoryPort.sentiment_baseline(days=7)`, 기본 라벨러).
+  표본이 `MIN_RECENT_SAMPLES`(3) 이상이면 LLM을 부르지 않는다 — 같은 시점이면 같은 값, 질문당 LLM 호출 1회 감소.
+  서프라이즈(현재 − 30일 기준선)는 이제 양쪽이 같은 라벨러·같은 척도다. 라벨은 02:30 cron이 붙이므로 당일 수집 기사는 다음 날 반영된다.
+- 라벨이 모자란 종목(미수집)만 LLM 폴백 — `temperature 0`, 응답의 -1~1 숫자 **전체 평균**으로 읽는다(`_parse_score`).

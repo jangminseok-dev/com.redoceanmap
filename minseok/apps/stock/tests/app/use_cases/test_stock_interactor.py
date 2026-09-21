@@ -110,15 +110,17 @@ async def test_수요_기록_실패는_분석에_영향_없다():
 class _StubNewsWithBaseline:
     """감성 기준선 스텁 — recent_titles는 빈 리스트(벤더 헤드라인만 쓰게)."""
 
-    def __init__(self, avg, n):
+    def __init__(self, avg, n, recent=None, recent_n=0):
         self.avg = avg
         self.n = n
+        self.recent = recent        # 최근 7일 창(현재 감성) — 기본은 라벨 없음(LLM 폴백 경로)
+        self.recent_n = recent_n
 
     async def recent_titles(self, query, ticker="", limit=5):
         return []
 
     async def sentiment_baseline(self, ticker, days=30):
-        return self.avg, self.n
+        return (self.avg, self.n) if days >= 30 else (self.recent, self.recent_n)
 
 
 async def test_기준선_충분하면_서프라이즈가_신호에_들어간다():
@@ -166,3 +168,36 @@ async def test_기준선_조회_실패는_절대값_폴백():
     result = await interactor.analyze(Symbol("AAPL"))
     assert result.sentiment_surprise is None
     assert result.sentiment == 0.7
+
+
+class _CountingSentiment:
+    def __init__(self):
+        self.calls = 0
+
+    async def analyze(self, headlines):
+        self.calls += 1
+        return SentimentScore(0.7)
+
+
+async def test_현재_감성은_저장된_최근_라벨_평균이고_LLM을_부르지_않는다():
+    """2026-09-21: 질문마다 LLM에 물으니 같은 종목이 1분 사이에 -0.20 → +0.10으로 바뀌어 종목 비교 결론이 뒤집혔다."""
+    llm = _CountingSentiment()
+    interactor = StockInteractor(
+        market_data=_StubMarketData(), sentiment=llm, predictor=OutlookPredictor(), config=AnalysisConfig.default(),
+        news=_StubNewsWithBaseline(avg=0.10, n=40, recent=0.25, recent_n=9),
+    )
+    first = await interactor.analyze(Symbol("AAPL"))
+    second = await interactor.analyze(Symbol("AAPL"))
+    assert first.sentiment == second.sentiment == 0.25     # 같은 시점이면 같은 값
+    assert first.sentiment_surprise == pytest.approx(0.15)  # 최근 7일 − 30일 기준선(같은 라벨러·같은 척도)
+    assert llm.calls == 0
+
+
+async def test_최근_라벨이_모자라면_LLM_폴백():
+    llm = _CountingSentiment()
+    interactor = StockInteractor(
+        market_data=_StubMarketData(), sentiment=llm, predictor=OutlookPredictor(), config=AnalysisConfig.default(),
+        news=_StubNewsWithBaseline(avg=0.10, n=40, recent=0.9, recent_n=2),   # < MIN_RECENT_SAMPLES(3)
+    )
+    result = await interactor.analyze(Symbol("AAPL"))
+    assert result.sentiment == 0.7 and llm.calls == 1
