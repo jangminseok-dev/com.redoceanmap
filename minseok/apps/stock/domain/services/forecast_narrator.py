@@ -68,7 +68,7 @@ def narrate(
         insights.append(Insight(
             key="probability", tone="neutral",
             text=(
-                f"{lead}{stats.sample_size}회 중 {stats.hits}회({up_pct}%)가 "
+                f"{lead}{stats.sample_size:,}회 중 {stats.hits:,}회({up_pct}%)가 "
                 f"{horizon_days}거래일 뒤 상승 마감했습니다. 평소 상승률 {base_pct}%보다 {compare}. "
                 "과거 통계이며 미래를 보장하지 않습니다."
             ),
@@ -79,7 +79,7 @@ def narrate(
             text = "중립 신호의 통계는 방향 예측이 아니라 참고용입니다."
         else:
             text = (
-                f"표본 {stats.sample_size}회 — 통계적 확신 기준(겹치는 기간을 보정한 독립 표본 {MIN_SIGNAL_SAMPLES}회 이상 + "
+                f"표본 {stats.sample_size:,}회 — 통계적 확신 기준(겹치는 기간을 보정한 독립 표본 {MIN_SIGNAL_SAMPLES}회 이상 + "
                 "신뢰구간이 평소 비율과 뚜렷이 구분)을 충족하지 못해 참고용입니다."
             )
         insights.append(Insight(key="sample", tone="warning", text=text))
@@ -93,7 +93,7 @@ def narrate(
         insights.append(Insight(
             key="band", tone="neutral",
             text=(
-                f"차트의 예측 범위는 같은 신호 {stats.sample_size}회의 {horizon_days}일 뒤 "
+                f"차트의 예측 범위는 같은 신호 {stats.sample_size:,}회의 {horizon_days}일 뒤 "
                 f"실적 분포입니다 — 중앙값 {stats.median * 100:+.1f}%, "
                 f"가운데 절반이 {stats.q25 * 100:+.1f}%~{stats.q75 * 100:+.1f}% 사이였습니다."
             ),
@@ -152,7 +152,7 @@ def _downside_insights(stats: DirectionStats, horizon_days: int) -> list[Insight
     out.append(Insight(
         key="downside", tone="neutral",
         text=(
-            f"같은 신호 {stats.sample_size}회의 {horizon_days}거래일 구간에서 "
+            f"같은 신호 {stats.sample_size:,}회의 {horizon_days}거래일 구간에서 "
             f"장중 최대 낙폭은 중앙값 {stats.trough_median_pct * 100:+.1f}%{worst}였습니다. "
             f"{horizon_days}일 뒤 하락 마감은 {down_pct}."
         ),
@@ -171,7 +171,7 @@ def _downside_insights(stats: DirectionStats, horizon_days: int) -> list[Insight
         out.append(Insight(
             key="recovery", tone="neutral",
             text=(
-                f"기준가 아래로 내려갔던 {stats.dip_samples}회 중 "
+                f"기준가 아래로 내려갔던 {stats.dip_samples:,}회 중 "
                 f"{stats.recovery_rate * 100:.0f}%가 {horizon_days}일 안에 기준가를 회복했습니다.{days}"
             ),
         ))

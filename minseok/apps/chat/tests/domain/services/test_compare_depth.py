@@ -15,10 +15,14 @@ def test_상권별_특장점은_곳마다_강점과_약점을_수치와_함께_�
     items = [_item("A", sales_per_store=2000.0, closure_rate=4.0), _item("B", foot_daily=30000.0), _item("C", closure_rate=1.0)]
     v = cs.area_verdict(items)
     block = cs.strengths_block(items, v.results)
-    a_line = next(line for line in block.split("\n") if line.startswith("- **A**"))
-    assert "점포당 월매출 2,000만원(3곳 중 1위)" in a_line
-    assert "약점 — 최근 1년 폐업률 4.0%(3곳 중 최고)" in a_line
-    assert "일평균 유동인구 30,000명(3곳 중 1위)" in block
+    rows = block.split("\n")
+    start = rows.index("- **A** ('보통' 55.0점)")
+    a_facts = [r for r in rows[start + 1:rows.index("- **B** ('보통' 55.0점)")]]
+    # 한 줄에 한 사실(2026-09-21) — 강점은 ○, 약점은 ✕, 값은 굵게
+    assert "  - ○ 점포당 월매출 **2,000만원**(3곳 중 1위)" in a_facts
+    assert "  - ✕ 최근 1년 폐업률 **4.0%**(3곳 중 최고)" in a_facts
+    assert "  - ○ 일평균 유동인구 **30,000명**(3곳 중 1위)" in rows
+    assert all(len(r) < 80 for r in rows)  # 예전엔 곳마다 '강점 — … / 약점 — … / 성격 — …' 한 줄이었다
 
 
 def test_업종_매출이_없는_상권은_등급이_높아도_1순위에서_뺀다():
@@ -35,8 +39,8 @@ def test_특장점_후속은_전체_표를_반복하지_않고_곳마다_풀어_
     text = cs.render_area_compare(items, v, service_name="커피-음료", quarter_label="2026년 2분기", brief=False,
                                   missing_notes=[], focus="strengths")
     assert "**상권별 특장점**" in text and "**전체 지표**" not in text
-    assert "- 추이: 분기 추이: 2025년 1분기 매출 1.0억" in text
-    assert "- 재무: 월세(추정) 300만원" in text and "부족 자금 1,200만원" in text
+    assert "- **추이**\n  - 2025년 1분기 매출 **1.0억**" in text   # 형식을 못 읽는 추이는 기호만 말로 바꿔 그대로
+    assert "- **재무**\n  - 월세(추정) **300만원**" in text and "  - 부족 자금 **1,200만원**" in text
 
 
 def test_단일_상권_리포트는_판단_순서대로_수치와_서울_기준을_붙인다():
@@ -47,9 +51,12 @@ def test_단일_상권_리포트는_판단_순서대로_수치와_서울_기준�
                                  predictiveness={"closure_stability": (0.296, 0.84, 24669)})
     order = [text.index(h) for h in ("**수익성**", "**안정성**", "**수요**", "**고객·배후 성격**", "**경쟁**")]
     assert order == sorted(order)
-    assert "서울 1,064곳 중 101위" in text and "서울 낮은 순 620위/1,508곳" in text
-    assert "폐업 안정성 70점(4분기 폐업률 1.3% / 서울 중앙 4분기 폐업률 2.5%, 예측력 ρ=+0.30)" in text
-    assert "같은 '보통' 등급 상권의 다음 1년 폐업률 실측 평균 2.25%" in text
+    assert "  - 서울 1,064곳 중 **101위**" in text and "서울 낮은 순 620위/1,508곳" in text
+    assert "  - 폐업 안정성 **70점** — 4분기 폐업률 1.3% · 서울 중앙 4분기 폐업률 2.5% · 예측력 보통" in text
+    assert "ρ" not in text and "QoQ" not in text   # 전문 기호는 말로
+    assert "  - 같은 '보통' 등급의 다음 1년 폐업률 실측 **2.25%**\n  - _백테스트 3,158건 평균_" in text
+    detail = text.split("**세부 근거**\n", 1)[1].split("\n\n", 1)[0]
+    assert "\n\n" not in detail and max(len(r) for r in detail.split("\n")) < 90   # 접히는 한 단락 · 한 줄에 한 사실
     assert "**이 리포트에 못 쓴 데이터**" in text
 
 

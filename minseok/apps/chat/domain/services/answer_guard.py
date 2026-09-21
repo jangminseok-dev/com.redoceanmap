@@ -357,7 +357,7 @@ def strip_conflicting_recommendations(text: str, top_name: str, other_names: lis
 
 
 _RECOMMEND_WORD = re.compile(r"추천|가장\s*(?:유망|적합|좋)|최선의\s*선택|1순위")
-_AREA_CODE_PAREN = re.compile(r"\s*\(\d{7}\)")
+_AREA_CODE_PAREN = re.compile(r"\s*\((?:trdar_code\s*[:=]\s*)?\d{7}\)", re.IGNORECASE)
 
 
 def strip_area_codes(text: str) -> str:

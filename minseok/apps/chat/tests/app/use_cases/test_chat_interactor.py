@@ -749,7 +749,7 @@ async def test_종합점수가_없는_상권은_점수_라인을_생략한다(mo
     assert "- 서울 평균 대비:" not in llm.calls[2][0]  # 규칙 문구가 아닌 컨텍스트 라인 기준
 
 
-async def test_주의_등급_상권은_추천_어휘가_차단되고_등급_고지가_문두에_붙는다(monkeypatch):
+async def test_주의_등급_상권은_추천_어휘가_차단되고_등급_고지가_결론_바로_뒤에_붙는다(monkeypatch):
     # 2026-08-31 프로덕션 실측(p04): 44.9점 '주의'를 "강력히 추천"으로 사실 반전 서술
     caution = AreaScoreInfo(
         total=44.9, grade="주의",
@@ -766,8 +766,11 @@ async def test_주의_등급_상권은_추천_어휘가_차단되고_등급_고�
     )
     result = await interactor.ask("역삼동 카페 어때?")
 
-    # 등급 고지가 답변 첫 문단에 코드로 박힌다
-    assert result.text.startswith("※ 테스트상권 상권은 상권 전체 건강 점수 44.9점 '주의' 등급")
+    # 결론이 첫 줄(등급을 이미 말한다), 등급 고지는 그 바로 뒤에 코드로 박힌다 — 비교 답과 같은 순서(2026-09-21:
+    # 고지가 앞에 서면 100자짜리 ※ 문단이 결론을 첫 화면 밖으로 밀었다)
+    paragraphs = result.text.split("\n\n")
+    assert paragraphs[0].startswith("**결론**") and "'주의'" in paragraphs[0]
+    assert paragraphs[1].startswith("※ 테스트상권 상권은 상권 전체 건강 점수 44.9점 '주의' 등급")
     # 추천 어휘는 본문·이유 모두에서 차단된다(eval_scorer grade_caution과 같은 어휘)
     assert "추천" not in result.text and "강력히" not in result.text
     assert "추천" not in result.recommendations[0].reason
@@ -2909,7 +2912,9 @@ async def test_지역_하나를_들어_비교하면_직전_1순위와_짝지어_
     assert result.text.startswith("**결론** 성수동카페거리 1순위 — 상권 건강 등급이 '양호'(65.0점)로 다음인 길음역 8번 '주의'(43.4점)보다 높아요.")
     # 등급 고지는 결론 바로 뒤
     assert result.text.split("\n\n")[1].startswith("※ 길음역 8번 상권은 상권 전체 건강 점수 43.4점 '주의' 등급")
-    assert "**참고 지표별 비교** (1순위 판정에는 쓰지 않아요)" in result.text
+    # 지표별 비교는 "지표 | A | B" 표(2026-09-21 — 문장 불릿은 좁은 패널에서 지표마다 두 줄이었다)
+    assert ("**참고 지표별 비교** (1순위 판정에는 쓰지 않아요 · ★ = 그 지표 우위)\n"
+            "| 지표 | 성수동카페거리 | 길음역 8번 |\n|---|---|---|") in result.text
     assert "**전체 지표** — 커피-음료, 2025년 4분기 기준" in result.text
     assert "| 점포당 월매출 | ★ 점포당 월평균 5,000만원 | 점포당 월평균 800만원 |" in result.text
     assert "| 최근 1년 폐업률(4분기 점포 가중) | ★ 2.4% | 4.1% |" in result.text
@@ -3147,26 +3152,27 @@ async def test_비교표에_적합도·백테스트·그래프·창업비용·�
     t = result.text
     # 결론이 맨 앞이고 적합도·공실률이 판정 축에 들어간다
     assert t.startswith("**결론** 성수동카페거리 1순위 — 상권 건강 등급이 '양호'")
-    assert "- 입지 적합도: 성수동카페거리 우위 (성수동카페거리 72점 vs 길음역 8번 41점)" in t  # 참고 비교로만
+    assert "| 입지 적합도 | ★ 72점 | 41점 |" in t  # 참고 비교로만
     # 입지 적합도 행·컴포넌트·객단가·유사 업종·진단
     assert "| 입지 적합도(업종×상권, 100점) | ★ 72점 | 41점 |" in t
     assert "|   └ 수요 일치 | 80점 (가중치 40%) | 80점 (가중치 40%) |" in t
     assert "| 객단가(건당 결제액) | 15,000원 | 9,000원 |" in t and "| 유사 업종 점포 수 | 12개 | 4개 |" in t
-    assert "적합도 진단: ○ 20대 유동인구와 업종 고객층이 맞아요" in t
+    assert "  - ○ 20대 유동인구와 업종 고객층이 맞아요" in t
     # 백테스트: 등급별 다음 분기 실측 + 컴포넌트 예측력
     assert "| 이 등급의 다음 1년 폐업률(백테스트 실측) | '양호' 등급 800건 평균 2.42% | '주의' 등급 500건 평균 3.34% |" in t
-    assert "└ 폐업 안정성 · 예측력 ρ=+0.12, 점수 하위−상위 5분위 폐업률 +4.1%p |" in t
+    assert "└ 폐업 안정성 · 예측력 약함(점수 하위−상위 5분위 폐업률 +4.1%p) |" in t and "ρ" not in t
     assert "백테스트 리포트는 2026-07-27 실행분(42,879건)" in t
     # 그래프
     assert "| 행정 계층(그래프) | 성수동2가 → 성동구 → 서울특별시 | 성수동2가 → 성동구 → 서울특별시 |" in t
     assert "| 같은 동 상권 수(그래프) | 5곳 | 2곳 |" in t and "| 영업 업종 수(그래프, 100개 중) | 68개 | 40개 |" in t
     assert "| 같은 동 커피-음료 상권 수(그래프 경쟁) | 3곳 | 1곳 |" in t and "| 연결된 지역 기사 수(그래프) | 40건 | 3건 |" in t
     # 창업비용(업종 공통 블록) + 예산 70% 판정
-    assert "**업종 공통 — 창업비용(공정위 정보공개서 2025, 커피 브랜드 중앙값)** 합계 8,036만원 (항목별 중앙값: 가맹금 1,000 · 교육비 300 · 보증금 500 · 기타 6,236만원 — 브랜드마다 달라 더해도 합계와 같지 않아요)." in t
-    assert "예산 10,000만원의 70%(7,000만원) 안에 안 들어와요." in t
+    assert ("**업종 공통 — 창업비용** (공정위 정보공개서 2025, 커피 브랜드 중앙값)\n- 합계 **8,036만원**\n"
+            "- 가맹금 1,000 · 교육비 300 · 보증금 500 · 기타 6,236만원\n- _항목별 중앙값은 브랜드마다 달라 더해도 합계와 같지 않아요_") in t
+    assert "- 예산 10,000만원의 70%(**7,000만원**) 안에 안 들어와요" in t
     # 재무: 월세(지역명)·공실률
     assert "| 월세(추정) | 300만원 (권역 평균 뚝섬) | 300만원 (권역 평균 뚝섬) |" in t
-    assert "| 공실률(R-ONE) | 8.5% | 8.5% |" in t and "공실률: 동률" in t
+    assert "| 공실률(R-ONE) | 8.5% | 8.5% |" in t and "| 공실률 | 8.5% | 8.5% |" in t   # 동률은 ★ 없이
     assert len(finance.requests) == 2 and finance.requests[0].equity == 100_000_000
     # 권리금 — 칸은 금액·출처 유형만, 근거 문구는 한 번만
     assert "| 권리금 | 3,000만원 (가정) | 3,000만원 (가정) |" in t
@@ -3205,7 +3211,7 @@ def test_세_곳_비교에서_최선값을_둘이_나누면_공동_우위로_적
     c = AreaCompareItem(3, "삼성", "", {}, 2000, 6.0, None, None, False, None, None)
     v = area_verdict([a, b, c])
     text = render_area_compare([a, b, c], v, service_name="커피-음료", quarter_label="2026년 2분기", brief=True, missing_notes=[])
-    assert "- 최근 1년 폐업률: 역삼·선릉 공동 우위 (역삼 0.0% vs 선릉 0.0% vs 삼성 6.0%)" in text
+    assert "| 최근 1년 폐업률 | ★ 0.0% | ★ 0.0% | 6.0% |" in text   # 공동 우위 = 둘 다 ★
     assert v.first is None and "점수 미산출: 역삼·선릉·삼성" in v.line
 
 
@@ -3415,4 +3421,4 @@ async def test_단일_상권_답은_결론_뒤에_상권_리포트를_붙이고_
                                                                closure_store_count=0, closure_rate_4q=2.4)))
     result = await interactor.ask("성수동 카페 어때?")
     assert "최근 1년 폐업률 2.4%" in result.text.split("\n", 1)[0]
-    assert "**상권 리포트 — 테스트상권**" in result.text and "- **수익성**:" in result.text
+    assert "**상권 리포트 — 테스트상권**" in result.text and "- **수익성**\n  - " in result.text

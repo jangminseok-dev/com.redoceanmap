@@ -5,8 +5,11 @@ export const currencyUnit = (symbol: string): "원" | "달러" => {
   return base.length === 6 && /^\d+$/.test(base) ? "원" : "달러";
 };
 
-export const formatPrice = (value: number, symbol: string): string =>
-  `${value.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}${currencyUnit(symbol)}`;
+// 원화는 소수점 없이(조정가 때문에 "356,107.27원"처럼 의미 없는 자리가 보였다 — 백엔드 stock_report._p와 같은 규칙)
+export const formatPrice = (value: number, symbol: string): string => {
+  const unit = currencyUnit(symbol);
+  return `${value.toLocaleString("ko-KR", { maximumFractionDigits: unit === "원" ? 0 : 2 })}${unit}`;
+};
 
 /** 거래대금 — 원 단위로 쓰면 자릿수를 셀 수 없어 통화별 관습 단위로 접는다.
  *  통화가 종목마다 다르므로(워치리스트 대부분이 미국) **이 값끼리 비교·정렬하지 않는다.** */

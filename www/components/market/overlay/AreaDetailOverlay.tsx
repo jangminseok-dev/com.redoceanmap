@@ -132,7 +132,7 @@ export default function AreaDetailOverlay({
           <>
             {data.insights.length > 0 && (
               <div className="pb-1">
-                <InsightList insights={data.insights} />
+                <InsightList insights={data.insights} limit={4} />
               </div>
             )}
             {/* 인허가는 분기 팩트보다 시의성이 높다(어제 연 가게가 보인다) — 업종 랭킹 앞에 둔다 */}

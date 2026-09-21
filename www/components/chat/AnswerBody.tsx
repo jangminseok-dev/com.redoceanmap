@@ -43,7 +43,14 @@ function Markdown({ text }: { text: string }) {
         // 줄바꿈 하나도 줄로 보이게(목록이 아닌 "1. …" 행·※ 안내가 한 줄로 뭉치지 않게)
         p: ({ children }) => <p className="whitespace-pre-wrap [&:not(:first-child)]:mt-2">{cite(children)}</p>,
         strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-        ul: ({ children }) => <ul className="mt-1.5 list-disc pl-5 flex flex-col gap-1">{children}</ul>,
+        // 보조 설명(산식·표본·출처) — 백엔드 report_format.aside가 기울임으로 표시한다. 값보다 한 단계 낮은 위계로
+        em: ({ children }) => <em className="not-italic text-xs text-foreground-muted">{children}</em>,
+        // 중첩 목록 = 섹션(굵은 제목) 아래 한 줄에 한 사실. 좁은 패널(한 줄 약 23자)이라 안쪽 들여쓰기를 줄인다
+        ul: ({ children }) => (
+          <ul className="mt-1.5 list-disc pl-5 flex flex-col gap-1 [&_ul]:mt-1 [&_ul]:pl-4 [&_ul]:list-[circle] [&_ul]:gap-0.5">
+            {children}
+          </ul>
+        ),
         ol: ({ children }) => <ol className="mt-1.5 list-decimal pl-5 flex flex-col gap-1">{children}</ol>,
         li: ({ children }) => <li className="leading-relaxed">{cite(children)}</li>,
         table: ({ children }) => (

@@ -2630,15 +2630,18 @@ class ChatInteractor(ChatUseCase):
                        and "등급으로" in (m.content or "") for m in history)
             ]
             fresh = [c for c in caution_codes if c not in already]
-            notices = " ".join(
-                answer_guard.grade_caution_notice(
-                    area_map[code].trdar_name, area_scores[code].grade, area_scores[code].total,
-                )
-                for code in fresh
-            )
+            # 여러 곳이면 한 문장으로 묶는다 — 곳마다 100자씩 두 번 붙어 첫 화면을 다 먹었다(2026-09-21 실측)
+            notices = answer_guard.grade_caution_notice_group([
+                (area_map[code].trdar_name, area_scores[code].grade, area_scores[code].total) for code in fresh
+            ]) if fresh else ""
             if already and not fresh:
                 notices = answer_guard.GRADE_NOTICE_REPEAT
-            text = f"{notices}\n\n{text}" if text else notices
+            # 결론 한 줄이 있으면 고지는 그 바로 뒤(비교 답과 같은 순서) — 결론이 이미 등급을 말하고, 고지가 앞에 서면 결론이 밀린다
+            head, sep, rest = text.partition("\n\n")
+            if head.startswith("**결론**"):
+                text = f"{head}\n\n{notices}" + (f"\n\n{rest}" if sep else "")
+            else:
+                text = f"{notices}\n\n{text}" if text else notices
         # 재무 경로가 동작하면 예산 고지를 앞에 붙이지 않는다 — 첫 줄은 코드가 쓴 재무 헤드라인이어야 한다
         budget_notice = "" if finance_info is not None else await self._budget_notice(prompt, profile, history)
         text = budget_notice + _unsupported_notice(prompt, self._market_unsupported_table(service_code)) + radius_note + finance_note + text
