@@ -10,6 +10,24 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
+class StockRiskEvidence:
+    key: str            # vol_high | vol_low | drop_high | drop_low
+    test_rate: float    # 검증 구간에서 그 결과가 나온 비율
+    base_rate: float    # 평소 비율
+
+
+@dataclass(frozen=True)
+class StockRiskSummary:
+    """위험 신호 — 방향과 달리 검증 구간에서도 유지된 축(2026-09-17). 결론 한 줄이 중립일 때 앞세운다.
+    evidence는 학습·검증 두 구간 모두 통과한 실측만(없으면 빈 튜플 — 소비자는 수치 없이 상태만 말한다)."""
+
+    vol_state: str          # HIGH | NORMAL | LOW
+    drawdown_risk: str      # HIGH | NORMAL | LOW
+    rv_percentile: float    # 자기 1년 분포 안 위치(0~1)
+    evidence: tuple[StockRiskEvidence, ...] = ()
+
+
+@dataclass(frozen=True)
 class StockForecastSummary:
     signal_direction: str          # UP | DOWN | NEUTRAL (지표 신호 기준, 감성 미반영)
     ready: bool = False            # n≥100 + Wilson 하한이 기준선 넘음 (통계적 유의)
@@ -19,3 +37,4 @@ class StockForecastSummary:
     hits: int = 0
     ci_low: float | None = None    # Wilson 95% 하한
     ci_high: float | None = None   # Wilson 95% 상한
+    risk: StockRiskSummary | None = None  # 위험 신호 — 봉이 모자라면 None

@@ -57,3 +57,13 @@ def test_검증은_두_구간_모두_기준과_갈라져야_한다():
              + obs("test", "HIGH", False, 4000) + obs("test", "NORMAL", False, 16000))
     payload = RiskSignalBacktester().aggregate(faded, train_end_year=2020, first_date="a", last_date="b", tickers=1)
     assert not next(s for s in payload["signals"] if s["key"] == "vol_high")["validated"]
+
+
+def test_상태별_검증_리포트_키는_낙폭이_변동성보다_먼저다():
+    def state(vol, drop):
+        return rs.RiskState(rv20=0.3, rv_percentile=0.5, vol_state=vol, trend="MIXED", drawdown_risk=drop, rv_q70=0.3)
+
+    assert rs.stat_keys(state("HIGH", "HIGH")) == ("drop_high", "vol_high")
+    assert rs.stat_keys(state("LOW", "LOW")) == ("drop_low", "vol_low")
+    assert rs.stat_keys(state("HIGH", "NORMAL")) == ("vol_high",)
+    assert rs.stat_keys(state("NORMAL", "NORMAL")) == ()

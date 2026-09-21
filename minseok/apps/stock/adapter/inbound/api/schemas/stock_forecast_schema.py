@@ -54,6 +54,23 @@ class DownsideSchema(BaseModel):
     recovery_days_median: float | None  # 회복까지 걸린 거래일 중앙값
 
 
+class RiskEvidenceSchema(BaseModel):
+    key: str          # vol_high | vol_low | drop_high | drop_low
+    test_rate: float  # 검증 구간에서 그 결과가 나온 비율
+    base_rate: float  # 평소 비율
+
+
+class RiskSchema(BaseModel):
+    """위험 신호 — 신호 보드와 같은 판정. 결론 한 줄(verdict)이 중립일 때 이걸 앞세운다."""
+
+    vol_state: str        # HIGH | NORMAL | LOW
+    drawdown_risk: str    # HIGH | NORMAL | LOW
+    trend: str            # UP | DOWN | MIXED
+    rv20: float
+    rv_percentile: float  # 자기 1년 분포 안 위치(0~1)
+    evidence: list[RiskEvidenceSchema] = []  # 검증 통과한 실측만
+
+
 class StockForecastResponse(BaseModel):
     symbol: str
     resolved_ticker: str
@@ -66,6 +83,7 @@ class StockForecastResponse(BaseModel):
     insights: list[ForecastInsightSchema]
     position: PositionSchema | None = None  # 현재 국면(RSI·낙폭·지지선 여력)
     downside: DownsideSchema | None = None  # 하방·회복 실측 통계
+    risk: RiskSchema | None = None  # 위험 신호 — 봉이 모자라면 null
     live: bool = False  # true = 미수집 종목 — yfinance 라이브 이력 기반 계산
     regime: str | None = None         # 현재 시장 레짐(BULL/BEAR/HIGH_VOL)
     regime_conditional: bool = False  # true = 확률·밴드가 현재 레짐 조건부 통계

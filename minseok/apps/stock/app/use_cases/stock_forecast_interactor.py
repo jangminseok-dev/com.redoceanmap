@@ -10,6 +10,8 @@ from stock.app.dtos.stock_forecast_dto import (
     DownsideInfo,
     ForecastQuery,
     ProbabilityInfo,
+    RiskEvidence,
+    RiskInfo,
     StockForecastView,
 )
 from stock.app.dtos.signal_config_dto import ActiveSignalConfig
@@ -17,9 +19,10 @@ from stock.app.exceptions import MarketDataUnavailableError
 from stock.app.ports.input.stock_forecast_use_case import StockForecastUseCase
 from stock.app.ports.output.earnings_calendar_port import EarningsCalendarPort
 from stock.app.ports.output.forecast_history_port import ForecastHistoryPort
+from stock.app.ports.output.risk_report_read_port import RiskReportReadPort
 from stock.app.ports.output.signal_config_port import SignalConfigPort
 from stock.domain.entities.analysis_config import AnalysisConfig
-from stock.domain.services import forecast_narrator
+from stock.domain.services import forecast_narrator, risk_signal
 from stock.domain.services.backtester import Backtester
 from stock.domain.services.forecast_narrator import QUANTILE_MIN_SAMPLES
 from stock.domain.services.indicator_calculator import IndicatorCalculator
@@ -65,11 +68,13 @@ class StockForecastInteractor(StockForecastUseCase):
         market_data: MarketDataPort | None = None,
         earnings: EarningsCalendarPort | None = None,
         configs: SignalConfigPort | None = None,
+        risk_reports: RiskReportReadPort | None = None,
     ) -> None:
         self._history = history
         self._market_data = market_data
         self._earnings = earnings
         self._configs = configs
+        self._risk_reports = risk_reports
         self._calculator = IndicatorCalculator()
         self._predictor = OutlookPredictor()
         self._backtester = Backtester(self._calculator, self._predictor)
@@ -213,6 +218,7 @@ class StockForecastInteractor(StockForecastUseCase):
             ),
             position=position,
             downside=downside,
+            risk=await self._risk_info(closes),
             live=live,
             regime=regime,
             regime_conditional=regime_conditional,
@@ -229,6 +235,35 @@ class StockForecastInteractor(StockForecastUseCase):
             regime, regime_conditional, earnings_veto,
         )
         return view
+
+    async def _risk_info(self, closes: list[float]) -> RiskInfo | None:
+        """위험 신호 — 신호 보드와 같은 판정 + 지금 상태의 검증 실측. 봉이 모자라면 None.
+
+        방향 신호는 겹침 보정 재검증에서 평소와 구별되지 않았고 위험 쪽만 유지됐다(risk_signal 모듈 docstring).
+        결론 한 줄이 중립일 때 앞세울 재료다. 리포트 조회 실패는 실측 없이 상태만 싣는다(열화 동작).
+        """
+        state = risk_signal.state_at(closes)
+        if state is None:
+            return None
+        evidence: tuple[RiskEvidence, ...] = ()
+        keys = risk_signal.stat_keys(state)
+        if keys and self._risk_reports is not None:
+            try:
+                report = await self._risk_reports.find_latest_risk_report()
+            except Exception:
+                logger.warning("[stock-forecast] 위험 신호 리포트 조회 실패", exc_info=True)
+                report = None
+            signals = {s["key"]: s for s in (report[1].get("signals", ()) if report else ())}
+            evidence = tuple(
+                RiskEvidence(key=k, test_rate=s["test"]["rate"], base_rate=s["test"]["base"])
+                for k in keys
+                if (s := signals.get(k)) and s.get("validated")
+                and s["test"]["rate"] is not None and s["test"]["base"] is not None
+            )
+        return RiskInfo(
+            vol_state=state.vol_state, drawdown_risk=state.drawdown_risk, trend=state.trend,
+            rv20=state.rv20, rv_percentile=state.rv_percentile, evidence=evidence,
+        )
 
     async def _active_config(self) -> ActiveSignalConfig:
         """활성 판정 조합 — 포트 미주입(구 조립·일부 테스트)이면 코드 상수 폴백."""

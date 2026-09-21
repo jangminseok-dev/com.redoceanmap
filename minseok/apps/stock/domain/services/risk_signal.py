@@ -97,6 +97,16 @@ def state_at(closes: list[float]) -> RiskState | None:
     return states(closes)[-1]
 
 
+def stat_keys(state: RiskState) -> tuple[str, ...]:
+    """이 상태에 해당하는 검증 리포트 신호 키 — 낙폭이 변동성보다 먼저(더 구체적인 경고). 보통이면 빈 튜플."""
+    keys = []
+    if state.drawdown_risk in ("HIGH", "LOW"):
+        keys.append("drop_high" if state.drawdown_risk == "HIGH" else "drop_low")
+    if state.vol_state in ("HIGH", "LOW"):
+        keys.append("vol_high" if state.vol_state == "HIGH" else "vol_low")
+    return tuple(keys)
+
+
 def outcomes(closes: list[float], lows: list[float], i: int, state: RiskState) -> tuple[bool | None, bool | None]:
     """판정일 i 이후 20거래일의 (변동성 확대, 큰 낙폭) — 결과 창이 덜 찼으면 None."""
     if i + HORIZON >= len(closes):

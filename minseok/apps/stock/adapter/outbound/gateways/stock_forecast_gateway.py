@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from hub.app.dtos.stock_forecast_dto import StockForecastSummary
+from hub.app.dtos.stock_forecast_dto import StockForecastSummary, StockRiskEvidence, StockRiskSummary
 from hub.app.ports.output.stock_forecast_port import StockForecastPort
 from stock.app.dtos.stock_forecast_dto import ForecastQuery
 from stock.app.exceptions import MarketDataUnavailableError
@@ -22,9 +22,18 @@ class StockForecastGateway(StockForecastPort):
             view = await self._use_case.forecast(ForecastQuery(symbol=ticker))
         except MarketDataUnavailableError:
             return None
+        r = view.risk
+        risk = (
+            StockRiskSummary(
+                vol_state=r.vol_state, drawdown_risk=r.drawdown_risk, rv_percentile=r.rv_percentile,
+                evidence=tuple(StockRiskEvidence(e.key, e.test_rate, e.base_rate) for e in r.evidence),
+            )
+            if r is not None
+            else None
+        )
         p = view.probability
         if p is None:
-            return StockForecastSummary(signal_direction=view.signal_direction)
+            return StockForecastSummary(signal_direction=view.signal_direction, risk=risk)
         return StockForecastSummary(
             signal_direction=view.signal_direction,
             ready=p.ready,
@@ -34,4 +43,5 @@ class StockForecastGateway(StockForecastPort):
             hits=p.hits,
             ci_low=p.ci_low,
             ci_high=p.ci_high,
+            risk=risk,
         )

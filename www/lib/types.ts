@@ -146,6 +146,15 @@ export type StockForecast = {
     recovery_rate: number | null;
     recovery_days_median: number | null;
   } | null;
+  // 위험 신호(2026-09-21) — 신호 보드와 같은 판정. 결론 한 줄이 중립일 때 앞세운다. 봉이 모자라면 null
+  risk?: {
+    vol_state: "HIGH" | "NORMAL" | "LOW"; // 향후 20거래일 변동성 확대 가능성
+    drawdown_risk: "HIGH" | "NORMAL" | "LOW"; // 20거래일 안 -10% 하락 가능성
+    trend: "UP" | "DOWN" | "MIXED";
+    rv20: number; // 최근 20일 실현 변동성(연율)
+    rv_percentile: number; // 자기 1년 분포 안 위치(0~1)
+    evidence: { key: RiskStat["key"]; test_rate: number; base_rate: number }[]; // 검증 통과한 실측만
+  } | null;
   live?: boolean; // true = 미수집 종목 — yfinance 라이브 이력 기반 계산
   earnings_veto?: boolean; // true = 실적 발표 ±2일 — 신호를 관망으로 강등(SAVE 대조 편입 배지)
 };

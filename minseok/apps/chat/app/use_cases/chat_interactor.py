@@ -3473,7 +3473,7 @@ class ChatInteractor(ChatUseCase):
         # 결론 한 줄 — 페이지 히어로와 같은 verdict 로직으로 서버가 계산해 카드에 싣는다.
         # detail(표본·신뢰구간)까지 카드에 싣는다 — 배지 밑에 근거가 없으면 판정만 남아
         # "왜?"가 답이 안 된다(2026-08-28 배지 UI).
-        headline, basis = verdict_headline(analysis.direction, forecast)
+        headline, basis = verdict_headline(analysis.direction, forecast, analysis.score, analysis.up_threshold)
         card = StockCard(
             symbol=analysis.symbol,
             price=analysis.price,

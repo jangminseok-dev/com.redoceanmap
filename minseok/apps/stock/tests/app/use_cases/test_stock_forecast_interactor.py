@@ -347,3 +347,69 @@ async def test_어닝_포트_없으면_기존_동작():
         ForecastQuery(symbol="TEST")
     )
     assert view.earnings_veto is False
+
+
+# --- 위험 신호(2026-09-21) — 결론 한 줄이 중립일 때 앞세울 재료 ---
+
+class _StubRiskReports:
+    def __init__(self, payload: dict | None = None, broken: bool = False):
+        self.payload = payload
+        self.broken = broken
+        self.calls = 0
+
+    async def find_latest_risk_report(self):
+        self.calls += 1
+        if self.broken:
+            raise RuntimeError("db down")
+        return (datetime(2026, 9, 20, tzinfo=UTC), self.payload) if self.payload is not None else None
+
+
+def _signal(key: str, rate: float, base: float, validated: bool) -> dict:
+    return {"key": key, "test": {"rate": rate, "base": base}, "validated": validated}
+
+
+def _risk_state(vol: str, drop: str):
+    from stock.domain.services.risk_signal import RiskState
+
+    return RiskState(rv20=0.42, rv_percentile=0.91, vol_state=vol, trend="DOWN", drawdown_risk=drop, rv_q70=0.3)
+
+
+async def test_위험_상태와_검증을_통과한_실측만_싣는다(monkeypatch):
+    monkeypatch.setattr(stock_forecast_interactor.risk_signal, "state_at", lambda closes: _risk_state("HIGH", "HIGH"))
+    reports = _StubRiskReports({"signals": [
+        _signal("vol_high", 0.51, 0.33, True),
+        _signal("drop_high", 0.30, 0.24, False),  # 검증 미통과 — 수치를 말하면 안 된다
+    ]})
+    view = await StockForecastInteractor(history=_StubPort(_bars(120)), risk_reports=reports).forecast(
+        ForecastQuery(symbol="TEST")
+    )
+    assert view.risk is not None
+    assert (view.risk.vol_state, view.risk.drawdown_risk, view.risk.trend) == ("HIGH", "HIGH", "DOWN")
+    assert view.risk.rv_percentile == 0.91
+    assert [(e.key, e.test_rate, e.base_rate) for e in view.risk.evidence] == [("vol_high", 0.51, 0.33)]
+
+
+async def test_위험_상태가_보통이면_리포트를_읽지_않는다(monkeypatch):
+    monkeypatch.setattr(stock_forecast_interactor.risk_signal, "state_at", lambda closes: _risk_state("NORMAL", "NORMAL"))
+    reports = _StubRiskReports({"signals": [_signal("vol_high", 0.51, 0.33, True)]})
+    view = await StockForecastInteractor(history=_StubPort(_bars(120)), risk_reports=reports).forecast(
+        ForecastQuery(symbol="TEST")
+    )
+    assert view.risk is not None and view.risk.evidence == ()
+    assert reports.calls == 0
+
+
+@pytest.mark.parametrize("reports", [None, _StubRiskReports(None), _StubRiskReports(broken=True)],
+                         ids=["포트 없음", "리포트 없음", "조회 실패"])
+async def test_리포트를_못_읽어도_상태는_싣는다(monkeypatch, reports):
+    monkeypatch.setattr(stock_forecast_interactor.risk_signal, "state_at", lambda closes: _risk_state("HIGH", "NORMAL"))
+    view = await StockForecastInteractor(history=_StubPort(_bars(120)), risk_reports=reports).forecast(
+        ForecastQuery(symbol="TEST")
+    )
+    assert view.risk is not None and view.risk.vol_state == "HIGH"
+    assert view.risk.evidence == ()
+
+
+async def test_봉이_모자라_위험_판정이_안_되면_risk는_없다():
+    view = await StockForecastInteractor(history=_StubPort(_bars(120))).forecast(ForecastQuery(symbol="TEST"))
+    assert view.risk is None  # 위험 판정은 200일선·1년 분포가 필요하다(120봉으로는 불가)

@@ -359,3 +359,17 @@ apps/stock/
 - 화면: 성적표 4칸(AI 판단 · 지표 규칙(대조군) · 위험 규칙(검증 신호) · SPY), 자산 곡선에 한 줄 추가. 채팅 모의투자 답변도 3계정.
 - 비교의 뜻: 대조군과의 차이가 "검증된 위험 신호를 쓰면 달라지는가"의 관측치다. 표본이 쌓이기 전에는 성적을 결론으로 읽지 않는다.
 
+
+## 종목 예측에 위험 신호 동반 — 2026-09-21
+
+`GET /stock/{symbol}/forecast` 응답에 `risk`(변동성·낙폭 상태 + 지금 상태의 검증 실측)를 싣는다. 결론 한 줄
+(프론트 `verdict.ts` · chat `verdict.py`)이 **중립일 때 위험 상태를 앞세우기 위한 재료**다 — 방향 판정의 73%가
+중립이라 "지금은 방향을 말하기 어렵습니다"가 네 번 중 세 번 떴다(최근 30일 스냅샷 실측).
+
+- 판정은 보드와 같은 `risk_signal.state_at(closes)` — forecast가 이미 전체 일봉을 들고 있어 추가 조회가 없다.
+  봉이 모자라면(200일선·1년 분포 불가) `risk=None`.
+- 실측은 최신 `risk_signal_reports`에서 **지금 상태에 해당하는 키만**(`risk_signal.stat_keys` — 낙폭이 변동성보다 먼저),
+  그중 `validated`(학습·검증 두 구간 통과)만 싣는다. 상태가 보통이면 리포트를 읽지 않는다. 조회 실패는 상태만 싣는 열화.
+- 포트: `RiskReportReadPort`(좁은 조회 포트)를 새로 두고 `StockBoardRepositoryPort`가 이를 상속한다 —
+  forecast가 보드 저장소 전체를 알지 않게(ISP). 구현은 기존 `StockBoardPgRepository` 그대로.
+- 허브 계약 `StockForecastSummary.risk`(`StockRiskSummary`)로 chat에도 같은 재료가 간다 — 채팅 카드와 페이지 결론이 같은 문장을 쓴다.
