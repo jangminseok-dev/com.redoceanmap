@@ -1,0 +1,38 @@
+# 뉴스 이벤트 연구 + 감성 서프라이즈 월례 채점 — 매월 1일 07:00. 분석의 방향 점수에서 뺀 감성(2026-09-21)을 되살릴지 정하는 검증이다.
+# 조건(stock/domain/services/sentiment_signal_study.py: 표본 충분한 달 6개 · 짝 비교 53% · 최근 6개월 중 5개월 50% 초과)을 넘으면 메일로 알린다.
+# 넘기 전에는 리포트만 남긴다(어드민 뉴스 연구 화면). 5분봉 지평까지 도는 읽기 위주 집계라 부하가 작다.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: study-news-events
+spec:
+  schedule: "0 7 1 * *"
+  timeZone: Asia/Seoul
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          hostAliases:
+            - ip: 172.17.0.1
+              hostnames: ["host.docker.internal"]
+          containers:
+            - name: job
+              image: minseok97/redoceanmap-backend:latest
+              imagePullPolicy: Never
+              workingDir: /app
+              command: ["python", "scripts/study_news_events.py"]
+              envFrom:
+                - secretRef:
+                    name: redocean-env
+                - configMapRef:
+                    name: redocean-runtime
+              env:
+                - name: DATABASE_URL
+                  value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@pgvector:5432/$(POSTGRES_DB)
+                - name: MARKET_DATABASE_URL
+                  value: $(MARKET_DATABASE_URL_DOCKER)

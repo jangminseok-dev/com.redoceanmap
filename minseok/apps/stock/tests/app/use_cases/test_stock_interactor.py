@@ -258,3 +258,73 @@ async def test_감성_가중치가_0이면_반영했다고_말하지_않는다()
     result = await interactor.analyze(Symbol("AAPL"))
     text = next(i.text for i in result.insights if i.key == "sentiment_surprise")
     assert "방향 판정에는 넣지 않습니다" in text and "반영했습니다" not in text
+
+
+# --- 2026-09-21: 분석의 지표 입력 = 수집 일봉(예측과 같은 입력) ---
+
+def _collected_bars(n=300, last_age_days=1, drift=1.002):
+    from datetime import UTC, datetime, timedelta
+
+    from stock.domain.entities.price_bar import PriceBar
+
+    end = datetime.now(UTC) - timedelta(days=last_age_days)
+    out, price = [], 100.0
+    for i in range(n):
+        price *= drift
+        out.append(PriceBar(ticker="AAPL", timeframe="1d", ts=end - timedelta(days=n - 1 - i),
+                            open=price * 0.99, high=price * 1.01, low=price * 0.98, close=price, volume=1_000_000))
+    return out
+
+
+class _StubHistory:
+    def __init__(self, bars=None, broken=False):
+        self.bars = bars or []
+        self.broken = broken
+        self.limits: list[int] = []
+
+    async def find_recent_daily_bars(self, symbol, limit):
+        self.limits.append(limit)
+        if self.broken:
+            raise RuntimeError("db down")
+        return self.bars[-limit:]
+
+
+class _CountingMarketData(_StubMarketData):
+    def __init__(self):
+        self.indicator_calls = 0
+
+    async def indicators(self, symbol):
+        self.indicator_calls += 1
+        return await super().indicators(symbol)
+
+
+def _interactor(market, history):
+    return StockInteractor(market_data=market, sentiment=_StubSentiment(), predictor=OutlookPredictor(),
+                           config=AnalysisConfig.forecast_signal(), history=history)
+
+
+async def test_수집_일봉이_있으면_그_봉으로_지표를_계산하고_벤더_이력을_받지_않는다():
+    """분석만 질문마다 야후 2년 이력을 받아 장중 진행 봉·배당 조정 차이로 예측과 점수가 달랐다(삼성전자 +0.14 vs -0.17)."""
+    from stock.domain.services.indicator_calculator import IndicatorCalculator
+
+    bars = _collected_bars()
+    market, history = _CountingMarketData(), _StubHistory(bars)
+    result = await _interactor(market, history).analyze(Symbol("AAPL"))
+    expected = IndicatorCalculator().compute([b.close for b in bars], [b.low for b in bars], [b.high for b in bars],
+                                             [float(b.volume) for b in bars])
+    assert market.indicator_calls == 0 and history.limits == [520]
+    assert result.rsi == expected.rsi and result.ma20 == expected.ma20   # 예측이 쓰는 계산기·같은 입력
+    assert result.price == 225.0                                          # 현재가는 여전히 실시간 시세
+
+
+@pytest.mark.parametrize("history", [
+    _StubHistory([]),                                   # 미수집 종목
+    _StubHistory(_collected_bars(last_age_days=9)),     # 수집이 멈춰 최신 봉이 7일 넘게 낡음
+    _StubHistory(_collected_bars(n=30)),                # 봉이 모자라 지표 계산 불가
+    _StubHistory(broken=True),                          # 조회 실패
+    None,                                               # 포트 미주입(구 조립)
+], ids=["미수집", "낡은 봉", "봉 부족", "조회 실패", "포트 없음"])
+async def test_수집_일봉을_못_쓰면_시세_벤더로_폴백한다(history):
+    market = _CountingMarketData()
+    result = await _interactor(market, history).analyze(Symbol("AAPL"))
+    assert market.indicator_calls == 1 and result.price == 225.0

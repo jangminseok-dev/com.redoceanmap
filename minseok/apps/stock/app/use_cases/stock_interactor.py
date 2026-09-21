@@ -1,20 +1,24 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime, timedelta
 
 from stock.app.dtos.stock_analysis_dto import StockAnalysis
 from stock.app.ports.input.stock_use_case import StockUseCase
 from stock.app.ports.output.demand_record_port import DemandRecordPort
 from stock.app.ports.output.market_data_port import MarketDataPort
 from stock.app.ports.output.news_repository import NewsRepositoryPort
+from stock.app.ports.output.forecast_history_port import ForecastHistoryPort
 from stock.app.ports.output.sentiment_port import SentimentPort
 from stock.app.ports.output.signal_config_port import SignalConfigPort
 from stock.domain.entities.analysis_config import AnalysisConfig
 from stock.domain.entities.outlook import Direction
+from stock.domain.services.indicator_calculator import IndicatorCalculator
 from stock.domain.services.outlook_predictor import OutlookPredictor
 from stock.domain.services.stock_narrator import narrate
 from stock.domain.services.volume_profile import compute_volume_profile
 from stock.domain.value_objects.market_values import Symbol
+from stock.domain.value_objects.indicators import Indicators
 from stock.domain.value_objects.sentiment_score import SentimentScore
 
 logger = logging.getLogger(__name__)
@@ -22,6 +26,11 @@ logger = logging.getLogger(__name__)
 MIN_BASELINE_SAMPLES = 5  # 이 미만이면 서프라이즈 대신 당일 절대값(기존 동작) 사용
 # 현재 감성 = 최근 N일 저장 라벨 평균(2026-09-21). 질문마다 LLM에 헤드라인 묶음을 물으면 같은 종목이 1분 사이에
 # -0.20 → +0.10으로 바뀌었다(샘플링 + 모델이 헤드라인별 숫자 목록을 돌려줘 파서가 첫 줄만 읽음) — 종목 비교 결론이 뒤집혔다.
+# 분석의 지표 입력 = 수집 일봉(2026-09-21). 예측·스냅샷·검증이 전부 수집 일봉 기준인데 분석만 질문마다 야후 2년 이력을 새로 받아
+# ① 장중엔 진행 중인 오늘 봉이 끼고(실측: 삼성전자 점수 +0.14 vs -0.17) ② 배당 소급 조정이 달라(KO +0.27 vs +0.20, 장 마감 상태)
+# 같은 종목의 방향이 화면마다 갈릴 수 있었다. 최근 520봉이면 전체 이력과 점수가 소수 넷째 자리까지 같다(12-1 모멘텀에 253봉 필요).
+ANALYZE_BARS = 520
+MAX_BAR_AGE = timedelta(days=7)   # 최신 수집 봉이 이보다 낡으면(수집 중단) 야후로 폴백 — 연휴 최장 공백(추석 + 주말)보다 길게
 RECENT_SENTIMENT_DAYS = 7
 MIN_RECENT_SAMPLES = 3    # 이 미만이면 LLM 폴백(라벨이 없는 미수집 종목)
 
@@ -46,6 +55,7 @@ class StockInteractor(StockUseCase):
         news: NewsRepositoryPort | None = None,
         demand: DemandRecordPort | None = None,
         configs: SignalConfigPort | None = None,
+        history: ForecastHistoryPort | None = None,
     ) -> None:
         self._market_data = market_data
         self._sentiment = sentiment
@@ -54,6 +64,22 @@ class StockInteractor(StockUseCase):
         self._news = news
         self._demand = demand
         self._configs = configs
+        self._history = history
+        self._calculator = IndicatorCalculator()
+
+    async def _indicators(self, symbol: Symbol) -> Indicators:
+        """지표 — 수집 일봉이 먼저(예측과 같은 입력 = 같은 방향), 미수집·낡은 봉·계산 불가면 시세 벤더로 폴백."""
+        if self._history is not None:
+            try:
+                bars = await self._history.find_recent_daily_bars(symbol.code, ANALYZE_BARS)
+                if bars and datetime.now(UTC) - bars[-1].ts <= MAX_BAR_AGE:
+                    return self._calculator.compute(
+                        closes=[b.close for b in bars], lows=[b.low for b in bars],
+                        highs=[b.high for b in bars], volumes=[float(b.volume) for b in bars],
+                    )
+            except Exception:
+                logger.warning("[stock] 수집 일봉 지표 계산 실패 — 벤더로 폴백: %s", symbol.code, exc_info=True)
+        return await self._market_data.indicators(symbol)
 
     async def _active_config(self) -> AnalysisConfig:
         """예측(forecast)·스냅샷과 **같은 활성 검증 조합**으로 판정한다(2026-09-21).
@@ -79,7 +105,7 @@ class StockInteractor(StockUseCase):
                 await self._demand.record(symbol.code)
             except Exception:
                 logger.warning("[stock] 수요 기록 실패: %s", symbol.code, exc_info=True)
-        indicators = await self._market_data.indicators(symbol)
+        indicators = await self._indicators(symbol)
         headlines = await self._merge_headlines(symbol, name)
 
         # 현재 감성은 저장된 기사 라벨(최근 7일 평균)이 먼저다 — 같은 시점이면 같은 값이고 질문당 LLM 호출이 하나 준다.

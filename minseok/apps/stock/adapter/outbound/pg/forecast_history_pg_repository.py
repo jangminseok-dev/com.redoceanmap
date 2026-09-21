@@ -30,9 +30,9 @@ class ForecastHistoryPgRepository(ForecastHistoryPort):
             open=r.open, high=r.high, low=r.low, close=r.close, volume=r.volume,
         )
 
-    async def find_all_daily_bars(self, symbol: str) -> list[PriceBar]:
+    async def _resolve_ticker(self, symbol: str) -> str | None:
         # 접미 후보 중 실제 저장된 티커를 확정(stock_history와 동일 규칙: 005930 ↔ 005930.KS)
-        ticker = (await self._session.execute(
+        return (await self._session.execute(
             select(PriceBarOrm.ticker)
             .where(
                 or_(PriceBarOrm.ticker == symbol, PriceBarOrm.ticker.like(f"{symbol}.%")),
@@ -41,14 +41,9 @@ class ForecastHistoryPgRepository(ForecastHistoryPort):
             .order_by(PriceBarOrm.ts.desc())
             .limit(1)
         )).scalar()
-        if ticker is None:
-            return []
 
-        rows = (await self._session.execute(
-            select(PriceBarOrm)
-            .where(PriceBarOrm.ticker == ticker, PriceBarOrm.timeframe == "1d")
-            .order_by(PriceBarOrm.ts.asc())
-        )).scalars().all()
+    @staticmethod
+    def _to_bars(rows) -> list[PriceBar]:
         return [
             PriceBar(
                 ticker=r.ticker, timeframe=r.timeframe, ts=r.ts,
@@ -56,3 +51,26 @@ class ForecastHistoryPgRepository(ForecastHistoryPort):
             )
             for r in rows
         ]
+
+    async def find_all_daily_bars(self, symbol: str) -> list[PriceBar]:
+        ticker = await self._resolve_ticker(symbol)
+        if ticker is None:
+            return []
+        rows = (await self._session.execute(
+            select(PriceBarOrm)
+            .where(PriceBarOrm.ticker == ticker, PriceBarOrm.timeframe == "1d")
+            .order_by(PriceBarOrm.ts.asc())
+        )).scalars().all()
+        return self._to_bars(rows)
+
+    async def find_recent_daily_bars(self, symbol: str, limit: int) -> list[PriceBar]:
+        ticker = await self._resolve_ticker(symbol)
+        if ticker is None:
+            return []
+        rows = (await self._session.execute(
+            select(PriceBarOrm)
+            .where(PriceBarOrm.ticker == ticker, PriceBarOrm.timeframe == "1d")
+            .order_by(PriceBarOrm.ts.desc())
+            .limit(limit)
+        )).scalars().all()
+        return self._to_bars(reversed(rows))

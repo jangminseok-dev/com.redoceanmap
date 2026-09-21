@@ -6,6 +6,7 @@ from hub.app.ports.output.stock_analysis_port import StockAnalysisPort
 from stock.adapter.outbound.exaone_sentiment_adapter import ExaoneSentimentAdapter
 from stock.adapter.outbound.gateways.stock_analysis_gateway import StockAnalysisGateway
 from stock.adapter.outbound.pg.demand_pg_repository import DemandPgRepository
+from stock.adapter.outbound.pg.forecast_history_pg_repository import ForecastHistoryPgRepository
 from stock.adapter.outbound.pg.news_pg_repository import NewsPgRepository
 from stock.adapter.outbound.pg.signal_config_pg_repository import SignalConfigPgRepository
 from stock.adapter.outbound.yfinance_market_data_adapter import YFinanceMarketDataAdapter
@@ -24,6 +25,7 @@ def get_stock_use_case(db: AsyncSession = Depends(get_db)) -> StockUseCase:
         news=NewsPgRepository(session=db),
         demand=DemandPgRepository(session=db),
         configs=SignalConfigPgRepository(session=db),        # 예측·스냅샷과 같은 활성 검증 조합
+        history=ForecastHistoryPgRepository(session=db),     # 지표 입력 = 예측과 같은 수집 일봉(미수집·낡으면 벤더 폴백)
     )
 
 
@@ -43,6 +45,7 @@ def get_stock_use_case_batch(db: AsyncSession = Depends(get_db)) -> StockUseCase
         config=AnalysisConfig.forecast_signal(),
         news=NewsPgRepository(session=db),
         configs=SignalConfigPgRepository(session=db),
+        history=ForecastHistoryPgRepository(session=db),
     )
 
 

@@ -16,6 +16,10 @@ hub CLAUDE가 "라벨은 학습 피처, 정답은 실현 수익률(price_bars �
     python scripts/study_news_events.py --minutes 15 30 60
     python scripts/study_news_events.py --dry-run     # 출력만, 저장 생략
 
+**감성 서프라이즈 월례 채점(2026-09-21)** — 분석의 방향 점수에서 뺀 감성을 되살릴지 정하는 검증을 같은 실행에서 함께 낸다
+(`stock/domain/services/sentiment_signal_study.py`, 조건도 거기). k8s CronJob `study-news-events`가 매월 1일 07:00에 돌리고,
+조건을 넘으면 메일로 알린다 — 넘기 전에는 아무 일도 하지 않는다.
+
 **분 단위 지평(E1)은 5분봉으로 잰다.** 두 가지 한계를 리포트에 명시한다:
 1. 5분봉은 소급 수집이 안 된다 — 보유 시작일 이전 발행은 측정 자체가 불가능하다.
 2. 장 마감 뒤 발행은 "다음 존재하는 5분봉"이 다음 개장가라, 30분 수익률이 아니라
@@ -37,6 +41,7 @@ from core.key.secret_manager import get_secret_manager  # noqa: E402
 from stock.adapter.outbound.orm.news_event_study_report_orm import (  # noqa: E402
     NewsEventStudyReportOrm,
 )
+from stock.domain.services import sentiment_signal_study  # noqa: E402
 from stock.domain.services.event_study import (  # noqa: E402
     EventSample,
     aggregate,
@@ -141,6 +146,44 @@ def _print_buckets(report) -> None:
             )
 
 
+# 감성 서프라이즈 채점 재료 — 기본 라벨러의 종목·발행일별 감성 합과 기사 수, 그리고 일봉 종가.
+# 한국 일봉은 KST 자정이 UTC 전날 15:00로 저장된다 — 12시간을 더해 날짜를 읽으면 미국(04:00 UTC)·한국 모두 거래일과 맞는다.
+_SQL_SENTIMENT_DAILY = text("""
+    select split_part(a.ticker, '.', 1), (a.published_at at time zone 'UTC')::date, sum(l.sentiment), count(*)
+    from news_labels l join news_articles a on a.id = l.news_id
+    where a.ticker is not null and l.labeler = :labeler and a.published_at >= '2026-01-01'
+    group by 1, 2
+""")
+_SQL_DAILY_CLOSES = text("""
+    select split_part(ticker, '.', 1), (ts + interval '12 hours')::date, close
+    from price_bars where timeframe = '1d' and ts >= '2026-01-01' order by 1, 2
+""")
+SURPRISE_HORIZONS = (5, 20)
+
+
+def _surprise_studies(con) -> list:
+    from core.llm.labeler import labeler_tag
+    labeler = labeler_tag(_secrets.get("LLM_MODEL", "gemma4:e4b-it-qat"))   # 화면이 읽는 기본 라벨러(news_pg_repository.DEFAULT_LABELER)와 같은 규칙
+    daily = [(t, d, float(total), int(n)) for t, d, total, n in con.execute(_SQL_SENTIMENT_DAILY, {"labeler": labeler}).all()]
+    closes: dict[str, list] = {}
+    for t, d, close in con.execute(_SQL_DAILY_CLOSES).all():
+        closes.setdefault(t, []).append((d, float(close)))
+    return [sentiment_signal_study.study(daily, closes, h) for h in SURPRISE_HORIZONS]
+
+
+def _send_ready_mail(studies) -> None:
+    """되살림 검토 조건을 넘은 달에만 메일 — check_freshness와 같은 창구(n8n 웹훅). 실패해도 리포트 저장은 끝난 뒤다."""
+    import requests
+    to = _secrets.get("ALERT_EMAIL")
+    if not to:
+        print("  ⚠ ALERT_EMAIL 미설정 — 조건 충족 알림을 보내지 못했습니다")
+        return
+    body = "\n".join(["감성 서프라이즈가 되살림 검토 조건을 넘었습니다.", "", *[f"· {s.horizon_days}거래일: {s.verdict}" for s in studies],
+                      "", "조치: stock/_docs/CLAUDE.md '분석도 활성 검증 조합으로 판정' 절을 보고 재적합 후보에 감성을 넣을지 검토하세요."])
+    requests.post(_secrets.require("N8N_EMAIL_WEBHOOK_URL"), json={"to": to, "subject": "[RedOcean] 감성 신호 되살림 검토 조건 충족", "body": body},
+                  headers={"X-Webhook-Token": _secrets.get("N8N_OUTBOUND_TOKEN", "")}, timeout=30).raise_for_status()
+
+
 def main(horizon: int, minutes: list[int], dry_run: bool) -> None:
     with engine.connect() as con:
         rows = con.execute(_SQL, {"horizon": horizon}).all()
@@ -178,16 +221,31 @@ def main(horizon: int, minutes: list[int], dry_run: bool) -> None:
                 print(f"  ⚠ {w}")
             _print_buckets(short)
 
+    # ── 감성 서프라이즈 월례 채점 — 분석의 방향 점수에 되살릴지(조건은 sentiment_signal_study 상수)
+    with engine.connect() as con:
+        studies = _surprise_studies(con)
+    print("\n[감성 서프라이즈 → 이후 수익률] 같은 날 두 종목을 견줘 값이 높은 쪽이 맞힌 비율")
+    for st in studies:
+        months = " · ".join(f"{m.month} {m.hit_rate:.1%}({m.observations:,})" for m in st.months if m.hit_rate is not None)
+        print(f"  {st.horizon_days:>2}거래일: 관측 {st.observations:,} · 날짜 {st.dates} · 짝 {st.pairs:,} · 적중 "
+              f"{'-' if st.hit_rate is None else f'{st.hit_rate:.1%}'}\n      월별: {months}\n      → {st.verdict}")
+
     if dry_run:
         print("\n--dry-run — INSERT 생략")
         return
     payload = asdict(report)
     payload["short_horizon"] = [asdict(s) for s in shorts]
+    payload["sentiment_surprise"] = [asdict(st) for st in studies]
     with engine.begin() as conn:
         conn.execute(insert(NewsEventStudyReportOrm).values(
             params={"horizon_days": horizon, "horizon_minutes": minutes}, payload=payload,
         ))
     print("\nnews_event_study_reports에 리포트 1행 저장 완료")
+    if any(st.ready for st in studies):
+        try:
+            _send_ready_mail(studies)
+        except Exception as e:  # 알림 실패가 저장된 리포트를 무효로 만들지 않는다
+            print(f"  ⚠ 조건 충족 알림 발송 실패: {e}")
 
 
 if __name__ == "__main__":
