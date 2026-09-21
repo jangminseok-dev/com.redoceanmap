@@ -39,12 +39,21 @@ def narrate(
     """분석 결과 → 초보자용 해석 문장. 두드러진 지표만 골라 서술한다(전부 나열 금지)."""
     insights = [_summary(outlook, score, contributions, indicators, config)]
 
-    if sentiment_surprise is not None:
+    if sentiment_surprise is not None and config.w_sentiment > 0:
         insights.append(Insight(
             key="sentiment_surprise", tone="neutral",
             text=(
                 "뉴스 감성 신호는 오늘 값 자체가 아니라 최근 30일 평균 대비 변화량으로 "
                 f"반영했습니다({sentiment_surprise:+.2f}) — 늘 낙관적인 종목의 상시 긍정을 걸러냅니다."
+            ),
+        ))
+    elif sentiment_surprise is not None:
+        # 활성 조합의 감성 가중치가 0 — 판정에 넣지 않는데 "반영했습니다"라고 말하면 거짓이다(2026-09-21)
+        insights.append(Insight(
+            key="sentiment_surprise", tone="neutral",
+            text=(
+                f"뉴스 분위기는 최근 30일 평균보다 {sentiment_surprise:+.2f} 달라졌어요 — 참고 정보이고 방향 판정에는 넣지 않습니다"
+                "(과거 채점에서 뉴스 분위기는 이후 수익률을 가르지 못했어요)."
             ),
         ))
 

@@ -7,6 +7,7 @@ from stock.adapter.outbound.exaone_sentiment_adapter import ExaoneSentimentAdapt
 from stock.adapter.outbound.gateways.stock_analysis_gateway import StockAnalysisGateway
 from stock.adapter.outbound.pg.demand_pg_repository import DemandPgRepository
 from stock.adapter.outbound.pg.news_pg_repository import NewsPgRepository
+from stock.adapter.outbound.pg.signal_config_pg_repository import SignalConfigPgRepository
 from stock.adapter.outbound.yfinance_market_data_adapter import YFinanceMarketDataAdapter
 from stock.app.ports.input.stock_use_case import StockUseCase
 from stock.app.use_cases.stock_interactor import StockInteractor
@@ -19,9 +20,10 @@ def get_stock_use_case(db: AsyncSession = Depends(get_db)) -> StockUseCase:
         market_data=YFinanceMarketDataAdapter(),
         sentiment=ExaoneSentimentAdapter(),
         predictor=OutlookPredictor(),
-        config=AnalysisConfig.default(),
+        config=AnalysisConfig.forecast_signal(),             # 활성 조합 조회 실패 시 폴백(검증 조합 상수)
         news=NewsPgRepository(session=db),
         demand=DemandPgRepository(session=db),
+        configs=SignalConfigPgRepository(session=db),        # 예측·스냅샷과 같은 활성 검증 조합
     )
 
 
@@ -38,8 +40,9 @@ def get_stock_use_case_batch(db: AsyncSession = Depends(get_db)) -> StockUseCase
         market_data=YFinanceMarketDataAdapter(),
         sentiment=ExaoneSentimentAdapter(),
         predictor=OutlookPredictor(),
-        config=AnalysisConfig.default(),
+        config=AnalysisConfig.forecast_signal(),
         news=NewsPgRepository(session=db),
+        configs=SignalConfigPgRepository(session=db),
     )
 
 

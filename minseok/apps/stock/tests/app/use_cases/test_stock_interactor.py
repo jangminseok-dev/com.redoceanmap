@@ -201,3 +201,60 @@ async def test_최근_라벨이_모자라면_LLM_폴백():
     )
     result = await interactor.analyze(Symbol("AAPL"))
     assert result.sentiment == 0.7 and llm.calls == 1
+
+
+# --- 2026-09-21: 분석도 예측과 같은 활성 검증 조합으로 판정한다 ---
+
+class _StubConfigs:
+    def __init__(self, config=None, broken=False):
+        self.config = config
+        self.broken = broken
+
+    async def active(self):
+        from stock.app.dtos.signal_config_dto import ActiveSignalConfig
+
+        if self.broken:
+            raise RuntimeError("db down")
+        return ActiveSignalConfig(key="active-test", config=self.config)
+
+
+async def test_분석은_활성_검증_조합으로_판정하고_감성은_점수에_들어가지_않는다():
+    """분석만 코드 상수(검증 조합 0.8배 + 감성 0.2)를 써서 같은 종목이 분석 화면과 예측에서 방향이 갈렸고,
+    얹은 감성 서프라이즈는 재검증에서 무신호였다(짝 비교 49~50%, 월마다 부호가 바뀜)."""
+    def build(sentiment_value):
+        class _S:
+            async def analyze(self, headlines):
+                return SentimentScore(sentiment_value)
+        return StockInteractor(
+            market_data=_StubMarketData(), sentiment=_S(), predictor=OutlookPredictor(),
+            config=AnalysisConfig.default(), configs=_StubConfigs(AnalysisConfig.forecast_signal()),
+        )
+
+    gloomy = await build(-1.0).analyze(Symbol("AAPL"))
+    rosy = await build(1.0).analyze(Symbol("AAPL"))
+    # 뉴스가 극단으로 달라도 점수·방향·기준은 같다 — 감성은 참고 정보로만 남는다
+    assert gloomy.score == rosy.score and gloomy.direction == rosy.direction
+    assert rosy.up_threshold == AnalysisConfig.forecast_signal().up_threshold == 0.35
+    assert (gloomy.sentiment, rosy.sentiment) == (-1.0, 1.0)
+    sentiment_signal = next(c for c in rosy.signals if c.key == "sentiment")
+    assert sentiment_signal.weight == 0 and sentiment_signal.contribution == 0
+
+
+async def test_활성_조합을_못_읽으면_생성자_조합으로_폴백한다():
+    interactor = StockInteractor(
+        market_data=_StubMarketData(), sentiment=_StubSentiment(), predictor=OutlookPredictor(),
+        config=AnalysisConfig.forecast_signal(), configs=_StubConfigs(broken=True),
+    )
+    result = await interactor.analyze(Symbol("AAPL"))
+    assert result.up_threshold == 0.35   # 조회 실패에도 분석은 나간다
+
+
+async def test_감성_가중치가_0이면_반영했다고_말하지_않는다():
+    interactor = StockInteractor(
+        market_data=_StubMarketData(), sentiment=_StubSentiment(), predictor=OutlookPredictor(),
+        config=AnalysisConfig.default(), configs=_StubConfigs(AnalysisConfig.forecast_signal()),
+        news=_StubNewsWithBaseline(avg=0.6, n=12),
+    )
+    result = await interactor.analyze(Symbol("AAPL"))
+    text = next(i.text for i in result.insights if i.key == "sentiment_surprise")
+    assert "방향 판정에는 넣지 않습니다" in text and "반영했습니다" not in text

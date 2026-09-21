@@ -8,6 +8,7 @@ from stock.app.ports.output.demand_record_port import DemandRecordPort
 from stock.app.ports.output.market_data_port import MarketDataPort
 from stock.app.ports.output.news_repository import NewsRepositoryPort
 from stock.app.ports.output.sentiment_port import SentimentPort
+from stock.app.ports.output.signal_config_port import SignalConfigPort
 from stock.domain.entities.analysis_config import AnalysisConfig
 from stock.domain.entities.outlook import Direction
 from stock.domain.services.outlook_predictor import OutlookPredictor
@@ -44,13 +45,30 @@ class StockInteractor(StockUseCase):
         config: AnalysisConfig,
         news: NewsRepositoryPort | None = None,
         demand: DemandRecordPort | None = None,
+        configs: SignalConfigPort | None = None,
     ) -> None:
         self._market_data = market_data
         self._sentiment = sentiment
         self._predictor = predictor
-        self._config = config
+        self._config = config          # 활성 조합을 못 읽을 때의 폴백
         self._news = news
         self._demand = demand
+        self._configs = configs
+
+    async def _active_config(self) -> AnalysisConfig:
+        """예측(forecast)·스냅샷과 **같은 활성 검증 조합**으로 판정한다(2026-09-21).
+
+        예전엔 분석만 코드 상수(검증 조합 0.8배 + 감성 0.2)를 썼다 — 같은 종목이 분석 화면에선 "상승 쪽", 예측에선 "중립"으로 갈렸고,
+        얹은 감성 서프라이즈는 재검증에서 무신호였다(같은 날 두 종목 짝 비교 49~50%, 순위상관 0, 월마다 부호가 바뀜 — 두 라벨러 모두).
+        포트 미주입(테스트)·조회 실패는 생성자 조합으로 폴백한다.
+        """
+        if self._configs is None:
+            return self._config
+        try:
+            return (await self._configs.active()).config
+        except Exception:
+            logger.warning("[stock] 활성 판정 조합 조회 실패 — 폴백 조합 사용", exc_info=True)
+            return self._config
 
     async def analyze(self, symbol: Symbol, name: str | None = None) -> StockAnalysis:
         price = await self._market_data.latest_price(symbol)
@@ -82,8 +100,9 @@ class StockInteractor(StockUseCase):
             surprise = max(-1.0, min(1.0, sentiment.value - baseline))
             signal_sentiment = SentimentScore(value=surprise)
 
-        outlook = self._predictor.predict(indicators, signal_sentiment, self._config)  # 순수
-        contributions = self._predictor.breakdown(indicators, signal_sentiment, self._config)
+        config = await self._active_config()
+        outlook = self._predictor.predict(indicators, signal_sentiment, config)  # 순수
+        contributions = self._predictor.breakdown(indicators, signal_sentiment, config)
         score = self._predictor.score(contributions)
         # 참고 신호: 백테스트 검증(인샘플+홀드아웃) 통과 조합 — 채점 조건(감성 중립) 그대로 재현
         reference = self._predictor.predict(
@@ -94,7 +113,7 @@ class StockInteractor(StockUseCase):
         _reference_raw = reference.direction is Direction.UP
         reference_up = REFERENCE_SIGNAL_ENABLED and _reference_raw
         insights = narrate(
-            outlook, score, contributions, indicators, self._config, reference_up,
+            outlook, score, contributions, indicators, config, reference_up,
             sentiment_surprise=surprise,
         )
 
@@ -135,8 +154,8 @@ class StockInteractor(StockUseCase):
             reference_up_signal=reference_up,
             headlines=headlines,
             score=score,
-            up_threshold=self._config.up_threshold,
-            down_threshold=self._config.down_threshold,
+            up_threshold=config.up_threshold,
+            down_threshold=config.down_threshold,
             neutral_reason=outlook.neutral_reason,
             signals=contributions,
             insights=insights,
