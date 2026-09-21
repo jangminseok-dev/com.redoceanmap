@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
+from core.llm.request_queue import chat_queue
 from core.security import get_current_user_id
 from hub.adapter.inbound.api.schemas.langchain_semantic_schema import (
     LangchainAskResponseSchema,
@@ -41,9 +42,10 @@ async def ask(
     user_id: int = Depends(get_current_user_id),
     gateway: LangchainSemanticUseCase = Depends(get_langchain_semantic_use_case),
 ) -> LangchainAskResponseSchema:
-    result = await gateway.ask(
-        LangchainAskQuery(prompt=body.prompt, session_id=body.sessionId, user_id=user_id)
-    )
+    async with chat_queue.slot():  # ROM 1.0 채팅과 같은 줄 — 같은 Ollama를 쓴다
+        result = await gateway.ask(
+            LangchainAskQuery(prompt=body.prompt, session_id=body.sessionId, user_id=user_id)
+        )
     return LangchainAskResponseSchema(
         sessionId=result.session_id,
         destination=result.destination,

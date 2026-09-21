@@ -55,6 +55,8 @@ LLM_KEEP_ALIVE = _secrets.get("LLM_KEEP_ALIVE", "24h")
 EMBED_MODEL = _secrets.get("EMBED_MODEL", "embeddinggemma")
 # Ollama 장애 시 외부 생성(Gemini) 폴백 — "external"이면 켬. 평가 러너는 off.
 LLM_FALLBACK = _secrets.get("LLM_FALLBACK", "off")
+# 채팅 동시 처리 상한 — 넘는 요청은 FIFO 대기(core/llm/request_queue.py). Ollama 생성 슬롯이 하나라 기본 1.
+CHAT_MAX_CONCURRENCY = int(_secrets.get("CHAT_MAX_CONCURRENCY", "1"))
 
 # 배포 식별 — Dockerfile ARG로 이미지에 굽는 값이다(.env 키가 아니다).
 # 소스 마운트로 도는 dev나 --build-arg 없이 만든 이미지에서는 "unknown"이 맞다.
