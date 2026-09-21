@@ -34,8 +34,10 @@ logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 
 ROOT = Path(__file__).resolve().parents[1]  # minseok
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "apps"))
 
 from core.key.secret_manager import get_secret_manager  # noqa: E402
+from stock.domain.services.bar_completeness import daily_bar_complete_after  # noqa: E402 — 순수 모듈(경량 venv에서도 import된다)
 
 _secrets = get_secret_manager()
 
@@ -69,9 +71,12 @@ def fetch_bars(ticker: str, timeframe: str, duration: timedelta, period: str) ->
     history.index = history.index.tz_convert("UTC")
     now = datetime.now(timezone.utc)
     items = []
+    # 일봉은 "시작 + 24시간"이 아니라 장 마감 뒤에 완성된다 — 분석과 같은 규칙(bar_completeness)으로 본다.
+    # 예전 규칙은 한국 마감 봉을 다음 날 새벽에야, 미국 마감 봉을 8시간 뒤에야 담았다(2026-09-21 실측).
+    complete_after = daily_bar_complete_after(ticker) if timeframe == "1d" else duration
     for ts, row in history.iterrows():
         # 진행 중(미완성) 봉 제외 — DO NOTHING upsert라 한번 저장된 봉은 갱신되지 않는다
-        if ts + duration > now:
+        if ts + complete_after > now:
             continue
         if row[["Open", "High", "Low", "Close"]].isna().any():
             continue

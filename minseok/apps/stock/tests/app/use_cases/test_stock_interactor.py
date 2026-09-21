@@ -328,3 +328,83 @@ async def test_수집_일봉을_못_쓰면_시세_벤더로_폴백한다(history
     market = _CountingMarketData()
     result = await _interactor(market, history).analyze(Symbol("AAPL"))
     assert market.indicator_calls == 1 and result.price == 225.0
+
+
+# --- 2026-09-21: 수집이 아직 담지 못한 마감 봉은 벤더 이력에서 보충한다 ---
+
+class _VendorBarsMarketData(_CountingMarketData):
+    """daily_bars를 주는 시세 벤더 — 현재가 조회 때 이미 받아 둔 이력(어댑터 캐시)에 해당한다."""
+
+    def __init__(self, vendor_bars=None, broken=False):
+        super().__init__()
+        self.vendor_bars = vendor_bars or []
+        self.broken = broken
+
+    async def daily_bars(self, symbol):
+        if self.broken:
+            raise RuntimeError("yahoo down")
+        return self.vendor_bars
+
+
+def _next_bar(last, *, hours_ago, close):
+    from datetime import UTC, datetime, timedelta
+
+    from stock.domain.entities.price_bar import PriceBar
+
+    ts = datetime.now(UTC) - timedelta(hours=hours_ago)
+    assert ts > last.ts
+    return PriceBar(ticker="AAPL", timeframe="1d", ts=ts, open=close, high=close * 1.01, low=close * 0.99,
+                    close=close, volume=1_000_000)
+
+
+def _expected(bars):
+    from stock.domain.services.indicator_calculator import IndicatorCalculator
+
+    return IndicatorCalculator().compute([b.close for b in bars], [b.low for b in bars], [b.high for b in bars],
+                                         [float(b.volume) for b in bars])
+
+
+async def test_수집보다_새로운_마감_봉은_벤더_이력에서_보충한다():
+    bars = _collected_bars(last_age_days=2)
+    closed = _next_bar(bars[-1], hours_ago=20, close=bars[-1].close * 0.9)   # 시작 + 17시간이 지난 봉 — 마감
+    market = _VendorBarsMarketData([*bars, closed])
+    result = await _interactor(market, _StubHistory(bars)).analyze(Symbol("AAPL"))
+    assert market.indicator_calls == 0
+    assert result.rsi == _expected([*bars, closed]).rsi != _expected(bars).rsi
+
+
+async def test_진행_중인_봉은_보충하지_않는다():
+    """검증 조건은 마감 일봉이다 — 장중 봉이 끼면 분석과 예측의 점수가 다시 갈린다."""
+    bars = _collected_bars(last_age_days=2)
+    open_bar = _next_bar(bars[-1], hours_ago=5, close=bars[-1].close * 0.9)
+    market = _VendorBarsMarketData([*bars, open_bar])
+    result = await _interactor(market, _StubHistory(bars)).analyze(Symbol("AAPL"))
+    assert market.indicator_calls == 0 and result.rsi == _expected(bars).rsi
+
+
+async def test_가격_기준이_어긋나면_벤더_이력으로_계산한다():
+    """수집에는 액면분할 처리가 없다 — 분할 전 가격에 분할 후 봉을 이어 붙이면 지표가 망가진다."""
+    from dataclasses import replace
+
+    bars = _collected_bars(last_age_days=2)
+    split = [replace(b, close=b.close / 10) for b in bars]   # 벤더는 1:10 분할을 소급 반영
+    market = _VendorBarsMarketData([*split, _next_bar(bars[-1], hours_ago=20, close=bars[-1].close / 10)])
+    await _interactor(market, _StubHistory(bars)).analyze(Symbol("AAPL"))
+    assert market.indicator_calls == 1
+
+
+async def test_배당_소급_조정_수준의_차이는_기준_불일치가_아니다():
+    from dataclasses import replace
+
+    bars = _collected_bars(last_age_days=2)
+    adjusted = [replace(b, close=b.close * 0.97) for b in bars]   # 실측 최대 괴리 2.9%
+    market = _VendorBarsMarketData(adjusted)
+    await _interactor(market, _StubHistory(bars)).analyze(Symbol("AAPL"))
+    assert market.indicator_calls == 0
+
+
+async def test_보충에_실패하면_수집분만으로_계산한다():
+    bars = _collected_bars()
+    market = _VendorBarsMarketData(broken=True)
+    result = await _interactor(market, _StubHistory(bars)).analyze(Symbol("AAPL"))
+    assert market.indicator_calls == 0 and result.rsi == _expected(bars).rsi

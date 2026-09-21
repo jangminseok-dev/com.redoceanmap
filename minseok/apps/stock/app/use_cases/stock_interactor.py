@@ -13,6 +13,7 @@ from stock.app.ports.output.sentiment_port import SentimentPort
 from stock.app.ports.output.signal_config_port import SignalConfigPort
 from stock.domain.entities.analysis_config import AnalysisConfig
 from stock.domain.entities.outlook import Direction
+from stock.domain.services.bar_completeness import is_daily_bar_complete
 from stock.domain.services.indicator_calculator import IndicatorCalculator
 from stock.domain.services.outlook_predictor import OutlookPredictor
 from stock.domain.services.stock_narrator import narrate
@@ -31,6 +32,9 @@ MIN_BASELINE_SAMPLES = 5  # 이 미만이면 서프라이즈 대신 당일 절�
 # 같은 종목의 방향이 화면마다 갈릴 수 있었다. 최근 520봉이면 전체 이력과 점수가 소수 넷째 자리까지 같다(12-1 모멘텀에 253봉 필요).
 ANALYZE_BARS = 520
 MAX_BAR_AGE = timedelta(days=7)   # 최신 수집 봉이 이보다 낡으면(수집 중단) 야후로 폴백 — 연휴 최장 공백(추석 + 주말)보다 길게
+# 수집분과 벤더 이력이 같은 날 종가에서 이만큼 넘게 다르면 가격 기준이 달라진 것(액면분할 등 — 수집에는 분할 처리가 없다).
+# 그대로 이어 붙이면 지표가 망가지므로 그 요청은 벤더 이력으로 계산한다. 배당 소급 조정의 실측 괴리는 최대 2.9%(83종목)였다.
+SCALE_MISMATCH = 0.10
 RECENT_SENTIMENT_DAYS = 7
 MIN_RECENT_SAMPLES = 3    # 이 미만이면 LLM 폴백(라벨이 없는 미수집 종목)
 
@@ -73,13 +77,35 @@ class StockInteractor(StockUseCase):
             try:
                 bars = await self._history.find_recent_daily_bars(symbol.code, ANALYZE_BARS)
                 if bars and datetime.now(UTC) - bars[-1].ts <= MAX_BAR_AGE:
-                    return self._calculator.compute(
-                        closes=[b.close for b in bars], lows=[b.low for b in bars],
-                        highs=[b.high for b in bars], volumes=[float(b.volume) for b in bars],
-                    )
+                    bars = await self._with_newer_closed_bars(symbol, bars)
+                    if bars is not None:
+                        return self._calculator.compute(
+                            closes=[b.close for b in bars], lows=[b.low for b in bars],
+                            highs=[b.high for b in bars], volumes=[float(b.volume) for b in bars],
+                        )
             except Exception:
                 logger.warning("[stock] 수집 일봉 지표 계산 실패 — 벤더로 폴백: %s", symbol.code, exc_info=True)
         return await self._market_data.indicators(symbol)
+
+    async def _with_newer_closed_bars(self, symbol: Symbol, bars: list) -> list | None:
+        """수집 일봉 뒤에, 아직 수집되지 않은 **마감된** 새 봉을 벤더 이력에서 보충한다 — 수집이 늦거나 멈춰도 분석은 최신 마감 봉을 본다.
+
+        벤더 이력은 현재가 조회 때문에 같은 요청에서 이미 받아 둔 것(어댑터 캐시)이라 추가 호출이 없다. 진행 중인 봉은 붙이지 않는다
+        (검증 조건 = 마감 일봉, 수집과 같은 완성 규칙). 가격 기준이 어긋났으면(분할 등) None — 호출 측이 벤더 이력으로 계산한다.
+        보충에 실패하면 수집분만으로 계산한다(열화 동작).
+        """
+        try:
+            vendor = await self._market_data.daily_bars(symbol)
+        except Exception:
+            return bars
+        last = bars[-1]
+        same_day = next((v for v in reversed(vendor) if v.ts == last.ts), None)
+        if same_day is not None and same_day.close > 0 and abs(last.close / same_day.close - 1) > SCALE_MISMATCH:
+            logger.warning("[stock] 수집 일봉과 벤더 이력의 가격 기준이 다르다(분할?) — 벤더 이력으로 계산: %s", symbol.code)
+            return None
+        now = datetime.now(UTC)
+        newer = [v for v in vendor if v.ts > last.ts and is_daily_bar_complete(v.ticker, v.ts, now)]
+        return [*bars, *newer]
 
     async def _active_config(self) -> AnalysisConfig:
         """예측(forecast)·스냅샷과 **같은 활성 검증 조합**으로 판정한다(2026-09-21).
