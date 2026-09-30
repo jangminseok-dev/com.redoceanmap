@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import AppShell from "@/components/shell/AppShell";
 import AuthModal from "@/components/seoul/AuthModal";
@@ -56,6 +57,8 @@ export default function RootLayout({
           </AppShell>
           <AuthModal />
         </Providers>
+        {/* Vercel Web Analytics — 방문자 집계(쿠키 없음). Vercel 배포에서만 수집되고 dev에선 콘솔 로그만 남는다. */}
+        <Analytics />
       </body>
     </html>
   );
