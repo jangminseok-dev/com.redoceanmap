@@ -14,7 +14,7 @@
 
 | 영역 | 스택 | 위치 |
 | --- | --- | --- |
-| 백엔드 | Python 3.13 · FastAPI 0.128 · SQLAlchemy 2.0(asyncio) · Pydantic 2 · Alembic | `minseok/` |
+| 백엔드 | Python 3.11 · FastAPI 0.128 · SQLAlchemy 2.0(asyncio) · Pydantic 2 · Alembic | `minseok/` |
 | 인증 | 위와 동일 (별도 프로세스 `auth_main.py` — 개인키를 분리 보유) | `minseok/apps/auth` |
 | 프론트엔드 | Next.js 16 · React 19 · TypeScript 5 · Tailwind 4 · zustand · TanStack Query | `www/` |
 | 데이터 | PostgreSQL 17(pgvector) · Redis 7 · Neo4j | 도커 컴포즈 |

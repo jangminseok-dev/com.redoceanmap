@@ -56,7 +56,7 @@
 
 | 영역 | 기술 |
 | --- | --- |
-| 백엔드 | Python 3.13 · FastAPI · SQLAlchemy 2(asyncio) · Pydantic 2 · Alembic |
+| 백엔드 | Python 3.11 · FastAPI · SQLAlchemy 2(asyncio) · Pydantic 2 · Alembic |
 | LLM | 오케스트레이터 3갈래 — 로컬 생성 Gemma 4 e4b QAT(Ollama, 사고 off) · 임베딩 embeddinggemma(768) · 외부 Gemini(일반 질문·폴백) · pgvector 의미 검색 |
 | 데이터 | PostgreSQL 17(pgvector) · Redis 7 · Neo4j · 서울 열린데이터광장(팩트 9종 · 인허가 68만건) |
 | 프론트 | Next.js 16 · React 19 · TS 5 · Tailwind 4 · zustand · TanStack Query |
