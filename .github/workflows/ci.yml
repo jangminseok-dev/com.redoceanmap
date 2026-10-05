@@ -18,8 +18,8 @@ jobs:
       # core.config가 임포트 시점에 요구하는 값 — CI에서 실제 DB 접속은 없다(테스트는 스텁)
       DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"  # Dockerfile(python:3.11-slim)과 일치
           cache: pip
