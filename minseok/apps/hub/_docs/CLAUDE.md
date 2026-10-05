@@ -373,7 +373,7 @@ POST /email/request → EmailRequestInteractor(온톨로지 지시 합성)
 ## 자동화 창구 — /automation (n8n 단일 접점)
 
 외부 자동화(n8n)는 **허브만 안다**. 스포크는 n8n의 존재를 모른다(ragwatson star_craft 방식).
-`X-Webhook-Token` 헤더로 검증한다(`N8N_INBOUND_TOKEN` env, 비면 검증 생략 — 로컬 개발).
+`X-Webhook-Token` 헤더로 검증한다(`N8N_INBOUND_TOKEN` env, 상수 시간 비교. 비면 검증 생략 — 로컬 개발, `ENV=production`이면 기동 거부).
 
 ```
 apps/hub/

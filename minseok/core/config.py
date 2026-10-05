@@ -81,7 +81,7 @@ REDIS_URL = _secrets.get("REDIS_URL", "redis://localhost:6379/0")
 # 모바일 세션 전용 — 같은 Redis의 논리 db 1. 웹 세션(db 0)과 키 공간·커넥션을 분리한다.
 REDIS_URL_MOBILE = _secrets.get("REDIS_URL_MOBILE", "redis://localhost:6379/1")
 
-# n8n → 백엔드 인바운드 웹훅 검증 토큰. 비어 있으면 검증 생략(로컬 개발).
+# n8n → 백엔드 인바운드 웹훅 검증 토큰. 비어 있으면 검증 생략(로컬 개발) — ENV=production이면 백엔드 기동 거부(hub webhook_token).
 N8N_INBOUND_TOKEN = _secrets.get("N8N_INBOUND_TOKEN")
 
 # 백엔드 → n8n 이메일 발송 웹훅 (Gmail 자격증명은 n8n이 보유).
