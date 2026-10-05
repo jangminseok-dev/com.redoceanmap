@@ -14,8 +14,21 @@ jobs:
     defaults:
       run:
         working-directory: minseok
+    # 마이그레이션 검사용 빈 DB — 운영과 같은 이미지(공유 pg16 · market pg17).
+    # 테스트는 get_db를 스텁으로 덮으므로 이 DB에 붙지 않는다.
+    services:
+      db:
+        image: pgvector/pgvector:pg16
+        env: { POSTGRES_USER: ci, POSTGRES_PASSWORD: ci, POSTGRES_DB: ci }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U ci" --health-interval 5s --health-timeout 5s --health-retries 10
+      market-db:
+        image: pgvector/pgvector:pg17
+        env: { POSTGRES_USER: ci, POSTGRES_PASSWORD: ci, POSTGRES_DB: ci }
+        ports: ["5434:5432"]
+        options: --health-cmd "pg_isready -U ci" --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      # core.config가 임포트 시점에 요구하는 값 — CI에서 실제 DB 접속은 없다(테스트는 스텁)
+      # core.config가 임포트 시점에 요구하는 값 + 마이그레이션 검사 대상(services.db)
       DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
     steps:
       - uses: actions/checkout@v5
@@ -41,3 +54,11 @@ jobs:
         run: PYTHONPATH=apps lint-imports --config .importlinter
       - name: Tests
         run: PYTHONPATH=.:apps pytest apps tests -q -p no:cacheprovider -m "not network and not ollama"
+      # backend 파드는 기동 시 upgrade head를 돈다 — 깨진 리비전·갈라진 헤드를 배포 전에 잡는다.
+      # MARKET_DATABASE_URL을 비우면 market 체인이 공유 DB로 폴백하므로 반드시 지정한다.
+      - name: Migrations (shared · market)
+        env:
+          MARKET_DATABASE_URL: postgresql://ci:ci@localhost:5434/ci
+        run: |
+          alembic upgrade head
+          alembic -c apps/market/alembic.ini upgrade head
