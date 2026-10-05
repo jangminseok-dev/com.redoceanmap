@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from auth.app.use_cases.auth_interactor import AuthInteractor
-from auth.domain.entities.refresh_token_entity import RefreshToken
+from auth.domain.entities.refresh_token_entity import RefreshToken, RotatedRefreshToken
 from auth.domain.entities.user_entity import User
 
 
@@ -35,6 +35,7 @@ class _StubUserRepository:
 class _StubRefreshTokenRepository:
     def __init__(self):
         self.tokens: dict[str, RefreshToken] = {}
+        self.rotated: dict[str, RotatedRefreshToken] = {}
 
     async def create(self, user_id, token, expires_at):
         entity = RefreshToken(user_id=user_id, token=token, expires_at=expires_at)
@@ -46,6 +47,20 @@ class _StubRefreshTokenRepository:
 
     async def delete(self, token):
         self.tokens.pop(token, None)
+
+    async def mark_rotated(self, token):
+        self.rotated[token.token] = RotatedRefreshToken(
+            user_id=token.user_id, rotated_at=datetime.now(timezone.utc)
+        )
+
+    async def find_rotated(self, token):
+        return self.rotated.get(token)
+
+    async def delete_all_for_user(self, user_id):
+        doomed = [t for t, e in self.tokens.items() if e.user_id == user_id]
+        for t in doomed:
+            del self.tokens[t]
+        return len(doomed)
 
 
 class _StubGradeRepository:
@@ -117,6 +132,33 @@ async def test_리프레시는_회전한다_사용한_토큰은_재사용_불가
     assert renewed.refresh_token != first.refresh_token
     with pytest.raises(ValueError):  # 이미 회전(폐기)된 토큰
         await interactor.refresh(first.refresh_token)
+
+
+async def test_유예_안의_재사용은_거절만_하고_세션을_끊지_않는다():
+    # 액세스 만료 순간 여러 요청이 동시에 갱신을 시도하는 정상 상황
+    interactor = _interactor()
+    first = await interactor.register("a@b.c", "pw1234", "장민석")
+    renewed = await interactor.refresh(first.refresh_token)
+    with pytest.raises(ValueError):
+        await interactor.refresh(first.refresh_token)
+    assert renewed.refresh_token in interactor.refresh_repository.tokens
+
+
+async def test_유예_뒤의_재사용은_탈취로_보고_그_유저의_웹_세션을_전부_끊는다():
+    interactor = _interactor()
+    first = await interactor.register("a@b.c", "pw1234", "장민석")
+    other_device = await interactor.login("a@b.c", "pw1234")
+    renewed = await interactor.refresh(first.refresh_token)
+    repo = interactor.refresh_repository
+    repo.rotated[first.refresh_token] = RotatedRefreshToken(
+        user_id=1, rotated_at=datetime.now(timezone.utc) - timedelta(minutes=5)
+    )
+
+    with pytest.raises(ValueError):
+        await interactor.refresh(first.refresh_token)
+
+    assert renewed.refresh_token not in repo.tokens
+    assert other_device.refresh_token not in repo.tokens
 
 
 async def test_만료된_리프레시_토큰은_거부되고_폐기된다():

@@ -14,6 +14,8 @@ from core.config import JWT_PUBLIC_KEY, jwt_private_key
 
 ACCESS_TOKEN_EXPIRE_MINUTES = 60  # 짧게 — 갱신은 리프레시 토큰 회전으로
 REFRESH_TOKEN_EXPIRE_DAYS = 14
+# 회전 직후 이 안의 재사용은 같은 브라우저의 동시 갱신으로 본다(RotatedRefreshToken 참고).
+REFRESH_REUSE_GRACE = timedelta(seconds=30)
 
 
 class AuthInteractor(AuthUseCase):
@@ -90,8 +92,15 @@ class AuthInteractor(AuthUseCase):
     async def refresh(self, refresh_token: str) -> TokenDto:
         stored = await self.refresh_repository.find_by_token(refresh_token)
         if stored is None:
+            rotated = await self.refresh_repository.find_rotated(refresh_token)
+            if rotated is not None and rotated.is_suspicious_reuse(REFRESH_REUSE_GRACE):
+                # 이미 회전된 토큰이 유예 뒤에 다시 왔다 = 사본이 돌아다닌다. 어느 쪽이 공격자인지
+                # 서버는 구분할 수 없으므로 이 유저의 웹 세션을 전부 끊는다(모바일과 같은 원칙).
+                await self.refresh_repository.delete_all_for_user(rotated.user_id)
             raise ValueError("유효하지 않은 리프레시 토큰입니다.")
-        await self.refresh_repository.delete(stored.token)  # 회전 — 재사용 차단
+        # 회전 — 지우기 전에 기록한다. 순서가 반대면 그 틈에 온 재사용을 놓친다.
+        await self.refresh_repository.mark_rotated(stored)
+        await self.refresh_repository.delete(stored.token)
         if stored.is_expired():
             raise ValueError("리프레시 토큰이 만료되었습니다. 다시 로그인해 주세요.")
         user = await self.repository.find_by_id(stored.user_id)

@@ -3,6 +3,8 @@ from datetime import datetime, timedelta, timezone
 from auth.adapter.outbound.redis.refresh_token_redis_repository import (
     RefreshTokenRedisRepository,
 )
+from auth.adapter.outbound.redis.token_digest import digest
+from auth.domain.entities.refresh_token_entity import RefreshToken
 
 
 class _FakeRedis:
@@ -54,7 +56,17 @@ async def test_저장하면_만료시각이_키_TTL로_설정된다():
     expires_at = _expires_at()
     created = await repository.create(user_id=1, token="tok", expires_at=expires_at)
     assert created.token == "tok"
-    assert redis.exat["auth:refresh:tok"] == int(expires_at.timestamp())
+    assert redis.exat["auth:refresh:" + digest("tok")] == int(expires_at.timestamp())
+
+
+async def test_토큰_원문은_Redis_어디에도_남지_않는다():
+    redis = _FakeRedis()
+    repository = RefreshTokenRedisRepository(redis=redis)
+    token = "원문토큰-secret"
+    stored = await repository.create(user_id=1, token=token, expires_at=_expires_at())
+    await repository.mark_rotated(stored)
+    dumped = [*redis.store, *redis.store.values(), *(m for s in redis.sets.values() for m in s)]
+    assert all(token not in item for item in dumped)
 
 
 async def test_저장한_토큰은_원형_그대로_조회된다():
@@ -79,7 +91,7 @@ async def test_삭제하면_더_이상_조회되지_않는다():
     await repository.create(user_id=1, token="tok", expires_at=_expires_at())
     await repository.delete("tok")
     assert await repository.find_by_token("tok") is None
-    assert "tok" not in redis.sets.get("auth:refresh:user:1", set())  # 역인덱스도 정리
+    assert redis.sets.get("auth:refresh:user:1", set()) == set()  # 역인덱스도 정리
 
 
 async def test_유저_단위_전량_폐기는_모든_토큰과_인덱스를_지운다():
@@ -112,3 +124,16 @@ async def test_역인덱스에_없는_레거시_토큰도_SCAN으로_폐기된�
 
     assert revoked == 1
     assert await repository.find_by_token("legacy") is None
+
+
+async def test_회전_기록은_유저와_시각을_돌려주고_전량_폐기_SCAN에_걸리지_않는다():
+    redis = _FakeRedis()
+    repository = RefreshTokenRedisRepository(redis=redis)
+    stored = await repository.create(user_id=3, token="old", expires_at=_expires_at())
+    await repository.mark_rotated(stored)
+    await repository.delete("old")
+
+    rotated = await repository.find_rotated("old")
+    assert rotated is not None and rotated.user_id == 3
+    assert await repository.find_rotated("모르는토큰") is None
+    assert await repository.delete_all_for_user(3) == 0  # 회전 기록은 세션이 아니다
