@@ -199,3 +199,18 @@ source_context: "/home/host/projects/com.redoceanmap/www/app/apple-icon.tsx"
 ```
 
 Introduced off-palette color(s) #d33a3a, #a51c1c, #6e0e0e in /home/host/projects/com.redoceanmap/www/app/apple-icon.tsx — not in DESIGN.md
+
+## 2026-09-28T01:25:30.808Z — introduced-off-palette-color-s-1c1917-57
+
+```omd-meta
+id: pref_mukkfqyg_8069b987
+timestamp: 2026-09-28T01:25:30.808Z
+scope: color
+signal: ambient
+confidence: inferred
+status: pending
+source_agent: claude-code
+source_context: "/Users/jangminseok/Project/com.redoceanmap/_workspace/portfolio/portfolio.html"
+```
+
+Introduced off-palette color(s) #1c1917, #57534e, #8a817a in /Users/jangminseok/Project/com.redoceanmap/_workspace/portfolio/portfolio.html — not in DESIGN.md
