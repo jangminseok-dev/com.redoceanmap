@@ -131,3 +131,7 @@ blog/vendor/
 
 # humanize-korean 스킬 실행 산출물(run_id별 작업 폴더)
 _workspace/
+
+# 얼굴 학습 이미지는 초상권 때문에 저장소에 두지 않는다 — 학습할 때 로컬에만 넣는다
+minseok/apps/hub/resources/yolo_train/images/
+minseok/apps/hub/resources/yolo_train/labels/
